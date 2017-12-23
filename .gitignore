@@ -1,0 +1,9 @@
+# Dependency directories
+node_modules/
+
+# Typescript output
+lib
+es
+
+# Activeledger Specifics
+.identity
