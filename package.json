@@ -29,11 +29,9 @@
   "module": "./es/index.js",
   "dependencies": {
     "@types/node": "^8.5.2",
-    "activecontracts": "file:../activecontracts",
     "activecrypto": "file:../activecrypto",
     "activelogger": "file:../activelogger",
     "activenetwork": "file:../activenetwork",
-    "activeprotocol": "file:../activeprotocol",
     "semver": "^5.4.1"
   }
 }
