@@ -6,7 +6,8 @@
     "alwaysStrict": true,
     "strictNullChecks": true,
     "noImplicitAny": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "removeComments": true
   },
   "files": [
     "src/index.ts"
