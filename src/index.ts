@@ -23,10 +23,10 @@ if (cluster.isMaster) {
   let activeHome:ActiveNetwork.Home = new ActiveNetwork.Home();
 
   // Manage Activeledger Process Sessions
-  let activeSession:ActiveNetwork.Session = new ActiveNetwork.Session();
+  let activeSession:ActiveNetwork.Session = new ActiveNetwork.Session(activeHome);
 
   // Maintain Network Neighbourhood & Let Workers know
-  let activeWatch = new ActiveNetwork.Watch(activeHome);
+  let activeWatch = new ActiveNetwork.Watch(activeHome, activeSession);
 
   // Loop CPUs and fork
   while (cpus--) {
@@ -35,7 +35,7 @@ if (cluster.isMaster) {
 
   // Watch for worker exit / crash and restart
   cluster.on("exit", worker => {
-    ActiveLogger.error(worker, "Worker has died, Restarting");
+    ActiveLogger.trace(worker, "Worker has died, Restarting");
     activeSession.add(cluster.fork());
   });
 } else {
