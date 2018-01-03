@@ -2,7 +2,7 @@ import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
 import { ActiveNetwork, ActiveInterfaces } from "activenetwork";
-import { ActiveLogger } from 'activelogger';
+import { ActiveLogger } from "activelogger";
 import { ActiveCrypto } from "activecrypto";
 
 // Manage Node Cluster
@@ -20,13 +20,15 @@ if (cluster.isMaster) {
   ActiveLogger.info("Server is active, Creating forks " + cpus);
 
   // Create Master Home
-  let activeHome:ActiveNetwork.Home = new ActiveNetwork.Home();
+  let activeHome: ActiveNetwork.Home = new ActiveNetwork.Home();
 
   // Manage Activeledger Process Sessions
-  let activeSession:ActiveNetwork.Session = new ActiveNetwork.Session(activeHome);
+  let activeSession: ActiveNetwork.Session = new ActiveNetwork.Session(
+    activeHome
+  );
 
   // Maintain Network Neighbourhood & Let Workers know
-  let activeWatch = new ActiveNetwork.Watch(activeHome, activeSession);
+  let activeWatch = new ActiveNetwork.Maintain(activeHome, activeSession);
 
   // Loop CPUs and fork
   while (cpus--) {
@@ -35,8 +37,10 @@ if (cluster.isMaster) {
 
   // Watch for worker exit / crash and restart
   cluster.on("exit", worker => {
-    ActiveLogger.trace(worker, "Worker has died, Restarting");
-    activeSession.add(cluster.fork());
+    ActiveLogger.debug(worker, "Worker has died, Restarting");
+    let restart = activeSession.add(cluster.fork());
+    // We can restart but we need to update the workers left & right & ishome
+    //worker.send({type:"neighbour",})
   });
 } else {
   // Create Home Host Node
