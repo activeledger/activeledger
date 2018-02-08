@@ -43,6 +43,8 @@ if (cluster.isMaster) {
     //worker.send({type:"neighbour",})
   });
 } else {
+  // Temporary Path Solution  
+  (global as any).__base = __dirname;
   // Create Home Host Node
   let activeHost = new ActiveNetwork.Host();
 }
