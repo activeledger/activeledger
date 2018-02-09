@@ -45,7 +45,15 @@ export default class Onboard extends Standard {
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
-      resolve({ object: "hello world" });
+      
+      let x = this.newActivityStream("umid-1");
+      let y = x.getState();
+      y.hello = "world";
+      x.setState(y);
+
+      resolve(true);
+
+
     });
   }
 }

@@ -30,10 +30,12 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "@types/minimist": "^1.2.0",
     "@types/node": "^8.5.2",
     "activecontracts": "file:../activecontracts",
     "activecrypto": "file:../activecrypto",
     "activelogger": "file:../activelogger",
-    "activenetwork": "file:../activenetwork"
+    "activenetwork": "file:../activenetwork",
+    "minimist": "^1.2.0"
   }
 }

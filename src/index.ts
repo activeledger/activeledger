@@ -1,9 +1,22 @@
 import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
+import * as minimist from "minimist";
 import { ActiveNetwork, ActiveInterfaces } from "activenetwork";
 import { ActiveLogger } from "activelogger";
 import { ActiveCrypto } from "activecrypto";
+
+// Process Arguments
+// TOOD: Change solution to static class
+(global as any).argv = minimist(process.argv.slice(2));
+
+// Check for config
+if (!fs.existsSync((global as any).argv.config || "./config.json"))
+  throw ActiveLogger.fatal("No Config File Found (" + (global as any).argv.config || "./config.json" + ")");
+
+// Get Config & Set as Global
+// TOOD: Change solution to static class
+(global as any).config = JSON.parse(fs.readFileSync((global as any).argv.config || "./config.json", "utf8"));
 
 // Manage Node Cluster
 if (cluster.isMaster) {
@@ -43,7 +56,7 @@ if (cluster.isMaster) {
     //worker.send({type:"neighbour",})
   });
 } else {
-  // Temporary Path Solution  
+  // Temporary Path Solution
   (global as any).__base = __dirname;
   // Create Home Host Node
   let activeHost = new ActiveNetwork.Host();
