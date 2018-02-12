@@ -20,7 +20,7 @@ export default class Onboard extends Standard {
       if (signatureless) {
         resolve(true);
       } else {
-        reject("Has Signature");
+        reject("Should be a sigsless flagged transaction");
       }
     });
   }
@@ -33,6 +33,7 @@ export default class Onboard extends Standard {
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
+      // Auto Approve (Demo Onboarding Contract)
       resolve(true);
     });
   }
@@ -46,14 +47,21 @@ export default class Onboard extends Standard {
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
       
-      let x = this.newActivityStream("umid-1");
-      let y = x.getState();
-      y.hello = "world";
-      x.setState(y);
+      // Get Inputs
+      let inputs = Object.keys(this.transactions.$i);
+      if(inputs.length) {
+        let i = inputs.length;
+        while(i--) {
+          // Create New Activity
+          let activity = this.newActivityStream(this.transactions.$i[inputs[i]]);
+          activity.setAuthority(this.transactions.$i[inputs[i]].publicKey);
 
+          let state = activity.getState();
+          state.name = activity.getName();
+          activity.setState(state);
+        }
+      }
       resolve(true);
-
-
     });
   }
 }
