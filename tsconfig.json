@@ -8,9 +8,5 @@
     "noImplicitAny": true,
     "moduleResolution": "node",
     "removeComments": true
-  },
-  "files": [
-    "src/index.ts",
-    "src/contracts/default/onboard.ts"
-  ]
+  }
 }

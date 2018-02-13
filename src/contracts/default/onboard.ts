@@ -1,4 +1,5 @@
 import { Standard } from "activecontracts";
+import { ActiveLogger } from "activelogger";
 
 /**
  * Default Onboarding (New Account) contract
@@ -34,6 +35,7 @@ export default class Onboard extends Standard {
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Auto Approve (Demo Onboarding Contract)
+      ActiveLogger.debug("Always Exposed Logging");
       resolve(true);
     });
   }
@@ -46,21 +48,28 @@ export default class Onboard extends Standard {
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
-      
       // Get Inputs
       let inputs = Object.keys(this.transactions.$i);
-      if(inputs.length) {
+      if (inputs.length) {
         let i = inputs.length;
-        while(i--) {
+        while (i--) {
           // Create New Activity
-          let activity = this.newActivityStream(this.transactions.$i[inputs[i]]);
+          let activity = this.newActivityStream(
+            "activeledger.default.identity." + inputs[i]
+          );
           activity.setAuthority(this.transactions.$i[inputs[i]].publicKey);
 
           let state = activity.getState();
           state.name = activity.getName();
           activity.setState(state);
+
+          // Volatile Fun
+          let volatile = activity.getVolatile();
+          volatile.now = new Date();
+          activity.setVolatile(volatile);
         }
       }
+
       resolve(true);
     });
   }
