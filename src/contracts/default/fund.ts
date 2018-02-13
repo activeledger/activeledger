@@ -175,9 +175,6 @@ export default class Fund extends Standard {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    // Lets see what we have
-    ActiveLogger.debug(this.transactions, "TX");
-
     // Get the input to verify (and prepare)
     let inputStreams = Object.keys(this.transactions.$i);
 
@@ -199,7 +196,7 @@ export default class Fund extends Standard {
     // Have we already got this symbol and enough to transfer
     if (
       state.funds &&
-      state.funds[this.prepare.symbol] &&
+      this.prepare.symbol in state.funds &&
       state.funds[this.prepare.symbol] < this.prepare.amount
     ) {
       return reject("Fund Symbol doesn't exist or not enough balance");
@@ -228,7 +225,7 @@ export default class Fund extends Standard {
     if (!state.funds) state.funds = {};
 
     // Update Funds
-    state.funds[this.prepare.symbol] = this.prepare.amount;
+    state.funds[this.prepare.symbol] += this.prepare.amount;
 
     // Update State
     this.outputActivity.setState(state);
