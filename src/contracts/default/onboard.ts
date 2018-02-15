@@ -1,5 +1,4 @@
-import { Standard } from "activecontracts";
-import { ActiveLogger } from "activelogger";
+import { Standard } from 'activecontracts';
 
 /**
  * Default Onboarding (New Account) contract
@@ -22,7 +21,7 @@ export default class Onboard extends Standard {
         resolve(true);
       } else {
         reject("Should be a sigsless flagged transaction");
-      }
+      }      
     });
   }
 
@@ -35,7 +34,7 @@ export default class Onboard extends Standard {
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Auto Approve (Demo Onboarding Contract)
-      ActiveLogger.debug("Always Exposed Logging");
+      this.ActiveLogger.debug("Always Exposed Logging");
       resolve(true);
     });
   }
