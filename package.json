@@ -19,8 +19,7 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "rimraf": "^2.6.2",
-    "ts-node": "^4.0.2",
-    "typescript": "^2.6.2"
+    "ts-node": "^4.0.2"
   },
   "files": [
     "es",
@@ -36,6 +35,7 @@
     "activecrypto": "file:../activecrypto",
     "activelogger": "file:../activelogger",
     "activenetwork": "file:../activenetwork",
-    "minimist": "^1.2.0"
+    "minimist": "^1.2.0",
+    "typescript": "^2.6.2"
   }
 }
