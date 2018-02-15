@@ -54,7 +54,7 @@ export default class Fund extends Standard {
   }
 
   /**
-   * Mostly Testing, So Don't need to checl
+   * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
    * @memberof Onboard
