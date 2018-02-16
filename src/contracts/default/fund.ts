@@ -105,7 +105,7 @@ export default class Fund extends Standard {
     reject: (reason?: any) => void
   ): void {
     // Lets see what we have
-    ActiveLogger.debug(this.transactions, "TX");
+    this.ActiveLogger.debug(this.transactions, "TX");
 
     // Get the input to verify (and prepare)
     let inputStreams = Object.keys(this.transactions.$i);
