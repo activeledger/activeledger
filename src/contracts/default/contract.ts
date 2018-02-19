@@ -192,7 +192,9 @@ export default class Contract extends Standard {
     let code = this.transpile();
 
     // Get new stream to hold this contract
-    let stream = this.newActivityStream(`contract.${this.namespace}.${this.name}@${txi.version}`);
+    let stream = this.newActivityStream(
+      `contract.${this.namespace}.${this.name}@${txi.version}`
+    );
 
     // Get Stream state to manipulate
     let state = stream.getState();
@@ -212,9 +214,15 @@ export default class Contract extends Standard {
     state.compiled = {};
     state.compiled[txi.version] = stream.getName();
 
-    // Write the contract to its location (Using its stream name)
+    // Write the contract to its location as latest (Using its stream name)
     fs.writeFileSync(
       `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
+      code
+    );
+
+    // Write the contract to its location as a version (Using its stream name)
+    fs.writeFileSync(
+      `${this.rootDir}${this.namespace}/${stream.getName()}@${txi.version}.js`,
       code
     );
 
@@ -284,6 +292,12 @@ export default class Contract extends Standard {
 
     // Compiled Management
     state.compiled[txi.version] = stream.getName();
+
+    // Write the contract to its location as latest (Using its stream name)
+    fs.writeFileSync(
+      `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
+      code
+    );
 
     // Write the contract to its location (Using its stream name)
     fs.writeFileSync(

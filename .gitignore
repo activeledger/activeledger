@@ -9,3 +9,4 @@ es
 .identity
 config.json
 config.*.json
+contracts/*/
