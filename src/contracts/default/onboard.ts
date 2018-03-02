@@ -56,7 +56,7 @@ export default class Onboard extends Standard {
           let activity = this.newActivityStream(
             "activeledger.default.identity." + inputs[i]
           );
-          activity.setAuthority(this.transactions.$i[inputs[i]].publicKey);
+          activity.setAuthority(this.transactions.$i[inputs[i]].publicKey, this.transactions.$i[inputs[i]].type);
 
           let state = activity.getState();
           state.name = activity.getName();
