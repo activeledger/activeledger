@@ -69,8 +69,9 @@ export default class Namespace extends Query {
       if (this.namespace == "default") return reject("Namespace Reserved");
 
       // Does the namespace exist
+      // Added contract compiled null checks to prevent collision
       this.query
-        .sql(`SELECT * FROM X WHERE namespace = ${this.namespace}`)
+        .sql(`SELECT * FROM X WHERE namespace = ${this.namespace} AND contract = null AND compiled = null`)
         .then(doc => {
           if (doc.length > 0) {
             return reject("Namespace Reserved");
