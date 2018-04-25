@@ -10,3 +10,6 @@ es
 config.json
 config.*.json
 contracts/*/
+
+# lock files
+package-lock.json
