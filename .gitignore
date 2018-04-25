@@ -7,3 +7,9 @@ es
 
 # Activeledger Specifics
 .identity
+config.json
+config.*.json
+contracts/*/
+
+# lock files
+package-lock.json

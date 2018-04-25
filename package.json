@@ -1,24 +1,32 @@
 {
-  "name": "activeledger",
-  "version": "2.0.0",
-  "description": "Main controller for management the Activeledger Ledger",
-  "main": "./lib/index.js",
+  "name": "@activeledger/activeledger",
+  "version": "2.0.0-rc1",
+  "description": "Main controller for Activeledger",
+  "preferGlobal": true,
+  "bin": {
+    "activeledger": "./lib/index.js"
+  },
   "scripts": {
     "start": "node lib/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
     "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
     "build": "npm run build:commonjs && npm run build:es",
+    "buildw": "npm run build:commonjsw",
     "ts": "ts-node src/",
     "ts4": "node -r ts-node/register src/",
     "prepublishOnly": "npm run build"
   },
-  "author": "Activeledger by Agility Sciences",
-  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
   "devDependencies": {
     "rimraf": "^2.6.2",
-    "ts-node": "^4.0.2",
-    "typescript": "^2.6.2"
+    "ts-node": "^4.1.0"
   },
   "files": [
     "es",
@@ -28,12 +36,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "@types/minimist": "^1.2.0",
     "@types/node": "^8.5.2",
-    "activecontracts": "file:../activecontracts",
-    "activecrypto": "file:../activecrypto",
-    "activelogger": "file:../activelogger",
-    "activenetwork": "file:../activenetwork",
-    "activeprotocol": "file:../activeprotocol",
-    "semver": "^5.4.1"
+    "@activeledger/activecontracts": "^2.0.0-rc2",
+    "@activeledger/activecrypto": "^2.0.0-rc5",
+    "@activeledger/activelogger": "^2.0.0-rc1",
+    "@activeledger/activenetwork": "^2.0.0-rc2",
+    "minimist": "^1.2.0",
+    "typescript": "^2.6.2"
   }
 }
