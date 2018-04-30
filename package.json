@@ -16,7 +16,8 @@
     "buildw": "npm run build:commonjsw",
     "ts": "ts-node src/",
     "ts4": "node -r ts-node/register src/",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "postinstall": "npm --prefix ./node_modules/pouchdb-monorepo install ./node_modules/pouchdb-monorepo"
   },
   "repository": {
     "type": "git",
@@ -25,7 +26,6 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "rimraf": "^2.6.2",
     "ts-node": "^4.1.0"
   },
   "files": [
@@ -36,13 +36,17 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@types/minimist": "^1.2.0",
-    "@types/node": "^8.5.2",
     "@activeledger/activecontracts": "^2.0.0-rc2",
     "@activeledger/activecrypto": "^2.0.0-rc5",
     "@activeledger/activelogger": "^2.0.0-rc1",
-    "@activeledger/activenetwork": "^2.0.0-rc2",
+    "@activeledger/activenetwork": "file:../activenetwork",
+    "@activeledger/activeprotocol": "file:../activeprotocol",
+    "@types/minimist": "^1.2.0",
+    "@types/node": "^8.5.2",
+    "express": "^4.16.3",
+    "express-pouchdb": "^4.0.0",
     "minimist": "^1.2.0",
+    "pouchdb-monorepo": "https://github.com/pouchdb/pouchdb/tarball/master",
     "typescript": "^2.6.2"
   }
 }

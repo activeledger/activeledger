@@ -26,6 +26,7 @@
 import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
+import * as ChildP from "child_process";
 import * as minimist from "minimist";
 import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -37,11 +38,16 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 
 // Check for config
 if (!fs.existsSync((global as any).argv.config || "./config.json"))
-  throw ActiveLogger.fatal("No Config File Found (" + (global as any).argv.config || "./config.json" + ")");
+  throw ActiveLogger.fatal(
+    "No Config File Found (" + (global as any).argv.config ||
+      "./config.json" + ")"
+  );
 
 // Get Config & Set as Global
 // TOOD: Change solution to static class
-(global as any).config = JSON.parse(fs.readFileSync((global as any).argv.config || "./config.json", "utf8"));
+(global as any).config = JSON.parse(
+  fs.readFileSync((global as any).argv.config || "./config.json", "utf8")
+);
 
 // Manage Node Cluster
 if (cluster.isMaster) {
@@ -51,6 +57,64 @@ if (cluster.isMaster) {
     let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
     fs.writeFileSync("./.identity", JSON.stringify(identity.generate()));
     ActiveLogger.info("Identity Generated. Continue Boot Cycle");
+  }
+
+  // Self hosted data storage engine
+  if ((global as any).config.db.selfhost) {
+    // Folder Location
+    let dblocation = (global as any).config.db.selfhost.dir || "./.ds";
+
+    // Check folder exists
+    if (!fs.existsSync(dblocation)) {
+      fs.mkdirSync(dblocation);
+    }
+
+    // Start Server, Can't block as server wont return
+    ActiveLogger.info(
+      "Self-hosted data engine @ http://localhost:" +
+        (global as any).config.db.selfhost.port
+    );
+
+    // Launch Background Database Process
+    let pDB: ChildP.ChildProcess = ChildP.spawn(
+      "node",
+      [
+        "./lib/selfdb.js",
+        `${dblocation || ".ds"}`,
+        `${(global as any).config.db.selfhost.port}`
+      ],
+      {
+        cwd: "./"
+      }
+    );
+
+    pDB.on("exit", () => {
+      ActiveLogger.info("PouchDown");
+      pDB.kill("SIGINT");
+      // Wait 10 seconds and bring back up
+      setTimeout(() => {
+        let pDB: ChildP.ChildProcess = ChildP.spawn(
+          "node",
+          [
+            "./lib/selfdb.js",
+            `${dblocation || ".ds"}`,
+            `${(global as any).config.db.selfhost.port}`
+          ],
+          {
+            cwd: "./"
+          }
+        );
+      }, 10000);
+    });
+
+    ActiveLogger.info(`Self-hosted data engine : Starting Up (${pDB.pid})`);
+
+    // Write process id for restore engine to manage
+    fs.writeFileSync(dblocation + "/.pid", pDB.pid);
+
+    // Rewrite config for this process
+    (global as any).config.db.url =
+      "http://127.0.0.1:" + (global as any).config.db.selfhost.port;
   }
 
   // Launch as many nodes as cpus
@@ -83,6 +147,14 @@ if (cluster.isMaster) {
 } else {
   // Temporary Path Solution
   (global as any).__base = __dirname;
+
+  // Self hosted data storage engine
+  if ((global as any).config.db.selfhost) {
+    // Rewrite config for this process
+    (global as any).config.db.url =
+      "http://localhost:" + (global as any).config.db.selfhost.port;
+  }
+
   // Create Home Host Node
   let activeHost = new ActiveNetwork.Host();
 }
