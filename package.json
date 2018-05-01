@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc1",
+  "version": "2.0.0-rc2",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {
@@ -9,9 +9,9 @@
   "scripts": {
     "start": "node lib/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration && copyfiles -f ./src/default.config.json ./lib",
     "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
-    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
+    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
     "build": "npm run build:commonjs && npm run build:es",
     "buildw": "npm run build:commonjsw",
     "ts": "ts-node src/",
@@ -26,6 +26,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "copyfiles": "^2.0.0",
     "rimraf": "^2.6.2",
     "ts-node": "^4.1.0",
     "typescript": "^2.8.3"
@@ -41,13 +42,13 @@
     "@activeledger/activecontracts": "^2.0.0-rc2",
     "@activeledger/activecrypto": "^2.0.0-rc5",
     "@activeledger/activelogger": "^2.0.0-rc1",
-    "@activeledger/activenetwork": "file:../activenetwork",
-    "@activeledger/activeprotocol": "file:../activeprotocol",
+    "@activeledger/activenetwork": "^2.0.0-rc3",
+    "@activeledger/activeprotocol": "^2.0.0-rc3",
     "@types/minimist": "^1.2.0",
     "@types/node": "^8.5.2",
     "express": "^4.16.3",
     "express-pouchdb": "^4.0.0",
     "minimist": "^1.2.0",
-    "pouchdb-monorepo": "https://github.com/pouchdb/pouchdb/tarball/master"
+    "pouchdb-monorepo": "https://github.com/pouchdb/pouchdb/tarball/c320dd8039d59e24a552962e98405cff0f784d79"
   }
 }

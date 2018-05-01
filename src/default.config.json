@@ -1,0 +1,34 @@
+{
+    "debug": true,
+    "security": {
+      "signedConsensus": false,
+      "encryptedConsensus": false,
+      "hardenedKeys": false
+    },
+    "host": "127.0.0.1:5260",
+    "db": {
+      "selfhost": {
+        "host": "127.0.0.1",
+        "port": "5259"
+      },
+      "url": "http://[user]:[pass]@[host]:[port]",
+      "database": "activeledger",
+      "event": "activeledgerevents",
+      "error": "activeledgererrors"
+    },
+    "consensus": {
+      "reached": 60
+    },
+    "autostart": {
+      "core": true,
+      "restore": true
+    },
+    "experimental": {
+      "hybrid": {
+        "host": false,
+        "maxConnections": 10
+      }
+    },
+    "neighbourhood": []
+  }
+  
