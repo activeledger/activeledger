@@ -29,6 +29,11 @@
         "maxConnections": 10
       }
     },
+    "rate": {
+      "minutes": 10,
+      "limit": 20,
+      "delay": 0
+    },
     "neighbourhood": []
   }
   
