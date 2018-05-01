@@ -23,14 +23,15 @@
  * SOFTWARE.
  */
 
+import * as child from "child_process";
 import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
-import * as ChildP from "child_process";
 import * as minimist from "minimist";
 import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { DataStore } from "./datastore";
 
 // Process Arguments
 // TOOD: Change solution to static class
@@ -61,60 +62,11 @@ if (cluster.isMaster) {
 
   // Self hosted data storage engine
   if ((global as any).config.db.selfhost) {
-    // Folder Location
-    let dblocation = (global as any).config.db.selfhost.dir || "./.ds";
-
-    // Check folder exists
-    if (!fs.existsSync(dblocation)) {
-      fs.mkdirSync(dblocation);
-    }
-
-    // Start Server, Can't block as server wont return
-    ActiveLogger.info(
-      "Self-hosted data engine @ http://localhost:" +
-        (global as any).config.db.selfhost.port
-    );
-
-    // Launch Background Database Process
-    let pDB: ChildP.ChildProcess = ChildP.spawn(
-      "node",
-      [
-        "./lib/selfdb.js",
-        `${dblocation || ".ds"}`,
-        `${(global as any).config.db.selfhost.port}`
-      ],
-      {
-        cwd: "./"
-      }
-    );
-
-    pDB.on("exit", () => {
-      ActiveLogger.info("PouchDown");
-      pDB.kill("SIGINT");
-      // Wait 10 seconds and bring back up
-      setTimeout(() => {
-        let pDB: ChildP.ChildProcess = ChildP.spawn(
-          "node",
-          [
-            "./lib/selfdb.js",
-            `${dblocation || ".ds"}`,
-            `${(global as any).config.db.selfhost.port}`
-          ],
-          {
-            cwd: "./"
-          }
-        );
-      }, 10000);
-    });
-
-    ActiveLogger.info(`Self-hosted data engine : Starting Up (${pDB.pid})`);
-
-    // Write process id for restore engine to manage
-    fs.writeFileSync(dblocation + "/.pid", pDB.pid);
+    // Create Datastore instance
+    let datastore: DataStore = new DataStore();
 
     // Rewrite config for this process
-    (global as any).config.db.url =
-      "http://127.0.0.1:" + (global as any).config.db.selfhost.port;
+    (global as any).config.db.url = datastore.launch();
   }
 
   // Launch as many nodes as cpus
@@ -144,6 +96,44 @@ if (cluster.isMaster) {
     // We can restart but we need to update the workers left & right & ishome
     //worker.send({type:"neighbour",})
   });
+
+  // Auto starting other activeledger services?
+  if ((global as any).config.autostart) {
+    // Auto starting Core API?
+    if ((global as any).config.autostart.core) {
+      ActiveLogger.info("Auto starting - Core API");
+
+      // Launch & Listen for launch error
+      child
+        .spawn(
+          /^win/.test(process.platform) ? "activecore.cmd" : "activecore",
+          [],
+          {
+            cwd: "./"
+          }
+        )
+        .on("error", error => {
+          ActiveLogger.error(error, "Core API Failed to start");
+        });
+    }
+
+    // Auto Starting Restore Engine?
+    if ((global as any).config.autostart.restore) {
+      ActiveLogger.info("Auto starting - Restore Engine");
+      // Launch & Listen for launch error
+      child
+        .spawn(
+          /^win/.test(process.platform) ? "activerestore.cmd" : "activerestore",
+          [],
+          {
+            cwd: "./"
+          }
+        )
+        .on("error", error => {
+          ActiveLogger.error(error, "Restore Engine Failed to start");
+        });
+    }
+  }
 } else {
   // Temporary Path Solution
   (global as any).__base = __dirname;
