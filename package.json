@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc2",
+  "version": "2.0.0-rc7",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {
@@ -16,8 +16,7 @@
     "buildw": "npm run build:commonjsw",
     "ts": "ts-node src/",
     "ts4": "node -r ts-node/register src/",
-    "prepublishOnly": "npm run build",
-    "postinstall": "npm --prefix ./node_modules/pouchdb-monorepo install ./node_modules/pouchdb-monorepo"
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -44,11 +43,11 @@
     "@activeledger/activelogger": "^2.0.0-rc1",
     "@activeledger/activenetwork": "^2.0.0-rc3",
     "@activeledger/activeprotocol": "^2.0.0-rc3",
+    "@agilitysciences/pouchdb": "^7.0.0-prerelease.fork.1.0.2",
     "@types/minimist": "^1.2.0",
     "@types/node": "^8.5.2",
     "express": "^4.16.3",
     "express-pouchdb": "^4.0.0",
-    "minimist": "^1.2.0",
-    "pouchdb-monorepo": "https://github.com/pouchdb/pouchdb/tarball/c320dd8039d59e24a552962e98405cff0f784d79"
+    "minimist": "^1.2.0"
   }
 }

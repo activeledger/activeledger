@@ -23,7 +23,7 @@
 
 (function() {
   // Get Local PouchDB 7
-  let PouchDB: any = require("../node_modules/pouchdb-monorepo/packages/node_modules/pouchdb/lib/index.js");
+  let PouchDB: any = require("@agilitysciences/pouchdb");
 
   // Get base version of Express
   let app: any = require("express")();

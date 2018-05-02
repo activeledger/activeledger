@@ -52,6 +52,23 @@ if (!fs.existsSync((global as any).argv.config || "./config.json")) {
     fs.readFileSync(__dirname + "/default.config.json", "utf8")
   );
 
+  // Adjusting Ports?
+  if ((global as any).argv.port) {
+    // Update Node Host
+    defConfig.host =
+      (global as any).argv.host ||
+      "127.0.0.1" + ":" + (global as any).argv.port;
+
+    // Update Self host
+    defConfig.db.selfhost.port = (
+      parseInt((global as any).argv.port) - 1
+    ).toString();
+
+    // Disable auto starts as they have their own port settings
+    defConfig.autostart.core = false;
+    defConfig.autostart.restore = false;
+  }
+
   // Read identity (can't assume it was always created)
   let identity: any = JSON.parse(fs.readFileSync("./.identity", "utf8"));
 
@@ -61,8 +78,8 @@ if (!fs.existsSync((global as any).argv.config || "./config.json")) {
       type: "rsa",
       public: identity.pub.pkcs8pem
     },
-    host: "127.0.0.1",
-    port: "5260"
+    host: (global as any).argv.host || "127.0.0.1",
+    port: (global as any).argv.port || "5260"
   });
 
   // lets write the default one in this location

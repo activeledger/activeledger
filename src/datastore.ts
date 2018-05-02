@@ -77,21 +77,17 @@ export class DataStore {
    * @returns {string}
    * @memberof DataStore
    */
-  public launch(): string {    
+  public launch(): string {
     // Launch Background Database Process
-    this.process = child.spawn(
-      "node",
-      [
-        "./lib/selfhost.js",
-        this.dsLocation,
-        `${(global as any).config.db.selfhost.port}`
-      ],
-      {
-        cwd: "./"
-      }
-    );
+    this.process = child.spawn("node", [
+      __dirname + "/selfhost.js",
+      this.dsLocation,
+      `${(global as any).config.db.selfhost.port}`
+    ]);
 
-    ActiveLogger.info(`Self-hosted data engine : Starting Up (${this.process.pid})`);
+    ActiveLogger.info(
+      `Self-hosted data engine : Starting Up (${this.process.pid})`
+    );
 
     // Write process id for restore engine to manage
     fs.writeFileSync(this.dsLocation + "/.pid", this.process.pid);
