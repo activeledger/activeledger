@@ -156,6 +156,10 @@ if ((global as any).argv.merge) {
   // Check for local contracts folder
   if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
+  // Check for modules link for running contracts
+  if (!fs.existsSync("contracts/node_modules"))
+    fs.symlinkSync(`${__dirname}/../node_modules`, "contracts/node_modules", "dir");
+
   // Manage Node Cluster
   if (cluster.isMaster) {
     // Boot Function, Used to wait on self host
