@@ -59,11 +59,11 @@ if ((global as any).argv.merge) {
           ActiveLogger.fatal(
             `${configFile} has multiple entries in neighbourhood`
           );
-          process.exit()
+          process.exit();
         }
       } else {
         ActiveLogger.fatal(`Configuration file "${configFile}" not found`);
-        process.exit()
+        process.exit();
       }
     }
 
@@ -112,7 +112,7 @@ if ((global as any).argv.merge) {
       // Update Self host
       defConfig.db.selfhost.port = (
         parseInt((global as any).argv.port) - 1
-      ).toString();     
+      ).toString();
 
       // Disable auto starts as they have their own port settings
       defConfig.autostart.core = false;
@@ -120,8 +120,7 @@ if ((global as any).argv.merge) {
     }
 
     // Data directory passed?
-    if((global as any).argv["data-dir"]) {
-      console.log("hello");
+    if ((global as any).argv["data-dir"]) {
       defConfig.db.selfhost.dir = (global as any).argv["data-dir"];
     }
 
@@ -139,7 +138,10 @@ if ((global as any).argv.merge) {
     });
 
     // lets write the default one in this location
-    fs.writeFileSync((global as any).argv.config || "./config.json", JSON.stringify(defConfig));
+    fs.writeFileSync(
+      (global as any).argv.config || "./config.json",
+      JSON.stringify(defConfig)
+    );
     ActiveLogger.info(
       "Created Config File - Please see documentation about network setup"
     );
@@ -150,6 +152,9 @@ if ((global as any).argv.merge) {
   (global as any).config = JSON.parse(
     fs.readFileSync((global as any).argv.config || "./config.json", "utf8")
   );
+
+  // Check for local contracts folder
+  if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
   // Manage Node Cluster
   if (cluster.isMaster) {
