@@ -9,7 +9,7 @@ es
 .identity
 config.json
 config.*.json
-contracts/*/
+contracts
 .*/
 log.txt
 
