@@ -7,9 +7,10 @@ es
 
 # Activeledger Specifics
 .identity
+testnet*
 config.json
 config.*.json
-contracts/*/
+contracts
 .*/
 log.txt
 
