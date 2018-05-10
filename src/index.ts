@@ -62,19 +62,26 @@ if ((global as any).argv.testnet) {
       new Promise((resolve, reject) => {
         ActiveLogger.info("Creating Node Instance " + i);
 
+        // Need specific folder for each instance
+        fs.mkdirSync(`instance-${i}`);
+
+        // Copy shared identity
+        fs.copyFileSync("./.identity", `instance-${i}/.identity`);
+
         // Instance Arguments (Start @ 5260)
         let args = [
-          `--config testnet.${i}.json`,
           `--port ${5250 + (i + 1) * 10}`,
-          `--data-dir .tds${i}`,
+          `--data-dir .ds`,
           `--setup-only`
         ];
 
         // Push to Merge
-        merge.push(`--merge testnet.${i}.json`);
+        merge.push(`--merge "./instance-${i}/config.json"`);
 
         // Excecute
-        let cprocess = child.exec(`activeledger ${args.join(" ")}`);
+        let cprocess = child.exec(`activeledger ${args.join(" ")}`, {
+          cwd: `instance-${i}`
+        });
 
         // Wait to shutdown
         setTimeout(() => {
@@ -106,8 +113,7 @@ if ((global as any).argv.testnet) {
 
         // Let them know how to manually run.
         for (let i = 0; i < instances; i++) {
-          let launch = `activeledger --config testnet.${i}.json --port ${5250 +
-            (i + 1) * 10} --data-dir .tds${i}`;
+          let launch = `cd instance-${i} && activeledger`;
 
           // Print Launch Command
           ActiveLogger.info(launch);
