@@ -246,6 +246,9 @@ if ((global as any).argv.testnet) {
       fs.readFileSync((global as any).argv.config || "./config.json", "utf8")
     );
 
+    // Add to config its file path
+    (global as any).config.__filename = (global as any).argv.config || "./config.json";
+
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 

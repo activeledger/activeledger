@@ -10,7 +10,9 @@ es
 testnet*
 config.json
 config.*.json
-contracts
+./contracts
+contracts/*
+instance*/*
 .*/
 log.txt
 
