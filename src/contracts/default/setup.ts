@@ -31,13 +31,13 @@ import { PostProcess, Activity } from "@activeledger/activecontracts";
  * @class Onboard
  * @extends {Standard}
  */
-export default class Network extends PostProcess {
+export default class Setup extends PostProcess {
   /**
    * Store System Configuration
    *
    * @private
    * @type {*}
-   * @memberof Network
+   * @memberof Setup
    */
   private config: any;
 
@@ -45,7 +45,7 @@ export default class Network extends PostProcess {
    * Get System Configuration
    *
    * @param {any} config
-   * @memberof Network
+   * @memberof Setup
    */
   public sysConfig(config: any) {
     this.config = config;
@@ -61,7 +61,17 @@ export default class Network extends PostProcess {
   public verify(selfsigned: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       if (selfsigned) {
-        resolve(true);
+        // Required Inputs
+        if (
+          this.transactions.$i.setup &&
+          this.transactions.$i.setup.security &&
+          this.transactions.$i.setup.consensus &&
+          this.transactions.$i.setup.neighbourhood
+        ) {
+          resolve(true);
+        }else{
+          reject("Missing Assert Fields");  
+        }
       } else {
         // Will use the node configuration id's to verify
         reject("Must be self signed");
@@ -78,8 +88,8 @@ export default class Network extends PostProcess {
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       switch (this.transactions.$entry) {
-        case "propose":
-          this.proposeVote(resolve, reject);
+        case "assert":
+          this.assertVote(resolve, reject);
           break;
         default:
           reject("unknown entry");
@@ -97,8 +107,8 @@ export default class Network extends PostProcess {
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
       switch (this.transactions.$entry) {
-        case "propose":
-          this.proposeCommit(resolve, reject);
+        case "assert":
+          this.assertCommit(resolve, reject);
           break;
         default:
           reject("unknown entry");
@@ -113,12 +123,12 @@ export default class Network extends PostProcess {
    * @returns {Promise<boolean>}
    * @memberof Onboard
    */
-  public proposeVote(
+  public assertVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
     // Need to verify this exists
-    let txNeighbourhood = this.transactions.$i.network.neighbourhood;
+    let txNeighbourhood = this.transactions.$i.setup.neighbourhood;
 
     // Get Config neighbourhood
     let cngNeighbourhood = this.config.neighbourhood;
@@ -128,7 +138,7 @@ export default class Network extends PostProcess {
       // Do we have a signature from one of these nodes
 
       // Breakout of typescript to access signature object
-      // In a propose, Only 1 node needs to be signatory, However network object must match.
+      // In a assert, Only 1 node needs to be signatory, However network object must match.
       let signatures = (this as any).sigs;
       let keys = Object.keys(cngNeighbourhood);
       let i = keys.length;
@@ -170,25 +180,43 @@ export default class Network extends PostProcess {
    * @returns {Promise<any>}
    * @memberof Onboard
    */
-  public proposeCommit(
+  public assertCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
     // Get new stream to hold this contract
-    let network = this.newActivityStream("contract.default.network");
+    let setup = this.newActivityStream("contract.default.setup");
 
     // Get Stream state to manipulate
-    let state = network.getState();
+    let state = setup.getState();
 
     // Add Network Neighbourhood details
-    state.neighbourhood = this.transactions.$i.network.neighbourhood;
+    state.neighbourhood = this.transactions.$i.setup.neighbourhood;
+
+    // Add Security if exists (Only need to validate nodes)
+    if (this.transactions.$i.setup.security)
+      state.security = this.transactions.$i.setup.security;
+
+    // Add Concensus
+    if (this.transactions.$i.setup.consensus)
+      state.consensus = this.transactions.$i.setup.consensus;
+
+    // Do not need to add debug, host, db, rate, experimental
+    // as these are node specifics.
+
+    // Prepare for namespace import security (Check to see if blank)
+    if (!state.security.namespace) state.security.namespace = {};
+
+    // Additional Contract Locks?
+    if(this.transactions.$i.setup.lock) {
+      setup.setContractLock(this.transactions.$i.setup.lock);
+    }
 
     // Add to Config
-    this.config.network = network.getName();
+    this.config.network = setup.getName();
 
     // Save State
-    network.setState(state);
-
+    setup.setState(state);
     resolve(true);
   }
 
@@ -198,14 +226,16 @@ export default class Network extends PostProcess {
    * @param {boolean} territoriality
    * @param {string} who
    * @returns {Promise<any>}
-   * @memberof Network
+   * @memberof Setup
    */
   public postProcess(territoriality: boolean, who: string): Promise<any> {
     return new Promise((resolve, reject) => {
       // Backup config (TODO What if this isn't the config file?)
       fs.copyFileSync(this.config.__filename, this.config.__filename + ".bak");
-      // Remove neighbourhood
+      // Remove properties now in the ledger
       delete this.config.neighbourhood;
+      delete this.config.consensus;
+      delete this.config.security;
       // Cache then Remove Filename
       let config = this.config.__filename;
       delete this.config.__filename;
@@ -222,7 +252,7 @@ export default class Network extends PostProcess {
    * @param {Array<any>} a
    * @param {Array<any>} b
    * @returns {boolean}
-   * @memberof Network
+   * @memberof Setup
    */
   private deepArrayEq(a: Array<any>, b: Array<any>): boolean {
     // First check the lengths match
@@ -250,7 +280,7 @@ export default class Network extends PostProcess {
    * @param {*} a
    * @param {Array<any>} b
    * @returns {boolean}
-   * @memberof Network
+   * @memberof Setup
    */
   private arrayEq(a: any, b: Array<any>): boolean {
     // String comparrsion check cache
@@ -273,7 +303,7 @@ export default class Network extends PostProcess {
    * @param {*} a
    * @param {*} b
    * @returns {boolean}
-   * @memberof Network
+   * @memberof Setup
    * @author atmin {stackoveflow}
    */
   private deepEq(a: any, b: any): boolean {

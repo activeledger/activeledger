@@ -27,10 +27,12 @@ import * as child from "child_process";
 import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
+import * as axios from "axios";
 import * as minimist from "minimist";
 import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import Client, { CouchDoc } from "davenport";
 import { DataStore } from "./datastore";
 
 // Process Arguments
@@ -247,7 +249,8 @@ if ((global as any).argv.testnet) {
     );
 
     // Add to config its file path
-    (global as any).config.__filename = (global as any).argv.config || "./config.json";
+    (global as any).config.__filename =
+      (global as any).argv.config || "./config.json";
 
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
@@ -260,112 +263,236 @@ if ((global as any).argv.testnet) {
         "dir"
       );
 
-    if ((global as any).argv["setup-only"]) {
-      process.exit();
-    }
+    // Move config based to merged ledger configuration
+    if ((global as any).argv["assert-network"]) {
+      // Make sure this node belives everyone is online
+      axios.default
+        .get(`http://${(global as any).config.host}/a/status`)
+        .then(status => {
+          // Verify the status are all home
+          let neighbours = Object.keys(status.data.neighbourhood.neighbours);
+          let i = neighbours.length;
 
-    // Manage Node Cluster
-    if (cluster.isMaster) {
-      // Boot Function, Used to wait on self host
-      let boot: Function = () => {
-        // Launch as many nodes as cpus
-        let cpus = os.cpus().length;
-        ActiveLogger.info("Server is active, Creating forks " + cpus);
+          // Loop and check
+          while (i--) {
+            if (!status.data.neighbourhood.neighbours[neighbours[i]].isHome) {
+              ActiveLogger.fatal(
+                "All known nodes must been online for assertion"
+              );
+              process.exit();
+            }
+          }
 
-        // Create Master Home
-        let activeHome: ActiveNetwork.Home = new ActiveNetwork.Home();
+          // Get Identity
+          let identity: ActiveCrypto.KeyHandler = JSON.parse(
+            fs.readFileSync(
+              (global as any).argv.identity || "./.identity",
+              "utf8"
+            )
+          );
 
-        // Manage Activeledger Process Sessions
-        let activeSession: ActiveNetwork.Session = new ActiveNetwork.Session(
-          activeHome
+          // Get Signing Object
+          let signatory: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(
+            "rsa",
+            identity.prv.pkcs8pem
+          );
+
+          // Build Transaction
+          let assert = {
+            $tx: {
+              $namespace: "default",
+              $contract: "setup",
+              $entry: "assert",
+              $i: {
+                selfsign: {
+                  type: "rsa",
+                  publicKey: identity.pub.pkcs8pem
+                },
+                setup: {
+                  security: (global as any).config.security,
+                  consensus: (global as any).config.consensus,
+                  neighbourhood: (global as any).config.neighbourhood
+                }
+              }
+            },
+            $selfsign: true,
+            $sigs: {
+              selfsign: "",
+              [(global as any).config.host]: ""
+            }
+          };
+
+          // Sign Transaction
+          let signed = signatory.sign(assert.$tx);
+
+          // Add twice to transaction
+          assert.$sigs[
+            (global as any).config.host
+          ] = assert.$sigs.selfsign = signed;
+
+          // Submit Transaction to self
+          axios.default
+            .post(`http://${(global as any).config.host}`, assert)
+            .then(() => {
+              ActiveLogger.info("Network Asserted to the ledger");
+            })
+            .catch(e => {
+              ActiveLogger.fatal(
+                e.response.data,
+                "Networking Assertion Failed"
+              );
+            });
+        })
+        .catch(e => {
+          ActiveLogger.fatal(
+            e.response ? e.response.data : e,
+            "Unable to assess network for assertion"
+          );
+        });
+    } else {
+      // Are we only doing setups if so stopped
+      if ((global as any).argv["setup-only"]) {
+        process.exit();
+      }
+
+      // TODO Move all of config into its own static class. For now build here.
+      let extendConfig: Function = (boot: Function) => {
+        let tmpDb = new Client(
+          (global as any).config.db.url,
+          (global as any).config.db.database
         );
 
-        // Maintain Network Neighbourhood & Let Workers know
-        let activeWatch = new ActiveNetwork.Maintain(activeHome, activeSession);
-
-        // Loop CPUs and fork
-        while (cpus--) {
-          activeSession.add(cluster.fork());
-        }
-
-        // Watch for worker exit / crash and restart
-        cluster.on("exit", worker => {
-          ActiveLogger.debug(worker, "Worker has died, Restarting");
-          let restart = activeSession.add(cluster.fork());
-          // We can restart but we need to update the workers left & right & ishome
-          //worker.send({type:"neighbour",})
-        });
-
-        // Auto starting other activeledger services?
-        if ((global as any).config.autostart) {
-          // Auto starting Core API?
-          if ((global as any).config.autostart.core) {
-            ActiveLogger.info("Auto starting - Core API");
-
-            // Launch & Listen for launch error
-            child
-              .spawn(
-                /^win/.test(process.platform) ? "activecore.cmd" : "activecore",
-                [],
-                {
-                  cwd: "./"
-                }
-              )
-              .on("error", error => {
-                ActiveLogger.error(error, "Core API Failed to start");
-              });
-          }
-
-          // Auto Starting Restore Engine?
-          if ((global as any).config.autostart.restore) {
-            ActiveLogger.info("Auto starting - Restore Engine");
-            // Launch & Listen for launch error
-            child
-              .spawn(
-                /^win/.test(process.platform)
-                  ? "activerestore.cmd"
-                  : "activerestore",
-                [],
-                {
-                  cwd: "./"
-                }
-              )
-              .on("error", error => {
-                ActiveLogger.error(error, "Restore Engine Failed to start");
-              });
-          }
-        }
+        tmpDb
+          .get((global as any).config.network)
+          .then((config: any) => {
+            ActiveLogger.info("Extending config from ledger");
+            // Manual Configuration Merge
+            (global as any).config.security = config.security;
+            (global as any).config.consensus = config.consensus;
+            (global as any).config.neighbourhood = config.neighbourhood;
+            // continue Boot
+            boot();
+          })
+          .catch(() => {
+            ActiveLogger.warn("No network configuration found on Ledger");
+            boot();
+          });
       };
 
-      // Self hosted data storage engine
-      if ((global as any).config.db.selfhost) {
-        // Create Datastore instance
-        let datastore: DataStore = new DataStore();
+      // If we have a network we need to build the rest for the ledger
+      if ((global as any).config.network) {
+      }
 
-        // Rewrite config for this process
-        (global as any).config.db.url = datastore.launch();
+      // Manage Node Cluster
+      if (cluster.isMaster) {
+        // Boot Function, Used to wait on self host
+        let boot: Function = () => {
+          // Launch as many nodes as cpus
+          let cpus = os.cpus().length;
+          ActiveLogger.info("Server is active, Creating forks " + cpus);
 
-        // Wait a bit for process to fully start
-        setTimeout(() => {
+          // Create Master Home
+          let activeHome: ActiveNetwork.Home = new ActiveNetwork.Home();
+
+          // Manage Activeledger Process Sessions
+          let activeSession: ActiveNetwork.Session = new ActiveNetwork.Session(
+            activeHome
+          );
+
+          // Maintain Network Neighbourhood & Let Workers know
+          let activeWatch = new ActiveNetwork.Maintain(
+            activeHome,
+            activeSession
+          );
+
+          // Loop CPUs and fork
+          while (cpus--) {
+            activeSession.add(cluster.fork());
+          }
+
+          // Watch for worker exit / crash and restart
+          cluster.on("exit", worker => {
+            ActiveLogger.debug(worker, "Worker has died, Restarting");
+            let restart = activeSession.add(cluster.fork());
+            // We can restart but we need to update the workers left & right & ishome
+            //worker.send({type:"neighbour",})
+          });
+
+          // Auto starting other activeledger services?
+          if ((global as any).config.autostart) {
+            // Auto starting Core API?
+            if ((global as any).config.autostart.core) {
+              ActiveLogger.info("Auto starting - Core API");
+
+              // Launch & Listen for launch error
+              child
+                .spawn(
+                  /^win/.test(process.platform)
+                    ? "activecore.cmd"
+                    : "activecore",
+                  [],
+                  {
+                    cwd: "./"
+                  }
+                )
+                .on("error", error => {
+                  ActiveLogger.error(error, "Core API Failed to start");
+                });
+            }
+
+            // Auto Starting Restore Engine?
+            if ((global as any).config.autostart.restore) {
+              ActiveLogger.info("Auto starting - Restore Engine");
+              // Launch & Listen for launch error
+              child
+                .spawn(
+                  /^win/.test(process.platform)
+                    ? "activerestore.cmd"
+                    : "activerestore",
+                  [],
+                  {
+                    cwd: "./"
+                  }
+                )
+                .on("error", error => {
+                  ActiveLogger.error(error, "Restore Engine Failed to start");
+                });
+            }
+          }
+        };
+
+        // Self hosted data storage engine
+        if ((global as any).config.db.selfhost) {
+          // Create Datastore instance
+          let datastore: DataStore = new DataStore();
+
+          // Rewrite config for this process
+          (global as any).config.db.url = datastore.launch();
+
+          // Wait a bit for process to fully start
+          setTimeout(() => {
+            extendConfig(boot);
+          }, 2000);
+        } else {
+          // Continue
           boot();
-        }, 2000);
+        }
       } else {
-        // Continue
-        boot();
-      }
-    } else {
-      // Temporary Path Solution
-      (global as any).__base = __dirname;
+        // Temporary Path Solution
+        (global as any).__base = __dirname;
 
-      // Self hosted data storage engine
-      if ((global as any).config.db.selfhost) {
-        // Rewrite config for this process
-        (global as any).config.db.url =
-          "http://localhost:" + (global as any).config.db.selfhost.port;
-      }
+        // Self hosted data storage engine
+        if ((global as any).config.db.selfhost) {
+          // Rewrite config for this process
+          (global as any).config.db.url =
+            "http://localhost:" + (global as any).config.db.selfhost.port;
+        }
 
-      // Create Home Host Node
-      let activeHost = new ActiveNetwork.Host();
+        extendConfig(() => {
+          // Create Home Host Node
+          let activeHost = new ActiveNetwork.Host();
+        });
+      }
     }
   }
 }
