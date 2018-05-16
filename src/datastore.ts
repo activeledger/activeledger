@@ -23,6 +23,7 @@
 
 import * as fs from "fs";
 import * as child from "child_process";
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
@@ -56,7 +57,7 @@ export class DataStore {
    */
   constructor() {
     // Set Folder Location
-    this.dsLocation = (global as any).config.db.selfhost.dir || "./.ds";
+    this.dsLocation = ActiveOptions.get<any>("db", {}).selfhost.dir || "./.ds";
 
     // Check folder exists
     if (!fs.existsSync(this.dsLocation)) {
@@ -66,7 +67,7 @@ export class DataStore {
     // Start Server, Can't block as server wont return
     ActiveLogger.info(
       "Self-hosted data engine @ http://127.0.0.1:" +
-        (global as any).config.db.selfhost.port
+        ActiveOptions.get<any>("db", {}).selfhost.port
     );
   }
 
@@ -82,7 +83,7 @@ export class DataStore {
     this.process = child.spawn("node", [
       __dirname + "/selfhost.js",
       this.dsLocation,
-      `${(global as any).config.db.selfhost.port}`
+      `${ActiveOptions.get<any>("db", {}).selfhost.port}`
     ]);
 
     ActiveLogger.info(
@@ -104,6 +105,6 @@ export class DataStore {
     });
 
     // Return running location
-    return "http://127.0.0.1:" + (global as any).config.db.selfhost.port;
+    return "http://127.0.0.1:" + ActiveOptions.get<any>("db", {}).selfhost.port;
   }
 }
