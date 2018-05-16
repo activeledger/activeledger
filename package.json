@@ -25,7 +25,6 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/minimist": "^1.2.0",
     "@types/node": "^8.5.2",
     "copyfiles": "^2.0.0",
     "rimraf": "^2.6.2",
@@ -44,13 +43,12 @@
     "@activeledger/activecrypto": "^2.0.0-rc5",
     "@activeledger/activelogger": "^2.0.0-rc2",
     "@activeledger/activenetwork": "^2.0.0-rc6",
-    "@activeledger/activeoptions": "^2.0.0-rc1",
+    "@activeledger/activeoptions": "^2.0.0-rc2",
     "@activeledger/activeprotocol": "^2.0.0-rc6",
     "@agilitysciences/pouchdb": "^7.0.0-prerelease.fork.1.0.2",
     "axios": "^0.18.0",
     "davenport": "^2.8.2",
     "express": "^4.16.3",
-    "express-pouchdb": "^4.0.0",
-    "minimist": "^1.2.0"
+    "express-pouchdb": "^4.0.0"
   }
 }

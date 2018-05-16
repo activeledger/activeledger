@@ -28,7 +28,6 @@ import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
 import * as axios from "axios";
-import * as minimist from "minimist";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
