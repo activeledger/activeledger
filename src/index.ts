@@ -29,15 +29,15 @@ import * as os from "os";
 import * as fs from "fs";
 import * as axios from "axios";
 import * as minimist from "minimist";
-import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
 import Client, { CouchDoc } from "davenport";
 import { DataStore } from "./datastore";
 
-// Process Arguments
-// TOOD: Change solution to static class
-(global as any).argv = minimist(process.argv.slice(2));
+// Initalise CLI Options
+ActiveOptions.init();
 
 // Do we have an identity (Will always need, Can be shared)
 if (!fs.existsSync("./.identity")) {
@@ -48,14 +48,14 @@ if (!fs.existsSync("./.identity")) {
 }
 
 // Quick Testnet builder
-if ((global as any).argv.testnet) {
+if (ActiveOptions.get<boolean>("testnet", false)) {
   ActiveLogger.info("Creating Local Testnet");
 
   // Hold arguments for merge
   let merge: Array<string> = [];
 
   // How many in the testnet
-  let instances = parseInt((global as any).argv.testnet) || 3;
+  let instances = parseInt(ActiveOptions.get<string>("testnet")) || 3;
 
   // Create Local Nodes
   let processPromises: Array<Promise<any>> = [];
@@ -140,13 +140,15 @@ if ((global as any).argv.testnet) {
     });
 } else {
   // Merge Configs (Helps Build local net)
-  if ((global as any).argv.merge) {
-    if ((global as any).argv.merge.length) {
+  if (ActiveOptions.get<boolean>("merge", false)) {
+    if (ActiveOptions.get<Array<string>>("merge", []).length) {
+      // Cache merge
+      let merge = ActiveOptions.get<Array<string>>("merge", []);
       // Holds the object to write back
       let neighbourhood: Array<any> = [];
       // Loop array build network object up and loop again (Speed not important)
-      for (let index = 0; index < (global as any).argv.merge.length; index++) {
-        const configFile = (global as any).argv.merge[index];
+      for (let index = 0; index < merge.length; index++) {
+        const configFile = merge[index];
 
         // Check file exists
         if (fs.existsSync(configFile)) {
@@ -170,8 +172,8 @@ if ((global as any).argv.testnet) {
       }
 
       // Loop again and write config
-      for (let index = 0; index < (global as any).argv.merge.length; index++) {
-        const configFile = (global as any).argv.merge[index];
+      for (let index = 0; index < merge.length; index++) {
+        const configFile = merge[index];
 
         // Check file still exists
         if (fs.existsSync(configFile)) {
@@ -191,22 +193,26 @@ if ((global as any).argv.testnet) {
     // Continue Normal Boot
 
     // Check for config
-    if (!fs.existsSync((global as any).argv.config || "./config.json")) {
+    if (!fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))) {
       // Read default config so we can add our identity to the neighbourhood
       let defConfig: any = JSON.parse(
         fs.readFileSync(__dirname + "/default.config.json", "utf8")
       );
 
       // Adjusting Ports (Check for default port)
-      if ((global as any).argv.port && (global as any).argv.port !== 5260) {
+      if (
+        ActiveOptions.get<boolean>("port", false) &&
+        ActiveOptions.get<number>("port", 5260) !== 5260
+      ) {
         // Update Node Host
         defConfig.host =
-          (global as any).argv.host ||
-          "127.0.0.1" + ":" + (global as any).argv.port;
+          ActiveOptions.get<string>("host", "127.0.0.1") +
+          ":" +
+          ActiveOptions.get<string>("port", 5260);
 
         // Update Self host
         defConfig.db.selfhost.port = (
-          parseInt((global as any).argv.port) - 1
+          parseInt(ActiveOptions.get<string>("port", 5260)) - 1
         ).toString();
 
         // Disable auto starts as they have their own port settings
@@ -215,8 +221,8 @@ if ((global as any).argv.testnet) {
       }
 
       // Data directory passed?
-      if ((global as any).argv["data-dir"]) {
-        defConfig.db.selfhost.dir = (global as any).argv["data-dir"];
+      if (ActiveOptions.get<boolean>("data-dir", false)) {
+        defConfig.db.selfhost.dir = ActiveOptions.get<string>("data-dir", "");
       }
 
       // Read identity (can't assume it was always created)
@@ -228,13 +234,13 @@ if ((global as any).argv.testnet) {
           type: "rsa",
           public: identity.pub.pkcs8pem
         },
-        host: (global as any).argv.host || "127.0.0.1",
-        port: (global as any).argv.port || "5260"
+        host: ActiveOptions.get<string>("host", "127.0.0.1"),
+        port: ActiveOptions.get<string>("port", "5260")
       });
 
       // lets write the default one in this location
       fs.writeFileSync(
-        (global as any).argv.config || "./config.json",
+        ActiveOptions.get<string>("config", "./config.json"),
         JSON.stringify(defConfig)
       );
       ActiveLogger.info(
@@ -242,15 +248,8 @@ if ((global as any).argv.testnet) {
       );
     }
 
-    // Get Config & Set as Global
-    // TOOD: Change solution to static class
-    (global as any).config = JSON.parse(
-      fs.readFileSync((global as any).argv.config || "./config.json", "utf8")
-    );
-
-    // Add to config its file path
-    (global as any).config.__filename =
-      (global as any).argv.config || "./config.json";
+    // Now we can parse configuration
+    ActiveOptions.parseConfig();
 
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
@@ -264,10 +263,10 @@ if ((global as any).argv.testnet) {
       );
 
     // Move config based to merged ledger configuration
-    if ((global as any).argv["assert-network"]) {
+    if (ActiveOptions.get<boolean>("assert-network", false)) {
       // Make sure this node belives everyone is online
       axios.default
-        .get(`http://${(global as any).config.host}/a/status`)
+        .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)
         .then(status => {
           // Verify the status are all home
           let neighbours = Object.keys(status.data.neighbourhood.neighbours);
@@ -286,7 +285,7 @@ if ((global as any).argv.testnet) {
           // Get Identity
           let identity: ActiveCrypto.KeyHandler = JSON.parse(
             fs.readFileSync(
-              (global as any).argv.identity || "./.identity",
+              ActiveOptions.get<string>("identity", "./.identity"),
               "utf8"
             )
           );
@@ -309,16 +308,16 @@ if ((global as any).argv.testnet) {
                   publicKey: identity.pub.pkcs8pem
                 },
                 setup: {
-                  security: (global as any).config.security,
-                  consensus: (global as any).config.consensus,
-                  neighbourhood: (global as any).config.neighbourhood
+                  security: ActiveOptions.get<any>("security"),
+                  consensus: ActiveOptions.get<any>("consensus"),
+                  neighbourhood: ActiveOptions.get<any>("neighbourhood")
                 }
               }
             },
             $selfsign: true,
             $sigs: {
               selfsign: "",
-              [(global as any).config.host]: ""
+              [ActiveOptions.get<string>("host")]: ""
             }
           };
 
@@ -327,12 +326,12 @@ if ((global as any).argv.testnet) {
 
           // Add twice to transaction
           assert.$sigs[
-            (global as any).config.host
+            ActiveOptions.get<string>("host")
           ] = assert.$sigs.selfsign = signed;
 
           // Submit Transaction to self
           axios.default
-            .post(`http://${(global as any).config.host}`, assert)
+            .post(`http://${ActiveOptions.get<boolean>("host")}`, assert)
             .then(() => {
               ActiveLogger.info("Network Asserted to the ledger");
             })
@@ -351,26 +350,25 @@ if ((global as any).argv.testnet) {
         });
     } else {
       // Are we only doing setups if so stopped
-      if ((global as any).argv["setup-only"]) {
+      if (ActiveOptions.get<boolean>("setup-only", false)) {
         process.exit();
       }
 
       // TODO Move all of config into its own static class. For now build here.
       let extendConfig: Function = (boot: Function) => {
         let tmpDb = new Client(
-          (global as any).config.db.url,
-          (global as any).config.db.database
+          ActiveOptions.get<any>("db", {}).url,
+          ActiveOptions.get<any>("db", {}).database
         );
 
         tmpDb
-          .get((global as any).config.network)
+          .get(ActiveOptions.get<string>("network", ""))
           .then((config: any) => {
             ActiveLogger.info("Extending config from ledger");
             // Manual Configuration Merge
-            (global as any).config.security = config.security;
-            (global as any).config.consensus = config.consensus;
-            (global as any).config.neighbourhood = config.neighbourhood;
-            // continue Boot
+            ActiveOptions.set("security", config.security);
+            ActiveOptions.set("consensus", config.consensus);
+            ActiveOptions.set("neighbourhood", config.neighbourhood);
             boot();
           })
           .catch(() => {
@@ -378,10 +376,6 @@ if ((global as any).argv.testnet) {
             boot();
           });
       };
-
-      // If we have a network we need to build the rest for the ledger
-      if ((global as any).config.network) {
-      }
 
       // Manage Node Cluster
       if (cluster.isMaster) {
@@ -418,12 +412,11 @@ if ((global as any).argv.testnet) {
             //worker.send({type:"neighbour",})
           });
 
-          // Auto starting other activeledger services?
-          if ((global as any).config.autostart) {
+          // Auto starting other activeledger services?          
+          if (ActiveOptions.get<any>("autostart", {})) {
             // Auto starting Core API?
-            if ((global as any).config.autostart.core) {
+            if (ActiveOptions.get<any>("autostart", {}).core) {
               ActiveLogger.info("Auto starting - Core API");
-
               // Launch & Listen for launch error
               child
                 .spawn(
@@ -441,7 +434,7 @@ if ((global as any).argv.testnet) {
             }
 
             // Auto Starting Restore Engine?
-            if ((global as any).config.autostart.restore) {
+            if (ActiveOptions.get<any>("autostart", {}).restore) {
               ActiveLogger.info("Auto starting - Restore Engine");
               // Launch & Listen for launch error
               child
@@ -462,12 +455,12 @@ if ((global as any).argv.testnet) {
         };
 
         // Self hosted data storage engine
-        if ((global as any).config.db.selfhost) {
+        if (ActiveOptions.get<any>("db", {}).selfhost) {
           // Create Datastore instance
           let datastore: DataStore = new DataStore();
 
           // Rewrite config for this process
-          (global as any).config.db.url = datastore.launch();
+          ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
           // Wait a bit for process to fully start
           setTimeout(() => {
@@ -482,10 +475,10 @@ if ((global as any).argv.testnet) {
         (global as any).__base = __dirname;
 
         // Self hosted data storage engine
-        if ((global as any).config.db.selfhost) {
+        if (ActiveOptions.get<any>("db", {}).selfhost) {
           // Rewrite config for this process
-          (global as any).config.db.url =
-            "http://localhost:" + (global as any).config.db.selfhost.port;
+          ActiveOptions.get<any>("db", {}).url =
+            "http://localhost:" + ActiveOptions.get<any>("db", {}).selfhost.port;
         }
 
         extendConfig(() => {
