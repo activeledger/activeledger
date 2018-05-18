@@ -373,7 +373,7 @@ export default class Setup extends PostProcess {
 
       while (i--) {
         let neighbour = cngNeighbourhood[i];
-        if (neighbour.host == this.transactions.$i.node.host) {
+        if (neighbour.host + ":" + neighbour.port  == this.transactions.$i.node.host + ":" + this.transactions.$i.node.port) {
           reject("Node already exists");
         }
       }
@@ -403,6 +403,9 @@ export default class Setup extends PostProcess {
 
     // Add Node to list
     network.neighbourhood.push(this.transactions.$i.node);
+
+    // Set Activity State
+    activity.setState(network);
 
     // Tell Activeledger to update
     this.reloadConfig = true;
@@ -504,6 +507,9 @@ export default class Setup extends PostProcess {
     }    
     // Rebuild list
     network.neighbourhood = nodes;
+
+    // Set Activity State
+    activity.setState(network);
 
     // Tell Activeledger to update
     this.reloadConfig = true;
