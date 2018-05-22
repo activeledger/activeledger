@@ -311,8 +311,8 @@ export default class Setup extends PostProcess {
       setup.setContractLock(this.transactions.$i.setup.lock);
     }
 
-    // Add to Config
-    this.config.network = setup.getName();
+    // Add to Config (Extract )
+    this.config.network = setup.getName() + "@assertion";
 
     // Save State
     setup.setState(state);
@@ -373,7 +373,10 @@ export default class Setup extends PostProcess {
 
       while (i--) {
         let neighbour = cngNeighbourhood[i];
-        if (neighbour.host + ":" + neighbour.port  == this.transactions.$i.node.host + ":" + this.transactions.$i.node.port) {
+        if (
+          neighbour.host + ":" + neighbour.port ==
+          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+        ) {
           reject("Node already exists");
         }
       }
@@ -410,6 +413,11 @@ export default class Setup extends PostProcess {
     // Tell Activeledger to update
     this.reloadConfig = true;
 
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+
     resolve(true);
   }
 
@@ -440,7 +448,7 @@ export default class Setup extends PostProcess {
       ) {
         resolve(true);
       } else {
-        reject("Missing Add Node Fields");
+        reject("Missing Remove Node Fields");
       }
     } else {
       // Will use the node configuration id's to verify
@@ -460,18 +468,21 @@ export default class Setup extends PostProcess {
     reject: (reason?: any) => void
   ): void {
     if (this.verifySelfSignedTx()) {
-      // Verify node already exists
+      // Verify node doesn't already exist
       // Get Config neighbourhood
       let cngNeighbourhood = this.config.neighbourhood;
       let i = cngNeighbourhood.length;
 
       while (i--) {
         let neighbour = cngNeighbourhood[i];
-        if (neighbour.host == this.transactions.$i.node.host) {
+        if (
+          neighbour.host + ":" + neighbour.port ==
+          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+        ) {
           resolve(true);
         }
       }
-      reject("Node doesn't exist");
+      reject("Node doesn't exists");
     } else {
       reject("Host node signature problem");
     }
@@ -501,10 +512,13 @@ export default class Setup extends PostProcess {
 
     while (i--) {
       let neighbour = network.neighbourhood[i];
-      if (neighbour.host != this.transactions.$i.node.host) {
+      if (
+        neighbour.host + ":" + neighbour.port !=
+        this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+      ) {
         nodes.push(neighbour);
       }
-    }    
+    }
     // Rebuild list
     network.neighbourhood = nodes;
 
@@ -513,6 +527,11 @@ export default class Setup extends PostProcess {
 
     // Tell Activeledger to update
     this.reloadConfig = true;
+
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
 
     resolve(true);
   }

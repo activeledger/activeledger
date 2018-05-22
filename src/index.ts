@@ -261,7 +261,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       );
 
     // Move config based to merged ledger configuration
-    if (ActiveOptions.get<boolean>("assert-network", false)) {
+    if (ActiveOptions.get<boolean>("assert", false) || ActiveOptions.get<boolean>("assert-network", false)) {
       // Make sure this node belives everyone is online
       axios.default
         .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)

@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc7.0.6",
+  "version": "2.0.0-rc7.0.7",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {
@@ -42,9 +42,8 @@
     "@activeledger/activecontracts": "^2.0.0-rc2",
     "@activeledger/activecrypto": "^2.0.0-rc5",
     "@activeledger/activelogger": "^2.0.0-rc2",
-    "@activeledger/activenetwork": "^2.0.0-rc6",
+    "@activeledger/activenetwork": "^2.0.0-rc7",
     "@activeledger/activeoptions": "^2.0.0-rc2",
-    "@activeledger/activeprotocol": "^2.0.0-rc6",
     "@agilitysciences/pouchdb": "^7.0.0-prerelease.fork.1.0.2",
     "axios": "^0.18.0",
     "davenport": "^2.8.2",
