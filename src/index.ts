@@ -32,7 +32,6 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
-import Client, { CouchDoc } from "davenport";
 import { DataStore } from "./datastore";
 
 // Initalise CLI Options
@@ -262,7 +261,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       );
 
     // Move config based to merged ledger configuration
-    if (ActiveOptions.get<boolean>("assert-network", false)) {
+    if (ActiveOptions.get<boolean>("assert", false) || ActiveOptions.get<boolean>("assert-network", false)) {
       // Make sure this node belives everyone is online
       axios.default
         .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)
@@ -353,26 +352,13 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         process.exit();
       }
 
-      // TODO Move all of config into its own static class. For now build here.
+      
+      // Extend configuration proxy founction
       let extendConfig: Function = (boot: Function) => {
-        let tmpDb = new Client(
-          ActiveOptions.get<any>("db", {}).url,
-          ActiveOptions.get<any>("db", {}).database
-        );
-
-        tmpDb
-          .get(ActiveOptions.get<string>("network", ""))
-          .then((config: any) => {
-            ActiveLogger.info("Extending config from ledger");
-            // Manual Configuration Merge
-            ActiveOptions.set("security", config.security);
-            ActiveOptions.set("consensus", config.consensus);
-            ActiveOptions.set("neighbourhood", config.neighbourhood);
-            boot();
-          })
-          .catch(() => {
-            ActiveLogger.warn("No network configuration found on Ledger");
-            boot();
+        ActiveOptions.extendConfig()
+          .then(() => boot())
+          .catch(e => {
+            ActiveLogger.fatal(e, "Config Extension Issues");
           });
       };
 
@@ -411,7 +397,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             //worker.send({type:"neighbour",})
           });
 
-          // Auto starting other activeledger services?          
+          // Auto starting other activeledger services?
           if (ActiveOptions.get<any>("autostart", {})) {
             // Auto starting Core API?
             if (ActiveOptions.get<any>("autostart", {}).core) {
@@ -470,14 +456,15 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           boot();
         }
       } else {
-        // Temporary Path Solution
-        (global as any).__base = __dirname;
+        // Set Base Path
+        ActiveOptions.set("__base", __dirname);
 
         // Self hosted data storage engine
         if (ActiveOptions.get<any>("db", {}).selfhost) {
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url =
-            "http://localhost:" + ActiveOptions.get<any>("db", {}).selfhost.port;
+            "http://localhost:" +
+            ActiveOptions.get<any>("db", {}).selfhost.port;
         }
 
         extendConfig(() => {

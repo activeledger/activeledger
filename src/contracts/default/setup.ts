@@ -32,6 +32,8 @@ import { PostProcess, Activity } from "@activeledger/activecontracts";
  * @extends {Standard}
  */
 export default class Setup extends PostProcess {
+  //#region Activeledger System Commands
+
   /**
    * Store System Configuration
    *
@@ -40,6 +42,24 @@ export default class Setup extends PostProcess {
    * @memberof Setup
    */
   private config: any;
+
+  /**
+   * Should we update the config post commit
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Setup
+   */
+  private updateConfig: boolean = false;
+
+  /**
+   * Should we reload the config post commit
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Setup
+   */
+  private reloadConfig: boolean = false;
 
   /**
    * Get System Configuration
@@ -52,6 +72,20 @@ export default class Setup extends PostProcess {
   }
 
   /**
+   * Does the configuration need to reload
+   *
+   * @returns {boolean}
+   * @memberof Setup
+   */
+  public configReload(): boolean {
+    return this.reloadConfig;
+  }
+
+  //#endregion
+
+  //#region Smart Contract Entry Points
+
+  /**
    * Quick Check, Allow all data but make sure it is selfsigned
    *
    * @param {boolean} signatureless
@@ -60,21 +94,25 @@ export default class Setup extends PostProcess {
    */
   public verify(selfsigned: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
-      if (selfsigned) {
-        // Required Inputs
-        if (
-          this.transactions.$i.setup &&
-          this.transactions.$i.setup.security &&
-          this.transactions.$i.setup.consensus &&
-          this.transactions.$i.setup.neighbourhood
-        ) {
-          resolve(true);
-        }else{
-          reject("Missing Assert Fields");  
-        }
-      } else {
-        // Will use the node configuration id's to verify
-        reject("Must be self signed");
+      switch (this.transactions.$entry) {
+        case "assert":
+          this.assertVerify(selfsigned, resolve, reject);
+          break;
+        case "add":
+          this.addNodeVerify(selfsigned, resolve, reject);
+          break;
+        case "remove":
+          this.removeNodeVerify(selfsigned, resolve, reject);
+          break;
+        case "approve":
+          this.approveNamespaceVerify(selfsigned, resolve, reject);
+          break;
+        case "revoke":
+          this.revokeNamespaceVerify(selfsigned, resolve, reject);
+          break;
+        default:
+          reject("unknown entry");
+          break;
       }
     });
   }
@@ -90,6 +128,18 @@ export default class Setup extends PostProcess {
       switch (this.transactions.$entry) {
         case "assert":
           this.assertVote(resolve, reject);
+          break;
+        case "add":
+          this.addNodeVote(resolve, reject);
+          break;
+        case "remove":
+          this.removeNodeVote(resolve, reject);
+          break;
+        case "approve":
+          this.approveNamespaceVote(resolve, reject);
+          break;
+        case "revoke":
+          this.revokeNamespaceVote(resolve, reject);
           break;
         default:
           reject("unknown entry");
@@ -110,11 +160,58 @@ export default class Setup extends PostProcess {
         case "assert":
           this.assertCommit(resolve, reject);
           break;
+        case "add":
+          this.addNodeCommit(resolve, reject);
+          break;
+        case "remove":
+          this.removeNodeCommit(resolve, reject);
+          break;
+        case "approve":
+          this.approveNameCommit(resolve, reject);
+          break;
+        case "revoke":
+          this.revokeNameCommit(resolve, reject);
+          break;
         default:
           reject("unknown entry");
           break;
       }
     });
+  }
+
+  //#endregion
+
+  //#region Assert Network to Ledger
+
+  /**
+   * Verify that this transaction meats assert requirements
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public assertVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (selfsigned) {
+      // Required Inputs
+      if (
+        this.transactions.$i.setup &&
+        this.transactions.$i.setup.security &&
+        this.transactions.$i.setup.consensus &&
+        this.transactions.$i.setup.neighbourhood
+      ) {
+        resolve(true);
+      } else {
+        reject("Missing Assert Fields");
+      }
+    } else {
+      // Will use the node configuration id's to verify
+      reject("Must be self signed");
+    }
   }
 
   /**
@@ -140,8 +237,7 @@ export default class Setup extends PostProcess {
       // Breakout of typescript to access signature object
       // In a assert, Only 1 node needs to be signatory, However network object must match.
       let signatures = (this as any).sigs;
-      let keys = Object.keys(cngNeighbourhood);
-      let i = keys.length;
+      let i = cngNeighbourhood.length;
 
       // Loop to find matching key (use host:port)
       while (i--) {
@@ -184,6 +280,9 @@ export default class Setup extends PostProcess {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
+    // We need to update the config now
+    this.updateConfig = true;
+
     // Get new stream to hold this contract
     let setup = this.newActivityStream("contract.default.setup");
 
@@ -208,17 +307,276 @@ export default class Setup extends PostProcess {
     if (!state.security.namespace) state.security.namespace = {};
 
     // Additional Contract Locks?
-    if(this.transactions.$i.setup.lock) {
+    if (this.transactions.$i.setup.lock) {
       setup.setContractLock(this.transactions.$i.setup.lock);
     }
 
-    // Add to Config
-    this.config.network = setup.getName();
+    // Add to Config (Extract )
+    this.config.network = setup.getName() + "@assertion";
 
     // Save State
     setup.setState(state);
     resolve(true);
   }
+
+  //#endregion
+
+  //#region Add Node to Network
+
+  /**
+   * Do we have the right fields for an add node entry point
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public addNodeVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (selfsigned) {
+      // Required Inputs
+      if (
+        this.transactions.$i.node &&
+        this.transactions.$i.node.identity &&
+        this.transactions.$i.node.host &&
+        this.transactions.$i.node.port
+      ) {
+        resolve(true);
+      } else {
+        reject("Missing Add Node Fields");
+      }
+    } else {
+      // Will use the node configuration id's to verify
+      reject("Must be self signed");
+    }
+  }
+
+  /**
+   * Do we have the right permissions to continue adding a node
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public addNodeVote(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (this.verifySelfSignedTx()) {
+      // Verify node doesn't already exist
+      // Get Config neighbourhood
+      let cngNeighbourhood = this.config.neighbourhood;
+      let i = cngNeighbourhood.length;
+
+      while (i--) {
+        let neighbour = cngNeighbourhood[i];
+        if (
+          neighbour.host + ":" + neighbour.port ==
+          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+        ) {
+          reject("Node already exists");
+        }
+      }
+      resolve(true);
+    } else {
+      reject("Host node signature problem");
+    }
+  }
+
+  /**
+   * Add the node to the network stream
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public addNodeCommit(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$o)[0];
+
+    // Get Stream Activity
+    let activity = this.getActivityStreams(stream);
+    let network = activity.getState();
+
+    // Add Node to list
+    network.neighbourhood.push(this.transactions.$i.node);
+
+    // Set Activity State
+    activity.setState(network);
+
+    // Tell Activeledger to update
+    this.reloadConfig = true;
+
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+
+    resolve(true);
+  }
+
+  //#endregion
+
+  //#region Remove Node from Network
+
+  /**
+   * Do we have the right fields for node removal entry point
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public removeNodeVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (selfsigned) {
+      // Required Inputs
+      if (
+        this.transactions.$i.node &&
+        this.transactions.$i.node.identity &&
+        this.transactions.$i.node.host &&
+        this.transactions.$i.node.port
+      ) {
+        resolve(true);
+      } else {
+        reject("Missing Remove Node Fields");
+      }
+    } else {
+      // Will use the node configuration id's to verify
+      reject("Must be self signed");
+    }
+  }
+
+  /**
+   * Do we have the right permissions to continue removing a node
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public removeNodeVote(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (this.verifySelfSignedTx()) {
+      // Verify node doesn't already exist
+      // Get Config neighbourhood
+      let cngNeighbourhood = this.config.neighbourhood;
+      let i = cngNeighbourhood.length;
+
+      while (i--) {
+        let neighbour = cngNeighbourhood[i];
+        if (
+          neighbour.host + ":" + neighbour.port ==
+          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+        ) {
+          resolve(true);
+        }
+      }
+      reject("Node doesn't exists");
+    } else {
+      reject("Host node signature problem");
+    }
+  }
+
+  /**
+   * Remove node from ledger
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public removeNodeCommit(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$o)[0];
+
+    // Get Stream Activity
+    let activity = this.getActivityStreams(stream);
+    let network = activity.getState();
+
+    // Create new list remove the one
+    let nodes = [];
+    let i = network.neighbourhood.length;
+
+    while (i--) {
+      let neighbour = network.neighbourhood[i];
+      if (
+        neighbour.host + ":" + neighbour.port !=
+        this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+      ) {
+        nodes.push(neighbour);
+      }
+    }
+    // Rebuild list
+    network.neighbourhood = nodes;
+
+    // Set Activity State
+    activity.setState(network);
+
+    // Tell Activeledger to update
+    this.reloadConfig = true;
+
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+
+    resolve(true);
+  }
+
+  //#endregion
+
+  //#region Approve Namespace Import Rules
+
+  public approveNamespaceVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  public approveNamespaceVote(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  public approveNameCommit(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  //#endregion
+
+  //#region Revoke Namespace Import Rules
+
+  public revokeNamespaceVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  public revokeNamespaceVote(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  public revokeNameCommit(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {}
+
+  //#endregion
 
   /**
    * Process configuration file updates
@@ -230,19 +588,79 @@ export default class Setup extends PostProcess {
    */
   public postProcess(territoriality: boolean, who: string): Promise<any> {
     return new Promise((resolve, reject) => {
-      // Backup config (TODO What if this isn't the config file?)
-      fs.copyFileSync(this.config.__filename, this.config.__filename + ".bak");
-      // Remove properties now in the ledger
-      delete this.config.neighbourhood;
-      delete this.config.consensus;
-      delete this.config.security;
-      // Cache then Remove Filename
-      let config = this.config.__filename;
-      delete this.config.__filename;
-      // Write new config
-      fs.writeFileSync(config, JSON.stringify(this.config));
-      resolve(true);
+      if (this.updateConfig) {
+        // Backup config (TODO What if this isn't the config file?)
+        fs.copyFileSync(
+          this.config.__filename,
+          this.config.__filename + ".bak"
+        );
+        // Remove properties now in the ledger
+        delete this.config.neighbourhood;
+        delete this.config.consensus;
+        delete this.config.security;
+        // Cache then Remove Filename
+        let config = this.config.__filename;
+        delete this.config.__filename;
+        // Write new config
+        fs.writeFileSync(config, JSON.stringify(this.config));
+        resolve(true);
+      } else {
+        resolve(true);
+      }
     });
+  }
+
+  //#region Helper functions
+
+  /**
+   * Verify Signatures of Host Nodes
+   *
+   * @private
+   * @returns {boolean}
+   * @memberof Setup
+   */
+  private verifySelfSignedTx(): boolean {
+    // Get Config neighbourhood
+    let cngNeighbourhood = this.config.neighbourhood;
+
+    // Extract Signatures from transaction
+    let signatures = (this as any).sigs;
+    let sigKeys = Object.keys(signatures);
+
+    // Quick check, Do we have more than half the signatures?
+    // Remember we need to remove 1 for the self signed
+    if (sigKeys.length - 1 > cngNeighbourhood.length / 2) {
+      // Now need to verify the signatures are valid and are from different nodes
+      let i = cngNeighbourhood.length;
+
+      // Loop to find matching key (use host:port)
+      while (i--) {
+        let network = cngNeighbourhood[i];
+
+        // Matching Signature?
+        if (signatures[`${network.host}:${network.port}`]) {
+          // Get Keypair via proxy (TODO: Fix definitions)
+          let kp: any = new (this.ActiveCrypto.KeyPair as any)(
+            network.identity.type,
+            network.identity.public
+          ) as any;
+
+          // Check Signature
+          if (
+            !kp.verify(
+              this.transactions,
+              signatures[`${network.host}:${network.port}`]
+            )
+          ) {
+            return false;
+          }
+        }
+      }
+      // All Matching & Different Node Signatures
+      return true;
+    } else {
+      return false;
+    }
   }
 
   /**
@@ -315,4 +733,5 @@ export default class Setup extends PostProcess {
           ok(b).every(key => this.deepEq(a[key], b[key]))
       : a === b;
   }
+  //#endregion
 }
