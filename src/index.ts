@@ -261,7 +261,10 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       );
 
     // Move config based to merged ledger configuration
-    if (ActiveOptions.get<boolean>("assert", false) || ActiveOptions.get<boolean>("assert-network", false)) {
+    if (
+      ActiveOptions.get<boolean>("assert", false) ||
+      ActiveOptions.get<boolean>("assert-network", false)
+    ) {
       // Make sure this node belives everyone is online
       axios.default
         .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)
@@ -352,7 +355,6 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         process.exit();
       }
 
-      
       // Extend configuration proxy founction
       let extendConfig: Function = (boot: Function) => {
         ActiveOptions.extendConfig()
@@ -447,13 +449,22 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
-          // Wait a bit for process to fully start
-          setTimeout(() => {
-            extendConfig(boot);
-          }, 2000);
+          if (!ActiveOptions.get<any>("db-only", false)) {
+            // Wait a bit for process to fully start
+            setTimeout(() => {
+              extendConfig(boot);
+            }, 2000);
+          }
         } else {
-          // Continue
-          boot();
+          // Check if they wanbt db-only
+          if (ActiveOptions.get<any>("db-only", false)) {
+            ActiveLogger.fatal(
+              "Cannot start embedded database. Self hosted is not configured"
+            );
+          } else {
+            // Continue
+            boot();
+          }
         }
       } else {
         // Set Base Path
