@@ -261,7 +261,16 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       );
 
     // Move config based to merged ledger configuration
-    if (ActiveOptions.get<boolean>("assert", false) || ActiveOptions.get<boolean>("assert-network", false)) {
+    if (
+      ActiveOptions.get<boolean>("assert", false) ||
+      ActiveOptions.get<boolean>("assert-network", false)
+    ) {
+      // Check we are still file based
+      if(ActiveOptions.get<string>("network","")) {
+        ActiveLogger.error("Network has already been asserted");
+        process.exit();
+      }
+
       // Make sure this node belives everyone is online
       axios.default
         .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)
@@ -294,6 +303,12 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             identity.prv.pkcs8pem
           );
 
+          // Are we adding a lock?
+          let lock: string =
+            ActiveOptions.get<string>("assert", false) ||
+            ActiveOptions.get<string>("assert-network", false);
+          if (typeof lock !== "string") lock = "";
+
           // Build Transaction
           let assert = {
             $tx: {
@@ -306,6 +321,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                   publicKey: identity.pub.pkcs8pem
                 },
                 setup: {
+                  lock: lock,
                   security: ActiveOptions.get<any>("security"),
                   consensus: ActiveOptions.get<any>("consensus"),
                   neighbourhood: ActiveOptions.get<any>("neighbourhood")
@@ -352,7 +368,6 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         process.exit();
       }
 
-      
       // Extend configuration proxy founction
       let extendConfig: Function = (boot: Function) => {
         ActiveOptions.extendConfig()
@@ -447,13 +462,22 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
-          // Wait a bit for process to fully start
-          setTimeout(() => {
-            extendConfig(boot);
-          }, 2000);
+          if (!ActiveOptions.get<any>("db-only", false)) {
+            // Wait a bit for process to fully start
+            setTimeout(() => {
+              extendConfig(boot);
+            }, 2000);
+          }
         } else {
-          // Continue
-          boot();
+          // Check if they wanbt db-only
+          if (ActiveOptions.get<any>("db-only", false)) {
+            ActiveLogger.fatal(
+              "Cannot start embedded database. Self hosted is not configured"
+            );
+          } else {
+            // Continue
+            boot();
+          }
         }
       } else {
         // Set Base Path

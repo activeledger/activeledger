@@ -167,10 +167,10 @@ export default class Setup extends PostProcess {
           this.removeNodeCommit(resolve, reject);
           break;
         case "approve":
-          this.approveNameCommit(resolve, reject);
+          this.approveNamespaceCommit(resolve, reject);
           break;
         case "revoke":
-          this.revokeNameCommit(resolve, reject);
+          this.revokeNamespaceCommit(resolve, reject);
           break;
         default:
           reject("unknown entry");
@@ -308,7 +308,9 @@ export default class Setup extends PostProcess {
 
     // Additional Contract Locks?
     if (this.transactions.$i.setup.lock) {
-      setup.setContractLock(this.transactions.$i.setup.lock);
+      setup.setContractLock([this.transactions.$i.setup.lock, "setup"]);
+    }else{
+      setup.setContractLock("setup");
     }
 
     // Add to Config (Extract )
@@ -316,6 +318,12 @@ export default class Setup extends PostProcess {
 
     // Save State
     setup.setState(state);
+
+    // Are we locking
+    if(this.transactions.$i.setup.security.lock) {
+      setup.setContractLock(this.transactions.$i.setup.security.lock);
+    }
+
     resolve(true);
   }
 
@@ -339,10 +347,10 @@ export default class Setup extends PostProcess {
     if (selfsigned) {
       // Required Inputs
       if (
-        this.transactions.$i.node &&
-        this.transactions.$i.node.identity &&
-        this.transactions.$i.node.host &&
-        this.transactions.$i.node.port
+        this.transactions.$i.suggester &&
+        this.transactions.$i.suggester.identity &&
+        this.transactions.$i.suggester.host &&
+        this.transactions.$i.suggester.port
       ) {
         resolve(true);
       } else {
@@ -375,7 +383,9 @@ export default class Setup extends PostProcess {
         let neighbour = cngNeighbourhood[i];
         if (
           neighbour.host + ":" + neighbour.port ==
-          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+          this.transactions.$i.suggester.host +
+            ":" +
+            this.transactions.$i.suggester.port
         ) {
           reject("Node already exists");
         }
@@ -405,7 +415,7 @@ export default class Setup extends PostProcess {
     let network = activity.getState();
 
     // Add Node to list
-    network.neighbourhood.push(this.transactions.$i.node);
+    network.neighbourhood.push(this.transactions.$i.suggester);
 
     // Set Activity State
     activity.setState(network);
@@ -441,10 +451,10 @@ export default class Setup extends PostProcess {
     if (selfsigned) {
       // Required Inputs
       if (
-        this.transactions.$i.node &&
-        this.transactions.$i.node.identity &&
-        this.transactions.$i.node.host &&
-        this.transactions.$i.node.port
+        this.transactions.$i.suggester &&
+        this.transactions.$i.suggester.identity &&
+        this.transactions.$i.suggester.host &&
+        this.transactions.$i.suggester.port
       ) {
         resolve(true);
       } else {
@@ -477,7 +487,9 @@ export default class Setup extends PostProcess {
         let neighbour = cngNeighbourhood[i];
         if (
           neighbour.host + ":" + neighbour.port ==
-          this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+          this.transactions.$i.suggester.host +
+            ":" +
+            this.transactions.$i.suggester.port
         ) {
           resolve(true);
         }
@@ -514,7 +526,9 @@ export default class Setup extends PostProcess {
       let neighbour = network.neighbourhood[i];
       if (
         neighbour.host + ":" + neighbour.port !=
-        this.transactions.$i.node.host + ":" + this.transactions.$i.node.port
+        this.transactions.$i.suggester.host +
+          ":" +
+          this.transactions.$i.suggester.port
       ) {
         nodes.push(neighbour);
       }
@@ -540,41 +554,193 @@ export default class Setup extends PostProcess {
 
   //#region Approve Namespace Import Rules
 
+  /**
+   * Make sure the transaction is valid for managing namespaces
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @returns {void}
+   * @memberof Setup
+   */
   public approveNamespaceVerify(
     selfsigned: boolean,
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    if (selfsigned) {
+      // Required Inputs
+      if (
+        this.transactions.$i.suggester &&
+        this.transactions.$i.suggester.namespace &&
+        this.transactions.$i.suggester.libs
+      ) {
+        // NPM Check
+        if (this.transactions.$i.suggester.libs.npm) {
+          return reject("NPM libraries not supported yet");
+        }
+        // Node Standard Check
+        if (!this.transactions.$i.suggester.libs.std) {
+          return reject("Only support standard libraries");
+        }
+        resolve(true);
+      } else {
+        reject("Missing Approve Namespace Fields");
+      }
+    } else {
+      // Will use the node configuration id's to verify
+      reject("Must be self signed");
+    }
+  }
 
+  /**
+   * Voting round to make sure we like the transaction for managing namespaces
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
   public approveNamespaceVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    if (this.verifySelfSignedTx()) {
+      // Make sure array is string only
+      this.convertArray(this.transactions.$i.suggester.libs.std).forEach(
+        item => {
+          if (typeof item !== "string") return reject("Invalid Standard Input");
+        }
+      );
+      resolve(true);
+    } else {
+      reject("Host node signature problem");
+    }
+  }
 
-  public approveNameCommit(
+  /**
+   * Commit the new namespace options
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public approveNamespaceCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$o)[0];
+
+    // Get Stream Activity
+    let activity = this.getActivityStreams(stream);
+    let network = activity.getState();
+
+    // Update allowed namespaces
+    network.security.namespace[this.transactions.$i.suggester.namespace] = {
+      std: this.convertArray(this.transactions.$i.suggester.libs.std),
+      npm: []
+    };
+
+    // Set Activity State
+    activity.setState(network);
+
+    // Tell Activeledger to update
+    this.reloadConfig = true;
+
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+
+    resolve(true);
+  }
 
   //#endregion
 
   //#region Revoke Namespace Import Rules
 
+  /**
+   * Make sure the transaction is valid for revoking namespaces
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
   public revokeNamespaceVerify(
     selfsigned: boolean,
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    if (selfsigned) {
+      // Required Inputs
+      if (
+        this.transactions.$i.suggester &&
+        this.transactions.$i.suggester.namespace
+      ) {
+        resolve(true);
+      } else {
+        reject("Missing Revoke Namespace Fields");
+      }
+    } else {
+      // Will use the node configuration id's to verify
+      reject("Must be self signed");
+    }
+  }
 
+  /**
+   * Standard self-signed voting round
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
   public revokeNamespaceVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    if (this.verifySelfSignedTx()) {
+      // Nothing else to check
+      resolve(true);
+    } else {
+      reject("Host node signature problem");
+    }
+  }
 
-  public revokeNameCommit(
+  /**
+   * Commit the revoked namespace
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   * @memberof Setup
+   */
+  public revokeNamespaceCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
-  ): void {}
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$o)[0];
+
+    // Get Stream Activity
+    let activity = this.getActivityStreams(stream);
+    let network = activity.getState();
+
+    // Remove from namespace
+    delete network.security.namespace[this.transactions.$i.suggester.namespace];
+
+    // Set Activity State
+    activity.setState(network);
+
+    // Tell Activeledger to update
+    this.reloadConfig = true;
+
+    // Reset network, With _rev extraction
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+
+    resolve(true);
+  }
 
   //#endregion
 
@@ -733,5 +899,27 @@ export default class Setup extends PostProcess {
           ok(b).every(key => this.deepEq(a[key], b[key]))
       : a === b;
   }
+
+  /**
+   * Make sure the input is an array of sorts
+   *
+   * @private
+   * @param {string} input
+   * @returns {Array<string>}
+   * @memberof Setup
+   */
+  private convertArray(input: string): Array<string>;
+  private convertArray(input: string[]): Array<string>;
+  private convertArray(input: any): any {
+    // Basic shallow check
+    if (Array.isArray(input)) return input;
+
+    // Convert string to array
+    if (typeof input === "string") return [input];
+
+    // If something else blank array
+    return [];
+  }
+
   //#endregion
 }

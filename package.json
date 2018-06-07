@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc7.0.7",
+  "version": "2.0.0-rc7.1.0",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {
@@ -25,11 +25,11 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^8.5.2",
+    "@types/node": "^10.3.1",
     "copyfiles": "^2.0.0",
     "rimraf": "^2.6.2",
-    "ts-node": "^4.1.0",
-    "typescript": "^2.8.3"
+    "ts-node": "^6.1.0",
+    "typescript": "^2.9.1"
   },
   "files": [
     "es",
@@ -42,12 +42,12 @@
     "@activeledger/activecontracts": "^2.0.0-rc2",
     "@activeledger/activecrypto": "^2.0.0-rc5",
     "@activeledger/activelogger": "^2.0.0-rc2",
-    "@activeledger/activenetwork": "^2.0.0-rc7",
-    "@activeledger/activeoptions": "^2.0.0-rc2",
-    "@agilitysciences/pouchdb": "^7.0.0-prerelease.fork.1.0.2",
+    "@activeledger/activenetwork": "^2.0.0-rc7.0.5",
+    "@activeledger/activeoptions": "^2.0.0-rc3",
+    "@agilitysciences/pouchdb": "^7.0.0-prerelease.fork.1.0.6",
     "axios": "^0.18.0",
     "davenport": "^2.8.2",
     "express": "^4.16.3",
-    "express-pouchdb": "^4.0.0"
+    "express-pouchdb": "^4.0.1"
   }
 }
