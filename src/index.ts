@@ -266,7 +266,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       ActiveOptions.get<boolean>("assert-network", false)
     ) {
       // Check we are still file based
-      if(ActiveOptions.get<string>("network","")) {
+      if (ActiveOptions.get<string>("network", "")) {
         ActiveLogger.error("Network has already been asserted");
         process.exit();
       }
@@ -363,6 +363,55 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           );
         });
     } else {
+      // Do we have a transaction file to sign?
+      if (ActiveOptions.get<boolean>("sign", false)) {
+        // Does file exist
+        if (fs.existsSync(ActiveOptions.get<string>("sign"))) {
+          // Get File
+          let file = fs
+            .readFileSync(ActiveOptions.get<string>("sign"))
+            .toString() as any;
+
+          // Does file contain $tx (So we can JSON parse and sign just the transaction)
+          if (file.indexOf(`"$tx"`) !== 0) {
+            // Parse File
+            file = JSON.parse(file);
+            if (file.$tx) {
+              ActiveLogger.warn("Signing $tx content only");
+              file = file.$tx;
+            }else{
+              ActiveLogger.warn("Signing Entire File");
+            }
+          } else {
+            ActiveLogger.warn("Signing Entire File");
+          }
+
+          // Get Identity
+          let identity: ActiveCrypto.KeyHandler = JSON.parse(
+            fs.readFileSync(
+              ActiveOptions.get<string>("identity", "./.identity"),
+              "utf8"
+            )
+          );
+
+          // Get Signing Object
+          let signatory: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(
+            "rsa",
+            identity.prv.pkcs8pem
+          );
+
+          // Sign
+          let signature = signatory.sign(file);
+
+          ActiveLogger.info("-----BEGIN SIGNATURE-----");
+          ActiveLogger.info(signature);
+          ActiveLogger.info("-----END SIGNATURE-----");
+        } else {
+          ActiveLogger.fatal("File not found");
+        }
+        process.exit();
+      }
+
       // Are we only doing setups if so stopped
       if (ActiveOptions.get<boolean>("setup-only", false)) {
         process.exit();
