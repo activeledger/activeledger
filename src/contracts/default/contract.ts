@@ -105,7 +105,7 @@ export default class Contract extends Standard {
         // Need Version
         if (
           typeof this.transactions.$i[this.identity.getName()].version ==
-          "string"
+          "string" || (this.transactions.$entry && this.transactions.$entry.indexOf("link") !== -1)
         ) {
           resolve(true);
         } else {
@@ -222,9 +222,9 @@ export default class Contract extends Standard {
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       // Does the Contract File exist?
-      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.contract)) {
+      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.contract + ".js")) {
         // Does the Link file not exist!
-        if (!fs.existsSync(this.rootDir + this.namespace + "/" + this.link)) {
+        if (!fs.existsSync(this.rootDir + this.namespace + "/" + this.link + ".js")) {
           return resolve(true);
         } else {
           return reject("Link already exists");
@@ -263,7 +263,7 @@ export default class Contract extends Standard {
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       // Does the Link file exist!
-      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.link)) {
+      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.link + ".js")) {
         return resolve(true);
       } else {
         return reject("Link doesn't exists");
@@ -284,8 +284,8 @@ export default class Contract extends Standard {
   ): void {
     // Create Symlink
     fs.symlinkSync(
-      `${__dirname}${this.namespace}/${this.contract}`,
-      `${__dirname}${this.namespace}/${this.link}`,
+      `${this.contract}.js`,
+      `${this.rootDir}${this.namespace}/${this.link}.js`,
       "file"
     );
 
@@ -303,7 +303,7 @@ export default class Contract extends Standard {
     reject: (reason?: any) => void
   ): void {
     // Create Symlink
-    fs.unlinkSync(`${__dirname}${this.namespace}/${this.link}`);
+    fs.unlinkSync(`${this.rootDir}${this.namespace}/${this.link}.js`);
 
     resolve(true);
   }
