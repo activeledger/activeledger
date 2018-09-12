@@ -53,6 +53,24 @@ export default class Contract extends Standard {
   private namespace: string;
 
   /**
+   * Requested Contract File
+   *
+   * @private
+   * @type string
+   * @memberof Fund
+   */
+  private contract: string;
+
+  /**
+   * Requested Link File
+   *
+   * @private
+   * @type string
+   * @memberof Fund
+   */
+  private link: string;
+
+  /**
    * Reference input stream name
    *
    * @private
@@ -87,7 +105,7 @@ export default class Contract extends Standard {
         // Need Version
         if (
           typeof this.transactions.$i[this.identity.getName()].version ==
-          "string"
+          "string" || (this.transactions.$entry && this.transactions.$entry.indexOf("link") !== -1)
         ) {
           resolve(true);
         } else {
@@ -111,6 +129,12 @@ export default class Contract extends Standard {
         case "update":
           this.voteUpdate(resolve, reject);
           break;
+        case "link":
+          this.voteLink(resolve, reject);
+          break;
+        case "unlink":
+          this.voteUnlink(resolve, reject);
+          break;
         default:
           this.voteAdd(resolve, reject);
           break;
@@ -129,6 +153,12 @@ export default class Contract extends Standard {
       switch (this.transactions.$entry) {
         case "update":
           this.commitUpdate(resolve, reject);
+          break;
+        case "link":
+          this.commitLink(resolve, reject);
+          break;
+        case "unlink":
+          this.commitUnlink(resolve, reject);
           break;
         default:
           this.commitAdd(resolve, reject);
@@ -163,6 +193,119 @@ export default class Contract extends Standard {
         }
       }
     ).outputText;
+  }
+
+  /**
+   * Are we allowed to create a link?
+   *
+   * @returns {Promise<boolean>}
+   * @memberof Onboard
+   */
+  public voteLink(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$i)[0];
+
+    // Get namespace and set to lowercase
+    this.namespace = (this.transactions.$i[stream]
+      .namespace as string).toLowerCase();
+
+    // Get Contract
+    this.contract = (this.transactions.$i[stream]
+      .contract as string).toLowerCase();
+
+    // Get Link Name
+    this.link = (this.transactions.$i[stream].link as string).toLowerCase();
+
+    // Does this identity have access to namespace (Maybe use ACL?)
+    if (this.identity.getState().namespace == this.namespace) {
+      // Does the Contract File exist?
+      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.contract + ".js")) {
+        // Does the Link file not exist!
+        if (!fs.existsSync(this.rootDir + this.namespace + "/" + this.link + ".js")) {
+          return resolve(true);
+        } else {
+          return reject("Link already exists");
+        }
+      } else {
+        return reject("Contract not found in namespace");
+      }
+    }
+    return reject("Invalid Namespace");
+  }
+
+  /**
+   * Are we allowed to remove a link?
+   *
+   * @returns {Promise<boolean>}
+   * @memberof Onboard
+   */
+  public voteUnlink(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$i)[0];
+
+    // Get namespace and set to lowercase
+    this.namespace = (this.transactions.$i[stream]
+      .namespace as string).toLowerCase();
+
+    // Get Contract
+    this.contract = (this.transactions.$i[stream]
+      .contract as string).toLowerCase();
+
+    // Get Link Name
+    this.link = (this.transactions.$i[stream].link as string).toLowerCase();
+
+    // Does this identity have access to namespace (Maybe use ACL?)
+    if (this.identity.getState().namespace == this.namespace) {
+      // Does the Link file exist!
+      if (fs.existsSync(this.rootDir + this.namespace + "/" + this.link + ".js")) {
+        return resolve(true);
+      } else {
+        return reject("Link doesn't exists");
+      }
+    }
+    return reject("Invalid Namespace");
+  }
+
+  /**
+   * Create the symlink to the contract
+   *
+   * @returns {Promise<any>}
+   * @memberof Onboard
+   */
+  public commitLink(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Create Symlink
+    fs.symlinkSync(
+      `${this.contract}.js`,
+      `${this.rootDir}${this.namespace}/${this.link}.js`,
+      "file"
+    );
+
+    resolve(true);
+  }
+
+  /**
+   * Removes the symlink to the contract
+   *
+   * @returns {Promise<any>}
+   * @memberof Onboard
+   */
+  public commitUnlink(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Create Symlink
+    fs.unlinkSync(`${this.rootDir}${this.namespace}/${this.link}.js`);
+
+    resolve(true);
   }
 
   /**

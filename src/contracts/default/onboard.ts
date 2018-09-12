@@ -83,6 +83,9 @@ export default class Onboard extends Standard {
 
           let state = activity.getState();
           state.name = activity.getName();
+
+          // Better solution than trying to catch nulls for namespace owners.          
+          state.type = `${this.transactions.$namespace}.activeledger.identity`;
           activity.setState(state);
 
           // Volatile Fun

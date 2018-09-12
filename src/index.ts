@@ -474,7 +474,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                     : "activecore",
                   [],
                   {
-                    cwd: "./"
+                    cwd: "./",
+                    stdio: "inherit"
                   }
                 )
                 .on("error", error => {
@@ -493,7 +494,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                     : "activerestore",
                   [],
                   {
-                    cwd: "./"
+                    cwd: "./",
+                    stdio: "inherit"
                   }
                 )
                 .on("error", error => {
