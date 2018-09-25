@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc7.1.4",
+  "version": "2.0.0-rc.8",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {

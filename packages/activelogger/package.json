@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activelogger",
-  "version": "2.0.0-rc2",
+  "version": "2.0.0-rc.8",
   "description": "Global logging utility for Activeledger",
   "main": "./lib/index.js",
   "scripts": {

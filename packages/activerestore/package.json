@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activerestore",
-  "version": "2.0.0-rc7.0.3",
+  "version": "2.0.0-rc.8",
   "description": "Maintains local data integrity across an Activeledger network",
   "preferGlobal": true,
   "bin": {

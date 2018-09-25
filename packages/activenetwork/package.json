@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.0.0-rc7.1.0",
+  "version": "2.0.0-rc.8",
   "description": "Network Provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {

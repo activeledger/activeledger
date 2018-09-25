@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.0.0-rc7.0.8",
+  "version": "2.0.0-rc.8",
   "description": "Consensus Virtual Machine provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
