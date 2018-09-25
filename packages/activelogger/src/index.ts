@@ -40,7 +40,6 @@ export class ActiveLogger {
    */
   private static logger: pino.Logger = pino({
     name: "Activeledger",
-    timestamp: pino.stdTimeFunctions.slowTime,
     level: process.env.NODE_ENV == "production" ? "info" : "debug",
     prettyPrint: true
   });
