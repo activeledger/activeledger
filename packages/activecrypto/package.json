@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecrypto",
-  "version": "2.0.0-rc.8",
+  "version": "2.0.0-alpha.8",
   "description": "Cryptographic provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
