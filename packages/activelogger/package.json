@@ -1,13 +1,12 @@
 {
   "name": "@activeledger/activelogger",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-rc.8",
   "description": "Global logging utility for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs":
-      "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
     "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
     "build": "npm run build:commonjs && npm run build:es",
     "ts": "ts-node src/",
@@ -26,7 +25,10 @@
     "ts-node": "^7.0.1",
     "typescript": "^3.0.3"
   },
-  "files": ["es", "lib"],
+  "files": [
+    "es",
+    "lib"
+  ],
   "types": "./lib/index.d.ts",
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",

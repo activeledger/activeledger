@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecrypto",
-  "version": "2.0.0-alpha.8",
+  "version": "2.0.0-rc.8",
   "description": "Cryptographic provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
@@ -18,11 +18,11 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^10.11.0",
+    "@types/node-rsa": "^0.4.3",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
-    "typescript": "^3.0.3",
-    "@types/node": "^10.11.0",
-    "@types/node-rsa": "^0.4.3"
+    "typescript": "^3.0.3"
   },
   "files": [
     "es",
