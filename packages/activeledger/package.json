@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc.8",
+  "version": "2.0.0-rc.8.0.1",
   "description": "Main controller for Activeledger",
   "preferGlobal": true,
   "bin": {
@@ -39,11 +39,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8",
-    "@activeledger/activecrypto": "^2.0.0-rc.8",
-    "@activeledger/activelogger": "^2.0.0-rc.8",
-    "@activeledger/activenetwork": "^2.0.0-rc.8",
-    "@activeledger/activeoptions": "^2.0.0-rc.8",
+    "@activeledger/activecontracts": "^2.0.0-rc.8.0.1",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.1",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.1",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.1",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.1",
     "axios": "^0.18.0",
     "express": "^4.16.3",
     "express-pouchdb": "^4.1.0",

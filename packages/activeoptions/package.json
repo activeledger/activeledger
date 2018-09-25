@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.0.0-rc.8",
+  "version": "2.0.0-rc.8.0.1",
   "description": "Activeledger Configuration Manager",
   "main": "./lib/index.js",
   "scripts": {
