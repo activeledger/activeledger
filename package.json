@@ -3,17 +3,17 @@
   "private": true,
   "scripts": {
     "build": "npm run build:options && npm run build:logger && npm run build:definitions && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
-    "build:options": "cd ./packages/activeoptions/ && npm run build:commonjs && npm run build:es",
-    "build:logger": "cd ./packages/activelogger/ && npm run build:commonjs && npm run build:es",
-    "build:definitions": "cd ./packages/activedefinitions/ && npm run build:commonjs && npm run build:es",
-    "build:crypto": "cd ./packages/activecrypto/ && npm run build:commonjs && npm run build:es",
-    "build:query": "cd ./packages/activequery/ && npm run build:commonjs && npm run build:es",
-    "build:contracts": "cd ./packages/activecontracts/ && npm run build:commonjs && npm run build:es",
-    "build:protocol": "cd ./packages/activeprotocol/ && npm run build:commonjs && npm run build:es",
-    "build:network": "cd ./packages/activenetwork/ && npm run build:commonjs && npm run build:es",
-    "build:ledger": "cd ./packages/activeledger/ && npm run build:commonjs && npm run build:es",
-    "build:restore": "cd ./packages/activerestore/ && npm run build:commonjs && npm run build:es",
-    "build:core": "cd ./packages/activecore/ && npm run build:commonjs && npm run build:es"
+    "build:options": "cd ./packages/activeoptions/ && npm run build",
+    "build:logger": "cd ./packages/activelogger/ && npm run build",
+    "build:definitions": "cd ./packages/activedefinitions/ && npm run build",
+    "build:crypto": "cd ./packages/activecrypto/ && npm run build",
+    "build:query": "cd ./packages/activequery/ && npm run build",
+    "build:contracts": "cd ./packages/activecontracts/ && npm run build",
+    "build:protocol": "cd ./packages/activeprotocol/ && npm run build",
+    "build:network": "cd ./packages/activenetwork/ && npm run build",
+    "build:ledger": "cd ./packages/activeledger/ && npm run build",
+    "build:restore": "cd ./packages/activerestore/ && npm run build",
+    "build:core": "cd ./packages/activecore/ && npm run build"
   },
   "devDependencies": {
     "lerna": "^3.4.0"
