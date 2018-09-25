@@ -1,0 +1,11 @@
+{
+    "generator-fireloop": {
+      "version": "1.0.0-beta.2.7",
+      "clients": {
+        "fireloop": {
+          "path": "./src",
+          "type": "server"
+        }
+      }
+    }
+  }

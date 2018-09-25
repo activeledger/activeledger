@@ -1,0 +1,50 @@
+{
+  "name": "@activeledger/activenetwork",
+  "version": "2.0.0-rc.8.0.1",
+  "description": "Network Provider for Activeledger",
+  "main": "./lib/index.js",
+  "scripts": {
+    "start": "node lib/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
+    "build:es": "rimraf es && tsc --target es2017 --outDir es --module esnext",
+    "build": "npm run build:commonjs && npm run build:es",
+    "buildw": "npm run build:commonjsw",
+    "ts": "ts-node src/",
+    "ts4": "node -r ts-node/register src/",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^10.11.0",
+    "@types/restify": "^7.2.4",
+    "rimraf": "^2.6.2",
+    "ts-node": "^7.0.1",
+    "typescript": "^3.0.3"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.1",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.1",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.1",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.1",
+    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.1",
+    "axios": "^0.18.0",
+    "davenport": "^2.8.2",
+    "restify": "^7.2.1",
+    "restify-cors-middleware": "^1.1.1",
+    "restify-eventsource": "^2.0.0"
+  }
+}

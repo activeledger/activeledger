@@ -1,0 +1,9 @@
+{
+  "name": "Event",
+  "plural": "events",
+  "base": "Model",
+  "idInjection": true,
+  "options": {
+    "validateUpsert": true
+  }
+}

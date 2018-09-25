@@ -1,0 +1,72 @@
+{
+  "name": "@activeledger/activecore",
+  "version": "2.0.0-rc.8.0.1",
+  "preferGlobal": true,
+  "bin": {
+    "activecore": "./lib/server/server.js"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "start": "ts-node src/server/server.js",
+    "posttest": "npm run lint && nsp check",
+    "test": "NODE_ENV=testing npm run start",
+    "build:commonjs": "rimraf lib && copyfiles -f ./src/fireloop.d.ts ./lib && copyfiles -f ./src/server/*.js* ./lib/server && copyfiles -f ./src/common/models/*.js* ./lib/common/models && tsc --target es2017 --outDir lib --module commonjs",
+    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
+    "build:es": "rimraf es && tsc --target es2017 --outDir es --module esnext  && copyfiles -f ./src/server/*.js* ./es/server && copyfiles -f ./src/common/models/*.js* ./es/common/models",
+    "build": "npm run build:commonjs && npm run build:es && rimraf ./lib/**/*.d.* && rimraf ./es/**/*.d.* && rimraf ./lib/**/*.map && rimraf ./es/**/*.map",
+    "buildw": "npm run build:commonjsw",
+    "ts": "ts-node src/",
+    "ts4": "node -r ts-node/register src/",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.1",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.1",
+    "@mean-expert/boot-script": "^1.0.0",
+    "@mean-expert/loopback-component-realtime": "^1.0.1",
+    "@mean-expert/loopback-sdk-builder": "^2.3.1",
+    "@mean-expert/loopback-stats-mixin": "^1.2.3",
+    "@mean-expert/model": "^1.0.9",
+    "@types/express": "^4.16.0",
+    "@types/mocha": "^5.2.5",
+    "@types/node": "^10.11.0",
+    "axios": "^0.18.0",
+    "chai": "^4.1.2",
+    "cloudant-follow": "^0.17.0",
+    "compression": "^1.7.3",
+    "cookie-parser": "^1.4.3",
+    "cors": "^2.8.4",
+    "davenport": "^2.8.2",
+    "express-rate-limit": "^3.2.0",
+    "helmet": "^3.13.0",
+    "loopback": "^3.22.3",
+    "loopback-boot": "^2.27.1",
+    "loopback-component-explorer": "^6.3.0",
+    "loopback-ds-timestamp-mixin": "^3.4.1",
+    "mocha": "^5.2.0",
+    "serve-favicon": "^2.5.0",
+    "strong-error-handler": "^3.2.0",
+    "supertest": "^3.3.0",
+    "ts-node": "^7.0.1",
+    "typescript": "^3.0.3"
+  },
+  "devDependencies": {
+    "copyfiles": "^2.1.0",
+    "eslint": "^5.6.0",
+    "eslint-config-loopback": "^12.0.0",
+    "nsp": "^3.2.1",
+    "rimraf": "^2.6.2"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "description": "Data Lookup and Events provider for Activeledger"
+}

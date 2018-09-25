@@ -1,52 +1,21 @@
 {
-  "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc7.1.4",
-  "description": "Main controller for Activeledger",
-  "preferGlobal": true,
-  "bin": {
-    "activeledger": "./lib/index.js"
-  },
+  "name": "activeledger-monorepo",
+  "private": true,
   "scripts": {
-    "start": "node lib/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration && copyfiles -f ./src/default.config.json ./lib",
-    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
-    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
-    "build": "npm run build:commonjs && npm run build:es",
-    "buildw": "npm run build:commonjsw",
-    "ts": "ts-node src/",
-    "ts4": "node -r ts-node/register src/",
-    "prepublishOnly": "npm run build"
+    "build": "npm run build:options && npm run build:logger && npm run build:definitions && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
+    "build:options": "cd ./packages/activeoptions/ && npm run build",
+    "build:logger": "cd ./packages/activelogger/ && npm run build",
+    "build:definitions": "cd ./packages/activedefinitions/ && npm run build",
+    "build:crypto": "cd ./packages/activecrypto/ && npm run build",
+    "build:query": "cd ./packages/activequery/ && npm run build",
+    "build:contracts": "cd ./packages/activecontracts/ && npm run build",
+    "build:protocol": "cd ./packages/activeprotocol/ && npm run build",
+    "build:network": "cd ./packages/activenetwork/ && npm run build",
+    "build:ledger": "cd ./packages/activeledger/ && npm run build",
+    "build:restore": "cd ./packages/activerestore/ && npm run build",
+    "build:core": "cd ./packages/activecore/ && npm run build"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/activeledger/activeledger.git"
-  },
-  "author": "Activeledger",
-  "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.7.1",
-    "copyfiles": "^2.0.0",
-    "rimraf": "^2.6.2",
-    "ts-node": "^7.0.1",
-    "typescript": "^3.0.1"
-  },
-  "files": [
-    "es",
-    "lib"
-  ],
-  "types": "./lib/index.d.ts",
-  "jsnext:main": "./es/index.js",
-  "module": "./es/index.js",
-  "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc5",
-    "@activeledger/activecrypto": "^2.0.0-rc7.0.1",
-    "@activeledger/activelogger": "^2.0.0-rc2",
-    "@activeledger/activenetwork": "^2.0.0-rc7.1.0",
-    "@activeledger/activeoptions": "^2.0.0-rc3",
-    "axios": "^0.18.0",
-    "express": "^4.16.3",
-    "express-pouchdb": "^4.1.0",
-    "pouchdb": "^7.0.0"
+    "lerna": "^3.4.0"
   }
 }
