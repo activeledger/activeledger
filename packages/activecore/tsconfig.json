@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.settings.json",
+  "compilerOptions": {
+    "rootDir":"src",
+    "experimentalDecorators": true,
+  },
+  "files": ["src/fireloop.d.ts"],
+  "include": ["src/**/*", "src/fireloop.d.ts"]
+}

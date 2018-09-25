@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+        "composite": true,
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "lib": ["es2017"],
+        "alwaysStrict": true,
+        "strictNullChecks": true,
+        "noImplicitAny": true,
+        "moduleResolution": "node",
+        "removeComments": true
+    }
+}

@@ -1,0 +1,54 @@
+{
+  "name": "@activeledger/activerestore",
+  "version": "2.0.0-rc7.0.3",
+  "description": "Maintains local data integrity across an Activeledger network",
+  "preferGlobal": true,
+  "bin": {
+    "activerestore": "./lib/index.js"
+  },
+  "scripts": {
+    "start": "node lib/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
+    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
+    "build": "npm run build:commonjs && npm run build:es",
+    "buildw": "npm run build:commonjsw",
+    "ts": "ts-node src/",
+    "ts4": "node -r ts-node/register src/",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activerestore.git"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^10.11.0",
+    "@types/rimraf": "^2.0.2",
+    "@types/minimist": "^1.2.0",
+    "ts-node": "^7.0.1"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activecrypto": "^2.0.0-rc7.0.1",
+    "@activeledger/activelogger": "^2.0.0-rc2",
+    "@activeledger/activenetwork": "^2.0.0-rc7.1.0",
+    "@activeledger/activeoptions": "^2.0.0-rc3",
+    "cloudant-follow": "^0.17.0",
+    "davenport": "^2.8.2",
+    "filehound": "^1.16.4",
+    "glob-fs": "^0.1.7",
+    "minimist": "^1.2.0",
+    "pouchdb": "^7.0.0",
+    "rimraf": "^2.6.2",
+    "typescript": "^3.0.3"
+  }
+}

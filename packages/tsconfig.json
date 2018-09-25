@@ -1,0 +1,15 @@
+{
+    "references": [
+        { "path": "activecontracts" },
+        { "path": "activecore" },
+        { "path": "activecrypto" },
+        { "path": "activedefinitions" },
+        { "path": "activeledger" },
+        { "path": "activelogger" },
+        { "path": "activenetwork" },
+        { "path": "activeoptions" },
+        { "path": "activeprotocol" },
+        { "path": "activequery" },
+        { "path": "activerestore" }
+    ]
+}

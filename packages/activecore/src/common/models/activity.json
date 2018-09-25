@@ -1,0 +1,15 @@
+{
+  "name": "Activity",
+  "plural": "activity",
+  "base": "Model",
+  "idInjection": true,
+  "options": {
+    "validateUpsert": true
+  },
+  "mixins": {},
+  "properties": {},
+  "validations": [],
+  "relations": {},
+  "acls": [],
+  "methods": {}
+}

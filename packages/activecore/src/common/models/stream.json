@@ -1,0 +1,9 @@
+{
+  "name": "Stream",
+  "plural": "stream",
+  "base": "Model",
+  "idInjection": true,
+  "options": {
+    "validateUpsert": true
+  }
+}

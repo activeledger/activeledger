@@ -1,0 +1,40 @@
+{
+  "name": "@activeledger/activecrypto",
+  "version": "2.0.0-rc7.0.1",
+  "description": "Cryptographic provider for Activeledger",
+  "main": "./lib/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
+    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
+    "build": "npm run build:commonjs && npm run build:es",
+    "ts": "ts-node src/",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activecrypto.git"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "rimraf": "^2.6.2",
+    "ts-node": "^7.0.1",
+    "typescript": "^3.0.3",
+    "@types/node": "^10.11.0",
+    "@types/node-rsa": "^0.4.3"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activelogger": "^2.0.0-rc2",
+    "asn1.js": "^5.0.1",
+    "elliptic": "^6.4.1",
+    "node-rsa": "^1.0.1"
+  }
+}
