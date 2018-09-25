@@ -64,7 +64,7 @@
   "types": "./lib/index.d.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/activeledger/activecore.git"
+    "url": "git+https://github.com/activeledger/activeledger.git"
   },
   "author": "Activeledger",
   "license": "MIT",

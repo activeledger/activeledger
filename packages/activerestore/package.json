@@ -20,7 +20,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/activeledger/activerestore.git"
+    "url": "git+https://github.com/activeledger/activeledger.git"
   },
   "author": "Activeledger",
   "license": "MIT",
