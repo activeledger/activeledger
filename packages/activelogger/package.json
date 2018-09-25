@@ -33,7 +33,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeoptions": "^2.0.0-rc2",
-    "pino": "^4.10.2"
+    "@activeledger/activeoptions": "^2.0.0-rc.8",
+    "pino": "^5.6.2"
   }
 }
