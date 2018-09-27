@@ -129,12 +129,12 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         ActiveLogger.info("Run All Instances");
         ActiveLogger.info("----------");
         ActiveLogger.info("node testnet");
-        process.exit();
+        waitAndExit();
       });
     })
     .catch(e => {
       ActiveLogger.fatal(e, "Testnet Build Failure");
-      process.exit();
+      waitAndExit();
     });
 } else {
   // Merge Configs (Helps Build local net)
@@ -161,11 +161,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             ActiveLogger.fatal(
               `${configFile} has multiple entries in neighbourhood`
             );
-            process.exit();
+            waitAndExit();
           }
         } else {
           ActiveLogger.fatal(`Configuration file "${configFile}" not found`);
-          process.exit();
+          waitAndExit();
         }
       }
 
@@ -268,7 +268,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       // Check we are still file based
       if (ActiveOptions.get<string>("network", "")) {
         ActiveLogger.error("Network has already been asserted");
-        process.exit();
+        waitAndExit();
       }
 
       // Make sure this node belives everyone is online
@@ -285,7 +285,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
               ActiveLogger.fatal(
                 "All known nodes must been online for assertion"
               );
-              process.exit();
+              waitAndExit();
             }
           }
 
@@ -316,11 +316,13 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
               $contract: "setup",
               $entry: "assert",
               $i: {
-                selfsign: {
+                [ActiveOptions.get<string>("host")]: {
                   type: "rsa",
                   publicKey: identity.pub.pkcs8pem
                 },
                 setup: {
+                  type: "rsa",
+                  publicKey: identity.pub.pkcs8pem,
                   lock: lock,
                   security: ActiveOptions.get<any>("security"),
                   consensus: ActiveOptions.get<any>("consensus"),
@@ -330,7 +332,6 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             },
             $selfsign: true,
             $sigs: {
-              selfsign: "",
               [ActiveOptions.get<string>("host")]: ""
             }
           };
@@ -339,21 +340,26 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           let signed = signatory.sign(assert.$tx);
 
           // Add twice to transaction
-          assert.$sigs[
-            ActiveOptions.get<string>("host")
-          ] = assert.$sigs.selfsign = signed;
+          assert.$sigs[ActiveOptions.get<string>("host")] = signed;
 
           // Submit Transaction to self
           axios.default
             .post(`http://${ActiveOptions.get<boolean>("host")}`, assert)
-            .then(() => {
-              ActiveLogger.info("Network Asserted to the ledger");
+            .then(response => {
+              if (response.data.$summary.errors) {
+                ActiveLogger.fatal(
+                  response.data.$summary,
+                  "Networking Assertion Failed"
+                );
+              } else {
+                ActiveLogger.info(
+                  response.data.$streams,
+                  "Network Asserted to the ledger"
+                );
+              }
             })
             .catch(e => {
-              ActiveLogger.fatal(
-                e.response.data,
-                "Networking Assertion Failed"
-              );
+              ActiveLogger.fatal("Networking Assertion Failed");
             });
         })
         .catch(e => {
@@ -379,7 +385,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             if (file.$tx) {
               ActiveLogger.warn("Signing $tx content only");
               file = file.$tx;
-            }else{
+            } else {
               ActiveLogger.warn("Signing Entire File");
             }
           } else {
@@ -409,12 +415,12 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         } else {
           ActiveLogger.fatal("File not found");
         }
-        process.exit();
+        waitAndExit();
       }
 
       // Are we only doing setups if so stopped
       if (ActiveOptions.get<boolean>("setup-only", false)) {
-        process.exit();
+        waitAndExit();
       }
 
       // Extend configuration proxy founction
@@ -549,4 +555,16 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       }
     }
   }
+}
+
+/**
+ * Allow for logger to flush without passing final (Removes print output)
+ * Global solutiuon for Pino V5 changed output
+ *
+ * @param {number} [delay=1500]
+ */
+function waitAndExit(delay: number = 1500) {
+  setTimeout(() => {
+    process.exit();
+  }, delay);
 }

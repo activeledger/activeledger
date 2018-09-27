@@ -59,7 +59,6 @@ export class Stream {
    */
   private inINC: ActiveDefinitions.ICommunications;
 
-
   /**
    * Are we throwing this transaction to another ledger
    *
@@ -77,7 +76,6 @@ export class Stream {
    * @memberof Stream
    */
   private nextTimeout: Date;
-
 
   /**
    * Creates an instance of a Standard Activeledger Contract.
@@ -151,12 +149,18 @@ export class Stream {
    * Create new activity stream
    *
    * @param {string} name
+   * @param {string} [deterministic]
    * @returns {Activity}
    * @memberof Stream
    */
-  public newActivityStream(name: string): Activity {
+  public newActivityStream(name: string, deterministic?: string): Activity {
     // Create new activity
-    let activity = new Activity(this.ActiveCrypto, this.umid, name, false);
+    let activity = new Activity(
+      this.ActiveCrypto,
+      deterministic ? deterministic : this.umid,
+      name,
+      false
+    );
     // Set Secret Key
     activity.setKey(this.key);
     // TODO: Convert name into a umid string and alert dev
@@ -245,9 +249,9 @@ export class Stream {
    * @memberof Stream
    */
   public throw(location: string): void {
-    if(this.throwTo) {
-      this.throwTo.push(location);      
-    }else{
+    if (this.throwTo) {
+      this.throwTo.push(location);
+    } else {
       this.throwTo = [location];
     }
   }
@@ -437,7 +441,7 @@ export class Activity {
 
       // Set Update Flag
       this.updated = true;
-    }else{
+    } else {
       throw new Error("Cannot set new authority on output stream");
     }
   }

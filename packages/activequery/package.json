@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activequery",
-  "version": "2.0.0-rc.8.0.1",
+  "version": "2.0.0-rc.8.0.2",
   "description": "Query provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
@@ -34,9 +34,9 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.1",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.1",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.1",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.2",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.2",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.2",
     "davenport": "^2.8.2",
     "sqltomango": "^1.2.3"
   }

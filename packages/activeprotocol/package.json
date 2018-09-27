@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.0.0-rc.8.0.1",
+  "version": "2.0.0-rc.8.0.2",
   "description": "Consensus Virtual Machine provider for Activeledger",
   "main": "./lib/index.js",
   "scripts": {
@@ -33,12 +33,12 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8.0.1",
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.1",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.1",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.1",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.1",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.1",
+    "@activeledger/activecontracts": "^2.0.0-rc.8.0.2",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.2",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.2",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.2",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.2",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.2",
     "@types/node": "^10.11.0",
     "davenport": "^2.8.2",
     "typescript": "^3.0.3",

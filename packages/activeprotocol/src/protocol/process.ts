@@ -423,7 +423,7 @@ export class Process extends EventEmitter {
             }
 
             // Run the Commit Phase
-            this.commit();            
+            this.commit();
           })
           .catch((error: any) => {
             // Need to manage errors this would mean the node is unreachable
@@ -512,10 +512,10 @@ export class Process extends EventEmitter {
             this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
             // Are we throwing to another ledger(s)?
-            let throws = this.contractVM.getThrowsFromVM();            
+            let throws = this.contractVM.getThrowsFromVM();
 
             // Emit to network handler
-            if(throws && throws.length) {
+            if (throws && throws.length) {
               this.emit("throw", { locations: throws });
             }
 
@@ -526,6 +526,9 @@ export class Process extends EventEmitter {
             let inputs: ActiveDefinitions.LedgerStream[] = this.contractVM.getInputs();
 
             let skip: string[] = [];
+
+            // Determanistic Collision Managamenent
+            let collisions = [];
 
             // Any Changes
             if (streams.length) {
@@ -559,6 +562,11 @@ export class Process extends EventEmitter {
                   delete streams[i].state._rev;
                   delete streams[i].meta._rev;
                   delete streams[i].volatile._rev;
+
+                  // New Streams need to check if collision will happen
+                  if (streams[i].meta.umid !== this.entry.$umid) {
+                    collisions.push(streams[i].meta._id);
+                  }
                 } else {
                   // Updated Streams, These could be inputs
                   // So update the transaction and remove for inputs for later processing
@@ -624,77 +632,121 @@ export class Process extends EventEmitter {
                 }
               }
 
-              ActiveLogger.trace(docs, "Changed Documents");
+              /**
+               * Delegate Function
+               * Attempt to atomicaly save to the datastore
+               * Allow for delay execution for deterministic test
+               */
+              let append = () => {
+                this.db
+                  .bulk(docs)
+                  .then(response => {
+                    ActiveLogger.trace(response, "Datastore Response");
 
-              // Attempt to atomicaly save to the datastore
-              this.db
-                .bulk(docs)
-                .then(response => {
-                  ActiveLogger.trace(response, "Datastore Response");
+                    // Set datetime to reflect when data is set from memory to disk
+                    this.nodeResponse.datetime = new Date();
 
-                  // Set datetime to reflect when data is set from memory to disk
-                  this.nodeResponse.datetime = new Date();
+                    // Were we first?
+                    if (!this.entry.$territoriality)
+                      this.entry.$territoriality = this.reference;
 
-                  // Were we first?
-                  if (!this.entry.$territoriality)
-                    this.entry.$territoriality = this.reference;
+                    // If Origin Explain streams in output
+                    if (this.reference == this.entry.$origin) {
+                      this.entry.$streams = {
+                        new: [],
+                        updated: []
+                      };
 
-                  // If Origin Explain streams in output
-                  if (this.reference == this.entry.$origin) {
-                    this.entry.$streams = {
-                      new: [],
-                      updated: []
-                    };
-
-                    // Loop the docs again
-                    let i = streams.length;
-                    while (i--) {
-                      // New has no _rev
-                      if (!streams[i].meta._rev) {
-                        this.entry.$streams.new.push({
-                          id: streams[i].state._id as string,
-                          name: streams[i].meta.name as string
-                        });
-                      } else {
-                        this.entry.$streams.updated.push({
-                          id: streams[i].state._id as string,
-                          name: streams[i].meta.name as string
-                        });
+                      // Loop the docs again
+                      let i = streams.length;
+                      while (i--) {
+                        // New has no _rev
+                        if (!streams[i].meta._rev) {
+                          this.entry.$streams.new.push({
+                            id: streams[i].state._id as string,
+                            name: streams[i].meta.name as string
+                          });
+                        } else {
+                          this.entry.$streams.updated.push({
+                            id: streams[i].state._id as string,
+                            name: streams[i].meta.name as string
+                          });
+                        }
                       }
                     }
-                  }
 
-                  // Manage Post Processing (If Exists)
-                  this.contractVM
-                    .postProcess(
-                      this.entry.$territoriality == this.reference
-                        ? true
-                        : false,
-                      this.entry.$territoriality
-                    )
-                    .then(post => {
-                      this.nodeResponse.post = post;
+                    // Manage Post Processing (If Exists)
+                    this.contractVM
+                      .postProcess(
+                        this.entry.$territoriality == this.reference
+                          ? true
+                          : false,
+                        this.entry.$territoriality
+                      )
+                      .then(post => {
+                        this.nodeResponse.post = post;
 
-                      // Update in communication (Recommended pre commit only but can be edge use cases)
-                      this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+                        // Update in communication (Recommended pre commit only but can be edge use cases)
+                        this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
-                      // Remember to let other nodes know
-                      if (earlyCommit) return earlyCommit();
-                      this.emit("commited", { tx: this.compactTxEntry() });
-                    })
-                    .catch(error => {
-                      // Don't let local error stop other nodes
-                      if (earlyCommit) return earlyCommit();
-                      // Ignore errors for now, As commit was still a success
-                      this.emit("commited", { tx: this.compactTxEntry() });
-                    });
-                })
-                .catch(error => {
-                  // Don't let local error stop other nodes
-                  if (earlyCommit) return earlyCommit();
-                  ActiveLogger.debug(error, "Datatore Failure");
-                  this.raiseLedgerError(1510, new Error("Failed to save"));
+                        // Remember to let other nodes know
+                        if (earlyCommit) return earlyCommit();
+                        this.emit("commited", { tx: this.compactTxEntry() });
+                      })
+                      .catch(error => {
+                        // Don't let local error stop other nodes
+                        if (earlyCommit) return earlyCommit();
+                        // Ignore errors for now, As commit was still a success
+                        this.emit("commited", { tx: this.compactTxEntry() });
+                      });
+                  })
+                  .catch(error => {
+                    // Don't let local error stop other nodes
+                    if (earlyCommit) return earlyCommit();
+                    ActiveLogger.debug(error, "Datatore Failure");
+                    this.raiseLedgerError(1510, new Error("Failed to save"));
+                  });
+              };
+
+              // The documents to be stored
+              ActiveLogger.trace(docs, "Changed Documents");
+
+              // Detect Collisions
+              if (collisions.length) {
+                ActiveLogger.info("Deterministic streams to be checked");
+
+                // Store the promises to wait on.
+                let streamColCheck: any[] = [];
+
+                // Loop all streams
+                collisions.forEach((streamId: string) => {
+                  // Query datastore for streams
+                  streamColCheck.push(this.db.get(streamId));
                 });
+
+                // Wait for all checks
+                Promise.all(streamColCheck)
+                  .then(streams => {
+                    // Problem Streams Exist
+                    ActiveLogger.debug(
+                      streams,
+                      "Deterministic Stream Name Exists"
+                    );
+                    // Update commit
+                    this.nodeResponse.commit = false;
+                    this.raiseLedgerError(
+                      1530,
+                      new Error("Deterministic Stream Name Exists")
+                    );
+                  })
+                  .catch(() => {
+                    // Continue (Error being document not found)
+                    append();
+                  });
+              } else {
+                // Continue
+                append();
+              }
             } else {
               // Nothing to store which is _no longer_ strange contract may not make changes!
               // Were we first?
