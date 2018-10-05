@@ -4,5 +4,10 @@ This pakacage containsthe application which handles the network healing and rebu
 
 |Language| |
 |--------|-|
+<<<<<<< HEAD
 |English| [documentation](https://github.com/activeledger/activeledger/docs/en-gb/restore.md)|
 |Chinese| [说明文档](https://github.com/activeledger/activeledger/docs/zh-cn/restore.md)|
+=======
+|English| [documentation](https://github.com/activeledger/activeledger/blob/master/docs//en-gb/restore.md)|
+|Chinese| [说明文档](https://github.com/activeledger/activeledger/blob/master/docs//zh-cn/restore.md)|
+>>>>>>> github_master
