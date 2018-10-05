@@ -1,3 +1,3 @@
 # Activequery
 
-See [documentation](https://github.com/activeledger/documentation/blob/master/index.md).
+Wrapper to enable querying of the ledger data.

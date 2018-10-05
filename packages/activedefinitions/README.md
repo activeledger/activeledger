@@ -1,3 +1,3 @@
 # Activedefinitions
 
-See [documentation](https://github.com/activeledger/documentation/blob/master/index.md).
+This package contains definition files used within Activeledger.
