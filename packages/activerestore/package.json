@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activerestore",
-  "version": "2.0.0-rc.8.0.2",
-  "description": "Maintains local data integrity across an Activeledger network",
+  "version": "2.0.0-rc.8.0.3",
+  "description": "This pakacage contains the application which handles the network healing and rebuilding from an empty Activeledger node.",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "preferGlobal": true,
   "bin": {
     "activerestore": "./lib/index.js"
@@ -22,6 +33,9 @@
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
   },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
@@ -38,10 +52,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.2",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.2",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.2",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.2",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.3",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.3",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.3",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.3",
     "cloudant-follow": "^0.17.0",
     "davenport": "^2.8.2",
     "filehound": "^1.16.4",

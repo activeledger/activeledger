@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.0.0-rc.8.0.2",
-  "description": "Network Provider for Activeledger",
+  "version": "2.0.0-rc.8.0.3",
+  "description": "This package manages the network communication of the Activeledger nodes.",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
@@ -18,6 +29,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
   },
   "author": "Activeledger",
   "license": "MIT",
@@ -36,11 +50,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.2",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.2",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.2",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.2",
-    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.2",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.3",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.3",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.3",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.3",
+    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.3",
     "axios": "^0.18.0",
     "davenport": "^2.8.2",
     "restify": "^7.2.1",

@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.0.0-rc.8.0.2",
-  "description": "Consensus Virtual Machine provider for Activeledger",
+  "version": "2.0.0-rc.8.0.3",
+  "description": "Underlying protocol which handles consensus and the smart contract virtual machine of Activeledger",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
@@ -19,6 +30,9 @@
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
   },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
@@ -33,12 +47,12 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8.0.2",
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.2",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.2",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.2",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.2",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.2",
+    "@activeledger/activecontracts": "^2.0.0-rc.8.0.3",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.3",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.3",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.3",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.3",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.3",
     "@types/node": "^10.11.0",
     "davenport": "^2.8.2",
     "typescript": "^3.0.3",
