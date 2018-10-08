@@ -1,13 +1,10 @@
+<img src="https://www.activeledger.io/wp-content/uploads/2018/09/Asset-23.png" alt="Activeledger" width="300"/>
+
 # Activecore
 
 This package contains the basic API application to access the data stored on Activeledger.
 
 |Language| |
 |--------|-|
-<<<<<<< HEAD
-|English| [documentation](https://github.com/activeledger/activeledger/docs/en-gb/core.md.md)|
-|Chinese| [说明文档](https://github.com/activeledger/activeledger/docs/docs/zh-cn/core.md)|
-=======
-|English| [documentation](https://github.com/activeledger/activeledger/blob/master/docs//en-gb/core.md.md)|
-|Chinese| [说明文档](https://github.com/activeledger/activeledger/blob/master/docs//docs/zh-cn/core.md)|
->>>>>>> github_master
+|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/core.md)|
+|Chinese| [说明文档](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/core.md)|

@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activecrypto",
   "version": "2.0.0-rc.8.0.2",
-  "description": "Cryptographic provider for Activeledger",
+  "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -14,6 +25,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
   },
   "author": "Activeledger",
   "license": "MIT",

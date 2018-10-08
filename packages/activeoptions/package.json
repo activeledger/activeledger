@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activeoptions",
   "version": "2.0.0-rc.8.0.2",
-  "description": "Activeledger Configuration Manager",
+  "description": "This package manages the configuration for Activeledger (file and ledger based).",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
@@ -18,6 +29,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
   },
   "author": "Activeledger",
   "license": "MIT",

@@ -1,7 +1,18 @@
 {
   "name": "@activeledger/activeledger",
   "version": "2.0.0-rc.8.0.2",
-  "description": "Main controller for Activeledger",
+  "description": "This package contains the main application for running the Activeledger blockchain",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://www.activeledger.io",
   "preferGlobal": true,
   "bin": {
     "activeledger": "./lib/index.js"
@@ -21,6 +32,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
   },
   "author": "Activeledger",
   "license": "MIT",
