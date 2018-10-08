@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "2.0.0-rc.8.0.2",
+  "version": "2.0.0-rc.8.0.3",
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",
@@ -32,8 +32,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.2",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.2",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.3",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.3",
     "@mean-expert/boot-script": "^1.0.0",
     "@mean-expert/loopback-component-realtime": "^1.0.1",
     "@mean-expert/loopback-sdk-builder": "^2.3.1",
