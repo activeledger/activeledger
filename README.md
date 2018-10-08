@@ -48,3 +48,7 @@ Alternatively you can run each instance of Activeledger independantly by navigat
 activeledger
 ```
 ![Activeledger Launch Testnet](https://www.activeledger.io/wp-content/uploads/2018/10/testnet-run.png)
+
+## License
+
+[MIT](https://github.com/activeledger/activeledger/blob/master/LICENSE)
