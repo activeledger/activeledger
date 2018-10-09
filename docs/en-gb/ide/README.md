@@ -1,6 +1,6 @@
 # Activeledger IDE (Active Harmony) User Guide
 
-In this guide we will explain how to setup the IDE so you can begin publishing smart contracts right away. As you can see in the image below, the IDE will take care of everything for you, allowing you to concentrate on your smart contract logic.
+In this guide we will explain how to setup the IDE so you can begin publishing smart contracts right away. As you can see in the image below the IDE will take care of everything for you, allowing you to concentrate on your smart contract logic.
 
 ![Activeledger IDE](https://activeledger.io/wp-content/uploads/2018/10/developer-tools-demo.gif)
 
@@ -10,16 +10,16 @@ The first step is to configure the Activeledger node connections. On the top rig
 
 ![General Settings](https://activeledger.io/wp-content/uploads/2018/10/2018-10-09_11-50-00.png)
 
-Under the *Connections* section add the location of your Activeledger node. If you're running a local testnet you can use these settings :
+Under the *Connections* section add the location of your Activeledger node. If you're running a local testnet you can use the following settings:
 
 * Name : Local Testnet
 * Protocol : http
 * Address : localhost
 * Port : 5260
 
-Encrypted Transactions is not required. However, if you are submitting transactions over an untrusted network this will hide the transaction data.
+Encrypted Transactions is not a requirement. However, if you are submitting transactions across an untrusted network this will hide the transaction data.
 
-In the general settings you will find other options. The most important one is the backup and restore functionaility. The backup function allows you to generate a single file that exports all the information within the IDE. It has a password protection function, as this backup can include your private keys.
+In this section you will find other options. The most important one is the backup and restore functionaility. The backup function allows you to generate a single file that exports all the information within the IDE. It has a password protection function, as this backup can include your private keys.
 
 ### 2. Key Generation
 
