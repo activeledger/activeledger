@@ -60,11 +60,11 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 ### IDE Download
 
-* [Linux](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md)
+* [Windows](https://activeledger.io/download/activeledger-ide-windows/)
 
-* [Windows](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md)
+* [OSX](https://activeledger.io/download/activeledger-ide-osx/)
 
-* [OSX](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md)
+* Linux - Coming Soon
 
 ## Building from source
 
