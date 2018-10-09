@@ -14,7 +14,7 @@
     "build:ledger": "cd ./packages/activeledger/ && npm run build",
     "build:restore": "cd ./packages/activerestore/ && npm run build",
     "build:core": "cd ./packages/activecore/ && npm run build",
-    "test": "mocha -r ts-node/register tests/**/*.ts"
+    "test": "mocha -r ts-node/register tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
     "@types/chai": "^4.1.6",

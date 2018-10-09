@@ -1,6 +1,7 @@
 [![Status on NPM](https://img.shields.io/badge/status-release%20candidate-orange.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
 [![npm version](https://badge.fury.io/js/%40activeledger%2Factiveledger.svg)](https://badge.fury.io/js/%40activeledger%2Factiveledger) 
 [![npm](https://img.shields.io/npm/dt/@activeledger/activeledger.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
+[![lerna](https://img.shields.io/badge/maintained%20with-lerna-cc00ff.svg)](https://lernajs.io/)
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 
 
@@ -64,6 +65,30 @@ We have created an IDE for developers to create and manage Activeledger smart co
 * [Windows](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md)
 
 * [OSX](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md)
+
+## Building from source
+
+### Prerequisites
+
+We use [lerna](https://lernajs.io/) to manage this monorepo. Make sure you have lerna installed.
+
+```bash
+npm install --global lerna
+```
+### Building
+
+```bash
+lerna bootstrap
+npm rum build
+```
+
+### Global Runtime
+
+To run Activeledger, Activecore & Activerestore globally you need to link them with the npm tool. Change into each respective directory and run.
+
+```bash
+npm link
+```
 
 ## License
 

@@ -4,7 +4,7 @@ import { Stream } from "../packages/activecontracts/src";
 import { expect, should } from "chai";
 import "mocha";
 
-describe("Stream Management Test", () => {
+describe("Stream Management Test (Activecontracts)", () => {
   // Security Key
   const key = Math.floor(Math.random() * 10000 + 1);
 
