@@ -13,9 +13,17 @@
     "build:network": "cd ./packages/activenetwork/ && npm run build",
     "build:ledger": "cd ./packages/activeledger/ && npm run build",
     "build:restore": "cd ./packages/activerestore/ && npm run build",
-    "build:core": "cd ./packages/activecore/ && npm run build"
+    "build:core": "cd ./packages/activecore/ && npm run build",
+    "test": "mocha -r ts-node/register tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
-    "lerna": "^3.4.0"
+    "@types/chai": "^4.1.6",
+    "@types/mocha": "^5.2.5",
+    "chai": "^4.2.0",
+    "lerna": "^3.4.0",
+    "mocha": "^5.2.0",
+    "nyc": "^13.0.1",
+    "ts-node": "^7.0.1",
+    "typescript": "^3.1.1"
   }
 }
