@@ -11,9 +11,9 @@
     "build:contracts": "cd ./packages/activecontracts/ && npm run build",
     "build:protocol": "cd ./packages/activeprotocol/ && npm run build",
     "build:network": "cd ./packages/activenetwork/ && npm run build",
-    "build:ledger": "cd ./packages/activeledger/ && npm run build",
-    "build:restore": "cd ./packages/activerestore/ && npm run build",
-    "build:core": "cd ./packages/activecore/ && npm run build",
+    "build:ledger": "cd ./packages/activeledger/ && npm run build && npm link",
+    "build:restore": "cd ./packages/activerestore/ && npm run build && npm link",
+    "build:core": "cd ./packages/activecore/ && npm run build && npm link",
     "test": "mocha -r ts-node/register tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
