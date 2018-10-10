@@ -60,11 +60,11 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 ### IDE Download
 
+* [Linux](https://activeledger.io/download/activeledger-ide-linux/)
+
 * [Windows](https://activeledger.io/download/activeledger-ide-windows/)
 
 * [OSX](https://activeledger.io/download/activeledger-ide-osx/)
-
-* Linux - Coming Soon
 
 ## Building from source
 
@@ -79,15 +79,7 @@ npm install --global lerna
 
 ```bash
 lerna bootstrap
-npm rum build
-```
-
-### Global Runtime
-
-To run Activeledger, Activecore & Activerestore globally you need to link them with the npm tool. Change into each respective directory and run.
-
-```bash
-npm link
+npm run build
 ```
 
 ## License
