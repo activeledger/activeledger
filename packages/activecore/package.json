@@ -25,8 +25,9 @@
     "build:commonjs": "rimraf lib && copyfiles -f ./src/fireloop.d.ts ./lib && copyfiles -f ./src/server/*.js* ./lib/server && copyfiles -f ./src/common/models/*.js* ./lib/common/models && tsc --target es2017 --outDir lib --module commonjs",
     "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
     "build:es": "rimraf es && tsc --target es2017 --outDir es --module esnext  && copyfiles -f ./src/server/*.js* ./es/server && copyfiles -f ./src/common/models/*.js* ./es/common/models",
-    "build": "npm run build:commonjs && npm run build:es && rimraf ./lib/**/*.d.* && rimraf ./es/**/*.d.* && rimraf ./lib/**/*.map && rimraf ./es/**/*.map",
+    "build": "npm run build:commonjs && npm run build:es && npm run build:rimraf && npm run build:rimraf ",
     "buildw": "npm run build:commonjsw",
+    "build:rimraf": "rimraf ./lib/**/*.d.* && rimraf ./es/**/*.d.* && rimraf ./lib/**/*.map && rimraf ./es/**/*.map",
     "ts": "ts-node src/",
     "ts4": "node -r ts-node/register src/",
     "prepublishOnly": "npm run build"
