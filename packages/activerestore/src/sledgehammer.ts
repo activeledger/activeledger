@@ -29,7 +29,6 @@ import * as PouchDB from "pouchdb";
 import * as FileHound from "filehound";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
-import Client, { CouchDoc } from "davenport";
 import * as rimraf from "rimraf";
 
 /**
