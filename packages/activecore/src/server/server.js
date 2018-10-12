@@ -36,7 +36,7 @@ if (ActiveOptions.get("db", false)) {
 
   app.start = function() {
     // start the web server
-    var server = app.listen(function() {
+    var server = app.listen((global.config.api && global.config.api.port) ? global.config.api.port : 5261, function() {
       app.emit("started", server);
       var baseUrl = app.get("url").replace(/\/$/, "");
       console.log("Web server listening at: %s", baseUrl);
