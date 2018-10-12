@@ -23,11 +23,15 @@
 
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { QueryEngine } from "@activeledger/activequery";
-import { Client, CouchDoc } from "davenport";
 import * as axios from "axios";
 import { Model } from "@mean-expert/model";
 import { Model as LBModel } from "../../fireloop";
-import * as fs from "fs";
+// @ts-ignore
+import * as PouchDB from "pouchdb";
+// @ts-ignore
+import * as PouchDBFind from "pouchdb-find";
+// Add Find Plugin
+PouchDB.plugin(PouchDBFind);
 
 /**
  * Exposes methods to search the ledger data
@@ -78,10 +82,10 @@ export default class Stream {
    * Database Connection
    *
    * @private
-   * @type {Client}
+   * @type {PouchDB}
    * @memberof Stream
    */
-  private db: Client<CouchDoc>;
+  private db: any;
 
   /**
    * Activeledger query engine
@@ -126,7 +130,7 @@ export default class Stream {
     this.config = ActiveOptions.fetch(false);
 
     // Create Database Connection
-    this.db = new Client(this.config.db.url, this.config.db.database);
+    this.db = new PouchDB(this.config.db.url + "/" + this.config.db.database);
     this.query = new QueryEngine(
       this.db,
       false,
@@ -194,11 +198,11 @@ export default class Stream {
   public stream(stream: string, next: Function): void {
     this.db
       .get(stream)
-      .then(document => {
+      .then((document:any) => {
         return next(null, document);
       })
-      .catch(error => {
-        return next(error.fullResponse.statusText);
+      .catch((error:any) => {
+        return next(error);
       });
   }
 
@@ -212,14 +216,14 @@ export default class Stream {
   public volatile(stream: string, next: Function): void {
     this.db
       .get(stream + ":volatile")
-      .then(document => {
+      .then((document:any) => {
         next(null, document);
       })
-      .catch(error => {
-        if (error.fullResponse) {
-          return next(error.fullResponse.statusText);
+      .catch((error:any) => {
+        if (error.message) {
+          return next(error.message);
         }
-        return next(error.message);
+        next(error);
       });
   }
 
@@ -234,26 +238,26 @@ export default class Stream {
   public save(stream: string, data: any, next: Function): void {
     this.db
       .get(stream + ":volatile")
-      .then(document => {
+      .then((document:any) => {
         // Now add _id and _rev to data
         data._id = document._id;
         data._rev = document._rev;
 
         // Now we can commit
         this.db
-          .put(stream + ":volatile", data as CouchDoc, document._rev as string)
+          .put(data)
           .then(() => {
             next(null, true);
           })
           .catch((error: any) => {
-            if (error.fullResponse) {
+            if (error.message) {
               return next(error.message);
             }
-            next(error.fullResponse.statusText);
+            next(error);
           });
       })
-      .catch(error => {
-        next(error.fullResponse.statusText);
+      .catch((error:any) => {
+        next(error);
       });
   }
 
@@ -271,7 +275,7 @@ export default class Stream {
         next(null, documents);
       })
       .catch(error => {
-        next(error.fullResponse.statusText);
+        next(error);
       });
   }
 }

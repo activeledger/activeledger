@@ -20,10 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import Client, { CouchDoc, FindOptions } from "davenport";
 // @ts-ignore definition missing
 import * as sqltomango from "sqltomango";
 
@@ -36,13 +33,13 @@ import * as sqltomango from "sqltomango";
 export class QueryEngine {
   /**
    * Creates an instance of QueryEngine.
-   * @param {Client<CouchDoc>} db
+   * @param {PouchDB} db
    * @param {boolean} [isContract=true]
    * @param {number} [limit=0]
    * @memberof QueryEngine
    */
   constructor(
-    private db: Client<CouchDoc>,
+    private db: any,
     private isContract: boolean = true,
     private limit: number = 0
   ) {}
@@ -58,7 +55,7 @@ export class QueryEngine {
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
     return new Promise((resolve, reject) => {
       // Convert to json query
-      let query = sqltomango.parse(sql) as FindOptions<CouchDoc>;
+      let query = sqltomango.parse(sql);
 
       // Limit Restrictions
       if (this.limit > 0) {
@@ -68,7 +65,7 @@ export class QueryEngine {
       // Submit Query
       this.db
         .find(query)
-        .then((docs: CouchDoc[]) => {
+        .then((docs: any[]) => {
           // Filter documents if inside a contract
           if (this.isContract || docs.length == 0) {
             let filteredDocs: ActiveDefinitions.IState[] = [];
@@ -90,7 +87,7 @@ export class QueryEngine {
             resolve(docs as ActiveDefinitions.IState);
           }
         })
-        .catch(error => {
+        .catch(() => {
           reject("Query Failed");
         });
     });
@@ -108,12 +105,12 @@ export class EventEngine {
 
   /**
    * Creates an instance of EventEngine.
-   * @param {Client<CouchDoc>} db
+   * @param {PouchDB} db
    * @param {string} contract
    * @param {*} transaction
    * @memberof EventEngine
    */
-  constructor(private db: Client<CouchDoc>, private contract: string) {}
+  constructor(private db: any, private contract: string) {}
 
   /**
    * Emit the event to the database
@@ -134,11 +131,7 @@ export class EventEngine {
 
     // Fix for pDB
     this.db
-      .put(
-        ActiveCrypto.Hash.getHash(JSON.stringify(event)),
-        event as CouchDoc,
-        ""
-      )
+      .post(event)
       .then(() => {})
       .catch(() => {});
   }

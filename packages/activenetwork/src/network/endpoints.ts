@@ -22,7 +22,6 @@
  */
 
 import * as restify from "restify";
-import Client, { CouchDoc, FindOptions } from "davenport";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -345,14 +344,11 @@ export class Endpoints {
    *
    * @static
    * @param {Host} host
-   * @param {Client<CouchDoc>} db
+   * @param {PouchDB} db
    * @returns {restify.RequestHandler}
    * @memberof Endpoints
    */
-  public static streams(
-    host: Host,
-    db: Client<CouchDoc>
-  ): restify.RequestHandler {
+  public static streams(host: Host, db: any): restify.RequestHandler {
     return (
       req: restify.Request,
       res: restify.Response,
@@ -383,12 +379,12 @@ export class Endpoints {
 
           // Fetch Both State & Stream file with revisions
           // Search Options (Should add an index?)
-          let options: FindOptions<CouchDoc> = {
+          let options:any = {
             selector: {
               _id: {
                 $in: req.body.$streams
               }
-            } as any
+            }
           };
 
           // Request all data?
@@ -398,10 +394,10 @@ export class Endpoints {
 
           // Search (Need Index?)
           db.find(options)
-            .then(results => {
-              res.send(200, results);
+            .then((results:any) => {
+              res.send(200, results.docs);
             })
-            .catch(error => {
+            .catch((error:any) => {
               // Don't mind an error so lets say everyting is ok
               res.send(200, []);
             });
@@ -416,11 +412,13 @@ export class Endpoints {
             }
 
             // Get the specific
-            db.get(req.body.$stream, req.body.$rev)
-              .then(results => {
+            db.get(req.body.$stream, {
+              _rev: req.body.$rev
+            })
+              .then((results:any) => {
                 res.send(200, results);
               })
-              .catch(error => {
+              .catch((error:any) => {
                 // Don't mind an error so lets say everyting is ok
                 res.send(200, []);
               });
@@ -440,11 +438,11 @@ export class Endpoints {
    *
    * @static
    * @param {Host} host
-   * @param {Client<CouchDoc>} db
+   * @param {PouchDB} db
    * @returns {restify.RequestHandler}
    * @memberof Endpoints
    */
-  public static all(host: Host, db: Client<CouchDoc>): restify.RequestHandler {
+  public static all(host: Host, db: any): restify.RequestHandler {
     return (
       req: restify.Request,
       res: restify.Response,
@@ -501,19 +499,16 @@ export class Endpoints {
   }
 
   /**
-   * Fixes a bug in davenport list documents which exclude id by refactoring the object.
+   * Fixed a bug in old db connector (davenport) list documents which exclude id by refactoring the object.
    *
    * @private
    * @static
-   * @param {Client<CouchDoc>} db
+   * @param {PouchDB} db
    * @param {*} options
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  private static allFixListWithoutDocs(
-    db: Client<CouchDoc>,
-    options: any
-  ): Promise<any> {
+  private static allFixListWithoutDocs(db: any, options: any): Promise<any> {
     // Expose the whole object outside of ts
     let xDb = db as any;
 

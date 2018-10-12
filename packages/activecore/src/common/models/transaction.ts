@@ -22,9 +22,10 @@
  */
 
 import { ActiveOptions } from "@activeledger/activeoptions";
-import Client, { CouchDoc, FindOptions } from "davenport";
 import { Model } from "@mean-expert/model";
 import { Model as LBModel } from "../../fireloop";
+// @ts-ignore
+import * as PouchDB from "pouchdb";
 
 /**
  * Exposes methods to search the ledger transactions
@@ -47,10 +48,10 @@ export default class Transaction {
    * Database Connection
    *
    * @private
-   * @type {Client}
+   * @type {PouchDB}
    * @memberof Transaction
    */
-  private db: Client<CouchDoc>;
+  private db: any;
 
   /**
    * Configuration
@@ -86,29 +87,26 @@ export default class Transaction {
     this.config = ActiveOptions.fetch(false);
 
     // Create Database Connection
-    this.db = new Client(this.config.db.url, this.config.db.database);
+    this.db = new PouchDB(this.config.db.url + "/" + this.config.db.database);
 
     // Create the design document if it doesn't exist
     this.db
-      .exists("_design/activecore")
-      .then(exists => {
-        if (!exists) {
-          this.db.put(
-            "_design/activecore",
-            {
-              views: {
-                tx: {
-                  map:
-                    'function (doc) {\n  if(doc.$stream && doc._id.substr(-7) === ":stream") {\n  for(let tx of doc.txs) {\n    emit(tx.$umid, 1);\n  }\n  }\n}'
-                }
-              },
-              language: "javascript",
-            } as CouchDoc,
-            ""
-          );
+      .get("_design/activecore")
+      .then(() => {})
+      .catch((exists:any) => {
+        if (exists.status == 404) {
+          this.db.put({
+            _id: "_design/activecore",
+            views: {
+              tx: {
+                map:
+                  'function (doc) {\n  if(doc.$stream && doc._id.substr(-7) === ":stream") {\n  for(let tx of doc.txs) {\n    emit(tx.$umid, 1);\n  }\n  }\n}'
+              }
+            },
+            language: "javascript"
+          });
         }
-      })
-      .catch(() => {});
+      });      
   }
 
   /**
@@ -120,11 +118,13 @@ export default class Transaction {
    */
   public Transaction(umid: string, next: Function): void {
     this.db
-      .viewWithDocs("activecore", "tx", {
+      .query("activecore/tx", {
         key: umid,
-        limit: 1
+        limit: 1,
+        reduce: false,
+        include_docs: true
       })
-      .then(document => {
+      .then((document:any) => {
         // Make sure we have rows
         if (document.rows.length) {
           let stream = document.rows[0].doc as any;
@@ -139,7 +139,7 @@ export default class Transaction {
         // We shouldn't get here so show error
         return next(`${umid} cannot be found`);
       })
-      .catch(error => {
+      .catch((error:Error) => {
         return next(error);
       });
   }

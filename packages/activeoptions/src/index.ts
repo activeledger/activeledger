@@ -23,7 +23,8 @@
 
 import * as fs from "fs";
 import * as minimist from "minimist";
-import Client, { CouchDoc } from "davenport";
+// @ts-ignore
+import * as PouchDB from "pouchdb";
 
 export class ActiveOptions {
   /**
@@ -93,22 +94,24 @@ export class ActiveOptions {
    */
   public static extendConfig(automerge: boolean = true): Promise<any> {
     return new Promise((resolve, reject) => {
-      let tmpDb = new Client(
-        ActiveOptions.get<any>("db", {}).url,
-        ActiveOptions.get<any>("db", {}).database
+      let tmpDb = new PouchDB(
+        ActiveOptions.get<any>("db", {}).url +
+          "/" +
+          ActiveOptions.get<any>("db", {}).database
       );
 
       // Get Stream id from revision
-      let network = ActiveOptions.get<string>("network", "")
-      network = network.substr(0,network.indexOf("@"));
+      let network = ActiveOptions.get<string>("network", "");
+      network = network.substr(0, network.indexOf("@"));
 
       tmpDb
         .get(network)
         .then((config: any) => {
           if (automerge) {
-            // Update network config network from ledger            
+            // Update network config network from ledger
             // Add Revision (For Firewall based Consensus)
-            if (config._rev) ActiveOptions.set("network", config._id + "@" + config._rev);
+            if (config._rev)
+              ActiveOptions.set("network", config._id + "@" + config._rev);
             // Manual Configuration Merge
             if (config.security) ActiveOptions.set("security", config.security);
             if (config.consensus)

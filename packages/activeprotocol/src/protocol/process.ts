@@ -22,9 +22,7 @@
  */
 
 import * as fs from "fs";
-import Client, { CouchDoc, PostPutCopyResponse } from "davenport";
 import { EventEmitter } from "events";
-import { setTimeout } from "timers";
 import { VirtualMachine } from "./vm";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -112,9 +110,9 @@ export class Process extends EventEmitter {
    * @param {string} selfHost
    * @param {string} reference
    * @param {*} right
-   * @param {Client<CouchDoc>} db
-   * @param {Client<CouchDoc>} error
-   * * @param {Client<CouchDoc>} events
+   * @param {PouchDB} db
+   * @param {PouchDB} error
+   * * @param {PouchDB} events
    * @memberof Process
    */
   constructor(
@@ -122,9 +120,9 @@ export class Process extends EventEmitter {
     private selfHost: string,
     private reference: string,
     private right: any,
-    private db: Client<CouchDoc>,
-    private dbe: Client<CouchDoc>,
-    private dbev: Client<CouchDoc>
+    private db: any,
+    private dbe: any,
+    private dbev: any
   ) {
     super();
 
@@ -268,7 +266,6 @@ export class Process extends EventEmitter {
             this.process([], outputStreams);
           })
           .catch(error => {
-            console.log(error);
             // Forward Error On
             this.postVote({
               code: error.code,
@@ -534,7 +531,7 @@ export class Process extends EventEmitter {
             if (streams.length) {
               // Process Changes to the database
               // Bulk Insert Docs
-              let docs: CouchDoc[] = [];
+              let docs: any[] = [];
 
               // Loop Streams
               let i = streams.length;
@@ -592,14 +589,14 @@ export class Process extends EventEmitter {
 
                 // Data State (Developers Control)
                 if (streams[i].state._id)
-                  docs.push(streams[i].state as CouchDoc);
+                  docs.push(streams[i].state);
 
                 // Meta (Stream Data) for internal usage
-                if (streams[i].meta._id) docs.push(streams[i].meta as CouchDoc);
+                if (streams[i].meta._id) docs.push(streams[i].meta);
 
                 // Volatile data which cannot really be trusted
                 if (streams[i].volatile._id)
-                  docs.push(streams[i].volatile as CouchDoc);
+                  docs.push(streams[i].volatile);
               }
 
               // Any inputs left (Means not modified)
@@ -627,7 +624,7 @@ export class Process extends EventEmitter {
                     }
 
                     // Push to docs (Only Meta)
-                    docs.push(inputs[i].meta as CouchDoc);
+                    docs.push(inputs[i].meta);
                   }
                 }
               }
@@ -639,8 +636,8 @@ export class Process extends EventEmitter {
                */
               let append = () => {
                 this.db
-                  .bulk(docs)
-                  .then(response => {
+                  .bulkDocs(docs)
+                  .then((response:any) => {
                     ActiveLogger.trace(response, "Datastore Response");
 
                     // Set datetime to reflect when data is set from memory to disk
@@ -700,7 +697,7 @@ export class Process extends EventEmitter {
                         this.emit("commited", { tx: this.compactTxEntry() });
                       });
                   })
-                  .catch(error => {
+                  .catch((error: Error) => {
                     // Don't let local error stop other nodes
                     if (earlyCommit) return earlyCommit();
                     ActiveLogger.debug(error, "Datatore Failure");
@@ -844,9 +841,8 @@ export class Process extends EventEmitter {
             // Get Meta data
             this.db
               .get(item + ":stream")
-              .then((meta: CouchDoc) => {
+              .then((meta: any) => {
                 // Check Script Lock
-                // Create new definitions that inherit from CouchDoc, Cast for now.
                 let iMeta: ActiveDefinitions.IMeta = meta as ActiveDefinitions.IMeta;
                 if (
                   iMeta.contractlock &&
@@ -875,11 +871,11 @@ export class Process extends EventEmitter {
                 // Got the meta, Now for real stream
                 this.db
                   .get(item)
-                  .then((state: CouchDoc) => {
+                  .then((state: any) => {
                     // Got the state now for volatile
                     this.db
                       .get(item + ":volatile")
-                      .then((volatile: CouchDoc) => {
+                      .then((volatile: any) => {
                         // Resolve the whole stream
                         resolve({
                           meta: meta,
@@ -887,7 +883,7 @@ export class Process extends EventEmitter {
                           volatile: volatile
                         });
                       })
-                      .catch(error => {
+                      .catch((error:any) => {
                         // TODO : Is this a problem? Can we resolve?
                         // Add Info
                         error.code = 960;
@@ -896,7 +892,7 @@ export class Process extends EventEmitter {
                         reject(error);
                       });
                   })
-                  .catch(error => {
+                  .catch((error:any) => {
                     // Add Info
                     error.code = 960;
                     error.reason = "State not found";
@@ -904,7 +900,7 @@ export class Process extends EventEmitter {
                     reject(error);
                   });
               })
-              .catch(error => {
+              .catch((error:any) => {
                 // Add Info
                 error.code = 950;
                 error.reason = "Stream not found";
@@ -1020,7 +1016,7 @@ export class Process extends EventEmitter {
               // Get Meta data
               this.db
                 .get(readOnly[reference])
-                .then((read: CouchDoc) => {
+                .then((read: any) => {
                   // Remove _id and _rev
                   delete read._id;
                   delete read._rev;
@@ -1029,7 +1025,7 @@ export class Process extends EventEmitter {
                   readonlyStreams[reference] = read;
                   resolve(read);
                 })
-                .catch(error => {
+                .catch((error: Error) => {
                   // Rethrow
                   reject(error);
                 });
@@ -1148,13 +1144,13 @@ export class Process extends EventEmitter {
    * @private
    * @param {number} code
    * @param {Error} reason
-   * @returns {Promise<PostPutCopyResponse>}
+   * @returns {Promise<any>}
    * @memberof Process
    */
   private storeError(
     code: number,
     reason: Error
-  ): Promise<PostPutCopyResponse> {
+  ): Promise<any> {
     // Build Document for couch
     let doc = {
       code: code,
@@ -1165,12 +1161,6 @@ export class Process extends EventEmitter {
     };
 
     // Return
-    //return this.dbe.post(doc as CouchDoc);
-    // Fix for pDB
-    return this.dbe.put(
-      ActiveCrypto.Hash.getHash(JSON.stringify(doc)),
-      doc as CouchDoc,
-      ""
-    );
+    return this.dbe.post(doc);
   }
 }
