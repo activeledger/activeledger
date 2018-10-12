@@ -23,11 +23,10 @@
 
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { Stream, Activity, Query } from "@activeledger/activecontracts";
+import { Activity } from "@activeledger/activecontracts";
 import { QueryEngine, EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import Client, { CouchDoc } from "davenport";
 import { setTimeout } from "timers";
 import { NodeVM } from "vm2";
 
@@ -93,8 +92,8 @@ export class VirtualMachine {
    * @param {ActiveDefinitions.LedgerStream[]} inputs
    * @param {ActiveDefinitions.LedgerStream[]} outputs
    * @param {ActiveDefinitions.LedgerIORputs} reads
-   * @param {Client<CouchDoc>} db
-   * @param {Client<CouchDoc>} dbev
+   * @param {PouchDB} db
+   * @param {PouchDB} dbev
    * @memberof VirtualMachine
    */
   constructor(
@@ -106,8 +105,8 @@ export class VirtualMachine {
     private inputs: ActiveDefinitions.LedgerStream[],
     private outputs: ActiveDefinitions.LedgerStream[],
     private reads: ActiveDefinitions.LedgerIORputs,
-    private db: Client<CouchDoc>,
-    private dbev: Client<CouchDoc>
+    private db: any,
+    private dbev: any
   ) {
     // Setup Event Engine
     this.event = new EventEngine(this.dbev, this.tx.$contract);
@@ -522,8 +521,6 @@ export class VirtualMachine {
     if (timeoutRequestTime) {
       // if request time larger than current time extention has been requested
       // also check the request timeout is not larger than the maximum allowed
-      console.log(this.maxTimeout);
-      console.log(timeoutRequestTime);
       if (
         this.maxTimeout > timeoutRequestTime &&
         timeoutRequestTime > new Date()

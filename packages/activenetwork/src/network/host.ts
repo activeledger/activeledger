@@ -32,12 +32,16 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { EventEngine } from "@activeledger/activequery";
-import Client, { CouchDoc, configureDatabase } from "davenport";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
-
+// @ts-ignore
+import * as PouchDB from "pouchdb";
+// @ts-ignore
+import * as PouchDBFind from "pouchdb-find";
+// Add Find Plugin
+PouchDB.plugin(PouchDBFind);
 /**
  *
  *
@@ -83,28 +87,28 @@ export class Host extends Home {
    * Server connection to the couchdb instance for this node
    *
    * @private
-   * @type Client<CouchDoc>
+   * @type PouchDB
    * @memberof Host
    */
-  private dbConnection: Client<CouchDoc>;
+  private dbConnection: any;
 
   /**
    * Server connection to the couchdb error instance for this node
    *
    * @private
-   * @type Client<CouchDoc>
+   * @type PouchDB
    * @memberof Host
    */
-  private dbErrorConnection: Client<CouchDoc>;
+  private dbErrorConnection: any;
 
   /**
    * Server connection to the couchdb vent instance for this node
    *
    * @private
-   * @type Client<CouchDoc>
+   * @type PouchDB
    * @memberof Host
    */
-  private dbEventConnection: Client<CouchDoc>;
+  private dbEventConnection: any;
 
   /**
    * Holds the processPending requests before processing
@@ -142,29 +146,17 @@ export class Host extends Home {
     // Cache db from options
     let db = ActiveOptions.get<any>("db", {});
 
-    // Make sure the database exists (main)
-    configureDatabase(db.url, {
-      name: db.database
-    });
-
-    // Make sure the database exists (error)
-    configureDatabase(db.url, {
-      name: db.error
-    });
-
-    // Make sure the database exists (event)
-    configureDatabase(db.url, {
-      name: db.event
-    });
+    // Create connection string
+    this.dbConnection = new PouchDB(db.url + "/" + db.database);
+    this.dbConnection.info();
 
     // Create connection string
-    this.dbConnection = new Client(db.url, db.database);
+    this.dbErrorConnection = new PouchDB(db.url + "/" + db.error);
+    this.dbErrorConnection.info()
 
     // Create connection string
-    this.dbErrorConnection = new Client(db.url, db.error);
-
-    // Create connection string
-    this.dbEventConnection = new Client(db.url, db.event);
+    this.dbEventConnection = new PouchDB(db.url + "/" + db.event);
+    this.dbEventConnection.info();
 
     // Minimum Plugins
     this.api.use(restify.plugins.jsonBodyParser());

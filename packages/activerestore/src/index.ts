@@ -31,7 +31,6 @@ import * as PouchDB from "pouchdb";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import Client, { CouchDoc } from "davenport";
 import { Sledgehammer } from "./sledgehammer";
 import { Contract } from "./contract";
 
@@ -94,9 +93,10 @@ ActiveOptions.extendConfig()
     let network: ActiveNetwork.Home = new ActiveNetwork.Home();
 
     // Live Database Connection
-    let db = new Client(
-      ActiveOptions.get<any>("db", {}).url,
-      ActiveOptions.get<any>("db", {}).database
+    let db = new PouchDB(
+      ActiveOptions.get<any>("db", {}).url +
+        "/" +
+        ActiveOptions.get<any>("db", {}).database
     );
 
     // Temporary Holder for fast rebuild
@@ -113,9 +113,10 @@ ActiveOptions.extendConfig()
       });
 
       // Error Database Connection
-      let dbe = new Client(
-        ActiveOptions.get<any>("db", {}).url,
-        ActiveOptions.get<any>("db", {}).error
+      let dbe = new PouchDB(
+        ActiveOptions.get<any>("db", {}).url +
+          "/" +
+          ActiveOptions.get<any>("db", {}).error
       );
 
       // Code & Reason
@@ -184,15 +185,17 @@ ActiveOptions.extendConfig()
 
           // Consensus was reached, Lets all the network what they think about the document
           // we have to check rev keys for both inputs and outputs
-          let revs: string[] = Object.keys(change.doc.transaction.$revs.$i)
-            .concat(Object.keys(change.doc.transaction.$revs.$o))
-            .concat(Object.values(change.doc.transaction.$tx.$r));
+          let revs: string[] = Object.keys(change.doc.transaction.$revs.$i || {})
+            .concat(Object.keys(change.doc.transaction.$revs.$o || {}))
+            .concat(Object.values(change.doc.transaction.$tx.$r || {}));
 
           // Loop revs as we need :stream as well
           let i = revs.length;
           while (i--) {
             revs.push(`${revs[i]}:stream`);
           }
+
+          console.log({ $streams: revs });
 
           // Ask Network
           network.neighbourhood
@@ -329,7 +332,7 @@ ActiveOptions.extendConfig()
           doc.processedAt = new Date();
           dbe
             //.post(doc)
-            .put(doc._id, doc as CouchDoc, doc._rev)
+            .put(doc)
             .then((result: any) => {
               // Allow Resumse
               errorFeed.resume();
@@ -374,7 +377,6 @@ ActiveOptions.extendConfig()
 
                   // Make sure it is defined or not an empty array
                   if (correct && !Array.isArray(correct)) {
-
                     // Update document set with correct data and mark for replication deletetion
                     doc.$activeledger = {
                       delete: true,
@@ -382,7 +384,7 @@ ActiveOptions.extendConfig()
                     };
 
                     // Update
-                    db.put(doc._id, doc, doc._rev)
+                    db.put(doc)
                       .then((response: any) => {
                         ActiveLogger.info(response);
 
@@ -399,11 +401,10 @@ ActiveOptions.extendConfig()
                         // Do we need volatile to be created (stream was non-existant)
                         // Only need to do 1 volatile so check on stream
                         if (volatile && doc._id.indexOf(":stream")) {
-                          db.put(
-                            doc._id.replace(":stream", ":volatile"),
-                            {},
-                            doc._rev
-                          )
+                          db.put({
+                            _id: doc._id.replace(":stream", ":volatile"),
+                            _rev: doc._rev
+                          })
                             .then(() => {
                               resolve(true);
                             })
@@ -594,21 +595,11 @@ ActiveOptions.extendConfig()
               }
 
               // Upload the streams into the database
-
-              // Pouchdb Database Conection (Davenport new_edits doesn't work)
-              let pDb = new PouchDB(
-                ActiveOptions.get<any>("db", {}).url +
-                  "/" +
-                  ActiveOptions.get<any>("db", {}).database
-              );
-
               // Upload documents and allow us to set revision
-              pDb
-                .bulkDocs(documents, { new_edits: false })
+              db.bulkDocs(documents, { new_edits: false })
                 .then(() => {
                   // Upload volatile but let database set new edits
-                  pDb
-                    .bulkDocs(volatile, { new_edits: true })
+                  db.bulkDocs(volatile, { new_edits: true })
                     .then(() => {
                       ActiveLogger.info("Quick Restore Completed");
                     })

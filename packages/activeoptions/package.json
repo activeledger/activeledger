@@ -37,10 +37,10 @@
   "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.11.0",
+    "@types/node": "^10.11.7",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
-    "typescript": "^3.0.3"
+    "typescript": "^3.1.3"
   },
   "files": [
     "es",
@@ -50,7 +50,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "davenport": "^2.8.2",
-    "minimist": "^1.2.0"
+    "minimist": "^1.2.0",
+    "pouchdb": "^7.0.0"
   }
 }
