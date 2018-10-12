@@ -201,7 +201,33 @@ Is the current smart contract process running on this specific node of the netwo
 this.throw(location: string): void;
 ```
 
-Resubmit the current processing transaction to this node in another ledger.
+Resubmit the current processing transaction to another node in a different ledger network. The recommended usage is to wrap this call either inside a postProcess contract checking on territoriality or to use the *isExecutingOn* function to prevent multiple submissions. 
+
+```typescript
+if(this.isExecutingOn("127.0.0.1:5260")) {
+    this.throw("http://another.ledger:5260");   
+}
+```
+
+To receive the response of a thrown transaction a contract event will be emitted with the phase set as *throw* and data object will have the name property set as *throw*. You can listen for these throw events at global or contract level.
+
+```typescript
+let es = new EventSource('/api/events' || '/api/events/{contract}');
+es.addEventListener('data', msg => {
+  var data = JSON.parse(msg.data);
+});
+```
+The data object returned will look like
+
+```json
+{
+  "$umid": "Current transaction unique message id",
+  "sentFrom": "The current node sending the thrown transaction",
+  "sentTo": "Where the transaction is being sent to",
+  "success": true,
+  "response": "response from server",
+}
+```
 
 ##### Inter Node Communication (INC)
 

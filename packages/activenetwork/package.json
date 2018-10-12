@@ -55,6 +55,7 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.3",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.3",
     "@activeledger/activeprotocol": "^2.0.0-rc.8.0.3",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.3",
     "axios": "^0.18.0",
     "davenport": "^2.8.2",
     "restify": "^7.2.1",
