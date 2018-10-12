@@ -29,6 +29,9 @@
       "maxConnections": 10
     }
   },
+  "api": {
+    "port": 5261
+  },
   "rate": {
     "minutes": 10,
     "limit": 20,

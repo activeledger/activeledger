@@ -31,6 +31,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
+import { EventEngine } from "@activeledger/activequery";
 import Client, { CouchDoc, configureDatabase } from "davenport";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
@@ -331,23 +332,47 @@ export class Host extends Home {
             // Throw transaction to other ledgers
             protocol.on("throw", (response: any) => {
               ActiveLogger.info(response, "Throwing Transaction");
+
+              // Prepare event emitter for response management
+              const eventEngine = new EventEngine(
+                this.dbEventConnection,
+                this.processPending[msg.umid].entry.$tx.$contract
+              );
+
+              // Unique Phase
+              eventEngine.setPhase("throw");              
+
               if (response.locations && response.locations.length) {
                 // Throw transaction to those locations
-                let i = response.locations.length;
+                let i = response.locations.length;                
                 while (i--) {
+                  // Cache Location
+                  let location = response.locations[i]; 
                   axios.default
-                    .post(
-                      response.locations[i],
-                      {
-                        $tx: this.processPending[msg.umid].entry.$tx,
-                        $sigs: this.processPending[msg.umid].entry.$sigs
-                      }
-                    ).then((resp) => {
-                      // Don't need to do anything yet to say succusful throw.
+                    .post(location, {
+                      $tx: this.processPending[msg.umid].entry.$tx,
+                      $selfsign: this.processPending[msg.umid].entry.$selfsign,
+                      $sigs: this.processPending[msg.umid].entry.$sigs
                     })
-                    .catch(error => {
-                      // Catch Error to prevent global error being issue
-                      // We don't mind an error happening
+                    .then((resp:any) => {
+                      // Emit Event of successful connection to the ledger (May still have failed on the ledger)
+                      eventEngine.emit("throw", {
+                        success: true,
+                        sentFrom: this.host,
+                        sentTo: location,
+                        $umid: msg.umid,
+                        response: resp.data
+                      });
+                    })
+                    .catch((error:any) => {
+                      // Emit Event of error sending to the ledger
+                      eventEngine.emit("throw", {
+                        success: false,
+                        sentFrom: this.host,
+                        sentTo: location,
+                        $umid: msg.umid,
+                        response: error.toString()
+                      });
                     });
                 }
               }

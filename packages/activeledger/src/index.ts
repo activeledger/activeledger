@@ -119,7 +119,20 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           ActiveLogger.info(launch);
 
           // Save to file
-          testnet += `child.exec("${launch}");\r\n`;
+          if(i === 0) {
+            // Forward output of first instance
+            testnet += `child.spawn(
+              /^win/.test(process.platform) ? "activeledger.cmd" : "activeledger",
+              [],
+              {
+                cwd: "instance-${i}",
+                stdio: "inherit"
+              }
+            );\r\n`
+          }else{
+            // Standard Execution
+            testnet += `child.exec("${launch}");\r\n`;
+          }
         }
 
         // Write Testnet file
