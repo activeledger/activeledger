@@ -28,13 +28,6 @@
   // Get base version of Express
   let app: any = require("express")();
 
-  // Basic middleware needed to reroute incorrect paths
-  app.use((req: any, res: any, next: any) => {
-    // Fix double forward slash problem
-    req.originalUrl = req.originalUrl.replace("//", "/");
-    next();
-  });
-
   // Get PouchDB (With Correct Path) Specific Express
   app.use(
     "/",

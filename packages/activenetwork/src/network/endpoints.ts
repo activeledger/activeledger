@@ -60,8 +60,7 @@ export class Endpoints {
   public static ExternalInitalise(host: Host): restify.RequestHandler {
     return (
       req: restify.Request,
-      res: restify.Response,
-      next: restify.Next
+      res: restify.Response
     ) => {
       // Check Transaction (Basic Validation Tests)
       if (req.body && ActiveDefinitions.LedgerTypeChecks.isEntry(req.body)) {
@@ -101,9 +100,9 @@ export class Endpoints {
         }
 
         // If we got here everything is ok to send into internal
-        host
-          .knock("init", tx)
-          .then(response => {
+        // Now sending direct reducing http overhead
+        Endpoints.DirectInternalInitalise(host, tx)
+          .then((response: any) => {
             if (response.status == "200" && !response.data.error) {
               // Do something with the success response before returning
               let tx: ActiveDefinitions.LedgerEntry = response.data;
@@ -173,8 +172,7 @@ export class Endpoints {
   public static InternalInitalise(host: Host): restify.RequestHandler {
     return (
       req: restify.Request,
-      res: restify.Response,
-      next: restify.Next
+      res: restify.Response
     ) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(
@@ -193,8 +191,16 @@ export class Endpoints {
 
         // Cast Body
         let tx = req.body as ActiveDefinitions.LedgerEntry;
+
         // Send into host pool
-        host.pending({ entry: tx, response: res });
+        host
+          .pending(tx)
+          .then((ledger: any) => {
+            res.send(ledger.status, ledger.data);
+          })
+          .catch((error: any) => {
+            res.send(500, error);
+          });
       } else {
         res.send(403);
       }
@@ -202,70 +208,32 @@ export class Endpoints {
   }
 
   /**
-   * Returns who is currently to the right of this host node.
+   * Instead of HTTP to internal initalise Activeledger now uses a direct
+   * call with a promise wrapper. Other notes still use InternalInitalise
    *
+   * @private
    * @static
    * @param {Host} host
-   * @returns {restify.RequestHandler}
+   * @param {ActiveDefinitions.LedgerEntry} tx
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  // public static right(host: Host): restify.RequestHandler {
-  //   return (
-  //     req: restify.Request,
-  //     res: restify.Response,
-  //     next: restify.Next
-  //   ) => {
-  //     // Make sure the requester is in the neighbourhood
-  //     let neighbour = host.neighbourhood.get(
-  //       req.header("X-Activeledger", "NA")
-  //     );
-  //     if (
-  //       neighbour &&
-  //       host.neighbourhood.checkFirewall(
-  //         (req.headers["x-forwarded-for"] as string) ||
-  //           (req.connection.remoteAddress as string)
-  //       )
-  //     ) {
-  //       ActiveLogger.debug(`Right Request - ${neighbour.reference}`);
-  //       res.send(200, Home.right);
-  //     } else {
-  //       res.send(403);
-  //     }
-  //   };
-  // }
+  private static DirectInternalInitalise(
+    host: Host,
+    tx: ActiveDefinitions.LedgerEntry
+  ): Promise<any> {
+    return new Promise<any>((resolve, reject) => {
+      // Is the network stable?
+      if (host.getStatus() != NeighbourStatus.Stable)
+        return reject("Network Not Stable");
 
-  /**
-   * Returns who is currently to the left of this host node.
-   *
-   * @static
-   * @param {Host} host
-   * @returns {restify.RequestHandler}
-   * @memberof Endpoints
-   */
-  // public static left(host: Host): restify.RequestHandler {
-  //   return (
-  //     req: restify.Request,
-  //     res: restify.Response,
-  //     next: restify.Next
-  //   ) => {
-  //     // Make sure the requester is in the neighbourhood
-  //     let neighbour = host.neighbourhood.get(
-  //       req.header("X-Activeledger", "NA")
-  //     );
-  //     if (
-  //       neighbour &&
-  //       host.neighbourhood.checkFirewall(
-  //         (req.headers["x-forwarded-for"] as string) ||
-  //           (req.connection.remoteAddress as string)
-  //       )
-  //     ) {
-  //       ActiveLogger.debug(`Left Request - ${neighbour.reference}`);
-  //       res.send(200, Home.left);
-  //     } else {
-  //       res.send(403);
-  //     }
-  //   };
-  // }
+      // Send into host pool
+      host
+        .pending(tx)
+        .then(ledger => resolve(ledger))
+        .catch(error => reject(error));
+    });
+  }
 
   /**
    * Show the status of this host home node and its network
@@ -279,7 +247,6 @@ export class Endpoints {
     return (
       req: restify.Request,
       res: restify.Response,
-      next: restify.Next
     ) => {
       ActiveLogger.warn(`Status Request - ${req.connection.remoteAddress}`);
       // Everyone can see this endpoint, Other Nodes just need 200 for now
@@ -317,7 +284,6 @@ export class Endpoints {
         while (i--) {
           let neighbour = neighbourhood[keys[i]];
           if (!neighbour.graceStop) {
-            let host = neighbour.getAddress();
             neighbours[neighbour.reference] = {
               isHome: neighbour.isHome
             };
@@ -352,7 +318,6 @@ export class Endpoints {
     return (
       req: restify.Request,
       res: restify.Response,
-      next: restify.Next
     ) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(
@@ -379,7 +344,7 @@ export class Endpoints {
 
           // Fetch Both State & Stream file with revisions
           // Search Options (Should add an index?)
-          let options:any = {
+          let options: any = {
             selector: {
               _id: {
                 $in: req.body.$streams
@@ -394,10 +359,10 @@ export class Endpoints {
 
           // Search (Need Index?)
           db.find(options)
-            .then((results:any) => {
+            .then((results: any) => {
               res.send(200, results.docs);
             })
-            .catch((error:any) => {
+            .catch((error: any) => {
               // Don't mind an error so lets say everyting is ok
               res.send(200, []);
             });
@@ -415,10 +380,10 @@ export class Endpoints {
             db.get(req.body.$stream, {
               _rev: req.body.$rev
             })
-              .then((results:any) => {
+              .then((results: any) => {
                 res.send(200, results);
               })
-              .catch((error:any) => {
+              .catch((error: any) => {
                 // Don't mind an error so lets say everyting is ok
                 res.send(200, []);
               });
@@ -446,7 +411,6 @@ export class Endpoints {
     return (
       req: restify.Request,
       res: restify.Response,
-      next: restify.Next
     ) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(

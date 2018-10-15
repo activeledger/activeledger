@@ -21,11 +21,10 @@
  * SOFTWARE.
  */
 
-import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { Neighbour } from "./neighbour";
 import { ActiveOptions } from "@activeledger/activeoptions";
+import { Neighbour } from "./neighbour";
 
 /**
  * The status within the neighbourhood

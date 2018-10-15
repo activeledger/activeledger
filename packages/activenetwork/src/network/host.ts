@@ -43,14 +43,14 @@ import * as PouchDBFind from "pouchdb-find";
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
 /**
- *
+ * Process object used to manage an individual transaction
  *
  * @interface process
  */
 interface process {
   entry: ActiveDefinitions.LedgerEntry;
-  response: restify.Response;
-  unhandled?: string;
+  resolve: any;
+  reject: any;
 }
 
 /**
@@ -122,18 +122,35 @@ export class Host extends Home {
   } = {};
 
   /**
+   * Holds reference for UnhandledRejectsion (From Contracts)
+   * This means we can remove them from the listner
+   *
+   * @private
+   * @type {{
+   *     [reference: string]: any;
+   *   }}
+   * @memberof Host
+   */
+  private unhandledRejection: {
+    [reference: string]: any;
+  } = {};
+
+  /**
    * Add process into pending
    *
    * @memberof Host
    */
-  public pending(v: {
-    entry: ActiveDefinitions.LedgerEntry;
-    response: restify.Response;
-  }) {
-    // Add to pending
-    this.processPending[v.entry.$umid] = v;
-    // Ask for hold
-    this.hold(v.entry);
+  public pending(entry: ActiveDefinitions.LedgerEntry): Promise<any> {
+    return new Promise<any>((resolve, reject) => {
+      // Add to pending (Using Promises instead of http request)
+      this.processPending[entry.$umid] = {
+        entry: entry,
+        resolve: resolve,
+        reject: reject
+      };
+      // Ask for hold
+      this.hold(entry);
+    });
   }
 
   /**
@@ -152,7 +169,7 @@ export class Host extends Home {
 
     // Create connection string
     this.dbErrorConnection = new PouchDB(db.url + "/" + db.error);
-    this.dbErrorConnection.info()
+    this.dbErrorConnection.info();
 
     // Create connection string
     this.dbEventConnection = new PouchDB(db.url + "/" + db.event);
@@ -177,14 +194,12 @@ export class Host extends Home {
 
     // Setup for the Neighbourhood endpoints
     this.api.get("/a/status", Endpoints.status(this));
-    // this.api.get("/a/right", Endpoints.right(this));
-    // this.api.get("/a/left", Endpoints.left(this));
-    this.api.post("/a/init", Endpoints.InternalInitalise(this));
-
-    // Setup for accepting internal transactions
 
     // Setup for accepting external transactions
     this.api.post("/", Endpoints.ExternalInitalise(this));
+
+    // Internal transactions
+    this.api.post("/a/init", Endpoints.InternalInitalise(this));
 
     // Stream Data Management (Activerestore)
     // Passing dbConnection as well due to being private
@@ -194,12 +209,6 @@ export class Host extends Home {
     this.api.get("/a/all", Endpoints.all(this, this.dbConnection));
     this.api.get("/a/all/:start", Endpoints.all(this, this.dbConnection));
 
-    // Backwards compatible endpoints
-
-    // Debuggable Endpoints
-    //if (process.env.NODE_ENV != "production")
-    //  this.api.get("/neighbourhood/expose", Endpoints.expose(this));
-
     // Running Experimental hybrid mode? (Make sure we have all the flags)
     let experimental = ActiveOptions.get<any>("experimental", {});
     if (experimental && experimental.hybrid && experimental.hybrid.host) {
@@ -208,6 +217,10 @@ export class Host extends Home {
       });
       this.api.get("/hybrid/", this.sse.middleware());
     }
+
+    // Manage False postive warnings.
+    // Find alternative way to capture rejections per message
+    process.setMaxListeners(300);
 
     // Listen to master for Neighbour and Locker details
     process.on("message", msg => {
@@ -237,18 +250,17 @@ export class Host extends Home {
 
             // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
             // While it is global we need to manage it here to keep the encapsulation
-            // Will this cause havok with memory keep having listeners
-            process.on("unhandledRejection", (reason, p) => {
+            this.unhandledRejection[msg.umid] = (reason: any) => {
               ActiveLogger.fatal("Unhandled Rejection at:" + reason.toString());
-              if (!this.processPending[msg.umid].response.headersSent) {
-                this.processPending[msg.umid].response.send(500, {
-                  error: "UnhandledRejection: " + reason.toString()
-                });
+              this.processPending[msg.umid].reject(
+                "UnhandledRejection: " + reason.toString()
+              );
+              // Remove Locks
+              this.release(this.processPending[msg.umid].entry);
+            };
 
-                // Remove Locks
-                this.release(this.processPending[msg.umid].entry);
-              }
-            });
+            // Add event listener
+            process.on("unhandledRejection", this.unhandledRejection[msg.umid]);
 
             // Make sure we have the response object
             if (!this.processPending[msg.umid].entry.$nodes)
@@ -287,38 +299,29 @@ export class Host extends Home {
               }
 
               // Process response back into entry for previous neighbours to know the results
-              // Check headers haven't already been sent
-              if (!this.processPending[msg.umid].response.headersSent) {
-                this.processPending[msg.umid].response.send(
-                  200,
-                  this.processPending[msg.umid].entry
-                );
-
-                // Remove Locks
-                this.release(this.processPending[msg.umid].entry);
-              }
+              this.processPending[msg.umid].resolve({
+                status: 200,
+                data: this.processPending[msg.umid].entry
+              });
+              // Remove Locks
+              this.release(this.processPending[msg.umid].entry);
             });
 
             // Manage Failure Messaging
             protocol.on("failed", error => {
               ActiveLogger.debug(error, "TX Failed");
+              // Add this nodes error into the entry
+              this.processPending[msg.umid].entry.$nodes[Home.reference].error =
+                error.error;
 
-              // Check headers haven't already been sent
-              if (!this.processPending[msg.umid].response.headersSent) {
-                // Add this nodes error into the entry
-                this.processPending[msg.umid].entry.$nodes[
-                  Home.reference
-                ].error = error.error;
+              // So if we send as resolve it should still work (Will it keep our error?)
+              this.processPending[msg.umid].resolve({
+                status: 200,
+                data: this.processPending[msg.umid].entry
+              });
 
-                // So if we send as 200 it should still work (Will it keep our error?)
-                this.processPending[msg.umid].response.send(
-                  200,
-                  this.processPending[msg.umid].entry
-                );
-
-                // Remove Locks
-                this.release(this.processPending[msg.umid].entry);
-              }
+              // Remove Locks
+              this.release(this.processPending[msg.umid].entry);
             });
 
             // Throw transaction to other ledgers
@@ -332,21 +335,21 @@ export class Host extends Home {
               );
 
               // Unique Phase
-              eventEngine.setPhase("throw");              
+              eventEngine.setPhase("throw");
 
               if (response.locations && response.locations.length) {
                 // Throw transaction to those locations
-                let i = response.locations.length;                
+                let i = response.locations.length;
                 while (i--) {
                   // Cache Location
-                  let location = response.locations[i]; 
+                  let location = response.locations[i];
                   axios.default
                     .post(location, {
                       $tx: this.processPending[msg.umid].entry.$tx,
                       $selfsign: this.processPending[msg.umid].entry.$selfsign,
                       $sigs: this.processPending[msg.umid].entry.$sigs
                     })
-                    .then((resp:any) => {
+                    .then((resp: any) => {
                       // Emit Event of successful connection to the ledger (May still have failed on the ledger)
                       eventEngine.emit("throw", {
                         success: true,
@@ -356,7 +359,7 @@ export class Host extends Home {
                         response: resp.data
                       });
                     })
-                    .catch((error:any) => {
+                    .catch((error: any) => {
                       // Emit Event of error sending to the ledger
                       eventEngine.emit("throw", {
                         success: false,
@@ -374,7 +377,7 @@ export class Host extends Home {
             protocol.start();
           } else {
             // No, How to deal with it?
-            this.processPending[msg.umid].response.send(200, {
+            this.processPending[msg.umid].resolve({
               status: 100,
               error: "Busy Locks"
             });
@@ -477,8 +480,13 @@ export class Host extends Home {
     // If a single process, We can call locker here to save
     // CPU cycles
 
-    // Ask for releases
+    // Release unhandledRejection (Manages Memory)
+    if (this.unhandledRejection[v.$umid] instanceof Function) {
+      process.off("unhandledRejection", this.unhandledRejection[v.$umid]);
+    }
+
     this.moan("release", {
+      // Ask for releases
       umid: v.$umid,
       streams: Object.assign(input, output)
     });

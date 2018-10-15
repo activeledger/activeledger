@@ -166,7 +166,7 @@ export class Neighbour {
             resolve(response);
           })
           .catch(error => {
-            if (error.response.data) {
+            if (error && error.response && error.response.data) {
               ActiveLogger.error(
                 error.response.data,
                 `${this.host}:${this.port}/${endpoint} - POST Failed`
