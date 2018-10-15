@@ -22,9 +22,8 @@
  */
 
 import { ActiveLogger } from "@activeledger/activelogger";
-import { setInterval, clearInterval } from "timers";
 import { Home } from "./home";
-import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
+import { NeighbourStatus } from "./neighbourhood";
 import { Session } from "./session";
 import { Neighbour } from "./neighbour";
 
@@ -74,15 +73,6 @@ export class Maintain {
   private rebasing: boolean = false;
 
   /**
-   * Reference to the setInternal value to monitor neighbourhood health
-   *
-   * @private
-   * @type {(NodeJS.Timer | undefined)}
-   * @memberof Watch
-   */
-  //private healthTimer: NodeJS.Timer | undefined;
-
-  /**
    * How many seconds between service calls
    * There is a random assignment of +/- 10 seconds.
    *
@@ -95,7 +85,7 @@ export class Maintain {
    * @memberof Watch
    */
   private readonly interval: number = (20 +
-    Math.floor(Math.random() * 20) +
+    Math.floor(Math.random() * 15) +
     -10) *
   1000;
 
