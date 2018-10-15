@@ -22,8 +22,6 @@
  */
 
 import * as os from "os";
-import * as restify from "restify";
-import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions } from '@activeledger/activeoptions';
 
 /**
