@@ -49,7 +49,7 @@ PouchDB.plugin(PouchDBFind);
     },
     search: {
       accepts: { arg: "sql", type: "string", required: true },
-      returns: { arg: "streams", type: "array" },
+      returns: { root: true, type: "object" },
       http: { path: "/search", verb: "post" }
     },
     stream: {
@@ -198,10 +198,10 @@ export default class Stream {
   public stream(stream: string, next: Function): void {
     this.db
       .get(stream)
-      .then((document:any) => {
+      .then((document: any) => {
         return next(null, document);
       })
-      .catch((error:any) => {
+      .catch((error: any) => {
         return next(error);
       });
   }
@@ -216,10 +216,10 @@ export default class Stream {
   public volatile(stream: string, next: Function): void {
     this.db
       .get(stream + ":volatile")
-      .then((document:any) => {
+      .then((document: any) => {
         next(null, document);
       })
-      .catch((error:any) => {
+      .catch((error: any) => {
         if (error.message) {
           return next(error.message);
         }
@@ -238,7 +238,7 @@ export default class Stream {
   public save(stream: string, data: any, next: Function): void {
     this.db
       .get(stream + ":volatile")
-      .then((document:any) => {
+      .then((document: any) => {
         // Now add _id and _rev to data
         data._id = document._id;
         data._rev = document._rev;
@@ -256,7 +256,7 @@ export default class Stream {
             next(error);
           });
       })
-      .catch((error:any) => {
+      .catch((error: any) => {
         next(error);
       });
   }
@@ -272,7 +272,14 @@ export default class Stream {
     this.query
       .sql(sql)
       .then(documents => {
-        next(null, documents);
+
+        // Show warnings in debug mode
+        let warning = this.query.getLastWarning();
+        if (this.config.debug && warning) {
+          return next(null, { streams: documents, warning: warning });
+        } else {
+          return next(null, { streams: documents });
+        }
       })
       .catch(error => {
         next(error);

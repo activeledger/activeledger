@@ -66,6 +66,46 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 * [OSX](https://activeledger.io/download/activeledger-ide-osx/)
 
+## Public Testnet
+
+We are currently running a free to use public testnet of Activeledger.
+
+#### Important Information
+
+1. This is an open ledger network do not upload information you don't want to be public as *anyone* will be able to view it.
+2. Transactions to the ledger are restricted to 1 per second per IP.
+3. Requests to the api are restricted to 3 per second per IP.
+4. Uploads are restricted to 12kb in size.
+
+Also as this is a testnet at **anytime we may reset the entire ledger.**
+
+### Nodes & Endpoints
+
+#### Hong Kong
+
+* Node -  http://testnet-asia.activeledger.io:5260/
+* API - http://testnet-asia.activeledger.io:5261/api
+* API Explorer - http://testnet-asia.activeledger.io:5261/explorer/
+
+#### United States of America
+
+* Node -  http://testnet-usa.activeledger.io:5260/
+* API - http://testnet-usa.activeledger.io:5261/api
+* API Explorer - http://testnet-usa.activeledger.io:5261/explorer/
+
+#### Europe
+
+* Node -  http://testnet-eu.activeledger.io:5260/
+* API - http://testnet-eu.activeledger.io:5261/api
+* API Explorer - http://testnet-eu.activeledger.io:5261/explorer/
+
+#### United Kingdom
+
+* Node -  http://testnet-uk.activeledger.io:5260/
+* API - http://testnet-uk.activeledger.io:5261/api
+* API Explorer - http://testnet-uk.activeledger.io:5261/explorer/
+
+
 ## Building from source
 
 ### Prerequisites
