@@ -32,6 +32,15 @@ import * as sqltomango from "sqltomango";
  */
 export class QueryEngine {
   /**
+   * Stores the last warning
+   *
+   * @private
+   * @type {QueryWarning}
+   * @memberof QueryEngine
+   */
+  private warning: QueryWarning;
+
+  /**
    * Creates an instance of QueryEngine.
    * @param {PouchDB} db
    * @param {boolean} [isContract=true]
@@ -65,7 +74,19 @@ export class QueryEngine {
       // Submit Query
       this.db
         .find(query)
-        .then((docs: any[]) => {
+        .then((results: any) => {
+          // Compatibility fix
+          let docs: any[] = results.docs;
+
+          // Warning (Such as index?)
+          if (results.warning) {
+            // Update Warning
+            this.warning = {
+              sql: sql,
+              message: results.warning
+            };
+          }
+
           // Filter documents if inside a contract
           if (this.isContract || docs.length == 0) {
             let filteredDocs: ActiveDefinitions.IState[] = [];
@@ -91,6 +112,16 @@ export class QueryEngine {
           reject("Query Failed");
         });
     });
+  }
+
+  /**
+   * Get the last warning
+   *
+   * @returns {(QueryWarning | undefined)}
+   * @memberof QueryEngine
+   */
+  public getLastWarning(): QueryWarning | undefined {
+    return this.warning ? this.warning : undefined;
   }
 }
 
@@ -145,4 +176,14 @@ export class EventEngine {
   public setPhase(name: string) {
     this.phase = name;
   }
+}
+
+/**
+ * Warning Object
+ *
+ * @interface QueryWarning
+ */
+interface QueryWarning {
+  sql: string;
+  message: string;
 }
