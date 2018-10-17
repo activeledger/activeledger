@@ -1,9 +1,14 @@
 {
-  "extends": "../tsconfig.settings.json",
-  "compilerOptions": {
-    "rootDir":"src",
-    "experimentalDecorators": true,
-  },
-  "files": ["src/fireloop.d.ts"],
-  "include": ["src/**/*", "src/fireloop.d.ts"]
+  "$schema": "http://json.schemastore.org/tsconfig",
+  "extends": "./node_modules/@loopback/build/config/tsconfig.common.json",
+  "include": [
+    "src",
+    "test",
+    "index.ts"
+  ],
+  "exclude": [
+    "node_modules/**",
+    "packages/*/node_modules/**",
+    "**/*.d.ts"
+  ]
 }
