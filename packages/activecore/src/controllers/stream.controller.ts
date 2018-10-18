@@ -21,8 +21,16 @@
  * SOFTWARE.
  */
 
-import {get, param} from '@loopback/rest';
-import {ActiveledgerDatasource} from '../datasources/activeledger';
+import {
+  get,
+  param,
+  post,
+  requestBody,
+  RestBindings,
+  Response
+} from "@loopback/rest";
+import { ActiveledgerDatasource } from "../datasources/activeledger";
+import { inject } from "@loopback/context";
 
 /**
  * Manage Stream related API calls
@@ -31,7 +39,7 @@ import {ActiveledgerDatasource} from '../datasources/activeledger';
  * @class StreamController
  */
 export class StreamController {
-  constructor() {}
+  constructor(@inject(RestBindings.Http.RESPONSE) private response: Response) {}
 
   /**
    * Fetch an Activity Steam by id
@@ -40,54 +48,332 @@ export class StreamController {
    * @returns {Promise<any>}
    * @memberof StreamController
    */
-  @get('/api/stream/{id}', {
+  @get("/api/stream/{id}", {
     responses: {
-      '200': {
-        description: 'Activity Stream Data',
+      "200": {
+        description: "Activity Stream Data",
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'object',
+              type: "object",
               properties: {
                 stream: {
-                  type: 'object',
+                  type: "object",
                   properties: {
-                    name: {type: 'string'},
-                    type: {type: 'string'},
-                    _id: {type: 'string'},
-                    _rev: {type: 'string'},
+                    name: { type: "string" },
+                    type: { type: "string" },
+                    _id: { type: "string" },
+                    _rev: { type: "string" }
                   },
-                },
-              },
-            },
-          },
-        },
+                  additionalProperties: true
+                }
+              }
+            }
+          }
+        }
       },
-      '404': {
-        description: 'Activity Stream Not Found',
+      "404": {
+        description: "Activity Stream Not Found",
         content: {
-          'application/json': {
+          "application/json": {
             schema: {
-              type: 'object',
+              type: "object",
               properties: {
-                statusCode: {type: 'number'},
-                name: {type: 'string'},
-                message: {type: 'string'},
-              },
-            },
-          },
-        },
-      },
-    },
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
   })
-  async stream(@param.path.string('id') id: string): Promise<any> {
+  async stream(@param.path.string("id") id: string): Promise<any> {
     let results = await ActiveledgerDatasource.getDb().get(id);
     if (results) {
       return {
-        stream: results,
+        stream: results
       };
     } else {
       return results;
+    }
+  }
+
+  /**
+   * Fetch an Activity Steam volatile data by id
+   *
+   * @param {string} id
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @get("/api/stream/{id}/volatile", {
+    responses: {
+      "200": {
+        description: "Activity Stream Volatile Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                stream: {
+                  type: "object",
+                  properties: {
+                    _id: { type: "string" },
+                    _rev: { type: "string" }
+                  },
+                  additionalProperties: true
+                }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Stream Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async getVolatile(@param.path.string("id") id: string): Promise<any> {
+    let results = await ActiveledgerDatasource.getDb().get(id + ":volatile");
+    if (results) {
+      return {
+        stream: results
+      };
+    } else {
+      return results;
+    }
+  }
+
+  /**
+   * Write an Activity Steam volatile data by id
+   *
+   * @param {string} id
+   * @param {*} data
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @post("/api/stream/{id}/volatile", {
+    responses: {
+      "200": {
+        description: "Activity Stream Volatile Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean" }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Stream Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async postVolatile(
+    @param.path.string("id") id: string,
+    @requestBody() data: any
+  ): Promise<any> {
+    // Get Latest Version
+    let results = await ActiveledgerDatasource.getDb().get(id + ":volatile");
+    if (results) {
+      // Update _id and _rev
+      data._id = results._id;
+      data._rev = results._rev;
+
+      // Commit changes
+      results = await ActiveledgerDatasource.getDb().put(data);
+      return {
+        success: results.ok
+      };
+    } else {
+      return results;
+    }
+  }
+
+  /**
+   * Search the ledger with SQL
+   *
+   * @param {string} sql
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @post("/api/stream/search", {
+    responses: {
+      "200": {
+        description: "Activity Streams Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  _id: { type: "string" },
+                  _rev: { type: "string" }
+                },
+                additionalProperties: true
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Streams Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async search(@param.query.string("sql") sql: string): Promise<any> {
+    // Get Latest Version
+    let results = await ActiveledgerDatasource.getQuery().sql(sql);
+    if (results) {
+      let warning = ActiveledgerDatasource.getQuery().getLastWarning();
+      if (warning) {
+        return {
+          streams: results,
+          warning: warning
+        };
+      } else {
+        return {
+          streams: results
+        };
+      }
+    } else {
+      return results;
+    }
+  }
+
+  /**
+   * Get the latest changes
+   *
+   * @param {boolean} include_docs
+   * @param {number} limit
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @get("/api/stream/changes", {
+    responses: {
+      "200": {
+        description: "Activity Stream Volatile Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                changes: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: { type: "string" },
+                      changes: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            rev: { type: "string" }
+                          }
+                        }
+                      },
+                      doc: {
+                        type: "object",
+                        properties: {
+                          _id: { type: "string" },
+                          _rev: { type: "string" }
+                        },
+                        additionalProperties: true
+                      },
+                      seq: { type: "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Stream Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async changes(
+    @param.query.boolean("include_docs") include_docs: boolean,
+    @param.query.number("limit") limit: number
+  ): Promise<any> {
+    let changes = await ActiveledgerDatasource.getDb().changes({
+      descending: true,
+      include_docs: include_docs,
+      limit: (limit || 10) * 3
+    });
+    if (changes) {
+      // Filter in only the stream data documents
+      let dataDocs = [];
+      let i = changes.results.length;
+      while (i--) {
+        if (
+          changes.results[i].id.indexOf(":") === -1 &&
+          changes.results[i].id.indexOf("_design") === -1
+        ) {
+          dataDocs.push(changes.results[i]);
+        }
+      }
+      return {
+        changes: dataDocs
+      };
+    } else {
+      return changes;
     }
   }
 }
