@@ -90,4 +90,21 @@ export class ActiveledgerDatasource {
     }
     return this.db;
   }
+
+
+  /**
+   * Returns Query Engine
+   *
+   * @static
+   * @returns {QueryEngine}
+   * @memberof ActiveledgerDatasource
+   */
+  public static getQuery(): QueryEngine {
+
+    // Make sure we have db connection
+    this.getDb();
+
+    // Return Query Object
+    return this.query;
+  }
 }
