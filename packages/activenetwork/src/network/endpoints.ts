@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-import * as restify from "restify";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -54,17 +53,15 @@ export class Endpoints {
    *
    * @static
    * @param {Host} host
-   * @returns {restify.RequestHandler}
+   * @param {*} body
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static ExternalInitalise(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response
-    ) => {
+  public static ExternalInitalise(host: Host, body: any): Promise<any> {
+    return new Promise((resolve, reject) => {
       // Check Transaction (Basic Validation Tests)
-      if (req.body && ActiveDefinitions.LedgerTypeChecks.isEntry(req.body)) {
-        let tx = req.body as ActiveDefinitions.LedgerEntry;
+      if (body && ActiveDefinitions.LedgerTypeChecks.isEntry(body)) {
+        let tx = body as ActiveDefinitions.LedgerEntry;
 
         // Set Date
         tx.$datetime = new Date();
@@ -78,25 +75,10 @@ export class Endpoints {
         // Not supporting mutiple transactions yet
         if (tx.$multi) {
           // Multiple
-          return res.send(400, "Multiple Transaction Not Implemented");
-        }
-
-        // While the URL params are optional lets verify them.
-        if (req.params.contract) {
-          if (req.params.entry) {
-            // Both defined
-            if (
-              req.params.contract != tx.$tx.$contract &&
-              req.params.entry != tx.$tx.$entry
-            ) {
-              return res.send(400, "URL and Body Params don't match");
-            }
-          } else {
-            // Default Entry
-            if (req.params.contract != tx.$tx.$contract) {
-              return res.send(400, "URL and Body Params don't match");
-            }
-          }
+          return resolve({
+            statusCode: 400,
+            content: "Multiple Transaction Not Implemented"
+          });
         }
 
         // If we got here everything is ok to send into internal
@@ -144,19 +126,31 @@ export class Endpoints {
                 output.$debug = tx;
               }
 
-              return res.send(200, output);
+              return resolve({
+                statusCode: 200,
+                content: output
+              });
             } else {
-              return res.send(response.status, response.data);
+              return resolve({
+                statusCode: response.status,
+                content: response.data
+              });
             }
           })
           .catch(error => {
             // Do something with the response before returning
-            return res.send(500, error);
+            return reject({
+              statusCode: 500,
+              content: error
+            });
           });
       } else {
-        return res.send(500);
+        return reject({
+          statusCode: 500,
+          content: "Invalid Transaction"
+        });
       }
-    };
+    });
   }
 
   /**
@@ -166,45 +160,38 @@ export class Endpoints {
    *
    * @static
    * @param {Host} host
-   * @returns {restify.RequestHandler}
+   * @param {*} body
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static InternalInitalise(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response
-    ) => {
-      // Make sure the requester is in the neighbourhood
-      let neighbour = host.neighbourhood.get(
-        req.header("X-Activeledger", "NA")
-      );
-      if (
-        neighbour &&
-        host.neighbourhood.checkFirewall(
-          (req.headers["x-forwarded-for"] as string) ||
-            (req.connection.remoteAddress as string)
-        )
-      ) {
-        // Is the network stable?
-        if (host.getStatus() != NeighbourStatus.Stable)
-          return res.send(500, "Network Not Stable");
+  public static InternalInitalise(host: Host, body: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Is the network stable?
+      if (host.getStatus() != NeighbourStatus.Stable)
+        return resolve({
+          statusCode: 500,
+          content: "Network Not Stable"
+        });
 
-        // Cast Body
-        let tx = req.body as ActiveDefinitions.LedgerEntry;
+      // Cast Body
+      let tx = body as ActiveDefinitions.LedgerEntry;
 
-        // Send into host pool
-        host
-          .pending(tx)
-          .then((ledger: any) => {
-            res.send(ledger.status, ledger.data);
-          })
-          .catch((error: any) => {
-            res.send(500, error);
+      // Send into host pool
+      host
+        .pending(tx)
+        .then((ledger: any) => {
+          return resolve({
+            statusCode: ledger.status,
+            content: ledger.data
           });
-      } else {
-        res.send(403);
-      }
-    };
+        })
+        .catch((error: any) => {
+          return reject({
+            statusCode: 500,
+            content: error
+          });
+        });
+    });
   }
 
   /**
@@ -240,17 +227,13 @@ export class Endpoints {
    *
    * @static
    * @param {Host} host
-   * @returns {restify.RequestHandler}
+   * @param {string} requester
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static status(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
-      ActiveLogger.warn(`Status Request - ${req.connection.remoteAddress}`);
+  public static status(host: Host, requester: string): Promise<any> {
+    return new Promise((resolve, reject) => {
       // Everyone can see this endpoint, Other Nodes just need 200 for now
-      let requester = req.header("X-Activeledger", "NA");
       let neighbour = host.neighbourhood.get(requester);
       if (requester != "NA") {
         // Increase Count
@@ -258,9 +241,13 @@ export class Endpoints {
 
         // Is this a live request
         if (neighbour && !neighbour.graceStop) {
-          res.send(200);
+          resolve({
+            statusCode: 200
+          });
         } else {
-          res.send(403);
+          resolve({
+            statusCode: 403
+          });
         }
 
         // When should we rebase
@@ -291,203 +278,150 @@ export class Endpoints {
         }
 
         // Send to browser
-        res.send(200, {
-          status: host.getStatus(),
-          reference: host.reference,
-          left: Home.left.reference,
-          right: Home.right.reference,
-          neighbourhood: {
-            neighbours: neighbours
-          },
-          pem: Home.publicPem
+        resolve({
+          statusCode: 200,
+          content: {
+            status: host.getStatus(),
+            reference: host.reference,
+            left: Home.left.reference,
+            right: Home.right.reference,
+            neighbourhood: {
+              neighbours: neighbours
+            },
+            pem: Home.publicPem
+          }
         });
       }
-    };
+    });
   }
 
   /**
    * Return stream information stored on this node
    *
    * @static
-   * @param {Host} host
-   * @param {PouchDB} db
-   * @returns {restify.RequestHandler}
+   * @param {*} db
+   * @param {*} body
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static streams(host: Host, db: any): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
-      // Make sure the requester is in the neighbourhood
-      let neighbour = host.neighbourhood.get(
-        req.header("X-Activeledger", "NA")
-      );
-      if (
-        neighbour &&
-        host.neighbourhood.checkFirewall(
-          (req.headers["x-forwarded-for"] as string) ||
-            (req.connection.remoteAddress as string)
-        )
-      ) {
-        if (req.body.$streams) {
+  public static streams(db: any, body: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (body.$streams) {
+        // Restrict Access to any volatile requests
+        let i = body.$streams.length;
+        while (i--) {
+          // Check that :volatile doesn't exist
+          if (body.$streams[i].indexOf(":volatile") !== -1) {
+            // End exectuion
+            return reject({
+              statusCode: 403,
+              content: "Request not allowed"
+            });
+          }
+        }
+
+        // Fetch Both State & Stream file with revisions
+        // Search Options (Should add an index?)
+        let options: any = {
+          selector: {
+            _id: {
+              $in: body.$streams
+            }
+          }
+        };
+
+        // Request all data?
+        if (!body.$allFields) {
+          options.fields = ["_id", "_rev"];
+        }
+
+        // Search (Need Index?)
+        db.find(options)
+          .then((results: any) => {
+            return resolve({
+              statusCode: 200,
+              content: results.docs
+            });
+          })
+          .catch((error: any) => {
+            // Don't mind an error so lets say everyting is ok
+            return resolve({
+              statusCode: 200,
+              content: []
+            });
+          });
+      } else {
+        if (body.$stream && body.$rev) {
           // Restrict Access to any volatile requests
-          let i = req.body.$streams.length;
-          while (i--) {
-            // Check that :volatile doesn't exist
-            if (req.body.$streams[i].indexOf(":volatile") !== -1) {
-              // End exectuion
-              res.send(500);
-              return;
-            }
+          // Check that :volatile doesn't exist
+          if (body.$stream.indexOf(":volatile") !== -1) {
+            // End exectuion
+            return reject({
+              statusCode: 403,
+              content: "Request not allowed"
+            });
           }
 
-          // Fetch Both State & Stream file with revisions
-          // Search Options (Should add an index?)
-          let options: any = {
-            selector: {
-              _id: {
-                $in: req.body.$streams
-              }
-            }
-          };
-
-          // Request all data?
-          if (!req.body.$allFields) {
-            options.fields = ["_id", "_rev"];
-          }
-
-          // Search (Need Index?)
-          db.find(options)
+          // Get the specific
+          db.get(body.$stream, {
+            _rev: body.$rev
+          })
             .then((results: any) => {
-              res.send(200, results.docs);
+              return resolve({
+                statusCode: 200,
+                content: results
+              });
             })
             .catch((error: any) => {
               // Don't mind an error so lets say everyting is ok
-              res.send(200, []);
+              return resolve({
+                statusCode: 200,
+                content: []
+              });
             });
         } else {
-          if (req.body.$stream && req.body.$rev) {
-            // Restrict Access to any volatile requests
-            // Check that :volatile doesn't exist
-            if (req.body.$stream.indexOf(":volatile") !== -1) {
-              // End exectuion
-              res.send(500);
-              return;
-            }
-
-            // Get the specific
-            db.get(req.body.$stream, {
-              _rev: req.body.$rev
-            })
-              .then((results: any) => {
-                res.send(200, results);
-              })
-              .catch((error: any) => {
-                // Don't mind an error so lets say everyting is ok
-                res.send(200, []);
-              });
-          } else {
-            // Bad Request
-            res.send(500);
-          }
+          // Bad Request
+          return reject({
+            statusCode: 500,
+            content: "Internal Server Error"
+          });
         }
-      } else {
-        res.send(403);
       }
-    };
+    });
   }
 
   /**
    * Return all stream information
    *
    * @static
-   * @param {Host} host
-   * @param {PouchDB} db
-   * @returns {restify.RequestHandler}
-   * @memberof Endpoints
-   */
-  public static all(host: Host, db: any): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
-      // Make sure the requester is in the neighbourhood
-      let neighbour = host.neighbourhood.get(
-        req.header("X-Activeledger", "NA")
-      );
-      if (
-        neighbour &&
-        host.neighbourhood.checkFirewall(
-          (req.headers["x-forwarded-for"] as string) ||
-            (req.connection.remoteAddress as string)
-        )
-      ) {
-        if (req.params.start) {
-          Endpoints.allFixListWithoutDocs(db, {
-            limit: 500,
-            start: req.params.start
-          })
-            .then(response => {
-              res.send(
-                200,
-                response.data.rows
-                  .map(Endpoints.allMap)
-                  .filter(Endpoints.allFilter)
-              );
-            })
-            .catch(() => {
-              // Problem on the server
-              res.send(500);
-            });
-        } else {
-          // No Start Position
-          Endpoints.allFixListWithoutDocs(db, { limit: 500 })
-            .then(response => {
-              res.send(
-                200,
-                response.data.rows
-                  .map(Endpoints.allMap)
-                  .filter(Endpoints.allFilter)
-              );
-            })
-            .catch(() => {
-              // Problem on the server
-              res.send(500);
-            });
-        }
-      } else {
-        res.send(403);
-      }
-    };
-  }
-
-  /**
-   * Fixed a bug in old db connector (davenport) list documents which exclude id by refactoring the object.
-   *
-   * @private
-   * @static
-   * @param {PouchDB} db
-   * @param {*} options
+   * @param {*} db
+   * @param {*} [start]
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  private static allFixListWithoutDocs(db: any, options: any): Promise<any> {
-    // Expose the whole object outside of ts
-    let xDb = db as any;
+  public static all(db: any, start?: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Setup Search Options
+      let options: any = { limit: 500 };
+      if (start) {
+        options.startkey = start;
+        options.skip = 2;
+      }
 
-    // Build up the get url and query
-    let url = `${xDb.databaseUrl}/_all_docs?limit=${options.limit}`;
-
-    // Start Key
-    if (options.start) {
-      // skip 3 (data, stream & volatile)
-      // Only need to skip 2 because we will be starting with :stream (So will skip next data when 3)
-      url += `&startkey="${options.start}"&skip=2`;
-    }
-
-    // Fetch from server
-    return xDb.axios.get(url);
+      db.allDocs(options)
+        .then((response: any) => {
+          resolve({
+            statusCode: 200,
+            content: response.rows
+              .map(Endpoints.allMap)
+              .filter(Endpoints.allFilter)
+          });
+        })
+        .catch(() => {
+          // Problem on the server
+          reject({});
+        });
+    });
   }
 
   /**
@@ -519,69 +453,68 @@ export class Endpoints {
    * Signed for mail (post) validator and convertor
    *
    * @static
-   * @returns {restify.RequestHandler}
+   * @param {Host} host
+   * @param {*} body
+   * @param {boolean} encryptHeader
+   * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static postConvertor(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-      next: restify.Next
-    ) => {
-      // Post may contain encryption / verification
-      if (req.getRoute().method == "POST") {
-        // Internal Transaction Messesing (Encrypted & Signing Security)
-        if (req.body && req.body.$neighbour && req.body.$packet) {
-          ActiveLogger.trace(req.body, "Converting Signed for Post");
+  public static postConvertor(
+    host: Host,
+    body: any,
+    encryptHeader: boolean
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Internal Transaction Messesing (Encrypted & Signing Security)
+      if (body.$neighbour && body.$packet) {
+        ActiveLogger.trace("Converting Signed for Post");
 
-          // We don't encrypt to ourselve
-          if (req.body.$neighbour.reference != host.reference) {
-            // Decrypt Trasanction First (As Signing Pre Encryption)
-            if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
-              req.body.$packet = JSON.parse(
-                Buffer.from(host.decrypt(req.body.$packet), "base64").toString()
-              );
-            }
-          }
-
-          // Verify Signature (but we do verify)
-          if (ActiveOptions.get<any>("security", {}).signedConsensus) {
-            if (
-              !host.neighbourhood
-                .get(req.body.$neighbour.reference)
-                .verifySignature(
-                  req.body.$neighbour.signature,
-                  req.body.$packet
-                )
-            ) {
-              // Bad Message
-              return res.send(500, {
-                status: 505,
-                error: "Security Challenge Failure"
-              });
-            }
-          }
-
-          // Open signed post
-          req.body = req.body.$packet;
-        } else {
-          // Is this an encrypted external transaction that need passing.
-          if (req.header("X-Activeledger-Encrypt")) {
-            try {
-              // Decrypt
-              req.body = JSON.parse(
-                Buffer.from(host.decrypt(req.body), "base64").toString()
-              );
-            } catch {
-              // Error trying to decrypt
-              res.send(500, "Decryption Error");
-              return;
-            }
+        // We don't encrypt to ourselve
+        if (body.$neighbour.reference != host.reference) {
+          // Decrypt Trasanction First (As Signing Pre Encryption)
+          if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
+            body.$packet = JSON.parse(
+              Buffer.from(host.decrypt(body.$packet), "base64").toString()
+            );
           }
         }
+
+        // Verify Signature (but we do verify)
+        if (ActiveOptions.get<any>("security", {}).signedConsensus) {
+          if (
+            !host.neighbourhood
+              .get(body.$neighbour.reference)
+              .verifySignature(body.$neighbour.signature, body.$packet)
+          ) {
+            // Bad Message
+            return reject({
+              statusCode: 500,
+              content: "Security Challenge Failure"
+            });
+          }
+        }
+
+        // Open signed post
+        return resolve(body.$packet);
+      } else {
+        // Is this an encrypted external transaction that need passing.
+        if (encryptHeader) {
+          try {
+            // Decrypt
+            resolve(
+              JSON.parse(Buffer.from(host.decrypt(body), "base64").toString())
+            );
+          } catch {
+            // Error trying to decrypt
+            return reject({
+              statusCode: 500,
+              content: "Decryption Error"
+            });
+          }
+        } else {
+          resolve(body);
+        }
       }
-      // Continue to handler
-      next();
-    };
+    });
   }
 }
