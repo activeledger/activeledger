@@ -58,10 +58,7 @@ export class Endpoints {
    * @memberof Endpoints
    */
   public static ExternalInitalise(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response
-    ) => {
+    return (req: restify.Request, res: restify.Response) => {
       // Check Transaction (Basic Validation Tests)
       if (req.body && ActiveDefinitions.LedgerTypeChecks.isEntry(req.body)) {
         let tx = req.body as ActiveDefinitions.LedgerEntry;
@@ -170,10 +167,7 @@ export class Endpoints {
    * @memberof Endpoints
    */
   public static InternalInitalise(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response
-    ) => {
+    return (req: restify.Request, res: restify.Response) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(
         req.header("X-Activeledger", "NA")
@@ -244,10 +238,7 @@ export class Endpoints {
    * @memberof Endpoints
    */
   public static status(host: Host): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
+    return (req: restify.Request, res: restify.Response) => {
       ActiveLogger.warn(`Status Request - ${req.connection.remoteAddress}`);
       // Everyone can see this endpoint, Other Nodes just need 200 for now
       let requester = req.header("X-Activeledger", "NA");
@@ -305,6 +296,70 @@ export class Endpoints {
     };
   }
 
+  public static status2(host: Host, requester: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Everyone can see this endpoint, Other Nodes just need 200 for now
+      let neighbour = host.neighbourhood.get(requester);
+      if (requester != "NA") {
+        // Increase Count
+        Endpoints.ipcThrottle++;
+
+        // Is this a live request
+        if (neighbour && !neighbour.graceStop) {
+          resolve({
+            statusCode: 200
+          });
+        } else {
+          resolve({
+            statusCode: 403
+          });
+        }
+
+        // When should we rebase
+        if (
+          Endpoints.ipcThrottle > ActiveOptions.get<number>("ipcThrottle", 8)
+        ) {
+          // However we can trigger a "rebase" of the ordering if this comes from a node we think is offline
+          host.moan("rebase");
+          Endpoints.ipcThrottle = 0;
+        }
+      } else {
+        // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
+        // Status shouldn't be called much in comparison
+        let neighbourhood = host.neighbourhood.get();
+        let keys = Object.keys(neighbourhood);
+        let i = keys.length;
+        let neighbours: { [index: string]: object } = {};
+
+        // Loop and build (reduced output now)
+        // Hide Host & Port for now (May enable for authenticated requests)
+        while (i--) {
+          let neighbour = neighbourhood[keys[i]];
+          if (!neighbour.graceStop) {
+            neighbours[neighbour.reference] = {
+              isHome: neighbour.isHome
+            };
+          }
+        }
+
+        // Send to browser
+        resolve({
+          statusCode: 200,
+          content: {
+            status: host.getStatus(),
+            reference: host.reference,
+            left: Home.left.reference,
+            right: Home.right.reference,
+            neighbourhood: {
+              neighbours: neighbours
+            },
+            pem: Home.publicPem
+          }
+        });
+      }
+    });
+  }
+
   /**
    * Return stream information stored on this node
    *
@@ -315,10 +370,7 @@ export class Endpoints {
    * @memberof Endpoints
    */
   public static streams(host: Host, db: any): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
+    return (req: restify.Request, res: restify.Response) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(
         req.header("X-Activeledger", "NA")
@@ -408,10 +460,7 @@ export class Endpoints {
    * @memberof Endpoints
    */
   public static all(host: Host, db: any): restify.RequestHandler {
-    return (
-      req: restify.Request,
-      res: restify.Response,
-    ) => {
+    return (req: restify.Request, res: restify.Response) => {
       // Make sure the requester is in the neighbourhood
       let neighbour = host.neighbourhood.get(
         req.header("X-Activeledger", "NA")
@@ -584,4 +633,75 @@ export class Endpoints {
       next();
     };
   }
+
+  /**
+   * Signed for mail (post) validator and convertor
+   *
+   * @static
+   * @returns {restify.RequestHandler}
+   * @memberof Endpoints
+   */
+  
+  public static postConvertor2(host: Host): restify.RequestHandler {
+    return (
+      req: restify.Request,
+      res: restify.Response,
+      next: restify.Next
+    ) => {
+      // Post may contain encryption / verification
+      if (req.getRoute().method == "POST") {
+        // Internal Transaction Messesing (Encrypted & Signing Security)
+        if (req.body && req.body.$neighbour && req.body.$packet) {
+          ActiveLogger.trace(req.body, "Converting Signed for Post");
+
+          // We don't encrypt to ourselve
+          if (req.body.$neighbour.reference != host.reference) {
+            // Decrypt Trasanction First (As Signing Pre Encryption)
+            if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
+              req.body.$packet = JSON.parse(
+                Buffer.from(host.decrypt(req.body.$packet), "base64").toString()
+              );
+            }
+          }
+
+          // Verify Signature (but we do verify)
+          if (ActiveOptions.get<any>("security", {}).signedConsensus) {
+            if (
+              !host.neighbourhood
+                .get(req.body.$neighbour.reference)
+                .verifySignature(
+                  req.body.$neighbour.signature,
+                  req.body.$packet
+                )
+            ) {
+              // Bad Message
+              return res.send(500, {
+                status: 505,
+                error: "Security Challenge Failure"
+              });
+            }
+          }
+
+          // Open signed post
+          req.body = req.body.$packet;
+        } else {
+          // Is this an encrypted external transaction that need passing.
+          if (req.header("X-Activeledger-Encrypt")) {
+            try {
+              // Decrypt
+              req.body = JSON.parse(
+                Buffer.from(host.decrypt(req.body), "base64").toString()
+              );
+            } catch {
+              // Error trying to decrypt
+              res.send(500, "Decryption Error");
+              return;
+            }
+          }
+        }
+      }
+      // Continue to handler
+      next();
+    };
+  }  
 }
