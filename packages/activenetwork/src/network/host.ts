@@ -24,6 +24,7 @@
 import * as axios from "axios";
 import * as cluster from "cluster";
 import * as restify from "restify";
+import * as http from "http";
 //@ts-ignore
 import * as corsMiddleware from "restify-cors-middleware";
 import { ActiveOptions } from "@activeledger/activeoptions";
@@ -153,6 +154,16 @@ export class Host extends Home {
     });
   }
 
+  private fetchHeader(headers: string[]): string {
+    let i = headers.length;
+    while (i--) {
+      if (headers[i] === "X-Activeledger") {
+        return headers[i + 1];
+      }
+    }
+    return "NA";
+  }
+
   /**
    * Creates an instance of Host.
    * @memberof Host
@@ -175,7 +186,66 @@ export class Host extends Home {
     this.dbEventConnection = new PouchDB(db.url + "/" + db.event);
     this.dbEventConnection.info();
 
-    // Minimum Plugins
+    // Create HTTP server for managing transaction requests
+    http
+      .createServer((req, res) => {
+        // Log Request
+        ActiveLogger.trace(
+          `Request - ${req.connection.remoteAddress} @ ${req.url}`
+        );
+
+        // Internal or External Request
+        let requester = this.fetchHeader(req.rawHeaders);
+
+        // Promise Response
+        let response: Promise<any>;
+
+        // Different endpoints switched on calling path
+        switch (req.url) {
+          case "/a/status":
+            response = Endpoints.status2(
+              this,
+              requester
+            );
+            break;
+          default:
+            response = Endpoints.status2(
+              this,
+              requester
+            );
+            break;
+        }
+
+        // Wait for promise to get the response
+        response
+          .then((response: any) => {
+            // Write Header
+            // All outputs are JSON and 
+            res.writeHead(response.statusCode, {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "X-Powered-By": "Activeledger"
+            });
+            res.write(JSON.stringify(response.content || {}));
+            res.end();
+          })
+          .catch((error: any) => {
+            // Write Header
+            // Basic error handling for now. As a lot of errors will still be sent as ok responses.
+            res.writeHead(500, {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "X-Powered-By": "Activeledger"
+            });
+            res.write(JSON.stringify({ error: "Something has gone wrong." }));
+            res.end();
+          });
+      })
+      .listen(3000, function() {
+        console.log("server start at port 3000"); //the server object listens on port 3000
+      });
+
+    // Minimum Plugins 
     this.api.use(restify.plugins.jsonBodyParser());
 
     // Manage Sign for post
