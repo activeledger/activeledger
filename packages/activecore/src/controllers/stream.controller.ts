@@ -21,16 +21,8 @@
  * SOFTWARE.
  */
 
-import {
-  get,
-  param,
-  post,
-  requestBody,
-  RestBindings,
-  Response
-} from "@loopback/rest";
+import { get, param, post, requestBody } from "@loopback/rest";
 import { ActiveledgerDatasource } from "../datasources/activeledger";
-import { inject } from "@loopback/context";
 
 /**
  * Manage Stream related API calls
@@ -39,7 +31,7 @@ import { inject } from "@loopback/context";
  * @class StreamController
  */
 export class StreamController {
-  constructor(@inject(RestBindings.Http.RESPONSE) private response: Response) {}
+  constructor() {}
 
   /**
    * Fetch an Activity Steam by id
