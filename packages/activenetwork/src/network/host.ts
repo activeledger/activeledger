@@ -23,10 +23,8 @@
 
 import * as axios from "axios";
 import * as cluster from "cluster";
-import * as restify from "restify";
 import * as http from "http";
 //@ts-ignore
-import * as corsMiddleware from "restify-cors-middleware";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -67,22 +65,19 @@ export class Host extends Home {
    * All communications done via a single REST server
    * we will need to manage permissions and security to seperate the calls
    *
-   * @type {restify.Server}
+   * @type {http.Server}
    * @memberof Home
    */
-  public readonly api: restify.Server = restify.createServer({
-    name: "Activeledger System API",
-    version: "2.0.0"
-  });
+  public readonly api: http.Server;
 
   /**
-   *  Server Sent events
+   * Server Sent events
    *
    * @private
-   * @type {EventSource}
+   * @type {http.ServerResponse[]}
    * @memberof Host
    */
-  private sse: any;
+  private sse: http.ServerResponse[] = [];
 
   /**
    * Server connection to the couchdb instance for this node
@@ -154,16 +149,6 @@ export class Host extends Home {
     });
   }
 
-  private fetchHeader(headers: string[]): string {
-    let i = headers.length;
-    while (i--) {
-      if (headers[i] === "X-Activeledger") {
-        return headers[i + 1];
-      }
-    }
-    return "NA";
-  }
-
   /**
    * Creates an instance of Host.
    * @memberof Host
@@ -187,106 +172,51 @@ export class Host extends Home {
     this.dbEventConnection.info();
 
     // Create HTTP server for managing transaction requests
-    http
-      .createServer((req, res) => {
+    this.api = http.createServer(
+      (req: http.IncomingMessage, res: http.ServerResponse) => {
         // Log Request
-        ActiveLogger.trace(
-          `Request - ${req.connection.remoteAddress} @ ${req.url}`
+        ActiveLogger.debug(
+          `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
         );
 
-        // Internal or External Request
-        let requester = this.fetchHeader(req.rawHeaders);
+        // Capture POST data
+        if (req.method == "POST") {
+          // Holds the body
+          let body: string | any = "";
 
-        // Promise Response
-        let response: Promise<any>;
-
-        // Different endpoints switched on calling path
-        switch (req.url) {
-          case "/a/status":
-            response = Endpoints.status2(
-              this,
-              requester
-            );
-            break;
-          default:
-            response = Endpoints.status2(
-              this,
-              requester
-            );
-            break;
-        }
-
-        // Wait for promise to get the response
-        response
-          .then((response: any) => {
-            // Write Header
-            // All outputs are JSON and 
-            res.writeHead(response.statusCode, {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-              "X-Powered-By": "Activeledger"
-            });
-            res.write(JSON.stringify(response.content || {}));
-            res.end();
-          })
-          .catch((error: any) => {
-            // Write Header
-            // Basic error handling for now. As a lot of errors will still be sent as ok responses.
-            res.writeHead(500, {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-              "X-Powered-By": "Activeledger"
-            });
-            res.write(JSON.stringify({ error: "Something has gone wrong." }));
-            res.end();
+          // Reads body data
+          req.on("data", chunk => {
+            body += chunk.toString(); // convert Buffer to string
           });
-      })
-      .listen(3000, function() {
-        console.log("server start at port 3000"); //the server object listens on port 3000
-      });
 
-    // Minimum Plugins 
-    this.api.use(restify.plugins.jsonBodyParser());
-
-    // Manage Sign for post
-    this.api.use(Endpoints.postConvertor(this));
-
-    // Manage CORS
-    if (ActiveOptions.get<boolean>("CORS", false)) {
-      const cors = corsMiddleware({
-        origins: ActiveOptions.get<string[]>("CORS", ["*"])
-      });
-
-      // Bind to API
-      this.api.pre(cors.preflight);
-      this.api.use(cors.actual);
-    }
-
-    // Setup for the Neighbourhood endpoints
-    this.api.get("/a/status", Endpoints.status(this));
-
-    // Setup for accepting external transactions
-    this.api.post("/", Endpoints.ExternalInitalise(this));
-
-    // Internal transactions
-    this.api.post("/a/init", Endpoints.InternalInitalise(this));
-
-    // Stream Data Management (Activerestore)
-    // Passing dbConnection as well due to being private
-    this.api.post("/a/stream", Endpoints.streams(this, this.dbConnection));
-
-    // All Stream Management
-    this.api.get("/a/all", Endpoints.all(this, this.dbConnection));
-    this.api.get("/a/all/:start", Endpoints.all(this, this.dbConnection));
-
-    // Running Experimental hybrid mode? (Make sure we have all the flags)
-    let experimental = ActiveOptions.get<any>("experimental", {});
-    if (experimental && experimental.hybrid && experimental.hybrid.host) {
-      this.sse = new (require("restify-eventsource"))({
-        connections: experimental.hybrid.maxConnections
-      });
-      this.api.get("/hybrid/", this.sse.middleware());
-    }
+          // When read has compeleted continue
+          req.on("end", () => {
+            // All posted data should be JSON
+            // Convert data for potential encryption
+            Endpoints.postConvertor(this, JSON.parse(body), this.fetchHeader(
+              req.rawHeaders,
+              "X-Activeledger-Encrypt",
+              false
+            ) as boolean)
+              .then(body => {
+                // Post Converted, Continue processing
+                this.processEndpoints(req, res, body);
+              })
+              .catch(error => {
+                // Failed to convery respond;
+                this.writeResponse(
+                  res,
+                  error.statusCode || 500,
+                  JSON.stringify(error.content || {})
+                );
+              });
+          });
+        } else {
+          // Simple get, Continue Processing
+          this.processEndpoints(req, res);
+        }
+      }
+    );
 
     // Manage False postive warnings.
     // Find alternative way to capture rejections per message
@@ -464,7 +394,16 @@ export class Host extends Home {
           break;
         case "hybrid":
           delete msg.type;
-          this.sse.send(msg, "hybrid");
+
+          // Loop all connected client and send
+          let i = this.sse.length;
+          while (i--) {
+            // Check for active connection
+            if (this.sse[i] && !this.sse[i].finished) {
+              this.sse[i].write(`event: message\ndata:${JSON.stringify(msg)}`);
+              this.sse[i].write("\n\n");
+            }
+          }
           break;
         case "reload":
           // Reload Neighbourhood
@@ -560,5 +499,231 @@ export class Host extends Home {
       umid: v.$umid,
       streams: Object.assign(input, output)
     });
+  }
+
+  /**
+   * Fetch custom header from request
+   *
+   * @private
+   * @param {string[]} headers
+   * @param {string} search
+   * @param {boolean} [valueReturn=true]
+   * @returns {(string | boolean)}
+   * @memberof Host
+   */
+  private fetchHeader(
+    headers: string[],
+    search: string,
+    valueReturn: boolean = true,
+    valueDefault: any = "NA"
+  ): string | boolean {
+    // Make sure lower case search
+    search = search.toLowerCase();
+    // Loop Headers
+    let i = headers.length;
+    while (i--) {
+      if (headers[i].toLowerCase() === search) {
+        if (valueReturn) {
+          return headers[i + 1];
+        } else {
+          return true;
+        }
+      }
+    }
+
+    // Not found returns
+    return valueReturn ? valueDefault : false;
+  }
+
+  /**
+   * Process Activeledger request endpoints
+   *
+   * @private
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @param {*} [body]
+   * @memberof Host
+   */
+  private processEndpoints(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    body?: any
+  ) {
+    // Internal or External Request
+    let requester = this.fetchHeader(
+      req.rawHeaders,
+      "x-activeledger"
+    ) as string;
+
+    // Promise Response
+    let response: Promise<any>;
+
+    // Diffrent endpoints VERB
+    switch (req.method) {
+      case "GET":
+        // Different endpoints switched on calling path
+        switch (req.url) {
+          case "/a/status": // Network Status Request
+            response = Endpoints.status(this, requester);
+            break;
+          case "/a/all": // All Stream Management
+            if (this.firewallCheck(requester, req)) {
+              response = Endpoints.all(this.dbConnection);
+            } else {
+              return this.writeResponse(res, 403, "Forbidden");
+            }
+            break;
+          case "/hybrid":
+            let experimental = ActiveOptions.get<any>("experimental", {});
+            if (
+              experimental &&
+              experimental.hybrid &&
+              experimental.hybrid.host
+            ) {
+              // Connection Limiter
+              if (experimental.hybrid.maxConnections > this.sse.length) {
+                // Write the required header
+                res.writeHead(200, {
+                  Connection: "keep-alive",
+                  "Content-Type": "text/event-stream",
+                  "Cache-Control": "no-cache",
+                  "Access-Control-Allow-Origin": "*",
+                  "X-Powered-By": "Activeledger"
+                });
+                // Add to response array
+                let index = this.sse.push(res);
+                // Listen for close and remove by index
+                res.on("close", () => {
+                  // Remove from array (-1 for correct index)
+                  this.sse.splice(index - 1, 1);
+                });
+                return;
+              } else {
+                return this.writeResponse(res, 418, "I'm a teapot");
+              }
+            } else {
+              return this.writeResponse(res, 403, "Forbidden");
+            }
+          default:
+            // All Stream Management with start point
+            if (req.url && req.url.substr(0, 7) == "/a/all/") {
+              if (this.firewallCheck(requester, req)) {
+                response = Endpoints.all(
+                  this.dbConnection,
+                  parseInt(req.url.substr(7))
+                );
+              } else {
+                return this.writeResponse(res, 403, "Forbidden");
+              }
+            } else {
+              // 404 Not Found
+              return this.writeResponse(res, 404, "Not Found");
+            }
+        }
+        break;
+      case "POST":
+        // Different endpoints switched on calling path
+        switch (req.url) {
+          case "/": // Setup for accepting external transactions
+            response = Endpoints.ExternalInitalise(this, body);
+            break;
+          case "/a/init": // Internal transactions
+            if (this.firewallCheck(requester, req)) {
+              response = Endpoints.InternalInitalise(this, body);
+            } else {
+              return this.writeResponse(res, 403, "Forbidden");
+            }
+            break;
+          case "/a/stream": // Stream Data Management (Activerestore)
+            if (this.firewallCheck(requester, req)) {
+              response = Endpoints.streams(this.dbConnection, body);
+            } else {
+              return this.writeResponse(res, 403, "Forbidden");
+            }
+            break;
+          default:
+            return this.writeResponse(res, 404, "Not Found");
+        }
+        break;
+      case "OPTIONS":
+        // Accept all for now
+        res.writeHead(200, {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST",
+          "Access-Control-Allow-Headers": "*",
+          "X-Powered-By": "Activeledger"
+        });
+        res.end();
+        return;
+      default:
+        return this.writeResponse(res, 404, "Not Found");
+    }
+
+    // Wait for promise to get the response
+    response
+      .then((response: any) => {
+        // Write Header
+        // All outputs are JSON and
+        this.writeResponse(
+          res,
+          response.statusCode,
+          JSON.stringify(response.content || {})
+        );
+      })
+      .catch((error: any) => {
+        // Write Header
+        // Basic error handling for now. As a lot of errors will still be sent as ok responses.
+        this.writeResponse(
+          res,
+          error.statusCode || 500,
+          JSON.stringify(error.content || "Something has gone wrong")
+        );
+      });
+  }
+
+  /**
+   * Write the response to the brwoser
+   *
+   * @private
+   * @param {http.ServerResponse} res
+   * @param {number} statusCode
+   * @param {string} content
+   * @memberof Host
+   */
+  private writeResponse(
+    res: http.ServerResponse,
+    statusCode: number,
+    content: string
+  ) {
+    res.writeHead(statusCode, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "X-Powered-By": "Activeledger"
+    });
+    res.write(content);
+    res.end();
+  }
+
+  /**
+   * Checks the local paramters to see if connection is allowed
+   *
+   * @private
+   * @param {string} requester
+   * @param {http.IncomingMessage} req
+   * @returns {boolean}
+   * @memberof Host
+   */
+  private firewallCheck(requester: string, req: http.IncomingMessage): boolean {
+    return (
+      requester !== "NA" &&
+      this.neighbourhood.checkFirewall(
+        (this.fetchHeader(
+          req.rawHeaders,
+          "x-forwarded-for",
+          true,
+          ""
+        ) as string) || (req.connection.remoteAddress as string)
+      )
+    );
   }
 }
