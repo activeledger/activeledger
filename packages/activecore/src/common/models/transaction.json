@@ -1,9 +1,0 @@
-{
-  "name": "Transaction",
-  "plural": "tx",
-  "base": "Model",
-  "idInjection": true,
-  "options": {
-    "validateUpsert": true
-  }
-}
