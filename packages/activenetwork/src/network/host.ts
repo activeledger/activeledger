@@ -21,11 +21,10 @@
  * SOFTWARE.
  */
 
-import * as axios from "axios";
 import * as cluster from "cluster";
 import * as http from "http";
 //@ts-ignore
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -343,12 +342,11 @@ export class Host extends Home {
                 while (i--) {
                   // Cache Location
                   let location = response.locations[i];
-                  axios.default
-                    .post(location, {
-                      $tx: this.processPending[msg.umid].entry.$tx,
-                      $selfsign: this.processPending[msg.umid].entry.$selfsign,
-                      $sigs: this.processPending[msg.umid].entry.$sigs
-                    })
+                  ActiveRequest.send(location, "POST", [], {
+                    $tx: this.processPending[msg.umid].entry.$tx,
+                    $selfsign: this.processPending[msg.umid].entry.$selfsign,
+                    $sigs: this.processPending[msg.umid].entry.$sigs
+                  })
                     .then((resp: any) => {
                       // Emit Event of successful connection to the ledger (May still have failed on the ledger)
                       eventEngine.emit("throw", {

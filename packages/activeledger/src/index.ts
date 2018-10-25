@@ -27,11 +27,10 @@ import * as child from "child_process";
 import * as cluster from "cluster";
 import * as os from "os";
 import * as fs from "fs";
-import * as axios from "axios";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { ActiveNetwork, ActiveInterfaces } from "@activeledger/activenetwork";
+import { ActiveNetwork } from "@activeledger/activenetwork";
 import { DataStore } from "./datastore";
 
 // Initalise CLI Options
@@ -119,7 +118,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           ActiveLogger.info(launch);
 
           // Save to file
-          if(i === 0) {
+          if (i === 0) {
             // Forward output of first instance
             testnet += `child.spawn(
               /^win/.test(process.platform) ? "activeledger.cmd" : "activeledger",
@@ -128,8 +127,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                 cwd: "instance-${i}",
                 stdio: "inherit"
               }
-            );\r\n`
-          }else{
+            );\r\n`;
+          } else {
             // Standard Execution
             testnet += `child.exec("${launch}");\r\n`;
           }
@@ -285,9 +284,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       }
 
       // Make sure this node belives everyone is online
-      axios.default
-        .get(`http://${ActiveOptions.get<boolean>("host")}/a/status`)
-        .then(status => {
+      ActiveRequest.send(
+        `http://${ActiveOptions.get<boolean>("host")}/a/status`,
+        "GET"
+      )
+        .then((status: any)  => {
           // Verify the status are all home
           let neighbours = Object.keys(status.data.neighbourhood.neighbours);
           let i = neighbours.length;
@@ -356,9 +357,13 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           assert.$sigs[ActiveOptions.get<string>("host")] = signed;
 
           // Submit Transaction to self
-          axios.default
-            .post(`http://${ActiveOptions.get<boolean>("host")}`, assert)
-            .then(response => {
+          ActiveRequest.send(
+            `http://${ActiveOptions.get<boolean>("host")}`,
+            "POST",
+            [],
+            assert
+          )
+            .then((response: any) => {
               if (response.data.$summary.errors) {
                 ActiveLogger.fatal(
                   response.data.$summary,
