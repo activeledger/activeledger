@@ -21,8 +21,7 @@
  * SOFTWARE.
  */
 
-import * as axios from "axios";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
@@ -115,7 +114,7 @@ export class Neighbour {
 
   /**
    * Send authenticated request to this neighbour (Knock on their door)
-   * wrapping axios promise so we can easily log errors and throw whole object
+   * wrapping http request promise so we can easily log errors and throw whole object
    * without having to always string / parse.
    *
    * @param {string} endpoint
@@ -127,12 +126,11 @@ export class Neighbour {
     if (!params) {
       // Not Params, Sent Get without signature
       return new Promise((resolve, reject) => {
-        axios.default
-          .get(`http://${this.host}:${this.port}/a/${endpoint}`, {
-            headers: {
-              "X-Activeledger": Home.reference
-            }
-          })
+        ActiveRequest.send(
+          `http://${this.host}:${this.port}/a/${endpoint}`,
+          "GET",
+          ["X-Activeledger:" + Home.reference]
+        )
           .then(response => {
             resolve(response);
           })
@@ -156,12 +154,12 @@ export class Neighbour {
 
       // Send SignedFor Post Request
       return new Promise((resolve, reject) => {
-        axios.default
-          .post(`http://${this.host}:${this.port}/a/${endpoint}`, post, {
-            headers: {
-              "X-Activeledger": Home.reference
-            }
-          })
+        ActiveRequest.send(
+          `http://${this.host}:${this.port}/a/${endpoint}`,
+          "POST",
+          ["X-Activeledger:" + Home.reference],
+          post
+        )
           .then(response => {
             resolve(response);
           })
