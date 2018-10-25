@@ -1,58 +1,53 @@
 {
   "name": "@activeledger/activecore",
-  "version": "1.0.0",
-  "description": "Activeledger Core API",
+  "version": "2.0.0-rc.8.0.6",
+  "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
-    "loopback-application",
-    "loopback"
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
   ],
-  "main": "index.js",
-  "engines": {
-    "node": ">=8.9"
+  "homepage": "https://www.activeledger.io",
+  "preferGlobal": true,
+  "bin": {
+    "activecore": "./lib/index.js"
   },
   "scripts": {
     "build:apidocs": "lb-apidocs",
-    "build": "lb-tsc es2017 --outDir dist",
-    "build:watch": "lb-tsc --watch",
-    "clean": "lb-clean dist",
-    "lint": "npm run prettier:check && npm run tslint",
-    "lint:fix": "npm run tslint:fix && npm run prettier:fix",
-    "prettier:cli": "lb-prettier \"**/*.ts\" \"**/*.js\"",
-    "prettier:check": "npm run prettier:cli -- -l",
-    "prettier:fix": "npm run prettier:cli -- --write",
-    "tslint": "lb-tslint",
-    "tslint:fix": "npm run tslint -- --fix",
-    "pretest": "npm run clean && npm run build",
-    "test": "lb-mocha --allow-console-logs \"dist/test\"",
-    "posttest": "npm run lint",
-    "test:dev": "lb-mocha --allow-console-logs dist/test/**/*.js && npm run posttest",
-    "prestart": "npm run build",
-    "start": "node .",
-    "prepublishOnly": "npm run test"
+    "build": "lb-clean lib && lb-tsc es2017 --outDir lib",
+    "build:watch": "lb-clean lib && lb-tsc --watch",
+    "clean": "lb-clean lib",
+    "start": "node lib/index.js",
+    "prepublishOnly": "npm run build"
   },
-  "repository": {
-    "type": "git"
-  },
-  "author": "",
-  "license": "",
   "files": [
-    "README.md",
-    "index.js",
-    "index.d.ts",
-    "dist/src",
-    "dist/index*",
-    "src"
+    "lib"
   ],
+  "types": "./lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.6",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.6",
     "@activeledger/activequery": "^2.0.0-rc.8.0.6",
-    "@loopback/boot": "^1.0.0",
+    "@loopback/boot": "^1.0.1",
     "@loopback/context": "^1.0.0",
     "@loopback/core": "^1.0.0",
-    "@loopback/openapi-v3": "^1.0.0",
-    "@loopback/repository": "^1.0.0",
-    "@loopback/rest": "^1.0.0",
+    "@loopback/openapi-v3": "^1.0.1",
+    "@loopback/repository": "^1.0.1",
+    "@loopback/rest": "^1.0.1",
     "@loopback/service-proxy": "^1.0.0",
     "pouchdb": "^7.0.0",
     "pouchdb-find": "^7.0.0"
@@ -60,6 +55,6 @@
   "devDependencies": {
     "@loopback/build": "^1.0.0",
     "@loopback/testlab": "^1.0.0",
-    "@types/node": "^10.11.2"
+    "@types/node": "^10.12.0"
   }
 }
