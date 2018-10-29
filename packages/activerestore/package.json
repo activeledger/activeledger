@@ -40,7 +40,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.11.7",
+    "@types/node": "^10.12.0",
     "@types/rimraf": "^2.0.2",
     "ts-node": "^7.0.1"
   },
@@ -56,7 +56,6 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.6",
     "@activeledger/activenetwork": "^2.0.0-rc.8.0.6",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.6",
-    "cloudant-follow": "^0.17.0",
     "filehound": "^1.16.4",
     "glob-fs": "^0.1.7",
     "minimist": "^1.2.0",
