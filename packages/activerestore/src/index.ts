@@ -25,14 +25,13 @@
 
 import * as fs from "fs";
 // @ts-ignore
-import * as follow from "cloudant-follow";
-// @ts-ignore
 import * as PouchDB from "pouchdb";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { Sledgehammer } from "./sledgehammer";
 import { Contract } from "./contract";
+import { FollowChanges } from "./changes";
 
 // Initalise CLI Options
 ActiveOptions.init();
@@ -99,25 +98,16 @@ ActiveOptions.extendConfig()
         ActiveOptions.get<any>("db", {}).database
     );
 
-    // Temporary Holder for fast rebuild
-    let rebuildHolderTmpSol: any = {};
-
     if (!ActiveOptions.get<boolean>("full", false)) {
-      // Listen to activeledger errors database
-      let errorFeed = new follow.Feed({
-        db:
-          ActiveOptions.get<any>("db", {}).url +
-          "/" +
-          ActiveOptions.get<any>("db", {}).error,
-        include_docs: true
-      });
-
       // Error Database Connection
       let dbe = new PouchDB(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).error
       );
+
+      // Listen to activeledger errors database
+      let errorFeed = new FollowChanges(dbe);
 
       // Code & Reason
       // 950 = Stream not found
@@ -185,7 +175,9 @@ ActiveOptions.extendConfig()
 
           // Consensus was reached, Lets all the network what they think about the document
           // we have to check rev keys for both inputs and outputs
-          let revs: string[] = Object.keys(change.doc.transaction.$revs.$i || {})
+          let revs: string[] = Object.keys(
+            change.doc.transaction.$revs.$i || {}
+          )
             .concat(Object.keys(change.doc.transaction.$revs.$o || {}))
             .concat(Object.values(change.doc.transaction.$tx.$r || {}));
 
@@ -288,7 +280,6 @@ ActiveOptions.extendConfig()
                     // However we also need to periodically fetch commands
                     // Lets at least resume
                     all.push(true);
-                    // errorFeed.resume();
                   }
                 }
               }
@@ -438,13 +429,8 @@ ActiveOptions.extendConfig()
         });
       };
 
-      // bind On Error Event
-      errorFeed.on("error", (e: Error) => {
-        ActiveLogger.error(e, "Feed Error");
-      });
-
       // Start Feeding
-      errorFeed.follow();
+      errorFeed.start();
     } else {
       // We are doing a full restore from nothing
       ActiveLogger.info("Starting Quick Full Restore");
