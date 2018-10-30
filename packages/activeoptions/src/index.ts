@@ -23,4 +23,5 @@
 
 import { ActiveOptions } from "./options";
 import { ActiveRequest } from "./request";
-export { ActiveOptions, ActiveRequest };
+import { ActiveChanges } from './changes';
+export { ActiveOptions, ActiveRequest, ActiveChanges };

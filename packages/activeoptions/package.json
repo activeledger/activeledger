@@ -50,6 +50,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.7",
     "minimist": "^1.2.0",
     "pouchdb": "^7.0.0"
   }

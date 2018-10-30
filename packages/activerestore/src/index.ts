@@ -26,12 +26,11 @@
 import * as fs from "fs";
 // @ts-ignore
 import * as PouchDB from "pouchdb";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveChanges } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { Sledgehammer } from "./sledgehammer";
 import { Contract } from "./contract";
-import { FollowChanges } from "./changes";
 
 // Initalise CLI Options
 ActiveOptions.init();
@@ -107,7 +106,7 @@ ActiveOptions.extendConfig()
       );
 
       // Listen to activeledger errors database
-      let errorFeed = new FollowChanges(dbe);
+      let errorFeed = new ActiveChanges("Restore", dbe);
 
       // Code & Reason
       // 950 = Stream not found
@@ -187,7 +186,8 @@ ActiveOptions.extendConfig()
             revs.push(`${revs[i]}:stream`);
           }
 
-          console.log({ $streams: revs });
+          // Output Possible Changes
+          ActiveLogger.info(revs, "$stream revisions");
 
           // Ask Network
           network.neighbourhood
@@ -377,8 +377,6 @@ ActiveOptions.extendConfig()
                     // Update
                     db.put(doc)
                       .then((response: any) => {
-                        ActiveLogger.info(response);
-
                         // Detect if this could be a contract that needs compiling
                         if (
                           correct.namespace &&
@@ -401,18 +399,15 @@ ActiveOptions.extendConfig()
                             })
                             .catch(() => {
                               resolve(false);
-                              //reject("Failed to create volatile");
                             });
                         } else {
                           resolve(true);
                         }
                       })
                       .catch((e: Error) => {
-                        // Resume for now
-                        // errorFeed.resume();
                         // Ignore errors for now
-                        ActiveLogger.info(e, "error");
-                        ActiveLogger.info(doc, "error");
+                        ActiveLogger.info(e, "Error Message");
+                        ActiveLogger.info(doc, "Document ");
                         resolve(false);
                       });
 

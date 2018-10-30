@@ -22,7 +22,7 @@
  */
 
 import { QueryEngine } from "@activeledger/activequery";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveChanges } from "@activeledger/activeoptions";
 // @ts-ignore
 import * as PouchDB from "pouchdb";
 // @ts-ignore
@@ -56,20 +56,20 @@ export class ActiveledgerDatasource {
    *
    * @private
    * @static
-   * @type {*}
+   * @type {ActiveChanges}
    * @memberof ActiveledgerDatasource
    */
-  private static changes: any;
+  private static changes: ActiveChanges;
 
   /**
    * Follows events from the ledger
    *
    * @private
    * @static
-   * @type {*}
+   * @type {ActiveChanges}
    * @memberof ActiveledgerDatasource
    */
-  private static events: any;
+  private static events: ActiveChanges;
 
   /**
    * DB Query Engine
@@ -139,19 +139,10 @@ export class ActiveledgerDatasource {
       );
 
       // Add Changes Watcher
-      this.changes = this.db.changes({
-        since: "now",
-        live: true,
-        include_docs: true,
-        filter: this.filter
-      });
+      this.changes = new ActiveChanges("Activities", this.db);
 
       // Add Events Watcher
-      this.events = this.db.changes({
-        since: "now",
-        live: true,
-        include_docs: true,
-      });
+      this.events = new ActiveChanges("Events", this.dbEvents);
     }
     return this.db;
   }
@@ -178,9 +169,12 @@ export class ActiveledgerDatasource {
    * @returns {*}
    * @memberof ActiveledgerDatasource
    */
-  public static getChanges(): any {
+  public static getChanges(): ActiveChanges {
     // Make sure we have db connection
     this.getDb();
+
+    // Make sure we are listening
+    this.changes.start();
 
     // Return Query Object
     return this.changes;
@@ -193,9 +187,12 @@ export class ActiveledgerDatasource {
    * @returns {*}
    * @memberof ActiveledgerDatasource
    */
-  public static getEvents(): any {
+  public static getEvents(): ActiveChanges {
     // Make sure we have db connection
     this.getDb();
+
+    // Make sure we are listening
+    this.events.start();
 
     // Return Query Object
     return this.events;
