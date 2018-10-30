@@ -63,24 +63,32 @@ export class ActivityController {
 
       // Listen for changes
       ActiveledgerDatasource.getChanges().on("change", (change: any) => {
-        // Prepare data
-        let prepare = {
-          event: "update",
-          stream: change.doc,
-          time: Date.now()
-        };
+        // Skip Restore Engine Changes
+        if (
+          !change.doc.$activeledger ||
+          (change.doc.$activeledger &&
+            !change.doc.$activeledger.delete &&
+            !change.doc.$activeledger.rewrite)
+        ) {
+          // Prepare data
+          let prepare = {
+            event: "update",
+            stream: change.doc,
+            time: Date.now()
+          };
 
-        // Connection still open?
-        if (this.response.writable) {
-          // Write new event
-          this.response.write(
-            `event: message\ndata:${JSON.stringify(prepare)}`
-          );
-          this.response.write("\n\n");
-        } else {
-          // End Server Side
-          this.response.end();
-          reject("socket closed");
+          // Connection still open?
+          if (this.response.writable) {
+            // Write new event
+            this.response.write(
+              `event: message\ndata:${JSON.stringify(prepare)}`
+            );
+            this.response.write("\n\n");
+          } else {
+            // End Server Side
+            this.response.end();
+            reject("socket closed");
+          }
         }
       });
     });
