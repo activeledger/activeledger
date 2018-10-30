@@ -22,7 +22,6 @@
  */
 
 import * as pino from "pino";
-import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
  * Logger Abstraction
@@ -31,6 +30,15 @@ import { ActiveOptions } from "@activeledger/activeoptions";
  * @class logger
  */
 export class ActiveLogger {
+  /**
+   * Enable extra debug messages
+   *
+   * @static
+   * @type {boolean}
+   * @memberof ActiveLogger
+   */
+  public static enableDebug: boolean = false;
+
   /**
    * Standard Logger Object
    *
@@ -55,8 +63,8 @@ export class ActiveLogger {
    */
   public static trace(obj: object, msg?: string, ...args: any[]): void;
   public static trace(msg: string, ...args: any[]): void;
-  public static trace(p1: any, p2: any, args: any): void {    
-    if (ActiveOptions.get<boolean>("debug", false)) {
+  public static trace(p1: any, p2: any, args: any): void {
+    if (this.enableDebug) {
       if (typeof p1 == "object") {
         this.logger.trace(p1, p2, args || "");
       } else {

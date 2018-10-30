@@ -288,7 +288,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         `http://${ActiveOptions.get<boolean>("host")}/a/status`,
         "GET"
       )
-        .then((status: any)  => {
+        .then((status: any) => {
           // Verify the status are all home
           let neighbours = Object.keys(status.data.neighbourhood.neighbours);
           let i = neighbours.length;
@@ -565,6 +565,9 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             "http://localhost:" +
             ActiveOptions.get<any>("db", {}).selfhost.port;
         }
+
+        // Enable Extended Debugging
+        ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
 
         extendConfig(() => {
           // Create Home Host Node
