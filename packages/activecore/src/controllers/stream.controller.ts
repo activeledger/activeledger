@@ -211,27 +211,39 @@ export class StreamController {
   }
 
   /**
-   * Search the ledger with SQL
+   * Search the ledger with a url query SQL statement
    *
    * @param {string} sql
    * @returns {Promise<any>}
    * @memberof StreamController
    */
-  @post("/api/stream/search", {
+  @get("/api/stream/search", {
     responses: {
       "200": {
         description: "Activity Streams Data",
         content: {
           "application/json": {
             schema: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  _id: { type: "string" },
-                  _rev: { type: "string" }
+              type: "object",
+              properties: {
+                streams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      _id: { type: "string" },
+                      _rev: { type: "string" }
+                    },
+                    additionalProperties: true
+                  }
                 },
-                additionalProperties: true
+                warning: {
+                  type: "object",
+                  properties: {
+                    sql: { type: "string" },
+                    message: { type: "string" }
+                  }
+                }
               }
             }
           }
@@ -257,6 +269,97 @@ export class StreamController {
   async search(@param.query.string("sql") sql: string): Promise<any> {
     // Get Latest Version
     let results = await ActiveledgerDatasource.getQuery().sql(sql);
+    if (results) {
+      let warning = ActiveledgerDatasource.getQuery().getLastWarning();
+      if (warning) {
+        return {
+          streams: results,
+          warning: warning
+        };
+      } else {
+        return {
+          streams: results
+        };
+      }
+    } else {
+      return results;
+    }
+  }
+
+  /**
+   * Search the ledger with a posted SQL statement
+   *
+   * @param {string} sql
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @post("/api/stream/search", {
+    responses: {
+      "200": {
+        description: "Activity Streams Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                streams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      _id: { type: "string" },
+                      _rev: { type: "string" }
+                    },
+                    additionalProperties: true
+                  }
+                },
+                warning: {
+                  type: "object",
+                  properties: {
+                    sql: { type: "string" },
+                    message: { type: "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Streams Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async searchPost(
+    @requestBody({
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            properties: {
+              sql: { type: "string" }
+            }
+          }
+        }
+      }
+    })
+    data: any
+  ): Promise<any> {
+    // Get Latest Version
+    let results = await ActiveledgerDatasource.getQuery().sql(data.sql);
     if (results) {
       let warning = ActiveledgerDatasource.getQuery().getLastWarning();
       if (warning) {
