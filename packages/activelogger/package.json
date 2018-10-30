@@ -47,8 +47,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.7",
-    "pino": "^5.7.0",
-    "pino-pretty": "^2.2.1"
+    "pino": "^5.8.0",
+    "pino-pretty": "^2.2.3"
   }
 }
