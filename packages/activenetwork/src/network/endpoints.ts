@@ -461,58 +461,70 @@ export class Endpoints {
    */
   public static postConvertor(
     host: Host,
-    body: any,
+    body: string,
     encryptHeader: boolean
   ): Promise<any> {
     return new Promise((resolve, reject) => {
-      // Internal Transaction Messesing (Encrypted & Signing Security)
-      if (body.$neighbour && body.$packet) {
-        ActiveLogger.trace("Converting Signed for Post");
-
-        // We don't encrypt to ourselve
-        if (body.$neighbour.reference != host.reference) {
-          // Decrypt Trasanction First (As Signing Pre Encryption)
-          if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
-            body.$packet = JSON.parse(
-              Buffer.from(host.decrypt(body.$packet), "base64").toString()
-            );
-          }
+      // Is this an encrypted external transaction that need passing.
+      if (encryptHeader) {
+        // Decrypt & Parse
+        ActiveLogger.info("Encrypted Transaction Inbound");
+        try {
+          // Decrypt
+          resolve(
+            JSON.parse(Buffer.from(host.decrypt(body), "base64").toString())
+          );
+        } catch {
+          // Error trying to decrypt
+          return reject({
+            statusCode: 500,
+            content: "Decryption Error"
+          });
         }
-
-        // Verify Signature (but we do verify)
-        if (ActiveOptions.get<any>("security", {}).signedConsensus) {
-          if (
-            !host.neighbourhood
-              .get(body.$neighbour.reference)
-              .verifySignature(body.$neighbour.signature, body.$packet)
-          ) {
-            // Bad Message
-            return reject({
-              statusCode: 500,
-              content: "Security Challenge Failure"
-            });
-          }
-        }
-
-        // Open signed post
-        return resolve(body.$packet);
       } else {
-        // Is this an encrypted external transaction that need passing.
-        if (encryptHeader) {
-          try {
-            // Decrypt
-            resolve(
-              JSON.parse(Buffer.from(host.decrypt(body), "base64").toString())
-            );
-          } catch {
-            // Error trying to decrypt
-            return reject({
-              statusCode: 500,
-              content: "Decryption Error"
-            });
+        // body should now be a json string to be converted
+        let bodyObject = JSON.parse(body);
+
+        // Internal Transaction Messesing (Encrypted & Signing Security)
+        if (bodyObject.$neighbour && bodyObject.$packet) {
+          ActiveLogger.trace("Converting Signed for Post");
+
+          // We don't encrypt to ourselve
+          if (bodyObject.$neighbour.reference != host.reference) {
+            // Decrypt Trasanction First (As Signing Pre Encryption)
+            if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
+              bodyObject.$packet = JSON.parse(
+                Buffer.from(
+                  host.decrypt(bodyObject.$packet),
+                  "base64"
+                ).toString()
+              );
+            }
           }
+
+          // Verify Signature (but we do verify)
+          if (ActiveOptions.get<any>("security", {}).signedConsensus) {
+            if (
+              !host.neighbourhood
+                .get(bodyObject.$neighbour.reference)
+                .verifySignature(
+                  bodyObject.$neighbour.signature,
+                  bodyObject.$packet
+                )
+            ) {
+              // Bad Message
+              return reject({
+                statusCode: 500,
+                content: "Security Challenge Failure"
+              });
+            }
+          }
+
+          // Open signed post
+          return resolve(bodyObject.$packet);
         } else {
-          resolve(body);
+          // Resolve as just the object
+          resolve(bodyObject);
         }
       }
     });
