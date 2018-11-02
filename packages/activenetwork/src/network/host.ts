@@ -192,7 +192,7 @@ export class Host extends Home {
           req.on("end", () => {
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(this, JSON.parse(body), this.fetchHeader(
+            Endpoints.postConvertor(this, body, this.fetchHeader(
               req.rawHeaders,
               "X-Activeledger-Encrypt",
               false
