@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import * as pino from "pino";
+import * as process from "process";
 
 /**
  * Logger Abstraction
@@ -40,19 +40,6 @@ export class ActiveLogger {
   public static enableDebug: boolean = false;
 
   /**
-   * Standard Logger Object
-   *
-   * @private
-   * @type {pino.Logger}
-   * @memberof logger
-   */
-  private static logger: pino.Logger = pino({
-    name: "Activeledger",
-    level: process.env.NODE_ENV == "production" ? "info" : "debug",
-    prettyPrint: true
-  });
-
-  /**
    * Creates a trace log entry
    *
    * @static
@@ -65,11 +52,21 @@ export class ActiveLogger {
   public static trace(msg: string, ...args: any[]): void;
   public static trace(p1: any, p2: any, args: any): void {
     if (this.enableDebug) {
-      if (typeof p1 == "object") {
-        this.logger.trace(p1, p2, args || "");
-      } else {
-        this.logger.trace(p1, args || "");
+      // Get Output String
+      let out =
+        ActiveLogger.timestamp() +
+        ActiveLogger.colour("TRACE", 42) +
+        ActiveLogger.process() +
+        ActiveLogger.colour(p2 || p1, 36);
+
+      // Is there an object?
+      if (p2) {
+        out += ActiveLogger.object(p1);
       }
+
+      // Output
+      console.debug(out);
+      console.trace();
     }
   }
 
@@ -99,11 +96,20 @@ export class ActiveLogger {
   public static debug(obj: object, msg?: string, ...args: any[]): void;
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
-    if (typeof p1 == "object") {
-      this.logger.debug(p1, p2, args || "");
-    } else {
-      this.logger.debug(p1, args || "");
+    // Get Output String
+    let out =
+      ActiveLogger.timestamp() +
+      ActiveLogger.colour("DEBUG", 46) +
+      ActiveLogger.process() +
+      ActiveLogger.colour(p2 || p1, 36);
+
+    // Is there an object?
+    if (p2) {
+      out += ActiveLogger.object(p1);
     }
+
+    // Output
+    console.debug(out);
   }
 
   /**
@@ -132,11 +138,20 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
-    if (typeof p1 == "object") {
-      this.logger.info(p1, p2, args || "");
-    } else {
-      this.logger.info(p1, args || "");
+    // Get Output String
+    let out =
+      ActiveLogger.timestamp() +
+      ActiveLogger.colour("INFO ", 92) +
+      ActiveLogger.process() +
+      ActiveLogger.colour(p2 || p1, 36);
+
+    // Is there an object?
+    if (p2) {
+      out += ActiveLogger.object(p1);
     }
+
+    // Output
+    console.info(out);
   }
 
   /**
@@ -165,11 +180,20 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
-    if (typeof p1 == "object") {
-      this.logger.warn(p1, p2, args || "");
-    } else {
-      this.logger.warn(p1, args || "");
+    // Get Output String
+    let out =
+      ActiveLogger.timestamp() +
+      ActiveLogger.colour("WARN ", 93) +
+      ActiveLogger.process() +
+      ActiveLogger.colour(p2 || p1, 36);
+
+    // Is there an object?
+    if (p2) {
+      out += ActiveLogger.object(p1);
     }
+
+    // Output
+    console.warn(out);
   }
 
   /**
@@ -198,11 +222,20 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
-    if (typeof p1 == "object") {
-      this.logger.error(p1, p2, args || "");
-    } else {
-      this.logger.error(p1, args || "");
+    // Get Output String
+    let out =
+      ActiveLogger.timestamp() +
+      ActiveLogger.colour("ERROR", 91) +
+      ActiveLogger.process() +
+      ActiveLogger.colour(p2 || p1, 36);
+
+    // Is there an object?
+    if (p2) {
+      out += ActiveLogger.object(p1);
     }
+
+    // Output
+    console.error(out);
   }
 
   /**
@@ -232,13 +265,23 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
-    if (typeof p1 == "object") {
-      this.logger.fatal(p1, p2, args || "");
-      return new Error(p2);
-    } else {
-      this.logger.fatal(p1, args || "");
-      return new Error(p1);
+    // Get Output String
+    let out =
+      ActiveLogger.timestamp() +
+      ActiveLogger.colour("FATAL", 41) +
+      ActiveLogger.process() +
+      ActiveLogger.colour(p2 || p1, 36);
+
+    // Is there an object?
+    if (p2) {
+      out += ActiveLogger.object(p1);
     }
+
+    // Output
+    console.error(out);
+
+    // Return Error Object
+    return new Error(p2 || p1);
   }
 
   /**
@@ -254,4 +297,102 @@ export class ActiveLogger {
   public fatal(p1: any, p2: any, args: any): void {
     ActiveLogger.fatal(p1, p2);
   }
+
+  /**
+   * Timestamp Formatted Console string
+   *
+   * @private
+   * @static
+   * @returns {string}
+   * @memberof ActiveLogger
+   */
+  private static timestamp(): string {
+    return `${ActiveLogger.colour(`[${new Date().getTime()}]`, 90)} `;
+  }
+
+  /**
+   * Process Id Formatted Console string
+   *
+   * @private
+   * @static
+   * @returns {string}
+   * @memberof ActiveLogger
+   */
+  private static process(): string {
+    return ` ${ActiveLogger.colour(`(Activeledger/${process.pid})`, 90)} `;
+  }
+
+  /**
+   * Object Formatted Console string
+   *
+   * @private
+   * @static
+   * @param {*} obj
+   * @returns {string}
+   * @memberof ActiveLogger
+   */
+  private static object(obj: any): string {
+    // Convert to string
+    let objectStr = JSON.stringify(obj, null, 2).slice(1, -1);
+  
+    // Get Output String
+    let out = "";
+
+    // Is the object not empty?
+    if (objectStr) {
+      out += `\r\n -------------${ActiveLogger.colour(
+        "[ OBJECT ]",
+        32
+      )}-------------`;
+      out += objectStr;
+      out += `-------------${ActiveLogger.colour(
+        "[ OBJECT ]",
+        31
+      )}-------------`;
+    }
+    return out;
+  }
+
+  /**
+   * Console Colour Formatter
+   *
+   * @private
+   * @static
+   * @param {string} text
+   * @param {number} colour
+   * @returns {string}
+   * @memberof ActiveLogger
+   */
+  private static colour(text: string, colour: number): string {
+    return `\x1b[${colour}m${text}\x1b[0m`;
+  }
 }
+
+const https = require("http");
+
+https
+  .get("http://testnet-uk.activeledger.io:5260/a/status", (resp: any) => {
+    let data = "";
+
+    // A chunk of data has been recieved.
+    resp.on("data", (chunk: any) => {
+      data += chunk;
+    });
+
+    // The whole response has been received. Print out the result.
+    resp.on("end", () => {
+      let x = JSON.parse(data);
+      // Lets supress
+      //x = {};
+      ActiveLogger.enableDebug = true;
+       ActiveLogger.trace(x, "Trace Object");
+      ActiveLogger.debug("Debug Object");
+      ActiveLogger.info( "Info Object");
+      ActiveLogger.warn( "Warn Object");
+      ActiveLogger.error( "Error Object");
+      ActiveLogger.fatal( "Fatal Object");
+    });
+  })
+  .on("error", (err: any) => {
+    console.log("Error: " + err.message);
+  });
