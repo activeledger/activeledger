@@ -24,10 +24,10 @@
 import * as process from "process";
 
 /**
- * Logger Abstraction
+ * Simplified Logging
  *
  * @export
- * @class logger
+ * @class ActiveLogger
  */
 export class ActiveLogger {
   /**
@@ -65,8 +65,8 @@ export class ActiveLogger {
       }
 
       // Output
-      console.debug(out);
       console.trace();
+      console.debug(out);
     }
   }
 
@@ -334,7 +334,7 @@ export class ActiveLogger {
   private static object(obj: any): string {
     // Convert to string
     let objectStr = JSON.stringify(obj, null, 2).slice(1, -1);
-  
+
     // Get Output String
     let out = "";
 
@@ -364,35 +364,9 @@ export class ActiveLogger {
    * @memberof ActiveLogger
    */
   private static colour(text: string, colour: number): string {
-    return `\x1b[${colour}m${text}\x1b[0m`;
+    if (process && process.pid) {
+      return `\x1b[${colour}m${text}\x1b[0m`;
+    }
+    return text;
   }
 }
-
-const https = require("http");
-
-https
-  .get("http://testnet-uk.activeledger.io:5260/a/status", (resp: any) => {
-    let data = "";
-
-    // A chunk of data has been recieved.
-    resp.on("data", (chunk: any) => {
-      data += chunk;
-    });
-
-    // The whole response has been received. Print out the result.
-    resp.on("end", () => {
-      let x = JSON.parse(data);
-      // Lets supress
-      //x = {};
-      ActiveLogger.enableDebug = true;
-       ActiveLogger.trace(x, "Trace Object");
-      ActiveLogger.debug("Debug Object");
-      ActiveLogger.info( "Info Object");
-      ActiveLogger.warn( "Warn Object");
-      ActiveLogger.error( "Error Object");
-      ActiveLogger.fatal( "Fatal Object");
-    });
-  })
-  .on("error", (err: any) => {
-    console.log("Error: " + err.message);
-  });
