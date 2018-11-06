@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.0.0-rc.8.0.9",
+  "version": "2.0.0-rc.8.0.12",
   "description": "This package manages the configuration for Activeledger (file and ledger based).",
   "keywords": [
     "blockchain",
@@ -37,10 +37,10 @@
   "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.11.7",
+    "@types/node": "^10.12.2",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
-    "typescript": "^3.1.3"
+    "typescript": "^3.1.6"
   },
   "files": [
     "es",
@@ -50,7 +50,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.9",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.12",
     "minimist": "^1.2.0",
     "pouchdb": "^7.0.0"
   }
