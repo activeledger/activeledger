@@ -32,7 +32,6 @@ import * as url from "url";
  * @class ActiveRequest
  */
 export class ActiveRequest {
-
   /**
    * Send HTTP(S) GET/POST JSON Request
    *
@@ -109,9 +108,13 @@ export class ActiveRequest {
           response.on("end", () => {
             if (body.length) {
               // Add to "data" to mimic old lib
-              resolve({
-                data: JSON.parse(body.toString())
-              });
+              try {
+                resolve({
+                  data: JSON.parse(body.toString())
+                });
+              } catch (error) {
+                reject(new Error("Failed to parse body"));
+              }
             } else {
               resolve();
             }
