@@ -34,6 +34,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^10.12.2",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
     "typescript": "^3.1.6"
