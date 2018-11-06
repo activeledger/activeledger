@@ -24,7 +24,6 @@
 import * as http from "http";
 import * as https from "https";
 import * as url from "url";
-import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Simple HTTP Request Object
@@ -114,7 +113,6 @@ export class ActiveRequest {
                   data: JSON.parse(body.toString())
                 });
               } catch (error) {
-                ActiveLogger.fatal(body, "Failed to parse body");
                 reject(new Error("Failed to parse body"));
               }
             } else {
