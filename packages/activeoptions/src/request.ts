@@ -24,6 +24,7 @@
 import * as http from "http";
 import * as https from "https";
 import * as url from "url";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Simple HTTP Request Object
@@ -32,7 +33,6 @@ import * as url from "url";
  * @class ActiveRequest
  */
 export class ActiveRequest {
-
   /**
    * Send HTTP(S) GET/POST JSON Request
    *
@@ -109,9 +109,14 @@ export class ActiveRequest {
           response.on("end", () => {
             if (body.length) {
               // Add to "data" to mimic old lib
-              resolve({
-                data: JSON.parse(body.toString())
-              });
+              try {
+                resolve({
+                  data: JSON.parse(body.toString())
+                });
+              } catch (error) {
+                ActiveLogger.fatal(body, "Failed to parse body");
+                reject(new Error("Failed to parse body"));
+              }
             } else {
               resolve();
             }
