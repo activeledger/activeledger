@@ -340,7 +340,7 @@ export class ActiveLogger {
 
     // Is the object not empty?
     if (objectStr) {
-      out += `\r\n -------------${ActiveLogger.colour(
+      out += `\r\n-------------${ActiveLogger.colour(
         "[ OBJECT ]",
         32
       )}-------------`;
