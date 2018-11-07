@@ -155,12 +155,12 @@ export class Home extends Neighbour {
 
     // Setup Default Neighbours
     if (!Home.left) {
-      ActiveLogger.trace("Setting Default Left");
+      ActiveLogger.debug("Setting Default Left");
       Home.left = new Neighbour(this.host, this.port);
     }
 
     if (!Home.right) {
-      ActiveLogger.trace("Setting Default Right");
+      ActiveLogger.debug("Setting Default Right");
       Home.right = new Neighbour(this.host, this.port);
     }
   }

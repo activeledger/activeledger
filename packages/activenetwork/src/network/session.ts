@@ -82,7 +82,7 @@ export class Session extends events.EventEmitter {
           break;
         case "neighbour":
           // Update Master Home
-          ActiveLogger.trace(msg, "Master Neighbour Update");
+          ActiveLogger.debug(msg, "Master Neighbour Update");
 
           // Tell Workers about their new neighbour
           this.shout("neighbour", msg);
@@ -104,7 +104,7 @@ export class Session extends events.EventEmitter {
           this.emit("rebase");
           break;
         default:
-          ActiveLogger.trace(msg, "Master -> Unknown IPC call");
+          ActiveLogger.debug(msg, "Master -> Unknown IPC call");
           break;
       }
     });

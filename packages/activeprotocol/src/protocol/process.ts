@@ -638,7 +638,7 @@ export class Process extends EventEmitter {
                 this.db
                   .bulkDocs(docs)
                   .then((response:any) => {
-                    ActiveLogger.trace(response, "Datastore Response");
+                    ActiveLogger.debug(response, "Datastore Response");
 
                     // Set datetime to reflect when data is set from memory to disk
                     this.nodeResponse.datetime = new Date();
@@ -706,7 +706,7 @@ export class Process extends EventEmitter {
               };
 
               // The documents to be stored
-              ActiveLogger.trace(docs, "Changed Documents");
+              ActiveLogger.debug(docs, "Changed Documents");
 
               // Detect Collisions
               if (collisions.length) {

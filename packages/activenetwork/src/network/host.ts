@@ -431,7 +431,7 @@ export class Host extends Home {
             });
           break;
         default:
-          ActiveLogger.trace(msg, "Worker -> Unknown IPC call");
+          ActiveLogger.debug(msg, "Worker -> Unknown IPC call");
           break;
       }
     });
