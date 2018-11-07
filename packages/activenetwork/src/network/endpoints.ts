@@ -487,7 +487,7 @@ export class Endpoints {
 
         // Internal Transaction Messesing (Encrypted & Signing Security)
         if (bodyObject.$neighbour && bodyObject.$packet) {
-          ActiveLogger.trace("Converting Signed for Post");
+          ActiveLogger.debug("Converting Signed for Post");
 
           // We don't encrypt to ourselve
           if (bodyObject.$neighbour.reference != host.reference) {
