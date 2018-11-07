@@ -49,6 +49,7 @@ interface process {
   entry: ActiveDefinitions.LedgerEntry;
   resolve: any;
   reject: any;
+  protocol?: ActiveProtocol.Process;
 }
 
 /**
@@ -137,6 +138,38 @@ export class Host extends Home {
    */
   public pending(entry: ActiveDefinitions.LedgerEntry): Promise<any> {
     return new Promise<any>((resolve, reject) => {
+      // Broadcasting or Territoriality Mode
+      if (entry.$broadcast) {
+        ActiveLogger.error(entry, "Broadcast Starting =========== ");
+        // We may already have the $umid in memory
+        if (this.processPending[entry.$umid]) {
+          ActiveLogger.warn(entry, "Broadcast Recieved ");
+          // Do we still have the transaction in memory?
+          if (this.processPending[entry.$umid]) {
+            // Resolve with our vote response
+            resolve({
+              status: 200,
+              data: this.processPending[entry.$umid].entry
+            });
+
+            // Update other voting nodes response into the process handling the transaction
+            this.processPending[entry.$umid].protocol!.updatedFromBroadcast(
+              entry.$nodes
+            );
+          } else {
+            // No longer have the transaction in memory. We can get it from the ledger if we committed
+            // However for now return 500 so if this is an issue we will be alerted
+            resolve({
+              status: 500,
+              data: "Transaction no longer in memory"
+            });
+          }
+
+          // Return here, Promise is handled
+          return;
+        }
+      }
+
       // Add to pending (Using Promises instead of http request)
       this.processPending[entry.$umid] = {
         entry: entry,
@@ -255,7 +288,7 @@ export class Host extends Home {
                 "UnhandledRejection: " + reason.toString()
               );
               // Remove Locks
-              this.release(this.processPending[msg.umid].entry);
+              this.release(msg.umid);
             };
 
             // Add event listener
@@ -282,28 +315,34 @@ export class Host extends Home {
               this.dbEventConnection
             );
 
+            // Store Protocol Object
+            this.processPending[msg.umid].protocol = protocol;
+
             // Bind to events
             // Manage on possible commits
             protocol.on("commited", (response: any) => {
-              // Send Response back
-              if (response.instant) {
-                ActiveLogger.debug(response, "TX Maybe Commited");
-              } else {
-                ActiveLogger.debug(response, "TX Commited");
-              }
+              // Make sure we have the object still (broadcast calls twice issue)
+              if (this.processPending[msg.umid]) {
+                // Send Response back
+                if (response.instant) {
+                  ActiveLogger.debug(response, "TX Maybe Commited");
+                } else {
+                  ActiveLogger.debug(response, "TX Commited");
+                }
 
-              // If Transaction rebroadcast if hybrid enabled
-              if (this.sse && response.tx) {
-                this.moan("hybrid", response.tx);
-              }
+                // If Transaction rebroadcast if hybrid enabled
+                if (this.sse && response.tx) {
+                  this.moan("hybrid", response.tx);
+                }
 
-              // Process response back into entry for previous neighbours to know the results
-              this.processPending[msg.umid].resolve({
-                status: 200,
-                data: this.processPending[msg.umid].entry
-              });
-              // Remove Locks
-              this.release(this.processPending[msg.umid].entry);
+                // Process response back into entry for previous neighbours to know the results
+                this.processPending[msg.umid].resolve({
+                  status: 200,
+                  data: this.processPending[msg.umid].entry
+                });
+                // Remove Locks
+                this.release(msg.umid);
+              }
             });
 
             // Manage Failure Messaging
@@ -320,7 +359,7 @@ export class Host extends Home {
               });
 
               // Remove Locks
-              this.release(this.processPending[msg.umid].entry);
+              this.release(msg.umid);
             });
 
             // Throw transaction to other ledgers
@@ -371,6 +410,39 @@ export class Host extends Home {
               }
             });
 
+            // Listen to the process to see if we need to broadcast the results
+            protocol.on("broadcast", (entry: any) => {
+              ActiveLogger.debug("Broadcasting TX : " + entry.$umid);
+
+              // Get all the neighbour nodes
+              let neighbourhood = this.neighbourhood.get();
+              let nodes = Object.keys(neighbourhood);
+              let i = nodes.length;
+              let promises = [];
+
+              // Loop them all and broadcast the transaction
+              while (i--) {
+                let node = neighbourhood[nodes[i]];
+
+                // Make sure they're home and not us
+                if (node.isHome && node.reference !== this.reference) {
+                  promises.push(node.knock("init", entry));
+                }
+              }
+
+              // Listen for promises
+              Promise.all(promises)
+                .then(response => {
+                  ActiveLogger.debug("Broadcasting Completed");
+                })
+                .catch(error => {
+                  ActiveLogger.error(
+                    error,
+                    "Broadcasting Completed with issues"
+                  );
+                });
+            });
+
             // Start the process
             protocol.start();
           } else {
@@ -381,7 +453,7 @@ export class Host extends Home {
             });
 
             // Remove Locks
-            this.release(this.processPending[msg.umid].entry);
+            this.release(msg.umid);
           }
           break;
         case "release":
@@ -474,29 +546,34 @@ export class Host extends Home {
    * Trigger a release of the stream locks the process owns
    *
    * @private
-   * @param {ActiveDefinitions.LedgerEntry} v
+   * @param {string} v
    * @memberof Host
    */
-  private release(v: ActiveDefinitions.LedgerEntry) {
+  private release(umid: string) {
+    // Get Pending Process
+    let v = this.processPending[umid].entry;
+
     // Build a list of streams to release
     // Would be good to cache this
     let input = Object.keys(v.$tx.$i || {});
     let output = Object.keys(v.$tx.$o || {});
-
-    // TODO :
-    // If a single process, We can call locker here to save
-    // CPU cycles
 
     // Release unhandledRejection (Manages Memory)
     if (this.unhandledRejection[v.$umid] instanceof Function) {
       process.off("unhandledRejection", this.unhandledRejection[v.$umid]);
     }
 
+    // Ask for releases
     this.moan("release", {
-      // Ask for releases
       umid: v.$umid,
       streams: Object.assign(input, output)
     });
+
+    // Keep transaction in memory for a bit (5 Minutes)
+    setTimeout(() => {
+      // Remove from pending list
+      delete this.processPending[umid];
+    }, 300000);
   }
 
   /**
