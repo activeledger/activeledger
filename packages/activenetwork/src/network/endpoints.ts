@@ -114,6 +114,11 @@ export class Endpoints {
                 }
               }
 
+              if(tx.$broadcast) {
+                // Remove Commit Knowledge from broadcast as we don't know
+                delete summary.commit;
+              }
+
               // We have the entire network $tx object. This isn't something we want to return
               let output: ActiveDefinitions.LedgerResponse = {
                 $umid: tx.$umid,
@@ -176,6 +181,17 @@ export class Endpoints {
       // Cast Body
       let tx = body as ActiveDefinitions.LedgerEntry;
 
+      // Is this broadcast do we support it in the config?
+      if (
+        tx.$broadcast &&
+        !ActiveOptions.get<any>("experimental", {}).broadcast
+      ) {
+        return resolve({
+          statusCode: 500,
+          content: "P2P Broadcast not supported"
+        });
+      }
+
       // Send into host pool
       host
         .pending(tx)
@@ -213,6 +229,14 @@ export class Endpoints {
       // Is the network stable?
       if (host.getStatus() != NeighbourStatus.Stable)
         return reject("Network Not Stable");
+
+      // Is this broadcast do we support it in the config?
+      if (
+        tx.$broadcast &&
+        !ActiveOptions.get<any>("experimental", {}).broadcast
+      ) {
+        return reject("P2P Broadcast not supported");
+      }
 
       // Send into host pool
       host

@@ -279,6 +279,21 @@ export class Process extends EventEmitter {
     }
   }
 
+
+  /**
+   * Updates VM transaction entry from other node broadcasts
+   *
+   * @param {*} node
+   * @memberof Process
+   */
+  public updatedFromBroadcast(node: any): void {    
+    // Update networks response into local object
+    this.entry.$nodes = Object.assign(this.entry.$nodes, node);
+
+    // Try run commit!
+    this.commit();
+  }
+
   /**
    * Processes the transaction through the contract phases
    * Verify, Vote, Commit.
@@ -398,57 +413,64 @@ export class Process extends EventEmitter {
       this.entry.$instant = false;
     }
 
-    // Knock our right neighbour with this trasnaction if they are not the origin
-    if (this.right.reference != this.entry.$origin) {
-      // Send back early if consensus has been reached and not the end of the network
-      // (Early commit, Then Forward to network)
-      this.commit(() => {
-        this.right
-          .knock("init", this.entry)
-          .then((response: any) => {
-            // Territoriality set?
-            this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
-            // Append new $nodes
-            this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
-
-            // Reset Reference node response
-            this.nodeResponse = this.entry.$nodes[this.reference];
-
-            // Normal, Or getting other node opinions?
-            if (error) {
-              this.raiseLedgerError(error.code, error.reason, true);
-            }
-
-            // Run the Commit Phase
-            this.commit();
-          })
-          .catch((error: any) => {
-            // Need to manage errors this would mean the node is unreachable
-            // TODO : Maybe issue a "rebase" of the network here?
-            ActiveLogger.debug(error, "Knock Failure");
-
-            // if debug mode forward
-            // IF error has status and error this came from another node which has erroed (not unreachable)
-            if (ActiveOptions.get<boolean>("debug", false)) {
-              // rethrow same error
-              this.raiseLedgerError(
-                error.status || 1502,
-                new Error(error.error)
-              );
-            } else {
-              // Generic error 404/ 500
-              this.raiseLedgerError(1501, new Error("Bad Knock Transaction"));
-            }
-          });
-      });
+    if (this.entry.$broadcast) {
+      if (!error) {
+        // Let all other nodes know about this transaction and our opinion
+        this.emit("broadcast", this.entry);
+      }
     } else {
-      ActiveLogger.debug("Origin is next (Sending Back)");
-      if (error) {
-        // Ofcourse if next is origin we need to send back for the promises!
-        this.raiseLedgerError(error.code, error.reason);
+      // Knock our right neighbour with this trasnaction if they are not the origin
+      if (this.right.reference != this.entry.$origin) {
+        // Send back early if consensus has been reached and not the end of the network
+        // (Early commit, Then Forward to network)
+        this.commit(() => {
+          this.right
+            .knock("init", this.entry)
+            .then((response: any) => {
+              // Territoriality set?
+              this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
+              // Append new $nodes
+              this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
+
+              // Reset Reference node response
+              this.nodeResponse = this.entry.$nodes[this.reference];
+
+              // Normal, Or getting other node opinions?
+              if (error) {
+                this.raiseLedgerError(error.code, error.reason, true);
+              }
+
+              // Run the Commit Phase
+              this.commit();
+            })
+            .catch((error: any) => {
+              // Need to manage errors this would mean the node is unreachable
+              // TODO : Maybe issue a "rebase" of the network here?
+              ActiveLogger.debug(error, "Knock Failure");
+
+              // if debug mode forward
+              // IF error has status and error this came from another node which has erroed (not unreachable)
+              if (ActiveOptions.get<boolean>("debug", false)) {
+                // rethrow same error
+                this.raiseLedgerError(
+                  error.status || 1502,
+                  new Error(error.error)
+                );
+              } else {
+                // Generic error 404/ 500
+                this.raiseLedgerError(1501, new Error("Bad Knock Transaction"));
+              }
+            });
+        });
       } else {
-        // Run the Commit Phase
-        this.commit();
+        ActiveLogger.debug("Origin is next (Sending Back)");
+        if (error) {
+          // Ofcourse if next is origin we need to send back for the promises!
+          this.raiseLedgerError(error.code, error.reason);
+        } else {
+          // Run the Commit Phase
+          this.commit();
+        }
       }
     }
   }
@@ -588,15 +610,13 @@ export class Process extends EventEmitter {
                 // Push Docs (Need to change null to undefined)
 
                 // Data State (Developers Control)
-                if (streams[i].state._id)
-                  docs.push(streams[i].state);
+                if (streams[i].state._id) docs.push(streams[i].state);
 
                 // Meta (Stream Data) for internal usage
                 if (streams[i].meta._id) docs.push(streams[i].meta);
 
                 // Volatile data which cannot really be trusted
-                if (streams[i].volatile._id)
-                  docs.push(streams[i].volatile);
+                if (streams[i].volatile._id) docs.push(streams[i].volatile);
               }
 
               // Any inputs left (Means not modified)
@@ -637,7 +657,7 @@ export class Process extends EventEmitter {
               let append = () => {
                 this.db
                   .bulkDocs(docs)
-                  .then((response:any) => {
+                  .then((response: any) => {
                     ActiveLogger.debug(response, "Datastore Response");
 
                     // Set datetime to reflect when data is set from memory to disk
@@ -883,7 +903,7 @@ export class Process extends EventEmitter {
                           volatile: volatile
                         });
                       })
-                      .catch((error:any) => {
+                      .catch((error: any) => {
                         // TODO : Is this a problem? Can we resolve?
                         // Add Info
                         error.code = 960;
@@ -892,7 +912,7 @@ export class Process extends EventEmitter {
                         reject(error);
                       });
                   })
-                  .catch((error:any) => {
+                  .catch((error: any) => {
                     // Add Info
                     error.code = 960;
                     error.reason = "State not found";
@@ -900,7 +920,7 @@ export class Process extends EventEmitter {
                     reject(error);
                   });
               })
-              .catch((error:any) => {
+              .catch((error: any) => {
                 // Add Info
                 error.code = 950;
                 error.reason = "Stream not found";
@@ -1147,10 +1167,7 @@ export class Process extends EventEmitter {
    * @returns {Promise<any>}
    * @memberof Process
    */
-  private storeError(
-    code: number,
-    reason: Error
-  ): Promise<any> {
+  private storeError(code: number, reason: Error): Promise<any> {
     // Build Document for couch
     let doc = {
       code: code,

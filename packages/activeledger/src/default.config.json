@@ -27,7 +27,8 @@
     "hybrid": {
       "host": false,
       "maxConnections": 10
-    }
+    },
+    "broadcast": false
   },
   "api": {
     "port": 5261
