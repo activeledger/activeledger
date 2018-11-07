@@ -42,6 +42,7 @@ export interface LedgerEntry {
   $instant: boolean;
   $nodes: INodes;
   $streams: IStreams;
+  $broadcast?: boolean;
   $territoriality?: string;
 }
 
