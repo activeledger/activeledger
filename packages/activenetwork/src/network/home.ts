@@ -38,14 +38,6 @@ import { ActiveInterfaces } from "./utils";
  */
 export class Home extends Neighbour {
   /**
-   * The status of home withing the neighbourhood
-   *
-   * @type {string}
-   * @memberof Home
-   */
-  //public status: NeighbourStatus = NeighbourStatus.Unrecognised;
-
-  /**
    * Contains all the information about the possible neighbourhood but
    * doesn't know who is active or not unless master process.
    * This is the reason for Left & Right for child processes.
@@ -111,6 +103,15 @@ export class Home extends Neighbour {
   public static host: string;
 
   /**
+   * Holds the territoriality map
+   *
+   * @private
+   * @type {string[]}
+   * @memberof Home
+   */
+  private tMap: string[];
+
+  /**
    * Creates an instance of Home.
    * @memberof Home
    */
@@ -155,14 +156,15 @@ export class Home extends Neighbour {
 
     // Setup Default Neighbours
     if (!Home.left) {
-      ActiveLogger.debug("Setting Default Left");
       Home.left = new Neighbour(this.host, this.port);
     }
 
     if (!Home.right) {
-      ActiveLogger.debug("Setting Default Right");
       Home.right = new Neighbour(this.host, this.port);
     }
+
+    // Get Network Map
+    this.terriBuildMap();
   }
 
   /**
@@ -217,6 +219,76 @@ export class Home extends Neighbour {
 
     // Process of connecting (2 node > are needed)
     return NeighbourStatus.Pairing;
+  }
+
+  /**
+   * Builds a map of which nodes are where in execution order
+   * similair to Maintain.createNetworkOrder however not accessible right now
+   *
+   * @param {string} commitAt
+   * @returns {string}
+   * @memberof Home
+   */
+  public terriBuildMap(): void {
+    // Get the neighbours
+    let neighbourhood = this.neighbourhood.get();
+    let keys = Object.keys(neighbourhood);
+    let i = keys.length;
+
+    // Temporary Array for holding references
+    let tempMap: string[] = [];
+
+    // Loop all neighbours
+    while (i--) {
+      // Add to temporary array (Unless stopping)
+      let neighbour = neighbourhood[keys[i]];
+      if (!neighbour.graceStop) {
+        tempMap.push(neighbour.reference);
+      }
+    }
+
+    // Sort the order of the neighbours
+    this.tMap = tempMap.sort(
+      (x, y): number => {
+        if (x > y) return 1;
+        return -1;
+      }
+    );
+  }
+
+  /**
+   * Return which entry node is needed for the commit to happen where
+   * this assumes all nodes will vote yes
+   *
+   * @param {string} commitAt
+   * @returns {string}
+   * @memberof Home
+   */
+  public terriMap(commitAt: string): string {
+    // How many votes are needed for consesus
+    // Round up as we need whole number int for lookup
+    let votes = Math.ceil(
+      (ActiveOptions.get<any>("consensus", {}).reached / 100) * this.tMap.length
+    );
+
+    // Get Commit Position
+    let commitPos = this.tMap.indexOf(commitAt);
+
+    // Make sure it exists
+    if (commitPos !== -1) {
+      // Current position (Plus 1 for index)
+      let sendPos = this.tMap.indexOf(commitAt) - votes + 1;
+
+      // In range?
+      if (sendPos >= 0) {
+        return this.tMap[sendPos];
+      } else {
+        return this.tMap.slice(sendPos)[0];
+      }
+    }
+
+    // Blank string for unknown
+    return "";
   }
 
   /**
