@@ -119,10 +119,15 @@ export class Neighbour {
    *
    * @param {string} endpoint
    * @param {*} [params]
-   * @returns {*}
+   * @param {boolean} [external]
+   * @returns {Promise<any>}
    * @memberof Neighbour
    */
-  public knock(endpoint: string, params?: any): Promise<any> {
+  public knock(
+    endpoint: string,
+    params?: any,
+    external?: boolean
+  ): Promise<any> {
     if (!params) {
       // Not Params, Sent Get without signature
       return new Promise((resolve, reject) => {
@@ -143,19 +148,34 @@ export class Neighbour {
           });
       });
     } else {
-      // Sign Request into params
-      let post = {
-        $neighbour: {
-          reference: Home.reference,
-          signature: Home.sign(params)
-        },
-        $packet: this.encryptKnock(params)
-      };
+      // Default vars for request
+      let url: string;
+      let post: any;
+
+      // Does the request need to be marshed externally
+      if (external) {
+        // External
+        url = `http://${this.host}:${this.port}/${endpoint}`;
+
+        // No changes
+        post = params;
+      } else {
+        url = `http://${this.host}:${this.port}/a/${endpoint}`;
+
+        // Sign Request into params
+        post = {
+          $neighbour: {
+            reference: Home.reference,
+            signature: Home.sign(params)
+          },
+          $packet: this.encryptKnock(params)
+        };
+      }
 
       // Send SignedFor Post Request
       return new Promise((resolve, reject) => {
         ActiveRequest.send(
-          `http://${this.host}:${this.port}/a/${endpoint}`,
+          url,
           "POST",
           ["X-Activeledger:" + Home.reference],
           post
