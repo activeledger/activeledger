@@ -114,7 +114,7 @@ export class Endpoints {
                 }
               }
 
-              if(tx.$broadcast) {
+              if (tx.$broadcast) {
                 // Remove Commit Knowledge from broadcast as we don't know
                 delete summary.commit;
               }
@@ -136,10 +136,18 @@ export class Endpoints {
                 content: output
               });
             } else {
-              return resolve({
-                statusCode: response.status,
-                content: response.data
-              });
+              // If we had to be rebroadcasted this isn't an error
+              if (response.rebroadcasted) {
+                return resolve({
+                  statusCode: 200,
+                  content: response.data
+                });
+              } else {
+                return resolve({
+                  statusCode: response.status,
+                  content: response.data
+                });
+              }
             }
           })
           .catch(error => {
@@ -236,6 +244,38 @@ export class Endpoints {
         !ActiveOptions.get<any>("experimental", {}).broadcast
       ) {
         return reject("P2P Broadcast not supported");
+      }
+
+      // Targetted territoriality mapper
+      if (tx.$territoriality) {
+        // Cannot work with broadcast
+        if (tx.$broadcast) {
+          return reject("Territoriality not supported in broadcast mode");
+        }
+
+        // Get the sending node details
+        let sending = host.terriMap(tx.$territoriality);
+
+        ActiveLogger.info("Rebroadcasting to : " + sending);
+        // If not ourselves intercept
+        if (sending !== host.reference) {
+          // We need to rebroadcast to sending node
+          let rebroadcast = host.neighbourhood.get(sending);
+          // Send and wait on their response
+          rebroadcast
+            .knock("", tx, true)
+            .then(ledger => {
+              // Add rebroadcast flag
+              ledger.rebroadcasted = true;
+              resolve(ledger);
+            })
+            .catch(error => {
+              reject(error);
+            });
+
+          // Safe to return
+          return;
+        }
       }
 
       // Send into host pool
