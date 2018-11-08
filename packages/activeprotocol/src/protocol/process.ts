@@ -289,8 +289,11 @@ export class Process extends EventEmitter {
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
 
-    // Try run commit!
-    this.commit();
+    // Make sure we haven't already reached consensus
+    if(!this.isCommiting()) {
+      // Try run commit!
+      this.commit();
+    }
   }
 
   /**
