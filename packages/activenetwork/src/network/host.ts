@@ -270,10 +270,9 @@ export class Host extends Home {
 
             // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
             // While it is global we need to manage it here to keep the encapsulation
-            this.unhandledRejection[msg.umid] = (reason: any) => {
-              ActiveLogger.fatal("Unhandled Rejection at:" + reason.toString());
+            this.unhandledRejection[msg.umid] = (reason: any, p: any) => {
               this.processPending[msg.umid].reject(
-                "UnhandledRejection: " + reason.toString()
+                `UnhandledRejection: ${reason.toString()} @ ${p.toString()}`
               );
               // Remove Locks
               this.release(msg.umid);
@@ -401,38 +400,13 @@ export class Host extends Home {
             // Listen to the process to see if we need to broadcast the results
             protocol.on("broadcast", (entry: any) => {
               // Push entry into all worker (With threads will be shared memory)
-              this.moan("txmem", entry);
-              ActiveLogger.debug("Broadcasting TX : " + entry.$umid);
-
-              // Get all the neighbour nodes
-              let neighbourhood = this.neighbourhood.get();
-              let nodes = Object.keys(neighbourhood);
-              let i = nodes.length;
-              let promises = [];
-
-              // Loop them all and broadcast the transaction
-              while (i--) {
-                let node = neighbourhood[nodes[i]];
-
-                // Make sure they're home and not us
-                if (node.isHome && node.reference !== this.reference) {
-                  promises.push(node.knock("init", entry));
+              // nodes so only reflect this node (Other nodes can't trust me anyway)
+              this.moan("txmem", {
+                umid: entry.$umid,
+                nodes: {
+                  [this.reference]: entry.$nodes[this.reference]
                 }
-              }
-
-              // Listen for promises
-              Promise.all(promises)
-                .then(() => {
-                  this.broadcastResolved(msg.umid);
-                  ActiveLogger.debug("Broadcasting Completed");
-                })
-                .catch(error => {
-                  this.broadcastResolved(msg.umid);
-                  ActiveLogger.error(
-                    error,
-                    "Broadcasting Completed with issues"
-                  );
-                });
+              });
             });
 
             // Start the process
@@ -496,14 +470,58 @@ export class Host extends Home {
           break;
         case "txmem":
           // Add tx into memory if we don't know about it in this worker
-          ActiveLogger.debug("Adding To Memory : " + msg.$umid);
-          if (!this.processPending[msg.$umid]) {
+          ActiveLogger.debug("Adding To Memory : " + msg.umid);
+          if (!this.processPending[msg.umid]) {
             // Add to pending (Using Promises instead of http request)
-            this.processPending[msg.$umid] = {
+            this.processPending[msg.umid] = {
               entry: msg,
               resolve: null,
               reject: null
             };
+          } else {
+            // Now run the request as workers should have the umid in memory
+            ActiveLogger.debug(
+              "Broadcasting TX : " + this.processPending[msg.umid]
+            );
+
+            // Get all the neighbour nodes
+            let neighbourhood = this.neighbourhood.get();
+            let nodes = Object.keys(neighbourhood);
+            let i = nodes.length;
+            let promises = [];
+
+            // Get copy of tx
+            let postTx = JSON.parse(
+              JSON.stringify(this.processPending[msg.umid].entry)
+            );
+
+            // Only send this node
+            postTx.$nodes = msg.nodes;
+            //this.processPending[msg.umid].entry.$nodes = msg.nodes;
+
+            // Loop them all and broadcast the transaction
+            while (i--) {
+              let node = neighbourhood[nodes[i]];
+
+              // Make sure they're home and not us
+              if (node.isHome && node.reference !== this.reference) {
+                // Rebuild the entry to only send this node
+                promises.push(
+                  node.knock("init", postTx)
+                );
+              }
+            }
+
+            // Listen for promises
+            Promise.all(promises)
+              .then(() => {
+                ActiveLogger.debug("Broadcasting Completed");
+                this.broadcastResolved(msg.umid, true);
+              })
+              .catch(error => {
+                this.broadcastResolved(msg.umid);
+                ActiveLogger.error(error, "Broadcasting Completed with issues");
+              });
           }
           break;
         case "txtarget":
@@ -542,20 +560,32 @@ export class Host extends Home {
    *
    * @private
    * @param {string} umid
+   * @param {boolean} [timeoutDelay=false]
    * @memberof Host
    */
-  private broadcastResolved(umid: string): void {
+  private broadcastResolved(umid: string, timeoutDelay = false): void {
     // Get Related Process
     let process = this.processPending[umid];
     // Check access to the protocol to check for commit phase
-    if (!process.protocol!.isCommiting()) {
-      // We didn't reach consensus so return
-      process.resolve({
-        status: 200,
-        data: (process.protocol as any).entry
-      });
-      // Remove Locks
-      this.release(umid);
+    if (process && process.protocol && !process.protocol.isCommiting()) {
+      if (timeoutDelay) {
+        // Prevent hung transaction from unknown issue by waiting 1 minute
+        // TODO Hook into timeout of VM if the voting code runs longer than a minute we have a problem
+        setTimeout(() => {
+          // Try and resolve
+          this.broadcastResolved(umid);
+        }, 60000);
+      } else {
+        // Temp message for tracing
+        (process.protocol as any).entry.error = "broadcast timeout";
+        // We didn't reach consensus so return
+        process.resolve({
+          status: 200,
+          data: (process.protocol as any).entry
+        });
+        // Remove Locks
+        this.release(umid);
+      }
     }
   }
 
