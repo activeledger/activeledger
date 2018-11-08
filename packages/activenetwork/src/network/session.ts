@@ -80,7 +80,7 @@ export class Session extends events.EventEmitter {
             release: Locker.release(msg.streams)
           });
           break;
-        case "neighbour":        
+        case "neighbour":
           // Tell Workers about their new neighbour
           this.shout("neighbour", msg);
 
@@ -99,6 +99,10 @@ export class Session extends events.EventEmitter {
         case "rebase":
           // Somehow tell the maintaince to check now
           this.emit("rebase");
+          break;
+        case "txtarget":
+          // Tell workers about this entry
+          this.shout("txtarget", msg);
           break;
         case "txmem":
           // Tell workers about this entry
