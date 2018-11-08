@@ -307,16 +307,6 @@ export class Process extends EventEmitter {
   }
 
   /**
-   * Returns Commiting State (Broadcast)
-   *
-   * @returns {boolean}
-   * @memberof Process
-   */
-  public isCommiting(): boolean {
-    return this.commiting;
-  }
-
-  /**
    * Processes the transaction through the contract phases
    * Verify, Vote, Commit.
    * Vote phase is in memory blocked during conensus unless instant transaction
