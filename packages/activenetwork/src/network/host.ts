@@ -140,10 +140,9 @@ export class Host extends Home {
     return new Promise<any>((resolve, reject) => {
       // Broadcasting or Territoriality Mode
       if (entry.$broadcast) {
-        ActiveLogger.error(entry, "Broadcast Starting =========== ");
         // We may already have the $umid in memory
         if (this.processPending[entry.$umid]) {
-          ActiveLogger.warn(entry, "Broadcast Recieved ");
+          ActiveLogger.warn("Broadcast Recieved : " + entry.$umid);
           // Do we still have the transaction in memory?
           if (this.processPending[entry.$umid]) {
             // Resolve with our vote response
@@ -262,10 +261,8 @@ export class Host extends Home {
             Home.left.reference != msg.left ||
             Home.right.reference != msg.right
           )
-            ActiveLogger.debug(msg, "New Neighbour Update");
-
-          // Update Neighbour
-          this.setNeighbours(false, msg.left, msg.right);
+            // Update Neighbour
+            this.setNeighbours(false, msg.left, msg.right);
           break;
         case "isHome":
           // Update Home
@@ -275,7 +272,6 @@ export class Host extends Home {
           }
           break;
         case "hold":
-          ActiveLogger.debug(msg, "Got Lock?");
           // Do we have a hold
           if (msg.lock) {
             // Yes, Continue Processing
@@ -412,6 +408,8 @@ export class Host extends Home {
 
             // Listen to the process to see if we need to broadcast the results
             protocol.on("broadcast", (entry: any) => {
+              // Push entry into all worker (With threads will be shared memory)
+              this.moan("txmem", entry);
               ActiveLogger.debug("Broadcasting TX : " + entry.$umid);
 
               // Get all the neighbour nodes
@@ -432,10 +430,13 @@ export class Host extends Home {
 
               // Listen for promises
               Promise.all(promises)
-                .then(response => {
+                .then(() => {
+                  this.broadcastResolved(msg.umid);
                   ActiveLogger.debug("Broadcasting Completed");
                 })
                 .catch(error => {
+                  this.broadcastResolved(msg.umid);
+
                   ActiveLogger.error(
                     error,
                     "Broadcasting Completed with issues"
@@ -502,6 +503,22 @@ export class Host extends Home {
               ActiveLogger.info(e, "Failed to reload Neighbourhood");
             });
           break;
+        case "txmem":
+          // Add tx into memory if we don't know about it in this worker
+          ActiveLogger.debug("Adding To Memory : " + msg.$umid);
+          if (!this.processPending[msg.$umid]) {
+            // Add to pending (Using Promises instead of http request)
+            this.processPending[msg.$umid] = {
+              entry: msg,
+              resolve: null,
+              reject: null
+            };
+          }
+          break;
+        case "txmemclear":
+          // Remove from pending list
+          delete this.processPending[msg.umid];
+          break;
         default:
           ActiveLogger.debug(msg, "Worker -> Unknown IPC call");
           break;
@@ -519,6 +536,28 @@ export class Host extends Home {
           ActiveInterfaces.getBindingDetails("port")
       );
     });
+  }
+
+  /**
+   * Resolves broadcasted results
+   *
+   * @private
+   * @param {string} umid
+   * @memberof Host
+   */
+  private broadcastResolved(umid: string): void {
+    // Get Related Process
+    let process = this.processPending[umid];
+
+    // Check access to the protocol to check for commit phase
+    if (process.protocol && !process.protocol.isCommiting()) {
+      process.resolve({
+        status: 200,
+        data: process.entry
+      });
+      // Remove Locks
+      this.release(umid);
+    }
   }
 
   /**
@@ -571,8 +610,12 @@ export class Host extends Home {
 
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
+      ActiveLogger.debug("Removing from memory : " + umid);
       // Remove from pending list
       delete this.processPending[umid];
+
+      // Let other workers know they can release
+      this.moan("txmemclear", { umid: umid });
     }, 300000);
   }
 

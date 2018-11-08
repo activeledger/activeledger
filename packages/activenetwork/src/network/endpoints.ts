@@ -256,25 +256,29 @@ export class Endpoints {
         // Get the sending node details
         let sending = host.terriMap(tx.$territoriality);
 
-        ActiveLogger.info("Rebroadcasting to : " + sending);
-        // If not ourselves intercept
-        if (sending !== host.reference) {
-          // We need to rebroadcast to sending node
-          let rebroadcast = host.neighbourhood.get(sending);
-          // Send and wait on their response
-          rebroadcast
-            .knock("", tx, true)
-            .then(ledger => {
-              // Add rebroadcast flag
-              ledger.rebroadcasted = true;
-              resolve(ledger);
-            })
-            .catch(error => {
-              reject(error);
-            });
-
-          // Safe to return
-          return;
+        // Do we know this territory node address
+        if (sending) {
+          ActiveLogger.info("Rebroadcasting to : " + sending);
+          // If not ourselves intercept
+          if (sending !== host.reference) {
+            // We need to rebroadcast to sending node
+            let rebroadcast = host.neighbourhood.get(sending);
+            // Send and wait on their response
+            rebroadcast
+              .knock("", tx, true)
+              .then(ledger => {
+                // Add rebroadcast flag
+                ledger.rebroadcasted = true;
+                resolve(ledger);
+              })
+              .catch(error => {
+                reject(error);
+              });
+            // Safe to return
+            return;
+          }
+        } else {
+          return reject("Unknown territory");
         }
       }
 

@@ -84,10 +84,8 @@ export class Maintain {
    * @type {number}
    * @memberof Watch
    */
-  private readonly interval: number = (20 +
-    Math.floor(Math.random() * 15) +
-    -10) *
-  1000;
+  private readonly interval: number =
+    (20 + Math.floor(Math.random() * 15) + -10) * 1000;
 
   /**
    * Creates an instance of Maintain
@@ -157,10 +155,12 @@ export class Maintain {
     }
 
     // sort may move into the neighbour object
-    this.neighbourOrder = tempOrder.sort((x, y): number => {
-      if (x.reference > y.reference) return 1;
-      return -1;
-    });
+    this.neighbourOrder = tempOrder.sort(
+      (x, y): number => {
+        if (x.reference > y.reference) return 1;
+        return -1;
+      }
+    );
   }
 
   /**
@@ -342,15 +342,23 @@ export class Maintain {
       if (!this.neighbourOrder[i]) return;
     }
 
-    // Set direct neighbours onto home
-    //this.home.setNeighbours(false, isleft.getAddress(), isRight.getAddress());
-    this.home.setNeighbours(false, isleft.reference, isRight.reference);
+    if (
+      Home.left.reference != isleft.reference ||
+      Home.right.reference != isRight.reference
+    ) {
+      // Set direct neighbours onto home
+      ActiveLogger.debug(
+        { left: isleft.reference, right: isRight.reference },
+        "New Neighbour Update"
+      );
+      this.home.setNeighbours(false, isleft.reference, isRight.reference);
 
-    // Let all processes know of our network position
-    this.session.shout("neighbour", {
-      left: isleft.reference,
-      right: isRight.reference
-    });
+      // Let all processes know of our network position
+      this.session.shout("neighbour", {
+        left: isleft.reference,
+        right: isRight.reference
+      });
+    }
 
     // No longer checking
     this.checking = false;

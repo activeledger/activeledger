@@ -80,10 +80,7 @@ export class Session extends events.EventEmitter {
             release: Locker.release(msg.streams)
           });
           break;
-        case "neighbour":
-          // Update Master Home
-          ActiveLogger.debug(msg, "Master Neighbour Update");
-
+        case "neighbour":        
           // Tell Workers about their new neighbour
           this.shout("neighbour", msg);
 
@@ -102,6 +99,14 @@ export class Session extends events.EventEmitter {
         case "rebase":
           // Somehow tell the maintaince to check now
           this.emit("rebase");
+          break;
+        case "txmem":
+          // Tell workers about this entry
+          this.shout("txmem", msg);
+          break;
+        case "txmemclear":
+          // Tell workers about this entry
+          this.shout("txmemclear", { umid: msg.umid });
           break;
         default:
           ActiveLogger.debug(msg, "Master -> Unknown IPC call");
