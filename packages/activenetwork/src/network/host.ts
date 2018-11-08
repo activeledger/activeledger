@@ -144,28 +144,20 @@ export class Host extends Home {
         if (this.processPending[entry.$umid]) {
           ActiveLogger.warn("Broadcast Recieved : " + entry.$umid);
           // Do we still have the transaction in memory?
-          if (this.processPending[entry.$umid]) {
-            // Resolve with our vote response
-            resolve({
-              status: 200,
-              data: this.processPending[entry.$umid].entry
-            });
-
+          if (this.processPending[entry.$umid].protocol) {
             // Update other voting nodes response into the process handling the transaction
             this.processPending[entry.$umid].protocol!.updatedFromBroadcast(
               entry.$nodes
             );
           } else {
-            // No longer have the transaction in memory. We can get it from the ledger if we committed
-            // However for now return 500 so if this is an issue we will be alerted
-            resolve({
-              status: 500,
-              data: "Transaction no longer in memory"
-            });
+            // Need to target the correct worker to be updated
+            this.moan("txtarget", entry);
           }
 
-          // Return here, Promise is handled
-          return;
+          return resolve({
+            status: 200,
+            data: this.processPending[entry.$umid].entry
+          });
         }
       }
 
@@ -317,7 +309,7 @@ export class Host extends Home {
             // Bind to events
             // Manage on possible commits
             protocol.on("commited", (response: any) => {
-              // Make sure we have the object still (broadcast calls twice issue)
+              // Make sure we have the object still
               if (this.processPending[msg.umid]) {
                 // Send Response back
                 if (response.instant) {
@@ -436,7 +428,6 @@ export class Host extends Home {
                 })
                 .catch(error => {
                   this.broadcastResolved(msg.umid);
-
                   ActiveLogger.error(
                     error,
                     "Broadcasting Completed with issues"
@@ -515,6 +506,14 @@ export class Host extends Home {
             };
           }
           break;
+        case "txtarget":
+          if (this.processPending[msg.$umid].protocol) {
+            // Update other voting nodes response into the process handling the transaction
+            this.processPending[msg.$umid].protocol!.updatedFromBroadcast(
+              msg.$nodes
+            );
+          }
+          break;
         case "txmemclear":
           // Remove from pending list
           delete this.processPending[msg.umid];
@@ -548,12 +547,12 @@ export class Host extends Home {
   private broadcastResolved(umid: string): void {
     // Get Related Process
     let process = this.processPending[umid];
-
     // Check access to the protocol to check for commit phase
-    if (process.protocol && !process.protocol.isCommiting()) {
+    if (!process.protocol!.isCommiting()) {
+      // We didn't reach consensus so return
       process.resolve({
         status: 200,
-        data: process.entry
+        data: (process.protocol as any).entry
       });
       // Remove Locks
       this.release(umid);
