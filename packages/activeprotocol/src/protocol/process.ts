@@ -65,14 +65,6 @@ export class Process extends EventEmitter {
   private outputs: string[];
 
   /**
-   * Holds a string based version of the transaction object for signature reuse
-   *
-   * @private
-   * @memberof Process
-   */
-  private txString: string;
-
-  /**
    * Flag for checking or setting revisions
    *
    * @private
@@ -98,6 +90,14 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private contractLocation: string;
+
+  /**
+   * Commiting State
+   *
+   * @private
+   * @memberof Process
+   */
+  private commiting = false;
 
   /**
    * Creates an instance of Process.
@@ -279,19 +279,28 @@ export class Process extends EventEmitter {
     }
   }
 
-
   /**
    * Updates VM transaction entry from other node broadcasts
    *
    * @param {*} node
    * @memberof Process
    */
-  public updatedFromBroadcast(node: any): void {    
+  public updatedFromBroadcast(node: any): void {
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
 
     // Try run commit!
     this.commit();
+  }
+
+  /**
+   * Returns Commiting State (Broadcast)
+   *
+   * @returns {boolean}
+   * @memberof Process
+   */
+  public isCommiting(): boolean {
+    return this.commiting;
   }
 
   /**
@@ -520,6 +529,7 @@ export class Process extends EventEmitter {
       // check we can commit still
       if (this.canCommit()) {
         // Consensus reached commit phase
+        this.commiting = true;
         // Pass Nodes for possible INC injection
         this.contractVM
           .commit(this.entry.$nodes, !this.entry.$territoriality)
@@ -658,8 +668,6 @@ export class Process extends EventEmitter {
                 this.db
                   .bulkDocs(docs)
                   .then((response: any) => {
-                    ActiveLogger.debug(response, "Datastore Response");
-
                     // Set datetime to reflect when data is set from memory to disk
                     this.nodeResponse.datetime = new Date();
 
@@ -726,7 +734,7 @@ export class Process extends EventEmitter {
               };
 
               // The documents to be stored
-              ActiveLogger.debug(docs, "Changed Documents");
+              // ActiveLogger.debug(docs, "Changed Documents");
 
               // Detect Collisions
               if (collisions.length) {
@@ -1084,9 +1092,6 @@ export class Process extends EventEmitter {
     try {
       // Get Key Object
       let key: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(type, publicKey);
-
-      // Convert to string if we haven't done so
-      //if (!this.txString) this.txString = JSON.stringify(this.entry.$tx);
 
       // Return Valid or not
       return key.verify(this.entry.$tx, signature);
