@@ -412,7 +412,7 @@ export class VirtualMachine {
             return sc.postProcess(${territoriality}, "${who}");
           }else{
             // Auto Resolve if no post process
-            return new Promise<boolean>((resolve, reject) => {
+            return new Promise((resolve, reject) => {
               resolve(true);
             });
           } `,
