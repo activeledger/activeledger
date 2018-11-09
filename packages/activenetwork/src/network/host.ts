@@ -399,6 +399,7 @@ export class Host extends Home {
 
             // Listen to the process to see if we need to broadcast the results
             protocol.on("broadcast", (entry: any) => {
+              ActiveLogger.debug("Broadcasting TX : " + msg.umid);
               // Push entry into all worker (With threads will be shared memory)
               // nodes so only reflect this node (Other nodes can't trust me anyway)
               this.moan("txmem", {
@@ -480,54 +481,15 @@ export class Host extends Home {
             };
           } else {
             // Now run the request as workers should have the umid in memory
-            ActiveLogger.debug(
-              "Broadcasting TX : " + this.processPending[msg.umid]
-            );
-
-            // Get all the neighbour nodes
-            let neighbourhood = this.neighbourhood.get();
-            let nodes = Object.keys(neighbourhood);
-            let i = nodes.length;
-            let promises = [];
-
-            // Get copy of tx
-            let postTx = JSON.parse(
-              JSON.stringify(this.processPending[msg.umid].entry)
-            );
-
-            // Only send this node
-            postTx.$nodes = msg.nodes;
-            //this.processPending[msg.umid].entry.$nodes = msg.nodes;
-
-            // Loop them all and broadcast the transaction
-            while (i--) {
-              let node = neighbourhood[nodes[i]];
-
-              // Make sure they're home and not us
-              if (node.isHome && node.reference !== this.reference) {
-                // Rebuild the entry to only send this node
-                promises.push(
-                  node.knock("init", postTx)
-                );
-              }
-            }
-
-            // Listen for promises
-            Promise.all(promises)
-              .then(() => {
-                ActiveLogger.debug("Broadcasting Completed");
-                this.broadcastResolved(msg.umid, true);
-              })
-              .catch(() => {
-                // Possibly false posative errors will be 
-                // closed sockets on consensus reach and commited somewhere in the network
-                ActiveLogger.warn("Broadcasting Completed");
-                this.broadcastResolved(msg.umid);
-              });
+            this.broadcast(msg.umid, msg.nodes);
           }
           break;
         case "txtarget":
-          if (this.processPending[msg.$umid].protocol) {
+          // Check process still exists could already be commited and VM closed
+          if (
+            this.processPending[msg.$umid] &&
+            this.processPending[msg.$umid].protocol
+          ) {
             // Update other voting nodes response into the process handling the transaction
             this.processPending[msg.$umid].protocol!.updatedFromBroadcast(
               msg.$nodes
@@ -536,7 +498,7 @@ export class Host extends Home {
           break;
         case "txmemclear":
           // Remove from pending list
-          delete this.processPending[msg.umid];
+          this.destroy(msg.umid);
           break;
         default:
           ActiveLogger.debug(msg, "Worker -> Unknown IPC call");
@@ -558,6 +520,72 @@ export class Host extends Home {
   }
 
   /**
+   * Attempt to clear memory for GV
+   *
+   * @private
+   * @param {*} umid
+   * @memberof Host
+   */
+  private destroy(umid: string): void {
+    // Make sure it hasn't ben removed already
+    if(this.processPending[umid]) {
+      ActiveLogger.debug("Removing from memory : " + umid);
+      // Check Protocol still exists
+      if (this.processPending[umid].protocol) {
+        (this.processPending[umid].protocol as any).destroy();
+        (this.processPending[umid].protocol as any) = null;
+      }
+      (this.processPending[umid] as any).entry = null;
+      (this.processPending[umid] as any) = null;
+      // delete this.processPending[msg.umid];
+    }
+  }
+
+  /**
+   * Broadcast Transaction to the network
+   *
+   * @private
+   * @param {string} umid
+   * @memberof Host
+   */
+  private broadcast(umid: string, selfNode: any): void {
+    // Get all the neighbour nodes
+    let neighbourhood = this.neighbourhood.get();
+    let nodes = Object.keys(neighbourhood);
+    let i = nodes.length;
+    let promises = [];
+
+    // Get copy of tx
+    //let postTx = JSON.parse(JSON.stringify(this.processPending[umid].entry));
+
+    // Only send this node
+    //postTx.$nodes = selfNode;
+    //this.processPending[umid].entry.$nodes = nodes;
+
+    // Loop them all and broadcast the transaction
+    while (i--) {
+      let node = neighbourhood[nodes[i]];
+
+      // Make sure they're home and not us
+      if (node.isHome && node.reference !== this.reference) {
+        // Rebuild the entry to only send this node
+        promises.push(node.knock("init", this.processPending[umid].entry));
+      }
+    }
+
+    // Listen for promises
+    Promise.all(promises)
+      .then(() => {
+        this.broadcastResolved(umid, true);
+      })
+      .catch(() => {
+        // Possibly false posative errors will be
+        // closed sockets on consensus reach and commited somewhere in the network
+        this.broadcastResolved(umid, true);
+      });
+  }
+
+  /**
    * Resolves broadcasted results
    *
    * @private
@@ -576,18 +604,29 @@ export class Host extends Home {
         setTimeout(() => {
           // Try and resolve
           this.broadcastResolved(umid);
-        }, 60000);
+        }, 15000);
       } else {
-        // Temp message for tracing
-        (process.protocol as any).entry.error = "broadcast timeout";
-        // We didn't reach consensus so return
-        process.resolve({
-          status: 200,
-          data: (process.protocol as any).entry
-        });
-        // Remove Locks
-        this.release(umid);
+        // Do we only have our own response still (Connection Dropped?)
+        // Temp solution for managing connection drops have recast flag
+        if (!(process as any).recast && Object.keys(process.entry.$nodes).length == 1) {
+          (process as any).recast = true;
+          // Rebroadcast
+          ActiveLogger.warn("Rebroadcasting : " + umid);
+          this.broadcast(umid, process.entry.$nodes);
+        } else {
+          // Temp message for tracing
+          process.entry.$nodes[this.reference].error = "broadcast timeout";
+          // We didn't reach consensus so return
+          process.resolve({
+            status: 200,
+            data: (process.protocol as any).entry
+          });
+          // Remove Locks
+          this.release(umid);
+        }
       }
+    } else {
+      ActiveLogger.info("Broadcasting Completed");
     }
   }
 
@@ -640,10 +679,9 @@ export class Host extends Home {
     });
 
     // Keep transaction in memory for a bit (5 Minutes)
-    setTimeout(() => {
-      ActiveLogger.debug("Removing from memory : " + umid);
+    setTimeout(() => {      
       // Remove from pending list
-      delete this.processPending[umid];
+      this.destroy(umid);
 
       // Let other workers know they can release
       this.moan("txmemclear", { umid: umid });
