@@ -518,9 +518,11 @@ export class Host extends Home {
                 ActiveLogger.debug("Broadcasting Completed");
                 this.broadcastResolved(msg.umid, true);
               })
-              .catch(error => {
+              .catch(() => {
+                // Possibly false posative errors will be 
+                // closed sockets on consensus reach and commited somewhere in the network
+                ActiveLogger.warn("Broadcasting Completed");
                 this.broadcastResolved(msg.umid);
-                ActiveLogger.error(error, "Broadcasting Completed with issues");
               });
           }
           break;
