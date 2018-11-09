@@ -131,6 +131,17 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Destroy the process object from memory
+   *
+   * @memberof Process
+   */
+  public destroy(): void {
+    // Close VM and entry (cirular reference)
+    (this.contractVM as any) = null;
+    (this.entry as any) = null;
+  }
+
+  /**
    * Starts the consensus and commit phase processing
    *
    * @memberof Process
