@@ -25,13 +25,13 @@
 
 import * as child from "child_process";
 import * as cluster from "cluster";
-import * as os from "os";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { DataStore } from "./datastore";
+import { PhysicalCores } from "./cpus";
 
 // Initalise CLI Options
 ActiveOptions.init();
@@ -455,7 +455,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         // Boot Function, Used to wait on self host
         let boot: Function = () => {
           // Launch as many nodes as cpus
-          let cpus = os.cpus().length;
+          let cpus = PhysicalCores.count();
           ActiveLogger.info("Server is active, Creating forks " + cpus);
 
           // Create Master Home
