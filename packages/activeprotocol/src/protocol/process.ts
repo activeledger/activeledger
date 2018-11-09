@@ -290,7 +290,7 @@ export class Process extends EventEmitter {
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
 
     // Make sure we haven't already reached consensus
-    if(!this.isCommiting()) {
+    if (!this.isCommiting()) {
       // Try run commit!
       this.commit();
     }
@@ -718,19 +718,22 @@ export class Process extends EventEmitter {
                         this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
                         // Remember to let other nodes know
-                        if (earlyCommit) return earlyCommit();
+                        if (earlyCommit) earlyCommit();
+
+                        // Respond with the possible early commited
                         this.emit("commited", { tx: this.compactTxEntry() });
                       })
                       .catch(error => {
                         // Don't let local error stop other nodes
-                        if (earlyCommit) return earlyCommit();
+                        if (earlyCommit) earlyCommit();
+
                         // Ignore errors for now, As commit was still a success
                         this.emit("commited", { tx: this.compactTxEntry() });
                       });
                   })
                   .catch((error: Error) => {
                     // Don't let local error stop other nodes
-                    if (earlyCommit) return earlyCommit();
+                    if (earlyCommit) earlyCommit();
                     ActiveLogger.debug(error, "Datatore Failure");
                     this.raiseLedgerError(1510, new Error("Failed to save"));
                   });
@@ -794,12 +797,14 @@ export class Process extends EventEmitter {
                   this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
                   // Remember to let other nodes know
-                  if (earlyCommit) return earlyCommit();
+                  if (earlyCommit) earlyCommit();
+
+                  // Respond with the possible early commited
                   this.emit("commited", { tx: this.compactTxEntry() });
                 })
                 .catch(error => {
                   // Don't let local error stop other nodes
-                  if (earlyCommit) return earlyCommit();
+                  if (earlyCommit) earlyCommit();
                   // Ignore errors for now, As commit was still a success
                   this.emit("commited", { tx: this.compactTxEntry() });
                 });
@@ -807,7 +812,7 @@ export class Process extends EventEmitter {
           })
           .catch(error => {
             // Don't let local error stop other nodes
-            if (earlyCommit) return earlyCommit();
+            if (earlyCommit) earlyCommit();
             ActiveLogger.debug(error, "VM Commit Failure");
 
             // If debug mode forward full error
