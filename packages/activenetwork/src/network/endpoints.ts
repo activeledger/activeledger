@@ -112,12 +112,7 @@ export class Endpoints {
                     summary.errors = [tx.$nodes[nodes[i]].error as string];
                   }
                 }
-              }
-
-              if (tx.$broadcast) {
-                // Remove Commit Knowledge from broadcast as we don't know
-                delete summary.commit;
-              }
+              }              
 
               // We have the entire network $tx object. This isn't something we want to return
               let output: ActiveDefinitions.LedgerResponse = {
