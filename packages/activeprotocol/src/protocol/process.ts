@@ -294,18 +294,20 @@ export class Process extends EventEmitter {
    * Updates VM transaction entry from other node broadcasts
    *
    * @param {*} node
+   * @returns {ActiveDefinitions.INodeResponse}
    * @memberof Process
    */
-  public updatedFromBroadcast(node: any): void {
+  public updatedFromBroadcast(node: any): ActiveDefinitions.INodeResponse {
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
-    // Reset Reference node response
-    this.nodeResponse = this.entry.$nodes[this.reference];
     // Make sure we haven't already reached consensus
     if (!this.isCommiting()) {
+      // Reset Reference node response
+      this.nodeResponse = this.entry.$nodes[this.reference];
       // Try run commit!
       this.commit();
     }
+    return this.nodeResponse;
   }
 
   /**
@@ -548,7 +550,7 @@ export class Process extends EventEmitter {
         // Pass Nodes for possible INC injection
         this.contractVM
           .commit(this.entry.$nodes, !this.entry.$territoriality)
-          .then(commit => {
+          .then(() => {
             // Update Commit Entry
             this.nodeResponse.commit = true;
 
@@ -682,7 +684,7 @@ export class Process extends EventEmitter {
               let append = () => {
                 this.db
                   .bulkDocs(docs)
-                  .then((response: any) => {
+                  .then(() => {
                     // Set datetime to reflect when data is set from memory to disk
                     this.nodeResponse.datetime = new Date();
 

@@ -146,7 +146,9 @@ export class Host extends Home {
           // Do we still have the transaction in memory?
           if (this.processPending[entry.$umid].protocol) {
             // Update other voting nodes response into the process handling the transaction
-            this.processPending[entry.$umid].protocol!.updatedFromBroadcast(
+            this.processPending[entry.$umid].entry.$nodes[
+              this.reference
+            ] = this.processPending[entry.$umid].protocol!.updatedFromBroadcast(
               entry.$nodes
             );
           } else {
@@ -332,7 +334,7 @@ export class Host extends Home {
                     if (this.sse && response.tx) {
                       this.moan("hybrid", response.tx);
                     }
-
+                    
                     // Process response back into entry for previous neighbours to know the results
                     this.processPending[msg.umid].resolve({
                       status: 200,
@@ -486,7 +488,6 @@ export class Host extends Home {
               break;
             case "txmem":
               // Add tx into memory if we don't know about it in this worker
-              ActiveLogger.debug("Adding To Memory : " + msg.umid);
               if (!this.processPending[msg.umid]) {
                 // Add to pending (Using Promises instead of http request)
                 this.processPending[msg.umid] = {
@@ -495,6 +496,8 @@ export class Host extends Home {
                   reject: null
                 };
               } else {
+                // Log once
+                ActiveLogger.debug("Adding To Memory : " + msg.umid);
                 // Now run the request as workers should have the umid in memory
                 this.broadcast(msg.umid, msg.nodes);
               }
@@ -506,9 +509,11 @@ export class Host extends Home {
                 this.processPending[msg.$umid].protocol
               ) {
                 // Update other voting nodes response into the process handling the transaction
-                this.processPending[msg.$umid].protocol!.updatedFromBroadcast(
-                  msg.$nodes
-                );
+                this.processPending[msg.$umid].entry.$nodes[
+                  this.reference
+                ] = this.processPending[
+                  msg.$umid
+                ].protocol!.updatedFromBroadcast(msg.$nodes);
               }
               break;
             case "txmemclear":
@@ -547,10 +552,11 @@ export class Host extends Home {
    */
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
-    if (this.processPending[umid]) {
-      ActiveLogger.debug("Removing from memory : " + umid);
+    if (this.processPending[umid]) {      
       // Check Protocol still exists
       if (this.processPending[umid].protocol) {
+        // Log once
+        ActiveLogger.debug("Removing from memory : " + umid);
         (this.processPending[umid].protocol as any).destroy();
         (this.processPending[umid].protocol as any) = null;
       }
@@ -647,7 +653,7 @@ export class Host extends Home {
         }
       }
     } else {
-      ActiveLogger.info("Broadcasting Completed");
+      ActiveLogger.debug("Broadcasting Completed");
     }
   }
 
