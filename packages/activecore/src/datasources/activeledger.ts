@@ -131,6 +131,20 @@ export class ActiveledgerDatasource {
           ActiveOptions.get<any>("db", {}).event
       );
 
+      // Add Search Indexes for core
+      ActiveledgerDatasource.getDb()
+        .createIndex({
+          index: {
+            fields: ["_id", "txs.[].$umid"]
+          }
+        })
+        .then(() => {
+          // Index exists
+        })
+        .catch(() => {
+          // Index failed
+        });
+
       // Add Query Engine
       this.query = new QueryEngine(
         this.db,
