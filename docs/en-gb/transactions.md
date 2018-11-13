@@ -4,6 +4,7 @@ Transactions are how you tell Activeledger to run a smart contract. Transactions
 
 ```json
 {
+    "$territoriality":"[reference]",
     "$tx": {
         "$namespace": "[contract namespace location]",
         "$contract": "[contract id to run]{@version}",
@@ -17,6 +18,9 @@ Transactions are how you tell Activeledger to run a smart contract. Transactions
     "$sigs": {}
 }
 ```
+### $territoriality
+
+This string property allows you to target where you would like the transaction to be confirmed and written to disk first. For the reference you can find this on the nodes status page. This reference can change as nodes are added or removed from the network.
 
 ### $tx
 
