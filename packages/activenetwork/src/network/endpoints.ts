@@ -81,6 +81,11 @@ export class Endpoints {
           });
         }
 
+        // Make broadcast default
+        if (!tx.$territoriality && !tx.$broadcast) {
+          tx.$broadcast = true;
+        }
+
         // If we got here everything is ok to send into internal
         // Now sending direct reducing http overhead
         Endpoints.DirectInternalInitalise(host, tx)
@@ -112,7 +117,7 @@ export class Endpoints {
                     summary.errors = [tx.$nodes[nodes[i]].error as string];
                   }
                 }
-              }              
+              }
 
               // We have the entire network $tx object. This isn't something we want to return
               let output: ActiveDefinitions.LedgerResponse = {
@@ -184,17 +189,6 @@ export class Endpoints {
       // Cast Body
       let tx = body as ActiveDefinitions.LedgerEntry;
 
-      // Is this broadcast do we support it in the config?
-      if (
-        tx.$broadcast &&
-        !ActiveOptions.get<any>("experimental", {}).broadcast
-      ) {
-        return resolve({
-          statusCode: 500,
-          content: "P2P Broadcast not supported"
-        });
-      }
-
       // Send into host pool
       host
         .pending(tx)
@@ -232,14 +226,6 @@ export class Endpoints {
       // Is the network stable?
       if (host.getStatus() != NeighbourStatus.Stable)
         return reject("Network Not Stable");
-
-      // Is this broadcast do we support it in the config?
-      if (
-        tx.$broadcast &&
-        !ActiveOptions.get<any>("experimental", {}).broadcast
-      ) {
-        return reject("P2P Broadcast not supported");
-      }
 
       // Targetted territoriality mapper
       if (tx.$territoriality) {
