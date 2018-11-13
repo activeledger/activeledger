@@ -32,26 +32,7 @@ export class TransactionController {
    *
    * @memberof TransactionController
    */
-  constructor() {
-    // Create the design document if it doesn't exist
-    ActiveledgerDatasource.getDb()
-      .get("_design/activecore")
-      .then(() => {})
-      .catch((exists: any) => {
-        if (exists.status === 404) {
-          ActiveledgerDatasource.getDb().put({
-            _id: "_design/activecore",
-            views: {
-              tx: {
-                map:
-                  'function (doc) {\n  if(doc.$stream && doc._id.substr(-7) === ":stream") {\n  for(let tx of doc.txs) {\n    emit(tx.$umid, 1);\n  }\n  }\n}'
-              }
-            },
-            language: "javascript"
-          });
-        }
-      });
-  }
+  constructor() {}
 
   /**
    * Returns Transaction data
@@ -107,32 +88,34 @@ export class TransactionController {
     }
   })
   async tx(@param.path.string("umid") umid: string): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ActiveledgerDatasource.getDb()
-        .query("activecore/tx", {
-          key: umid,
-          limit: 1,
-          reduce: false,
-          include_docs: true
-        })
-        .then((document: any) => {
-          // Make sure we have rows
-          if (document.rows.length) {
-            let stream = document.rows[0].doc as any;
-            // Now we need to find the transaction with the umid
-            let i = stream.txs.length;
-            while (i--) {
-              if (stream.txs[i].$umid === umid) {
-                resolve(stream.txs[i]);
-              }
+    let results = await ActiveledgerDatasource.getQuery().mango({
+      selector: {
+        _id: {
+          $gt: null
+        },
+        txs: {
+          $elemMatch: {
+            $umid: {
+              $eq: umid
             }
           }
-          // We shouldn't get here so show error
-          return reject(new HttpErrors.NotFound(`${umid} cannot be found`));
-        })
-        .catch((error: Error) => {
-          return reject(error.message);
-        });
+        }
+      }
     });
+    if (results) {
+      let warning = ActiveledgerDatasource.getQuery().getLastWarning();
+      if (warning) {
+        return {
+          streams: results,
+          warning: warning
+        };
+      } else {
+        return {
+          streams: results
+        };
+      }
+    } else {
+      return results;
+    }
   }
 }
