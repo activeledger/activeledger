@@ -240,7 +240,7 @@ export class StreamController {
                 warning: {
                   type: "object",
                   properties: {
-                    sql: { type: "string" },
+                    query: { type: "string" },
                     message: { type: "string" }
                   }
                 }
@@ -316,7 +316,7 @@ export class StreamController {
                 warning: {
                   type: "object",
                   properties: {
-                    sql: { type: "string" },
+                    query: { type: "string" },
                     message: { type: "string" }
                   }
                 }
@@ -350,7 +350,8 @@ export class StreamController {
           schema: {
             type: "object",
             properties: {
-              sql: { type: "string" }
+              sql: { type: "string" },
+              mango: { type: "object" }
             }
           }
         }
@@ -358,8 +359,16 @@ export class StreamController {
     })
     data: any
   ): Promise<any> {
+    let results;
     // Get Latest Version
-    let results = await ActiveledgerDatasource.getQuery().sql(data.sql);
+    if (data.sql && data.sql.length > 15) {
+      results = await ActiveledgerDatasource.getQuery().sql(data.sql);
+    }
+
+    if (data.mango && Object.keys(data.mango).length > 0) {
+      results = await ActiveledgerDatasource.getQuery().mango(data.mango);
+    }
+
     if (results) {
       let warning = ActiveledgerDatasource.getQuery().getLastWarning();
       if (warning) {
@@ -373,7 +382,13 @@ export class StreamController {
         };
       }
     } else {
-      return results;
+      return {
+        streams: [],
+        warning: {
+          query: "N/A",
+          message: "No SQL or Mango query found"
+        }
+      };
     }
   }
 

@@ -55,17 +55,27 @@ export class QueryEngine {
 
   /**
    * Use SQL to query the document database
-   * TODO : Filter in the query not post search (Use a property)
    *
    * @param {string} sql
    * @returns {Promise<ActiveDefinitions.IState>}
    * @memberof QueryEngine
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
-    return new Promise((resolve, reject) => {
-      // Convert to json query
-      let query = sqltomango.parse(sql);
+    // Convert to json query   
+    return this.mango(sqltomango.parse(sql));
+  }
 
+
+  /**
+   * Use Mango query to search the document database (more options)
+   * TODO : Filter in the query not post search (Use a indexed property)
+   *
+   * @param {*} query
+   * @returns {Promise<ActiveDefinitions.IState>}
+   * @memberof QueryEngine
+   */
+  public mango(query: any): Promise<ActiveDefinitions.IState> {
+    return new Promise((resolve, reject) => {
       // Limit Restrictions
       if (this.limit > 0) {
         query.limit = this.limit;
@@ -82,7 +92,7 @@ export class QueryEngine {
           if (results.warning) {
             // Update Warning
             this.warning = {
-              sql: sql,
+              query: query,
               message: results.warning
             };
           }
@@ -184,6 +194,6 @@ export class EventEngine {
  * @interface QueryWarning
  */
 interface QueryWarning {
-  sql: string;
+  query: string;
   message: string;
 }
