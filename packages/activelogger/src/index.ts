@@ -51,7 +51,7 @@ export class ActiveLogger {
   public static trace(obj: object, msg?: string, ...args: any[]): void;
   public static trace(msg: string, ...args: any[]): void;
   public static trace(p1: any, p2: any, args: any): void {
-    if (this.enableDebug) {
+    if (ActiveLogger.enableDebug) {
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -96,20 +96,22 @@ export class ActiveLogger {
   public static debug(obj: object, msg?: string, ...args: any[]): void;
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
-    // Get Output String
-    let out =
-      ActiveLogger.timestamp() +
-      ActiveLogger.colour("DEBUG", 46) +
-      ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, 36);
-
-    // Is there an object?
-    if (p2) {
-      out += ActiveLogger.object(p1);
+    if(ActiveLogger.enableDebug) {
+      // Get Output String
+      let out =
+        ActiveLogger.timestamp() +
+        ActiveLogger.colour("DEBUG", 46) +
+        ActiveLogger.process() +
+        ActiveLogger.colour(p2 || p1, 36);
+  
+      // Is there an object?
+      if (p2) {
+        out += ActiveLogger.object(p1);
+      }
+  
+      // Output
+      console.debug(out);
     }
-
-    // Output
-    console.debug(out);
   }
 
   /**

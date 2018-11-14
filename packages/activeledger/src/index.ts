@@ -537,6 +537,9 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
+          // Enable Extended Debugging
+          ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+
           if (!ActiveOptions.get<any>("db-only", false)) {
             // Wait a bit for process to fully start
             setTimeout(() => {
@@ -568,7 +571,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
         // Enable Extended Debugging
         ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
-
+        
         extendConfig(() => {
           // Create Home Host Node
           let activeHost = new ActiveNetwork.Host();
