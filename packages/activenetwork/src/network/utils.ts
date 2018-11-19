@@ -22,7 +22,7 @@
  */
 
 import * as os from "os";
-import { ActiveOptions } from '@activeledger/activeoptions';
+import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
  * Manages Hardware Interface (Networking)

@@ -147,11 +147,7 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    //TODO: Have a queue?
     ActiveLogger.info(this.entry, "Starting TX");
-
-    // Temporary Solution for mixed paths
-    let prefix: string = "";
 
     // Compiled Contracts sit in another location
     if (this.entry.$tx.$namespace == "default") {
@@ -167,7 +163,7 @@ export class Process extends EventEmitter {
     }
 
     // Get contract file (Or From Database)
-    if (fs.existsSync(prefix + this.contractLocation)) {
+    if (fs.existsSync(this.contractLocation)) {
       // Now we know we can execute the contract now or more costly cpu checks
       ActiveLogger.debug("Fetching Inputs");
 
@@ -439,6 +435,7 @@ export class Process extends EventEmitter {
       this.entry.$instant = false;
     }
 
+    // Which Peering mode?
     if (this.entry.$broadcast) {
       if (!error) {
         // Let all other nodes know about this transaction and our opinion
@@ -632,10 +629,6 @@ export class Process extends EventEmitter {
                   }
                 }
 
-                // TODO: Somehow we are getting an empty doc for now we will check on empty null
-
-                // Push Docs (Need to change null to undefined)
-
                 // Data State (Developers Control)
                 if (streams[i].state._id) docs.push(streams[i].state);
 
@@ -752,9 +745,6 @@ export class Process extends EventEmitter {
                     this.raiseLedgerError(1510, new Error("Failed to save"));
                   });
               };
-
-              // The documents to be stored
-              // ActiveLogger.debug(docs, "Changed Documents");
 
               // Detect Collisions
               if (collisions.length) {
@@ -1158,7 +1148,7 @@ export class Process extends EventEmitter {
   ): void {
     // Store in database for activesrestore to review
     this.storeError(code, reason)
-      .then(response => {
+      .then(() => {
         // TODO : We need to execute postvote because this node error will prevent
         // the rest of the network from getting its chance for consensus.
 

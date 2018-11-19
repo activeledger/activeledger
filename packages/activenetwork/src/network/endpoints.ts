@@ -311,7 +311,7 @@ export class Endpoints {
         // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
         // Status shouldn't be called much in comparison
         let neighbourhood = host.neighbourhood.get();
-        let keys = Object.keys(neighbourhood);
+        let keys = host.neighbourhood.keys();
         let i = keys.length;
         let neighbours: { [index: string]: object } = {};
 

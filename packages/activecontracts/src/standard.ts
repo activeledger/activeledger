@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Stream } from "./stream";
 
 /**
@@ -32,7 +31,7 @@ import { Stream } from "./stream";
  * @abstract
  * @class Standard
  */
- export default abstract class Standard extends Stream {
+export default abstract class Standard extends Stream {
   /**
    * Developer required to create a verify command for their contract.
    * Verify is to deterimine if this contract can understand this transaction
