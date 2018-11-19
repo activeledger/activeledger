@@ -24,7 +24,11 @@
 import * as cluster from "cluster";
 import * as http from "http";
 //@ts-ignore
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveRequest,
+  ActiveGZip
+} from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -38,6 +42,7 @@ import { Endpoints } from "./index";
 import * as PouchDB from "pouchdb";
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
+
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
 /**
@@ -206,22 +211,32 @@ export class Host extends Home {
         // Capture POST data
         if (req.method == "POST") {
           // Holds the body
-          let body: string | any = "";
+          let body: Buffer[] = [];
 
           // Reads body data
           req.on("data", chunk => {
-            body += chunk.toString(); // convert Buffer to string
+            body.push(chunk);
           });
 
           // When read has compeleted continue
-          req.on("end", () => {
+          req.on("end", async () => {
+            // gzipped?
+            let gdata;
+            if (req.headers["content-encoding"] == "gzip") {
+              gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+            }
+
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(this, body, this.fetchHeader(
-              req.rawHeaders,
-              "X-Activeledger-Encrypt",
-              false
-            ) as boolean)
+            Endpoints.postConvertor(
+              this,
+              (gdata || body).toString(),
+              this.fetchHeader(
+                req.rawHeaders,
+                "X-Activeledger-Encrypt",
+                false
+              ) as boolean
+            )
               .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
@@ -231,7 +246,8 @@ export class Host extends Home {
                 this.writeResponse(
                   res,
                   error.statusCode || 500,
-                  JSON.stringify(error.content || {})
+                  JSON.stringify(error.content || {}),
+                  req.headers["accept-encoding"] as string
                 );
               });
           });
@@ -759,6 +775,9 @@ export class Host extends Home {
     // Promise Response
     let response: Promise<any>;
 
+    // Can we return compressed data?
+    let gzipAccepted = req.headers["accept-encoding"] as string;
+
     // Diffrent endpoints VERB
     switch (req.method) {
       case "GET":
@@ -771,7 +790,7 @@ export class Host extends Home {
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.all(this.dbConnection);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           case "/hybrid":
@@ -800,10 +819,15 @@ export class Host extends Home {
                 });
                 return;
               } else {
-                return this.writeResponse(res, 418, "I'm a teapot");
+                return this.writeResponse(
+                  res,
+                  418,
+                  "I'm a teapot",
+                  gzipAccepted
+                );
               }
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
           default:
             // All Stream Management with start point
@@ -814,11 +838,11 @@ export class Host extends Home {
                   parseInt(req.url.substr(7))
                 );
               } else {
-                return this.writeResponse(res, 403, "Forbidden");
+                return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
               }
             } else {
               // 404 Not Found
-              return this.writeResponse(res, 404, "Not Found");
+              return this.writeResponse(res, 404, "Not Found", gzipAccepted);
             }
         }
         break;
@@ -832,18 +856,18 @@ export class Host extends Home {
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.InternalInitalise(this, body);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           case "/a/stream": // Stream Data Management (Activerestore)
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.streams(this.dbConnection, body);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           default:
-            return this.writeResponse(res, 404, "Not Found");
+            return this.writeResponse(res, 404, "Not Found", gzipAccepted);
         }
         break;
       case "OPTIONS":
@@ -857,7 +881,7 @@ export class Host extends Home {
         res.end();
         return;
       default:
-        return this.writeResponse(res, 404, "Not Found");
+        return this.writeResponse(res, 404, "Not Found", gzipAccepted);
     }
 
     // Wait for promise to get the response
@@ -868,7 +892,8 @@ export class Host extends Home {
         this.writeResponse(
           res,
           response.statusCode,
-          JSON.stringify(response.content || {})
+          JSON.stringify(response.content || {}),
+          gzipAccepted
         );
       })
       .catch((error: any) => {
@@ -877,7 +902,8 @@ export class Host extends Home {
         this.writeResponse(
           res,
           error.statusCode || 500,
-          JSON.stringify(error.content || "Something has gone wrong")
+          JSON.stringify(error.content || "Something has gone wrong"),
+          gzipAccepted
         );
       });
   }
@@ -888,19 +914,32 @@ export class Host extends Home {
    * @private
    * @param {http.ServerResponse} res
    * @param {number} statusCode
-   * @param {string} content
+   * @param {(string | Buffer)} content
+   * @param {string} encoding
    * @memberof Host
    */
-  private writeResponse(
+  private async writeResponse(
     res: http.ServerResponse,
     statusCode: number,
-    content: string
+    content: string | Buffer,
+    encoding: string
   ) {
-    res.writeHead(statusCode, {
+    // Setup Default Headers
+    let headers = {
       "Content-Type": "application/json",
+      "Content-Encoding": "none",
       "Access-Control-Allow-Origin": "*",
       "X-Powered-By": "Activeledger"
-    });
+    };
+
+    // Modify output if can compress
+    if (encoding == "gzip") {
+      headers["Content-Encoding"] = "gzip";
+      content = await ActiveGZip.gzip(content);
+    }
+
+    // Write the response
+    res.writeHead(statusCode, headers);
     res.write(content);
     res.end();
   }
