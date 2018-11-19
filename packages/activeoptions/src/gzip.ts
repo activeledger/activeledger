@@ -21,8 +21,52 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "./options";
-import { ActiveRequest } from "./request";
-import { ActiveChanges } from './changes';
-import { ActiveGZip } from './gzip';
-export { ActiveOptions, ActiveRequest, ActiveChanges, ActiveGZip };
+import * as zlib from "zlib";
+
+/**
+ * Promis wrappers to native gzip
+ *
+ * @export
+ * @class ActiveGZip
+ */
+export class ActiveGZip {
+  /**
+   * Compress data
+   *
+   * @static
+   * @param {(string | Buffer)} data
+   * @returns {Promise<string>}
+   * @memberof ActiveGZip
+   */
+  public static gzip(data: string | Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      zlib.gzip(data, (error, data) => {
+        if (!error) {
+          resolve(data);
+        } else {
+          reject(error);
+        }
+      });
+    });
+  }
+
+  /**
+   * Uncompress data
+   *
+   * @static
+   * @param {string} data
+   * @returns {Promise<string>}
+   * @memberof ActiveGZip
+   */
+  public static ungzip(data: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      zlib.gunzip(data, (error, data) => {
+        if (!error) {
+          resolve(data);
+        } else {
+          reject(error);
+        }
+      });
+    });
+  }
+}
