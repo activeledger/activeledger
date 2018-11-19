@@ -191,7 +191,7 @@ export class Neighbour {
               );
               reject(error.response.data);
             } else {
-              reject("Network Communication Error"); 
+              reject("Network Communication Error");
             }
           });
       });

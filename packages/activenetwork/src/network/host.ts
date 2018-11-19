@@ -54,7 +54,6 @@ interface process {
 
 /**
  * Hosted process for API and Protocol management
- * TODO: Consider moving this into ActiveProtocol (Better Ciruclar Solution?)
  *
  * @export
  * @class Host
@@ -270,7 +269,7 @@ export class Host extends Home {
               // Update Home
               let neighbour = this.neighbourhood.get(msg.reference);
               if (neighbour && !neighbour.graceStop) {
-                this.neighbourhood.get(msg.reference).isHome = msg.isHome;
+                neighbour.isHome = msg.isHome;
               }
               break;
             case "hold":
@@ -334,7 +333,7 @@ export class Host extends Home {
                     if (this.sse && response.tx) {
                       this.moan("hybrid", response.tx);
                     }
-                    
+
                     // Process response back into entry for previous neighbours to know the results
                     this.processPending[msg.umid].resolve({
                       status: 200,
@@ -440,9 +439,6 @@ export class Host extends Home {
               break;
             case "release":
               // Did we release (Should always be yes)
-              if (msg.release) {
-                // Will there be anything to do?
-              }
               break;
             case "hybrid":
               delete msg.type;
@@ -480,6 +476,9 @@ export class Host extends Home {
 
                     // Reset Network
                     this.neighbourhood.reset(config.neighbourhood);
+
+                    // Rebuild Network Territory Map
+                    this.terriBuildMap();
                   }
                 })
                 .catch(e => {
@@ -499,7 +498,7 @@ export class Host extends Home {
                 // Log once
                 ActiveLogger.debug("Adding To Memory : " + msg.umid);
                 // Now run the request as workers should have the umid in memory
-                this.broadcast(msg.umid, msg.nodes);
+                this.broadcast(msg.umid);
               }
               break;
             case "txtarget":
@@ -552,7 +551,7 @@ export class Host extends Home {
    */
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
-    if (this.processPending[umid]) {      
+    if (this.processPending[umid]) {
       // Check Protocol still exists
       if (this.processPending[umid].protocol) {
         // Log once
@@ -562,7 +561,6 @@ export class Host extends Home {
       }
       (this.processPending[umid] as any).entry = null;
       (this.processPending[umid] as any) = null;
-      // delete this.processPending[msg.umid];
     }
   }
 
@@ -573,19 +571,12 @@ export class Host extends Home {
    * @param {string} umid
    * @memberof Host
    */
-  private broadcast(umid: string, selfNode: any): void {
+  private broadcast(umid: string): void {
     // Get all the neighbour nodes
     let neighbourhood = this.neighbourhood.get();
-    let nodes = Object.keys(neighbourhood);
+    let nodes = this.neighbourhood.keys();
     let i = nodes.length;
     let promises = [];
-
-    // Get copy of tx
-    //let postTx = JSON.parse(JSON.stringify(this.processPending[umid].entry));
-
-    // Only send this node
-    //postTx.$nodes = selfNode;
-    //this.processPending[umid].entry.$nodes = nodes;
 
     // Loop them all and broadcast the transaction
     while (i--) {
@@ -639,7 +630,7 @@ export class Host extends Home {
           (process as any).recast = true;
           // Rebroadcast
           ActiveLogger.warn("Rebroadcasting : " + umid);
-          this.broadcast(umid, process.entry.$nodes);
+          this.broadcast(umid);
         } else {
           // Temp message for tracing
           process.entry.$nodes[this.reference].error = "broadcast timeout";
@@ -669,10 +660,6 @@ export class Host extends Home {
     // Would be good to cache this
     let input = Object.keys(v.$tx.$i || {});
     let output = Object.keys(v.$tx.$o || {});
-
-    // TODO :
-    // If a single process, We can call locker here to save
-    // CPU cycles
 
     // Ask for locks
     this.moan("hold", { umid: v.$umid, streams: Object.assign(input, output) });
