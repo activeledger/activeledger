@@ -95,11 +95,12 @@ export class ActiveRequest {
         // Compressable?
         if (enableGZip) {
           // Compress
+          data = ActiveGZip.gzip(data);
           (options.headers as any)["Content-Encoding"] = "gzip";
         }
 
         // Additional Post headers
-        (options.headers as any)["Content-Type"] = "application/json";        
+        (options.headers as any)["Content-Type"] = "application/json";
         (options.headers as any)["Content-Length"] = data.length;
       }
 
