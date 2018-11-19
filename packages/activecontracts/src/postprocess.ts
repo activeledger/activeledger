@@ -24,25 +24,27 @@
 import Standard from "./standard";
 
 /**
- * Allow for post processing of data after the commit phase. This can run outside of the ledger 
+ * Allow for post processing of data after the commit phase. This can run outside of the ledger
  * but will have access to the volatile stream.
- * 
+ *
  * @export
  * @abstract
  * @class PostProcess
  * @extends {Standard}
  */
 export default abstract class PostProcess extends Standard {
-
   /**
    * Runs code after the commit phase, Territoriality confirms this node
    * reached its commit phase first. all other nodes will be false
-   * 
+   *
    * @abstract
-   * @param {boolean} territoriality 
-   * @param {string} who 
-   * @returns {Promise<any>} 
+   * @param {boolean} territoriality
+   * @param {string} who
+   * @returns {Promise<any>}
    * @memberof PostProcess
    */
-  public abstract postProcess(territoriality: boolean, who: string): Promise<any>;
+  public abstract postProcess(
+    territoriality: boolean,
+    who: string
+  ): Promise<any>;
 }

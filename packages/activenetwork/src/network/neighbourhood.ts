@@ -60,6 +60,15 @@ export class Neighbourhood {
   private neighbours: { [reference: string]: Neighbour } = {};
 
   /**
+   * Cache Object.Keys results of neigbours
+   *
+   * @private
+   * @type {string[]}
+   * @memberof Neighbourhood
+   */
+  private neighboursKeys: string[];
+
+  /**
    * Additional ip lookup check
    *
    * @private
@@ -154,12 +163,9 @@ export class Neighbourhood {
    */
   public reset(neighbours: Array<any>): void {
     ActiveLogger.debug("Reload Request (Worker Resetting)");
-    // Reset as fresh boot
-    //this.firewall = this.neighbours = {};
-    //this.houses = 0;
 
     // Gracefully Shutdown Current Neighbours
-    let keys = Object.keys(this.neighbours);
+    let keys = this.keys();
     let i = keys.length;
     while (i--) {
       this.neighbours[keys[i]].graceStop = true;
@@ -180,6 +186,9 @@ export class Neighbourhood {
         )
       );
     }
+
+    // Rebuild Object.keys cache
+    this.neighboursKeys = Object.keys(this.neighbours);
   }
 
   /**
@@ -196,7 +205,7 @@ export class Neighbourhood {
     if (p1) {
       if (typeof p1 == "boolean") {
         // Get Keys as an array
-        let keys = Object.keys(this.neighbours);
+        let keys = this.keys();
 
         // Are we removing a neighbour?
         if (p2) {
@@ -220,6 +229,19 @@ export class Neighbourhood {
     } else {
       return this.neighbours;
     }
+  }
+
+  /**
+   * Return Object.keys cache of neighbours
+   *
+   * @returns {string[]}
+   * @memberof Neighbourhood
+   */
+  public keys(): string[] {
+    if (!this.neighboursKeys) {
+      this.neighboursKeys = Object.keys(this.neighbours);
+    }
+    return this.neighboursKeys;
   }
 
   /**
@@ -274,7 +296,7 @@ export class Neighbourhood {
     force: boolean = false
   ): Promise<any> {
     // Build up promises (Object.Entries may be better)
-    let neighbours = Object.keys(this.neighbours);
+    let neighbours = this.keys();
 
     // Loop each neighbour to get promise
     let i = neighbours.length;

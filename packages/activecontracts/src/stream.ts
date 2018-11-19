@@ -51,15 +51,6 @@ export class Stream {
   private outINC: Object;
 
   /**
-   * Storage of inbound INC data
-   *
-   * @private
-   * @type {Object[]}
-   * @memberof Stream
-   */
-  private inINC: ActiveDefinitions.ICommunications;
-
-  /**
    * Are we throwing this transaction to another ledger
    *
    * @private

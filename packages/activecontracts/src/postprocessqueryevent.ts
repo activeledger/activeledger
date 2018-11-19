@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { QueryEngine, EventEngine } from "@activeledger/activequery";
+import { EventEngine } from "@activeledger/activequery";
 import PostProcessQuery from "./postprocessquery";
 
 /**
@@ -46,7 +46,7 @@ export default abstract class PostProcessQueryEvent extends PostProcessQuery {
   /**
    * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
    *
-   * @param {QueryEngine} engine
+   * @param {EventEngine} engine
    * @memberof Query
    */
   public setEvent(engine: EventEngine) {

@@ -21,8 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { QueryEngine, EventEngine } from "@activeledger/activequery";
+import { EventEngine } from "@activeledger/activequery";
 import Query from "./query";
 
 /**
@@ -34,7 +33,6 @@ import Query from "./query";
  * @class Standard
  */
 export default abstract class QueryEvents extends Query {
-
   /**
    * Holds the query object to lookup the ledger
    *
@@ -44,11 +42,10 @@ export default abstract class QueryEvents extends Query {
    */
   protected event: EventEngine;
 
-
   /**
    * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
    *
-   * @param {QueryEngine} engine
+   * @param {EventEngine} engine
    * @memberof Query
    */
   public setEvent(engine: EventEngine) {

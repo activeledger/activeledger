@@ -24,6 +24,13 @@
 import * as events from "events";
 import { ActiveLogger } from "@activeledger/activelogger";
 
+/**
+ * Watches for changes to the datastore and emits
+ *
+ * @export
+ * @class ActiveChanges
+ * @extends {events.EventEmitter}
+ */
 export class ActiveChanges extends events.EventEmitter {
   /**
    * Changes Name
