@@ -95,7 +95,7 @@ export class ActiveRequest {
         // Compressable?
         if (enableGZip) {
           // Compress
-          data = ActiveGZip.gzip(data);
+          data = await ActiveGZip.gzip(data);
           (options.headers as any)["Content-Encoding"] = "gzip";
         }
 
