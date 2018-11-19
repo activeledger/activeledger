@@ -24,6 +24,8 @@
 import * as http from "http";
 import * as https from "https";
 import * as url from "url";
+import { ActiveGZip } from "./gzip";
+import { ActiveOptions } from "./options";
 
 /**
  * Simple HTTP Request Object
@@ -50,12 +52,15 @@ export class ActiveRequest {
     data?: any
   ): Promise<any> {
     // return new pending promise
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Parse URL
       const urlParsed = url.parse(reqUrl, false);
 
       // select http or https module, depending on reqested url
       const lib = reqUrl.startsWith("https") ? https : http;
+
+      // Temporary Experimental Mode
+      let enableGZip = ActiveOptions.get<any>("experimental", {}).gzip || false;
 
       // Build Base Options
       let options: https.RequestOptions = {
@@ -65,6 +70,11 @@ export class ActiveRequest {
         method: type.toUpperCase(),
         headers: {}
       };
+
+      // Compressable?
+      if (enableGZip) {
+        (options.headers as any)["Accept-Encoding"] = "gzip";
+      }
 
       // Add Headers
       if (header) {
@@ -82,6 +92,14 @@ export class ActiveRequest {
         // convert data to string
         data = JSON.stringify(data);
 
+        // Compressable?
+        if (enableGZip) {
+          // Compress
+          data = await ActiveGZip.gzip(data);
+          (options.headers as any)["Content-Encoding"] = "gzip";
+        }
+
+        // Additional Post headers
         (options.headers as any)["Content-Type"] = "application/json";
         (options.headers as any)["Content-Length"] = data.length;
       }
@@ -105,12 +123,17 @@ export class ActiveRequest {
           response.on("data", chunk => body.push(chunk));
 
           // Completed join the data array and parse as JSON
-          response.on("end", () => {
+          response.on("end", async () => {
             if (body.length) {
               // Add to "data" to mimic old lib
               try {
+                // Gziped?
+                let gdata;
+                if (response.headers["content-encoding"] == "gzip") {
+                  gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+                }
                 resolve({
-                  data: JSON.parse(body.toString())
+                  data: JSON.parse((gdata || body).toString())
                 });
               } catch (error) {
                 reject(new Error("Failed to parse body"));
