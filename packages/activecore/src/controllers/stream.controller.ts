@@ -34,6 +34,90 @@ export class StreamController {
   constructor() {}
 
   /**
+   * Fetch multiple Activity Steams by id
+   *
+   * @param {string[]} data
+   * @returns {Promise<any>}
+   * @memberof StreamController
+   */
+  @post("/api/stream", {
+    responses: {
+      "200": {
+        description: "Activity Stream Data",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                streams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      _id: { type: "string" },
+                      _rev: { type: "string" }
+                    },
+                    additionalProperties: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "404": {
+        description: "Activity Stream Not Found",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                statusCode: { type: "number" },
+                name: { type: "string" },
+                message: { type: "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  async streams(
+    @requestBody({
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          }
+        }
+      }
+    })
+    data: string[]
+  ): Promise<any> {
+    let results = await ActiveledgerDatasource.getDb().allDocs({
+      include_docs: true,
+      keys: data
+    });
+    if (results) {
+      // Normalise the data from rows[].doc
+      let i = results.rows.length;
+      let streams = [];
+      while (i--) {
+        streams.push(results.rows[i].doc);
+      }
+      return {
+        streams
+      };
+    } else {
+      return results;
+    }
+  }
+
+  /**
    * Fetch an Activity Steam by id
    *
    * @param {string} id
