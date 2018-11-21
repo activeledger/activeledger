@@ -174,9 +174,19 @@ export class Process extends EventEmitter {
       if (!this.inputs.length)
         this.raiseLedgerError(1101, new Error("Inputs cannot be null"));
 
+      // Which $i lookup are we using. Are they labelled or stream names
+      this.labelOrKey();
+
       // Build Outputs Key Maps (Reference is Stream)
       ActiveLogger.debug("Fetching Outputs");
       this.outputs = Object.keys(this.entry.$tx.$o || {});
+
+      // Which $o lookup are we using. Are they labelled or stream names
+      // Make sure we have outputs as they're optional
+      if (this.outputs.length) {
+        // Which $o lookup are we using. Are they labelled or stream names
+        this.labelOrKey(true);
+      }
 
       // Are we checking revisions or setting?
       if (!this.entry.$revs) {
@@ -1110,6 +1120,36 @@ export class Process extends EventEmitter {
     } catch (error) {
       ActiveLogger.error(error, "Signature Check Error");
       return false;
+    }
+  }
+
+  /**
+   * Transaction $i/o type for stream names
+   * Which $i/o lookup are we using. Are they labelled or stream names
+   *
+   * @private
+   * @param {boolean} [outputs=false]
+   * @memberof Process
+   */
+  private labelOrKey(outputs: boolean = false): void {
+    // Get Reference for inputs
+    let streams = this.inputs;
+    let txIO = this.entry.$tx.$i;
+
+    // Override for outputs
+    if (outputs) {
+      streams = this.outputs;
+      txIO = this.entry.$tx.$o;
+    }
+
+    // Check the first one, If labelled then loop all.
+    // Means first has to be labelled but we don't want to loop when not needed
+    if (txIO[streams[0]].$stream) {
+      let i = streams.length;
+      while (i--) {
+        // Stream label or self
+        streams = txIO[streams[i]].$stream || streams[i];
+      }
     }
   }
 
