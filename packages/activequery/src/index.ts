@@ -35,10 +35,10 @@ export class QueryEngine {
    * Stores the last warning
    *
    * @private
-   * @type {QueryWarning}
+   * @type {(QueryWarning | undefined)}
    * @memberof QueryEngine
    */
-  private warning: QueryWarning;
+  private warning: QueryWarning | undefined;
 
   /**
    * Creates an instance of QueryEngine.
@@ -94,6 +94,9 @@ export class QueryEngine {
               query: query,
               message: results.warning
             };
+          } else {
+            // Clear warning
+            this.warning = undefined;
           }
 
           // Filter documents if inside a contract
