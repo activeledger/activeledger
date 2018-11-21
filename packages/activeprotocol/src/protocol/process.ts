@@ -292,7 +292,10 @@ export class Process extends EventEmitter {
       }
     } else {
       // Contract not found
-      this.raiseLedgerError(1404, new Error("Contract Not Found"));
+      this.postVote({
+        code: 1401,
+        reason: "Contract Not Found"
+      });
     }
   }
 
@@ -447,10 +450,12 @@ export class Process extends EventEmitter {
 
     // Which Peering mode?
     if (this.entry.$broadcast) {
-      if (!error) {
-        // Let all other nodes know about this transaction and our opinion
-        this.emit("broadcast", this.entry);
+      if (error) {
+        // Add error to the broadcast for passing back to the client
+        this.entry.$nodes[this.reference].error = error.reason;
       }
+      // Let all other nodes know about this transaction and our opinion
+      this.emit("broadcast", this.entry);
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
@@ -1148,7 +1153,7 @@ export class Process extends EventEmitter {
       let i = streams.length;
       while (i--) {
         // Stream label or self
-        streams = txIO[streams[i]].$stream || streams[i];
+        streams[i] = txIO[streams[i]].$stream || streams[i];
       }
     }
   }
