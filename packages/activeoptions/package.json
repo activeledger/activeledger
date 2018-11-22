@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.0.0-rc.8.0.24",
+  "version": "2.0.0-rc.8.0.25",
   "description": "This package manages the configuration for Activeledger (file and ledger based).",
   "keywords": [
     "blockchain",
@@ -50,7 +50,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.24",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.25",
     "express": "^4.16.4",
     "express-pouchdb": "^4.1.0",
     "minimist": "^1.2.0",
