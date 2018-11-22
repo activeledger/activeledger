@@ -27,10 +27,9 @@ import * as child from "child_process";
 import * as cluster from "cluster";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveRequest, ActiveDataStore } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { DataStore } from "./datastore";
 import { PhysicalCores } from "./cpus";
 
 // Initalise CLI Options
@@ -532,7 +531,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         // Self hosted data storage engine
         if (ActiveOptions.get<any>("db", {}).selfhost) {
           // Create Datastore instance
-          let datastore: DataStore = new DataStore();
+          let datastore: ActiveDataStore = new ActiveDataStore();
 
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();

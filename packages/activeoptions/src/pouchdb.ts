@@ -21,17 +21,5 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "./options";
-import { ActiveRequest } from "./request";
-import { ActiveChanges } from "./changes";
-import { ActiveGZip } from "./gzip";
-import { ActiveDataStore } from "./datastore";
-import PouchDB from "./pouchdb";
-export {
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip,
-  ActiveDataStore,
-  PouchDB
-};
+let PouchDB:any = require('pouchdb');
+export default PouchDB;

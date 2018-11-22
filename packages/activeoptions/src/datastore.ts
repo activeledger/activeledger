@@ -23,7 +23,7 @@
 
 import * as fs from "fs";
 import * as child from "child_process";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions } from "./options";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
@@ -32,7 +32,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
  * @export
  * @class DataStore
  */
-export class DataStore {
+export class ActiveDataStore {
   /**
    * Folder location
    *
