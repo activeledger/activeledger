@@ -22,9 +22,7 @@
  */
 
 import { QueryEngine } from "@activeledger/activequery";
-import { ActiveOptions, ActiveChanges } from "@activeledger/activeoptions";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
+import { ActiveOptions, ActiveChanges, PouchDB } from "@activeledger/activeoptions";
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
 // Add Find Plugin

@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://www.activeledger.io",
+  "homepage": "https://activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
@@ -36,7 +36,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.2",
+    "@types/node": "^10.12.10",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
     "typescript": "^3.1.6"
@@ -55,7 +55,6 @@
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.24",
     "@activeledger/activeprotocol": "^2.0.0-rc.8.0.24",
     "@activeledger/activequery": "^2.0.0-rc.8.0.24",
-    "pouchdb": "^7.0.0",
     "pouchdb-find": "^7.0.0"
   }
 }

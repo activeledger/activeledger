@@ -27,7 +27,8 @@ import * as http from "http";
 import {
   ActiveOptions,
   ActiveRequest,
-  ActiveGZip
+  ActiveGZip,
+  PouchDB
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -38,8 +39,7 @@ import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
+
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
 
@@ -592,7 +592,7 @@ export class Host extends Home {
     let neighbourhood = this.neighbourhood.get();
     let nodes = this.neighbourhood.keys();
     let i = nodes.length;
-    let promises = [];
+    let promises: any[] = [];
 
     // Loop them all and broadcast the transaction
     while (i--) {

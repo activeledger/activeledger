@@ -24,10 +24,8 @@
 import * as fs from "fs";
 import * as ChildP from "child_process";
 // @ts-ignore
-import * as PouchDB from "pouchdb";
-// @ts-ignore
 import * as FileHound from "filehound";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, PouchDB } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import * as rimraf from "rimraf";
 

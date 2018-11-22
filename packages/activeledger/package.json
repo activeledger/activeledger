@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://www.activeledger.io",
+  "homepage": "https://activeledger.io",
   "preferGlobal": true,
   "bin": {
     "activeledger": "./lib/index.js"
@@ -39,7 +39,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.2",
+    "@types/node": "^10.12.10",
     "copyfiles": "^2.1.0",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
@@ -57,9 +57,6 @@
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.24",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.24",
     "@activeledger/activenetwork": "^2.0.0-rc.8.0.24",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.24",
-    "express": "^4.16.4",
-    "express-pouchdb": "^4.1.0",
-    "pouchdb": "^7.0.0"
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.24"
   }
 }

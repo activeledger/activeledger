@@ -586,7 +586,7 @@ export class Process extends EventEmitter {
             let skip: string[] = [];
 
             // Determanistic Collision Managamenent
-            let collisions = [];
+            let collisions: any[] = [];
 
             // Any Changes
             if (streams.length) {

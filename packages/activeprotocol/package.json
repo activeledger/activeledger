@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://www.activeledger.io",
+  "homepage": "https://activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
@@ -53,7 +53,7 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.24",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.24",
     "@activeledger/activequery": "^2.0.0-rc.8.0.24",
-    "@types/node": "^10.12.2",
+    "@types/node": "^10.12.10",
     "typescript": "^3.1.6",
     "vm2": "^3.6.4"
   }
