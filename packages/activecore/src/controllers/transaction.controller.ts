@@ -22,7 +22,7 @@
  */
 
 import { ActiveledgerDatasource } from "../datasources/activeledger";
-import { param, get, HttpErrors } from "@loopback/rest";
+import { param, get } from "@loopback/rest";
 // import {inject} from '@loopback/context';
 
 export class TransactionController {
@@ -50,7 +50,7 @@ export class TransactionController {
             schema: {
               type: "object",
               properties: {
-                stream: {
+                umid: {
                   type: "object",
                   properties: {
                     $umid: { type: "object" },
@@ -88,34 +88,13 @@ export class TransactionController {
     }
   })
   async tx(@param.path.string("umid") umid: string): Promise<any> {
-    let results = await ActiveledgerDatasource.getQuery().mango({
-      selector: {
-        _id: {
-          $gt: null
-        },
-        txs: {
-          $elemMatch: {
-            $umid: {
-              $eq: umid
-            }
-          }
-        }
-      }
-    });
-    if (results) {
-      let warning = ActiveledgerDatasource.getQuery().getLastWarning();
-      if (warning) {
-        return {
-          streams: results,
-          warning: warning
-        };
-      } else {
-        return {
-          streams: results
-        };
-      }
+    let result = await ActiveledgerDatasource.getDb().get(umid + ":umid");
+    if (result) {
+      return {
+        umid: result.umid
+      };
     } else {
-      return results;
+      return result;
     }
   }
 }

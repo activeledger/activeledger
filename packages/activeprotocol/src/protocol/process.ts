@@ -608,13 +608,10 @@ export class Process extends EventEmitter {
                       streams[i].state._id + ":volatile";
                   }
 
-                  // if it is sigless
                   // Need to add transaction to all meta documents
-                  if (this.entry.$selfsign) {
-                    streams[i].meta.txs = [this.compactTxEntry()];
-                    // Also set as intalisiser stream (stream constructor)
-                    streams[i].meta.$constructor = true;
-                  }
+                  streams[i].meta.txs = [this.entry.$umid];
+                  // Also set as intalisiser stream (stream constructor)
+                  streams[i].meta.$constructor = true;
 
                   // Need to remove rev
                   delete streams[i].state._rev;
@@ -629,7 +626,7 @@ export class Process extends EventEmitter {
                   // Updated Streams, These could be inputs
                   // So update the transaction and remove for inputs for later processing
                   if (streams[i].meta.txs && streams[i].meta.txs.length) {
-                    streams[i].meta.txs.push(this.compactTxEntry());
+                    streams[i].meta.txs.push(this.entry.$umid);
                     skip.push(streams[i].meta._id as string);
                   }
 
@@ -654,7 +651,7 @@ export class Process extends EventEmitter {
                 if (streams[i].volatile._id) docs.push(streams[i].volatile);
               }
 
-              // Any inputs left (Means not modified)
+              // Any inputs left (Means not modified, Unmodified outputs can be ignored)
               // Now we need to append transaction to the inputs of the transaction
               if (inputs && inputs.length) {
                 // Add to all docs
@@ -666,7 +663,7 @@ export class Process extends EventEmitter {
                     inputs[i].meta.txs.length
                   ) {
                     // Add Compact Transaction
-                    inputs[i].meta.txs.push(this.compactTxEntry());
+                    inputs[i].meta.txs.push(this.entry.$umid);
 
                     // Hardened Keys?
                     if (
@@ -683,6 +680,12 @@ export class Process extends EventEmitter {
                   }
                 }
               }
+
+              // Create umid document containing the transaction details
+              docs.push({
+                _id: this.entry.$umid + ":umid",
+                umid: this.compactTxEntry()
+              });
 
               /**
                * Delegate Function
