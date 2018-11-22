@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecrypto",
-  "version": "2.0.0-rc.8.0.24",
+  "version": "2.0.0-rc.8.0.25",
   "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
   "keywords": [
     "blockchain",
@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://www.activeledger.io",
+  "homepage": "https://activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -32,7 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.2",
+    "@types/node": "^10.12.10",
     "@types/node-rsa": "^0.4.3",
     "rimraf": "^2.6.2",
     "ts-node": "^7.0.1",
@@ -46,7 +46,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.24",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.25",
     "asn1.js": "^5.0.1",
     "elliptic": "^6.4.1",
     "node-rsa": "^1.0.1"

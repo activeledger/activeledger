@@ -24,9 +24,7 @@
  */
 
 import * as fs from "fs";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
-import { ActiveOptions, ActiveChanges } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveChanges, PouchDB } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { Sledgehammer } from "./sledgehammer";
@@ -225,7 +223,7 @@ ActiveOptions.extendConfig()
               i = streams.length;
 
               // Hold all the promises to update when all done
-              let all = [];
+              let all:any = [];
 
               while (i--) {
                 let stream = reduction[streams[i]];

@@ -22,9 +22,7 @@
  */
 
 import { QueryEngine } from "@activeledger/activequery";
-import { ActiveOptions, ActiveChanges } from "@activeledger/activeoptions";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
+import { ActiveOptions, ActiveChanges, PouchDB } from "@activeledger/activeoptions";
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
 // Add Find Plugin
@@ -130,20 +128,6 @@ export class ActiveledgerDatasource {
           "/" +
           ActiveOptions.get<any>("db", {}).event
       );
-
-      // Add Search Indexes for core
-      ActiveledgerDatasource.getDb()
-        .createIndex({
-          index: {
-            fields: ["_id", "txs.[].$umid"]
-          }
-        })
-        .then(() => {
-          // Index exists
-        })
-        .catch(() => {
-          // Index failed
-        });
 
       // Add Query Engine
       this.query = new QueryEngine(

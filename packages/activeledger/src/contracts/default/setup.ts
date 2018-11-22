@@ -519,7 +519,7 @@ export default class Setup extends PostProcess {
     let network = activity.getState();
 
     // Create new list remove the one
-    let nodes = [];
+    let nodes: any[] = [];
     let i = network.neighbourhood.length;
 
     while (i--) {
