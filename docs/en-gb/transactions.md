@@ -18,41 +18,74 @@ Transactions are how you tell Activeledger to run a smart contract. Transactions
     "$sigs": {}
 }
 ```
-### $territoriality
+
+### \$territoriality
 
 This string property allows you to target where you would like the transaction to be confirmed and written to disk first. For the reference you can find this on the nodes status page. This reference can change as nodes are added or removed from the network.
 
-### $tx
+### \$tx
 
-This object is the packet information which needs to be signed by all \$i identities. 
+This object is the packet information which needs to be signed by all \$i identities.
 
-#### $namespace
+#### \$namespace
 
-Developers are able to register namespaces on each Activeledger instance this will allow developers to control and take ownership of contracts running on the network. 
+Developers are able to register namespaces on each Activeledger instance this will allow developers to control and take ownership of contracts running on the network.
 
 There is a reserved namespace name "default" for contracts which ship with Activeledger.
 
-#### $contract
+#### \$contract
 
 The stream id of the contract that will be processing this transaction.
 
-#### $entry
+#### \$entry
 
 [Standard contracts](contracts/standard.md) require 3 main entry points these can then access \$entry and with this then run the required function within the contract.
 
 ```typescript
-this.transactions.entry
+this.transactions.entry;
 ```
 
-#### $i
+#### \$i
 
 This object is to represent which identities streams will be responsible for this transaction. These means that they have to provide the matching transaction signature. An example for this is if you're the sending party you need to provide authentication that you can send.
 
-The key for this object can be 2 types of values
+The key for this object can be 3 types of values
 
 ##### Key - Stream id
 
 This is their identities stream id on the ledger. This is where the ledger knows of the matching public key to provide verification.
+
+##### Key - Predefined names
+
+This method makes it easier to manage the transaction references at contract runtime. For the ledger to match the correct public key the object value must have a property called \$stream.
+
+```json
+{
+    "$i": {
+      "example": {
+      	"$stream": "[stream id]",
+      }
+}
+```
+
+Unlike self signed transactions the key used for \$sigs must still use the stream id.
+
+```json
+{
+  "$tx": {
+    "$i": {
+      "example": {
+        "$stream": "[stream id]"
+      }
+    },
+    "$sigs": {
+      "[stream id]": "[signature]"
+    }
+  }
+}
+```
+
+You can mix the above 2 methods inside a single transaction. However predefined name type must be the first entry inside the $i/$o object to trigger the additional lookup.
 
 ##### Key - Self signature
 
@@ -66,42 +99,42 @@ From this point on the values can be defined by the contract developer. Anything
 this.transactions.$i["[key]"].
 ```
 
-The only exception to this freedom is with a self signed transaction. If you're going to process a self signed transaction there has to be 2 properties 
+The only exception to this freedom is with a self signed transaction. If you're going to process a self signed transaction there has to be 2 properties
 
 ```json
 {
-    "type":"[secp256k1 OR rsa]",
-    "publicKey": "[Public PEM Format]"
+  "type": "[secp256k1 OR rsa]",
+  "publicKey": "[Public PEM Format]"
 }
 ```
 
 This is to allow Activeledger to still process the signature validation. It is also useful for contract developers so if they do create a new activity stream they can assign the processing authority.
 
-#### $o
+#### \$o
 
-This object follows the same rules as $i however any identities here do not need to provide any signatures for validation. In \$i we used the example of sending in this instance \$o is the receiver. Self signing cannot be used here it only accepts known identities. 
+This object follows the same rules as $i however any identities here do not need to provide any signatures for validation (Unless the signedOutputs configuration option is enabled on the network). In \$i we used the example of sending in this instance \$o is the receiver. Self signing cannot be used here it only accepts known identities.
 
-#### $r
+#### \$r
 
-This property contains a simple key-value object. This is used for accessing streams state in read only mode. The key is the reference name and the value is the stream id. So to access this read only stream you can call one of  helper functions :
+This property contains a simple key-value object. This is used for accessing streams state in read only mode. The key is the reference name and the value is the stream id. So to access this read only stream you can call one of helper functions :
 
 ```typescript
-let state = this.getReadOnlyStream(this.transactions.$r["reference"])
+let state = this.getReadOnlyStream(this.transactions.$r["reference"]);
 ```
 
 state now contains the current execution time stream state .
 
-### $selfsign
+### \$selfsign
 
 This Boolean instructs Activeledger that the identity issuing the transaction is going to self sign. That means they do not yet have an identity onboarded onto the network but want to raise a transaction. An example of this is [here](README.md) which explains how it is used to onboard. This information is available during the verify phase of contract operation .
 
-### $sigs
+### \$sigs
 
-This property contains a simple key-value object. They key has to much all the keys provided in the \$i object. The value is the private key signature of the entire \$tx object. 
+This property contains a simple key-value object. They key has to much all the keys provided in the \$i object. The value is the private key signature of the entire \$tx object.
 
 ## Secure Transaction Submission
 
-While the network itself can be configured to secure the communication within itself this doesn't automatically secure the original transaction being sent into the network. You could achieve this yourself by putting Activeledger behind a proxy that can handle the SSL for you (which we do recommend) but it is also possible to encrypt the raw transaction message against the receiving nodes public key. 
+While the network itself can be configured to secure the communication within itself this doesn't automatically secure the original transaction being sent into the network. You could achieve this yourself by putting Activeledger behind a proxy that can handle the SSL for you (which we do recommend) but it is also possible to encrypt the raw transaction message against the receiving nodes public key.
 
 At the moment Activeledger doesn't auto detect that the transaction has been encrypted you need to provide a hint using the header :
 
@@ -133,8 +166,3 @@ When the Activeledger network is set to use hardened keys. This does enforce an 
     "$sigs": {}
 }
 ```
-
-
-
-
-

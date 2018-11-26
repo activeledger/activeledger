@@ -10,7 +10,8 @@ The configuration allows for each Activeledger instance to be customised and who
   "security": {
     "signedConsensus": true,
     "encryptedConsensus": true,
-    "hardenedKeys": false
+    "hardenedKeys": false,
+    "signedOutputs": false
   },
   "host": "external-ip:5260",
   "proxy": "optional",
@@ -70,6 +71,10 @@ Enabling encryptedConsensus this takes the signing consensus one step further th
 ### Hardened Keys
 
 This enabled a transaction policy. It will require all \$i to contain a new property which is $nhpk. This stands for New Hardened Public Key. The value of this property needs to be a new public key in PEM format matching the current identity stream key type. This policy means there will only ever be 1 signature per valid transaction.
+
+### Signed Outputs
+
+Set this boolean to true if you want all output identities to have to provide a transaction signature.
 
 ## Host
 
