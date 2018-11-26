@@ -205,6 +205,10 @@ export class Home extends Neighbour {
       this.reference == Home.right.reference &&
       this.reference == Home.left.reference
     ) {
+      // Single Node Network
+      if (this.neighbourhood.count() == 1) {
+        return NeighbourStatus.Stable;
+      }
       return NeighbourStatus.Unrecognised;
     }
 
