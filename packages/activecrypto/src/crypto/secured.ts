@@ -45,7 +45,44 @@ export class Secured {
     let salt = crypto.randomBytes(32);
     return crypto
       .pbkdf2Sync(seed, salt, 10000, length, "sha256")
-      .toString("hex");
+      .toString("hex")
+      .substring(0, length);
+  }
+
+  private createIV(password: string) {
+    return Secured.createPassword(password, 16);
+  }
+
+  private cipherEncrypt(password: string, data: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // Convert object to string for encryption
+      let cipher = crypto.createCipheriv(
+        "aes-256-cbc",
+        password,
+        this.createIV(password)
+      );
+
+      // Hold Encrypted Chunks
+      let encrypted = "";
+
+      // Output
+      cipher.setEncoding("base64");
+
+      cipher.on("readable", () => {
+        encrypted += cipher.read();
+      });
+
+      cipher.on("end", () => {
+        cipher.removeAllListeners();
+
+        // Assign to Output
+        resolve(encrypted);
+      });
+
+      // Write data to be encrypted
+      cipher.write(data);
+      cipher.end();
+    });
   }
 
   private deepMapEncrypt(data: any, passwords: any): Promise<ISecuredData> {
@@ -66,34 +103,24 @@ export class Secured {
             passwords
           );
 
+          // Problem lays in how we assigned the nested data!
+          data[keys[i]] = nestedData;
+
           // Do we need to encrypt the result
-          if (nestedData.$ADAR && passwords[nestedData.$ADAR]) {
-            // Convert object to string for encryption
-            let cipher = crypto.createCipheriv(
-              "aes-256-gcm",
-              nestedData.$ADAR,
-              Date.now.toString()
+          if (data[keys[i]].$ADAR && passwords[data[keys[i]].$ADAR]) {
+            let encryptedData = await this.cipherEncrypt(
+              passwords[data[keys[i]].$ADAR],
+              JSON.stringify(data[keys[i]])
             );
-            let encrypted = "";
 
-            //
-            cipher.setEncoding("bas64");
-
-            cipher.on("readable", () => {
-              encrypted += cipher.read();
-            });
-
-            cipher.on("end", () => {
-              cipher.removeAllListeners();
-
-              // Assign to Output
-              out[keys[i]] = {
-                $ADENC: encrypted,
-                $ADAR: nestedData.$ACLR
-              };
-
-              resolve(out);
-            });
+            // Update Object
+            out[keys[i]] = {
+              $ADENC: encryptedData,
+              $ADAR: data[keys[i]].$ADAR
+            };
+          } else {
+            // Assign to output
+            out[keys[i]] = data[keys[i]];
           }
         } else {
           // Assign to output
@@ -148,6 +175,9 @@ export class Secured {
           case ADACType.Stream:
             pubRSA = "d";
             break;
+          case ADACType.PubKey:
+            pubRSA = packet.$ADAC[i].ref;
+            break;
           default:
             return reject("Unknown $ADAC type");
         }
@@ -159,7 +189,12 @@ export class Secured {
       }
 
       // Encrypt the Data
-      this.deepMapEncrypt(packet.data, passwords);
+      this.deepMapEncrypt(packet.data, passwords)
+        .then(result => {
+          packet.data = result;
+          resolve(packet);
+        })
+        .catch(reject);
     });
   }
 }
@@ -181,6 +216,7 @@ export interface ISecuredData {
 }
 
 export enum ADACType {
-  Node,
-  Stream
+  Node = "node",
+  Stream = "stream",
+  PubKey = "pubkey"
 }
