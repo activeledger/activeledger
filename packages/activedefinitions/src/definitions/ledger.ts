@@ -44,6 +44,7 @@ export interface LedgerEntry {
   $streams: IStreams;
   $broadcast?: boolean;
   $territoriality?: string;
+  $encrypt?: boolean;
 }
 
 export interface LedgerResponse {

@@ -169,6 +169,53 @@ export class Endpoints {
   }
 
   /**
+   * Exposes an endpoint to run through the ADAC encryption
+   *
+   * @static
+   * @param {Host} host
+   * @param {*} body
+   * @param {boolean} encHeader
+   * @returns {Promise<any>}
+   * @memberof Endpoints
+   */
+  public static ExternalEncrypt(
+    host: Host,
+    body: any,
+    encHeader: boolean
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (encHeader) {
+        let secureTx = new ActiveCrypto.Secured({}, host.neighbourhood.get(), {
+          reference: host.reference,
+          public: Home.publicPem,
+          private: Home.identity.pem
+        });
+
+        // Walk all properties
+        secureTx
+          .encrypt(body as any)
+          .then(results => {
+            resolve({
+              statusCode: 200,
+              content: results
+            });
+          })
+          .catch(error => {
+            reject({
+              statusCode: 500,
+              content: error
+            });
+          });
+      } else {
+        reject({
+          statusCode: 500,
+          content: "Must be sent over X-Activeledger-Encrypt"
+        });
+      }
+    });
+  }
+
+  /**
    * Handle transaction request internally in the ledger. This is how all requests
    * will be submitted into each node's protocol process. Post convertor has already
    * dealt with the validation of the data
