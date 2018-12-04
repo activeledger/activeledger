@@ -852,6 +852,14 @@ export class Host extends Home {
           case "/": // Setup for accepting external transactions
             response = Endpoints.ExternalInitalise(this, body);
             break;
+          case "/a/encrypt":
+            // Make sure it was encrypted here
+            response = Endpoints.ExternalEncrypt(this, body, this.fetchHeader(
+              req.rawHeaders,
+              "X-Activeledger-Encrypt",
+              false
+            ) as boolean);
+            break;
           case "/a/init": // Internal transactions
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.InternalInitalise(this, body);

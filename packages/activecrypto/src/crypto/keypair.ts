@@ -90,10 +90,10 @@ export class KeyPair {
    */
   constructor(type?: string);
   constructor(type?: string, pem?: string);
-  constructor(private type: any = "rsa", key?: any) {
+  constructor(private type: any = "rsa", public pem?: any) {
     switch (type) {
       case "rsa":
-        if (key) this.rsa = new NodeRsa(key);
+        if (pem) this.rsa = new NodeRsa(pem);
         break;
       case "bitcoin":
       case "ethereum":
@@ -101,45 +101,45 @@ export class KeyPair {
         // Get Curve
         this.curve = new (require("elliptic")).ec("secp256k1");
 
-        if (key) {
+        if (pem) {
           // Backwards compatibility mode (NO ASN PEM)
-          if (key.indexOf("PRIVATE-") !== -1 || key.indexOf("PUBLIC-") !== -1) {
+          if (pem.indexOf("PRIVATE-") !== -1 || pem.indexOf("PUBLIC-") !== -1) {
 
             // Learn if its private
             let isPriv = false;
-            if (key.indexOf("PRIVATE") !== -1) {
+            if (pem.indexOf("PRIVATE") !== -1) {
               isPriv = true;
             }
 
             // Key should be PEM style with RAW value.
             // Remove Header & Footer & New Lines
-            key = key.replace(/-*[A-Z ]*-|\n/g, "");
+            pem = pem.replace(/-*[A-Z ]*-|\n/g, "");
 
             // Convert to HEX from base64
-            key = Buffer.from(key, "base64").toString();
+            pem = Buffer.from(pem, "base64").toString();
 
             // Private or Public key being imported?
             if (!isPriv) {
               this.key = this.curve.keyFromPublic(
-                key,
+                pem,
                 "hex"
               );
             } else {
               this.key = this.curve.keyFromPrivate(
-                key,
+                pem,
                 "hex"
               );
             }
           } else {
             // Private or Public key being imported?
-            if (key.indexOf("PRIVATE") == -1) {
+            if (pem.indexOf("PRIVATE") == -1) {
               this.key = this.curve.keyFromPublic(
-                AsnParser.decodeECPublicKey(key),
+                AsnParser.decodeECPublicKey(pem),
                 "hex"
               );
             } else {
               this.key = this.curve.keyFromPrivate(
-                AsnParser.decodeECPrivateKey(key),
+                AsnParser.decodeECPrivateKey(pem),
                 "hex"
               );
             }
