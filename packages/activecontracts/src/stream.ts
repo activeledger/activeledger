@@ -160,18 +160,25 @@ export class Stream {
     data: ActiveCrypto.ISecuredData | {},
     safeMode = true
   ): Promise<{}> {
-    // Set safemode
-    this.safeMode = safeMode;
+    return new Promise((resolve, reject) => {
+      // Set safemode
+      this.safeMode = safeMode;
 
-    // Loop all activities and set safemode
-    let keys = Object.keys(this.activities);
-    let i = keys.length;
-    while (i--) {
-      this.activities[keys[i]].setSafeMode();
-    }
+      // Loop all activities and set safemode
+      let keys = Object.keys(this.activities);
+      let i = keys.length;
+      while (i--) {
+        this.activities[keys[i]].setSafeMode();
+      }
 
-    // Run Decryption
-    return this.secured.decrypt(data as ActiveCrypto.ISecuredData);
+      // Run Decryption (On success return only data)
+      this.secured
+        .decrypt(data as ActiveCrypto.ISecuredData)
+        .then((results: any) => {
+          resolve(results.data);
+        })
+        .catch(reject);
+    });
   }
 
   /**
