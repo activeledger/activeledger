@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activedefinitions",
-  "version": "2.0.0-rc.8.0.20",
+  "version": "2.0.0-rc.8.0.26",
   "description": "This package contains definition files used within Activeledger.",
   "keywords": [
     "blockchain",
@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://www.activeledger.io",
+  "homepage": "https://activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",

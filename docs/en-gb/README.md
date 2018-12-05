@@ -70,6 +70,10 @@ activeledger --testnet 10
 
 When running all the instances on the same host machine the API & Restore engine is disabled on all but the default instance running on port 5260 (instance-0). The API will be available on port http://localhost:5261 the explorer will be available on http://localhost:5261/explorer. 
 
+##### Creating a live Activeledger network
+
+[How to create your first network](create-first-network.md).
+
 ##### Convert File Based Configuration to Ledger Based Configuration
 
 When you have setup your initial network you should migrate to having it boot up from the ledger instead of the file based configuration. Doing this allows you to issue transactions which can [dynamically  add / remove nodes](dynamic-nodes.md) from the network.

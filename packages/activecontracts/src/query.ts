@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { QueryEngine } from "@activeledger/activequery";
 import Standard from "./standard";
 
@@ -33,11 +32,10 @@ import Standard from "./standard";
  * @abstract
  * @class Standard
  */
- export default abstract class Query extends Standard {
-
+export default abstract class Query extends Standard {
   /**
    * Holds the query object to lookup the ledger
-   * 
+   *
    * @protected
    * @type {QueryEngine}
    * @memberof Query
@@ -46,8 +44,8 @@ import Standard from "./standard";
 
   /**
    * Sets the query engine. Used as a hook from the VM to know to inject the QueryEngine
-   * 
-   * @param {QueryEngine} db 
+   *
+   * @param {QueryEngine} db
    * @memberof Query
    */
   public setQuery(db: QueryEngine) {

@@ -176,7 +176,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               );
               reject(error.response.data);
             } else {
-              reject("Network Communication Error"); 
+              reject("Network Communication Error");
             }
           });
       });

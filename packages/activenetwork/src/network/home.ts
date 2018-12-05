@@ -24,7 +24,6 @@
 import * as fs from "fs";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { ActiveLogger } from "@activeledger/activelogger";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
@@ -206,6 +205,10 @@ export class Home extends Neighbour {
       this.reference == Home.right.reference &&
       this.reference == Home.left.reference
     ) {
+      // Single Node Network
+      if (this.neighbourhood.count() == 1) {
+        return NeighbourStatus.Stable;
+      }
       return NeighbourStatus.Unrecognised;
     }
 
@@ -232,7 +235,7 @@ export class Home extends Neighbour {
   public terriBuildMap(): void {
     // Get the neighbours
     let neighbourhood = this.neighbourhood.get();
-    let keys = Object.keys(neighbourhood);
+    let keys = this.neighbourhood.keys();
     let i = keys.length;
 
     // Temporary Array for holding references
