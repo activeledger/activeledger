@@ -108,7 +108,8 @@ export class Process extends EventEmitter {
    * @param {*} right
    * @param {PouchDB} db
    * @param {PouchDB} error
-   * * @param {PouchDB} events
+   * @param {PouchDB} events
+   * @param {ActiveCrypto.Secured} secured
    * @memberof Process
    */
   constructor(
@@ -118,7 +119,8 @@ export class Process extends EventEmitter {
     private right: ActiveDefinitions.INeighbourBase,
     private db: any,
     private dbe: any,
-    private dbev: any
+    private dbev: any,
+    private secured: ActiveCrypto.Secured
   ) {
     super();
 
@@ -358,7 +360,8 @@ export class Process extends EventEmitter {
           outputs,
           readonly,
           this.db,
-          this.dbev
+          this.dbev,
+          this.secured
         );
 
         // Initalise contract VM

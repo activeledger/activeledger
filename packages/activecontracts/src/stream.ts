@@ -69,6 +69,16 @@ export class Stream {
   private nextTimeout: Date;
 
   /**
+   * Post decryption, Safe mode tries to ensure total network
+   * consensus. Disabling it is dangerous but can be used correctly.
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Stream
+   */
+  private safeMode: boolean = false;
+
+  /**
    * Creates an instance of a Standard Activeledger Contract.
    *
    * @param {string} umid
@@ -83,6 +93,7 @@ export class Stream {
    *       Hash: ActiveCrypto.Hash;
    *       KeyPair: ActiveCrypto.KeyPair;
    *     }} ActiveCrypto
+   * @param {ActiveCrypto.Secured} secured
    * @param {string} selfHost
    * @memberof Stream
    */
@@ -99,6 +110,7 @@ export class Stream {
       Hash: ActiveCrypto.Hash;
       KeyPair: ActiveCrypto.KeyPair;
     },
+    protected secured: ActiveCrypto.Secured,
     private selfHost: string
   ) {
     // Input Steam Activities
@@ -137,6 +149,39 @@ export class Stream {
   }
 
   /**
+   * Attempts to decrypt data with possible known private keys
+   *
+   * @param {(ActiveCrypto.ISecuredData | {})} data
+   * @param {boolean} [safeMode=true]
+   * @returns {Promise<{}>}
+   * @memberof Stream
+   */
+  public attemptDecrypt(
+    data: ActiveCrypto.ISecuredData | {},
+    safeMode = true
+  ): Promise<{}> {
+    return new Promise((resolve, reject) => {
+      // Set safemode
+      this.safeMode = safeMode;
+
+      // Loop all activities and set safemode
+      let keys = Object.keys(this.activities);
+      let i = keys.length;
+      while (i--) {
+        this.activities[keys[i]].setSafeMode();
+      }
+
+      // Run Decryption (On success return only data)
+      this.secured
+        .decrypt(data as ActiveCrypto.ISecuredData)
+        .then((results: any) => {
+          resolve(results.data);
+        })
+        .catch(reject);
+    });
+  }
+
+  /**
    * Create new activity stream
    *
    * @param {string} name
@@ -145,17 +190,21 @@ export class Stream {
    * @memberof Stream
    */
   public newActivityStream(name: string, deterministic?: string): Activity {
-    // Create new activity
-    let activity = new Activity(
-      this.ActiveCrypto,
-      deterministic ? deterministic : this.umid,
-      name,
-      false
-    );
-    // Set Secret Key
-    activity.setKey(this.key);
-    // TODO: Convert name into a umid string and alert dev
-    return (this.activities[name] = activity);
+    if (this.safeMode) {
+      throw new Error("Cannot create new Activity stream in Safe Mode");
+    } else {
+      // Create new activity
+      let activity = new Activity(
+        this.ActiveCrypto,
+        deterministic ? deterministic : this.umid,
+        name,
+        false
+      );
+      // Set Secret Key
+      activity.setKey(this.key);
+      // TODO: Convert name into a umid string and alert dev
+      return (this.activities[name] = activity);
+    }
   }
 
   /**
@@ -308,6 +357,16 @@ export class Activity {
   private key: number;
 
   /**
+   * Post decryption, Safe mode tries to ensure total network
+   * consensus. Disabling it is dangerous but can be used correctly.
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Stream
+   */
+  private safeMode: boolean = false;
+
+  /**
    * Creates an instance of Activity.
    *
    * @param {string} name
@@ -348,6 +407,15 @@ export class Activity {
   }
 
   /**
+   * Expose enable safe mode
+   *
+   * @memberof Activity
+   */
+  public setSafeMode() {
+    this.safeMode = true;
+  }
+
+  /**
    * Exports the 3 states for protocol use
    * TODO : Apply some kind of rule
    *
@@ -385,11 +453,15 @@ export class Activity {
    * @memberof Activity
    */
   public setACL(name: string, stream: string) {
-    if (!this.meta.acl) this.meta.acl = {};
-    this.meta.acl[name] = stream;
+    if (this.safeMode) {
+      throw new Error("Cannot set ACL in Safe Mode");
+    } else {
+      if (!this.meta.acl) this.meta.acl = {};
+      this.meta.acl[name] = stream;
 
-    // Set Update Flag
-    this.updated = true;
+      // Set Update Flag
+      this.updated = true;
+    }
   }
 
   /**
@@ -424,16 +496,20 @@ export class Activity {
    * @memberof Activity
    */
   public setAuthority(pubkey: string, type: string = "rsa"): void {
-    // Only Inputs & New Streams can be here
-    if (this.signature || (this.umid && this.name)) {
-      this.meta.public = pubkey;
-      this.meta.type = type;
-      this.meta.hash = this.ActiveCrypto.Hash.getHash(pubkey, "sha256");
-
-      // Set Update Flag
-      this.updated = true;
+    if (this.safeMode) {
+      throw new Error("Cannot set authority in Safe Mode");
     } else {
-      throw new Error("Cannot set new authority on output stream");
+      // Only Inputs & New Streams can be here
+      if (this.signature || (this.umid && this.name)) {
+        this.meta.public = pubkey;
+        this.meta.type = type;
+        this.meta.hash = this.ActiveCrypto.Hash.getHash(pubkey, "sha256");
+
+        // Set Update Flag
+        this.updated = true;
+      } else {
+        throw new Error("Cannot set new authority on output stream");
+      }
     }
   }
 
@@ -460,15 +536,19 @@ export class Activity {
    * @memberof Activity
    */
   public setContractLock(script: string | Array<string>): boolean {
-    if (this.name && this.umid) {
-      if (Array.isArray(script)) {
-        this.meta.contractlock = script;
-      } else {
-        this.meta.contractlock = [script];
-      }
-      return true;
+    if (this.safeMode) {
+      throw new Error("Cannot create set contract lock in Safe Mode");
     } else {
-      return false;
+      if (this.name && this.umid) {
+        if (Array.isArray(script)) {
+          this.meta.contractlock = script;
+        } else {
+          this.meta.contractlock = [script];
+        }
+        return true;
+      } else {
+        return false;
+      }
     }
   }
 
@@ -481,15 +561,19 @@ export class Activity {
    * @memberof Activity
    */
   public setNamespaceLock(namespace: string | Array<string>): boolean {
-    if (this.name && this.umid) {
-      if (Array.isArray(namespace)) {
-        this.meta.namespaceLock = namespace;
-      } else {
-        this.meta.namespaceLock = [namespace];
-      }
-      return true;
+    if (this.safeMode) {
+      throw new Error("Cannot create set namespace lock in Safe Mode");
     } else {
-      return false;
+      if (this.name && this.umid) {
+        if (Array.isArray(namespace)) {
+          this.meta.namespaceLock = namespace;
+        } else {
+          this.meta.namespaceLock = [namespace];
+        }
+        return true;
+      } else {
+        return false;
+      }
     }
   }
 
@@ -542,21 +626,25 @@ export class Activity {
    * @memberof Activity
    */
   public setState(state: ActiveDefinitions.IState): void {
-    // Cast to full state to manage
-    let fState: ActiveDefinitions.IFullState = state as ActiveDefinitions.IFullState;
+    if (this.safeMode) {
+      throw new Error("Cannot create set state in Safe Mode");
+    } else {
+      // Cast to full state to manage
+      let fState: ActiveDefinitions.IFullState = state as ActiveDefinitions.IFullState;
 
-    // Remove _id & _rev
-    delete fState._id;
-    delete fState._rev;
+      // Remove _id & _rev
+      delete fState._id;
+      delete fState._rev;
 
-    // Merge Objects
-    this.state = Object.assign(
-      this.state,
-      fState
-    ) as ActiveDefinitions.IFullState;
+      // Merge Objects
+      this.state = Object.assign(
+        this.state,
+        fState
+      ) as ActiveDefinitions.IFullState;
 
-    // Set Update Flag
-    this.updated = true;
+      // Set Update Flag
+      this.updated = true;
+    }
   }
 
   /**
