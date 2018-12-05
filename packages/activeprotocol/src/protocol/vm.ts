@@ -94,6 +94,7 @@ export class VirtualMachine {
    * @param {ActiveDefinitions.LedgerIORputs} reads
    * @param {PouchDB} db
    * @param {PouchDB} dbev
+   * @param {ActiveCrypto.Secured} Secured
    * @memberof VirtualMachine
    */
   constructor(
@@ -106,7 +107,8 @@ export class VirtualMachine {
     private outputs: ActiveDefinitions.LedgerStream[],
     private reads: ActiveDefinitions.LedgerIORputs,
     private db: any,
-    private dbev: any
+    private dbev: any,
+    private secured: ActiveCrypto.Secured
   ) {
     // Setup Event Engine
     this.event = new EventEngine(this.dbev, this.tx.$contract);
@@ -217,6 +219,7 @@ export class VirtualMachine {
         sandbox: {
           logger: ActiveLogger,
           crypto: ActiveCrypto,
+          secured: this.secured,
           query: new QueryEngine(this.db, true),
           event: this.event,
           contractPath: this.contractPath,
@@ -238,7 +241,7 @@ export class VirtualMachine {
 
       // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
       this.virtual.run(
-        "global.sc = new (require(contractPath)).default(umid, tx, inputs, outputs, reads, sigs, key, logger, crypto, self);",
+        "global.sc = new (require(contractPath)).default(umid, tx, inputs, outputs, reads, sigs, key, logger, crypto, secured, self);",
         "avm.js"
       );
 

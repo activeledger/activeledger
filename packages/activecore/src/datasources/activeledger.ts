@@ -22,9 +22,15 @@
  */
 
 import { QueryEngine } from "@activeledger/activequery";
-import { ActiveOptions, ActiveChanges, PouchDB } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveChanges,
+  PouchDB
+} from "@activeledger/activeoptions";
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
+import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveNetwork } from "@activeledger/activenetwork";
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
 
@@ -78,6 +84,26 @@ export class ActiveledgerDatasource {
    * @memberof ActiveledgerDatasource
    */
   private static query: QueryEngine;
+
+  /**
+   * Object of known network neighbour nodes
+   *
+   * @private
+   * @static
+   * @type {{}}
+   * @memberof ActiveledgerDatasource
+   */
+  private static neighbourhood: any;
+
+  /**
+   * Reference to itself in the neighbourhood
+   *
+   * @private
+   * @static
+   * @type {*}
+   * @memberof ActiveledgerDatasource
+   */
+  private static selfNeighbour: ActiveNetwork.Home;
 
   /**
    * Filter out stream and volatile feeds
@@ -194,5 +220,53 @@ export class ActiveledgerDatasource {
 
     // Return Query Object
     return this.events;
+  }
+
+  /**
+   * Get Mocked neighbourhood object
+   *
+   * @static
+   * @returns {{}}
+   * @memberof ActiveledgerDatasource
+   */
+  public static getNeighbourhood(): {} {
+    if (!this.neighbourhood) {
+      this.neighbourhood = {};
+      // Build neighbourhood from options
+      let neighbourhood: Array<any> = ActiveOptions.get("neighbourhood", false);
+
+      // Loop all neighbour nodes and prepare for Securesd output
+      let i = neighbourhood.length;
+      while (i--) {
+        // Generate same reference
+        let ref = ActiveCrypto.Hash.getHash(
+          neighbourhood[i].host +
+            neighbourhood[i].port +
+            ActiveOptions.get<string>("network", ""),
+          "sha1"
+        );
+
+        this.neighbourhood[ref] = {
+          identity: {
+            pem: neighbourhood[i].identity.public
+          }
+        };
+      }
+    }
+    return this.neighbourhood;
+  }
+
+  /**
+   * Get Mocked Home object
+   *
+   * @static
+   * @returns {{}}
+   * @memberof ActiveledgerDatasource
+   */
+  public static getSelfNeighbour(): {} {
+    if (!this.selfNeighbour) {
+      this.selfNeighbour = new ActiveNetwork.Home();
+    }
+    return this.selfNeighbour;
   }
 }

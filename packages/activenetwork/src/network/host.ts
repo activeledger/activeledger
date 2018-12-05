@@ -327,7 +327,16 @@ export class Host extends Home {
                   Home.right,
                   this.dbConnection,
                   this.dbErrorConnection,
-                  this.dbEventConnection
+                  this.dbEventConnection,
+                  new ActiveCrypto.Secured(
+                    this.dbConnection,
+                    this.neighbourhood.get(),
+                    {
+                      reference: Home.reference,
+                      public: Home.publicPem,
+                      private: Home.identity.pem
+                    }
+                  )
                 );
 
                 // Store Protocol Object
@@ -851,6 +860,15 @@ export class Host extends Home {
         switch (req.url) {
           case "/": // Setup for accepting external transactions
             response = Endpoints.ExternalInitalise(this, body);
+            break;
+          case "/a/encrypt":
+            // Make sure it was encrypted here
+            response = Endpoints.ExternalEncrypt(this, body, this.fetchHeader(
+              req.rawHeaders,
+              "X-Activeledger-Encrypt",
+              false
+            ) as boolean, this.dbConnection);
+            // Pass db conntection 
             break;
           case "/a/init": // Internal transactions
             if (this.firewallCheck(requester, req)) {

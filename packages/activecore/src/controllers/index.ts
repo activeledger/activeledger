@@ -24,4 +24,5 @@
 export * from "./activity.controller";
 export * from "./event.controller";
 export * from "./stream.controller";
+export * from "./secured.controller";
 export * from "./transaction.controller";
