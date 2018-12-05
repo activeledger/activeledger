@@ -39,7 +39,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.26",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.26",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.26",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.26",
     "@activeledger/activequery": "^2.0.0-rc.8.0.26",
     "@loopback/boot": "^1.0.5",

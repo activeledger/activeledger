@@ -175,19 +175,21 @@ export class Endpoints {
    * @param {Host} host
    * @param {*} body
    * @param {boolean} encHeader
+   * @param {PouchDB} db
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
   public static ExternalEncrypt(
     host: Host,
     body: any,
-    encHeader: boolean
+    encHeader: boolean,
+    db: any
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       if (encHeader) {
-        let secureTx = new ActiveCrypto.Secured({}, host.neighbourhood.get(), {
-          reference: host.reference,
-          public: Home.publicPem,
+        let secureTx = new ActiveCrypto.Secured(db, host.neighbourhood.get(), {
+          reference: Home.reference,
+          public: Buffer.from(Home.publicPem, "base64").toString("utf8"),
           private: Home.identity.pem
         });
 
