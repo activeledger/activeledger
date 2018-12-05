@@ -25,6 +25,7 @@ import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
+import { ActiveDefinitions } from '@activeledger/activedefinitions';
 
 /**
  * Manages Node Connection Information
@@ -32,23 +33,7 @@ import { Home } from "./home";
  * @export
  * @class Neighbour
  */
-export class Neighbour {
-  /**
-   * Is right from this reference
-   *
-   * @type {string}
-   * @memberof Neighbour
-   */
-  public isRightFrom: string;
-
-  /**
-   * Is left from this reference
-   *
-   * @type {string}
-   * @memberof Neighbour
-   */
-  public isLeftFrom: string;
-
+export class Neighbour implements ActiveDefinitions.INeighbourBase {
   /**
    * Holds the reference value of the NodeNeighbour
    *

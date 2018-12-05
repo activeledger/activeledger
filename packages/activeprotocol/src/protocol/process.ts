@@ -101,10 +101,6 @@ export class Process extends EventEmitter {
 
   /**
    * Creates an instance of Process.
-   * Creates an instance of Process.
-   * right:any temporarily resolves ciruclar reference.
-   * ActiveNetwork.Home.Right is its source.
-   * TODO: Solve the reference
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
    * @param {string} selfHost
@@ -119,7 +115,7 @@ export class Process extends EventEmitter {
     private entry: ActiveDefinitions.LedgerEntry,
     private selfHost: string,
     private reference: string,
-    private right: any,
+    private right: ActiveDefinitions.INeighbourBase,
     private db: any,
     private dbe: any,
     private dbev: any

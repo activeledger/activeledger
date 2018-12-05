@@ -21,5 +21,6 @@
  * SOFTWARE.
  */
 
-export * from "./ledger"
-export * from "./document"
+export * from "./ledger";
+export * from "./document";
+export * from "./interface";

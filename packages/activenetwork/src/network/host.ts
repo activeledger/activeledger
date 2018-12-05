@@ -580,13 +580,6 @@ export class Host extends Home {
     let i = nodes.length;
     let promises = [];
 
-    // Get copy of tx
-    //let postTx = JSON.parse(JSON.stringify(this.processPending[umid].entry));
-
-    // Only send this node
-    //postTx.$nodes = selfNode;
-    //this.processPending[umid].entry.$nodes = nodes;
-
     // Loop them all and broadcast the transaction
     while (i--) {
       let node = neighbourhood[nodes[i]];
