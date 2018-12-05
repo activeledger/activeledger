@@ -46,15 +46,6 @@ export class Maintain {
   private neighbourOrder: Neighbour[];
 
   /**
-   * Number of total houses in the neighbourhood
-   *
-   * @private
-   * @type {number}
-   * @memberof Maintain
-   */
-  private houses: number = 0;
-
-  /**
    * Internal flag to see if we are already checking
    *
    * @private
