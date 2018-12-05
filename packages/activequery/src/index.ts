@@ -35,10 +35,10 @@ export class QueryEngine {
    * Stores the last warning
    *
    * @private
-   * @type {QueryWarning}
+   * @type {(QueryWarning | undefined)}
    * @memberof QueryEngine
    */
-  private warning: QueryWarning;
+  private warning: QueryWarning | undefined;
 
   /**
    * Creates an instance of QueryEngine.
@@ -61,10 +61,9 @@ export class QueryEngine {
    * @memberof QueryEngine
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
-    // Convert to json query   
+    // Convert to json query
     return this.mango(sqltomango.parse(sql));
   }
-
 
   /**
    * Use Mango query to search the document database (more options)
@@ -95,6 +94,9 @@ export class QueryEngine {
               query: query,
               message: results.warning
             };
+          } else {
+            // Clear warning
+            this.warning = undefined;
           }
 
           // Filter documents if inside a contract
@@ -135,6 +137,12 @@ export class QueryEngine {
   }
 }
 
+/**
+ * Manages creating events in an activeledger transaction session
+ *
+ * @export
+ * @class EventEngine
+ */
 export class EventEngine {
   /**
    * Contract Phase

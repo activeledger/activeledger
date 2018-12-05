@@ -130,8 +130,7 @@ export class Maintain {
     let neighbours = this.home.neighbourhood.get();
 
     // Get Key Index for looping
-    // TODO : Convert this copy code into output from neighbourhood
-    let keys = Object.keys(neighbours);
+    let keys = this.home.neighbourhood.keys();
     let i = keys.length;
 
     // Temporary Array for holding references
@@ -156,7 +155,6 @@ export class Maintain {
 
   /**
    * Will rebase the neighbourhood asap
-   * TODO: Look into rebasing when Right / Left Knock fails (or another node says we could be wrong)
    *
    * @private
    * @memberof Maintain
@@ -200,16 +198,13 @@ export class Maintain {
     // Set checking Flag
     this.checking = true;
 
-    // Get Key Index for looping
-    let i = this.neighbourOrder.length;
-
     // Get All Status
     await Promise.all(
       this.neighbourOrder.map((neighbour: Neighbour) => {
         return new Promise(async (resolve, reject) => {
           neighbour
             .knock("status")
-            .then(response => {
+            .then(() => {
               // Still the same network?
               if (currentRef == Home.reference) {
                 // Node is Home
@@ -225,7 +220,7 @@ export class Maintain {
               // Resolve Promise to move on
               resolve();
             })
-            .catch(error => {
+            .catch(() => {
               // Still the same network?
               if (currentRef == Home.reference) {
                 // Node isn't home (Any error is a bad error)
@@ -258,11 +253,6 @@ export class Maintain {
    * Using the order this method will start pairing each active neighbour
    * to its mathmatical left and right. Again this doesn't hit the network
    * these is self calculated
-   *
-   * TODO: Increase performance by checking current left / right to see if they're still home.
-   * TODO: Increase performance if no changes don't do IPC messaging
-   *
-   * Above TODO's could possibly be done in the checkNeighbourhood above as well.
    *
    * @private
    * @returns {*}

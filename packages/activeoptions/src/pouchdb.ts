@@ -21,34 +21,5 @@
  * SOFTWARE.
  */
 
-import { EventEngine } from "@activeledger/activequery";
-import Standard from "./standard";
-
-/**
- * Provides the standard contract layout for Active developers to extend
- * so they can concentrate on their code. This is the first of a list of approved "base" classes.
- *
- * @export
- * @abstract
- * @class Standard
- */
-export default abstract class Event extends Standard {
-  /**
-   * Holds the query object to lookup the ledger
-   *
-   * @protected
-   * @type {EventEngine}
-   * @memberof Query
-   */
-  protected event: EventEngine;
-
-  /**
-   * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
-   *
-   * @param {QueryEngine} engine
-   * @memberof Query
-   */
-  public setEvent(engine: EventEngine) {
-    this.event = engine;
-  }
-}
+let PouchDB:any = require('pouchdb');
+export default PouchDB;

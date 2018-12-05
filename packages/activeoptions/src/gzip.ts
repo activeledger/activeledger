@@ -21,34 +21,52 @@
  * SOFTWARE.
  */
 
-import { EventEngine } from "@activeledger/activequery";
-import Standard from "./standard";
+import * as zlib from "zlib";
 
 /**
- * Provides the standard contract layout for Active developers to extend
- * so they can concentrate on their code. This is the first of a list of approved "base" classes.
+ * Promis wrappers to native gzip
  *
  * @export
- * @abstract
- * @class Standard
+ * @class ActiveGZip
  */
-export default abstract class Event extends Standard {
+export class ActiveGZip {
   /**
-   * Holds the query object to lookup the ledger
+   * Compress data
    *
-   * @protected
-   * @type {EventEngine}
-   * @memberof Query
+   * @static
+   * @param {(string | Buffer)} data
+   * @returns {Promise<string>}
+   * @memberof ActiveGZip
    */
-  protected event: EventEngine;
+  public static gzip(data: string | Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      zlib.gzip(data, (error, data) => {
+        if (!error) {
+          resolve(data);
+        } else {
+          reject(error);
+        }
+      });
+    });
+  }
 
   /**
-   * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
+   * Uncompress data
    *
-   * @param {QueryEngine} engine
-   * @memberof Query
+   * @static
+   * @param {string} data
+   * @returns {Promise<string>}
+   * @memberof ActiveGZip
    */
-  public setEvent(engine: EventEngine) {
-    this.event = engine;
+  public static ungzip(data: Buffer): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      zlib.gunzip(data, (error, data) => {
+        if (!error) {
+          resolve(data);
+        } else {
+          reject(error);
+        }
+      });
+    });
   }
 }

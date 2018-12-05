@@ -81,8 +81,10 @@ export class Endpoints {
           });
         }
 
-        // Make broadcast default
-        if (!tx.$territoriality && !tx.$broadcast) {
+        // Make broadcast default, Unless single node network
+        if (host.neighbourhood.count() == 1) {
+          tx.$broadcast = false;
+        } else if (!tx.$territoriality && !tx.$broadcast) {
           tx.$broadcast = true;
         }
 
@@ -311,7 +313,7 @@ export class Endpoints {
         // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
         // Status shouldn't be called much in comparison
         let neighbourhood = host.neighbourhood.get();
-        let keys = Object.keys(neighbourhood);
+        let keys = host.neighbourhood.keys();
         let i = keys.length;
         let neighbours: { [index: string]: object } = {};
 

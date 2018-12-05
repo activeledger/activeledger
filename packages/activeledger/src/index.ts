@@ -27,10 +27,13 @@ import * as child from "child_process";
 import * as cluster from "cluster";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveRequest,
+  ActiveDataStore
+} from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { DataStore } from "./datastore";
 import { PhysicalCores } from "./cpus";
 
 // Initalise CLI Options
@@ -436,6 +439,21 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         waitAndExit();
       }
 
+      // Get Public Key
+      if (ActiveOptions.get<boolean>("public", false)) {
+        // Get Identity
+        let identity: ActiveCrypto.KeyHandler = JSON.parse(
+          fs.readFileSync(
+            ActiveOptions.get<string>("identity", "./.identity"),
+            "utf8"
+          )
+        );
+
+        // Output Public Key
+        ActiveLogger.info("\n" + identity.pub.pkcs8pem);
+        waitAndExit(0);
+      }
+
       // Are we only doing setups if so stopped
       if (ActiveOptions.get<boolean>("setup-only", false)) {
         waitAndExit();
@@ -532,7 +550,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         // Self hosted data storage engine
         if (ActiveOptions.get<any>("db", {}).selfhost) {
           // Create Datastore instance
-          let datastore: DataStore = new DataStore();
+          let datastore: ActiveDataStore = new ActiveDataStore();
 
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
@@ -571,7 +589,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
         // Enable Extended Debugging
         ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
-        
+
         extendConfig(() => {
           // Create Home Host Node
           let activeHost = new ActiveNetwork.Host();
@@ -588,7 +606,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
  * @param {number} [delay=1500]
  */
 function waitAndExit(delay: number = 1500) {
-  setTimeout(() => {
+  if (delay) {
+    setTimeout(() => {
+      process.exit();
+    }, delay);
+  } else {
     process.exit();
-  }, delay);
+  }
 }

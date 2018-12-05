@@ -143,11 +143,7 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    //TODO: Have a queue?
     ActiveLogger.info(this.entry, "Starting TX");
-
-    // Temporary Solution for mixed paths
-    let prefix: string = "";
 
     // Compiled Contracts sit in another location
     if (this.entry.$tx.$namespace == "default") {
@@ -163,7 +159,7 @@ export class Process extends EventEmitter {
     }
 
     // Get contract file (Or From Database)
-    if (fs.existsSync(prefix + this.contractLocation)) {
+    if (fs.existsSync(this.contractLocation)) {
       // Now we know we can execute the contract now or more costly cpu checks
       ActiveLogger.debug("Fetching Inputs");
 
@@ -174,9 +170,19 @@ export class Process extends EventEmitter {
       if (!this.inputs.length)
         this.raiseLedgerError(1101, new Error("Inputs cannot be null"));
 
+      // Which $i lookup are we using. Are they labelled or stream names
+      this.labelOrKey();
+
       // Build Outputs Key Maps (Reference is Stream)
       ActiveLogger.debug("Fetching Outputs");
       this.outputs = Object.keys(this.entry.$tx.$o || {});
+
+      // Which $o lookup are we using. Are they labelled or stream names
+      // Make sure we have outputs as they're optional
+      if (this.outputs.length) {
+        // Which $o lookup are we using. Are they labelled or stream names
+        this.labelOrKey(true);
+      }
 
       // Are we checking revisions or setting?
       if (!this.entry.$revs) {
@@ -282,7 +288,10 @@ export class Process extends EventEmitter {
       }
     } else {
       // Contract not found
-      this.raiseLedgerError(1404, new Error("Contract Not Found"));
+      this.postVote({
+        code: 1401,
+        reason: "Contract Not Found"
+      });
     }
   }
 
@@ -435,11 +444,14 @@ export class Process extends EventEmitter {
       this.entry.$instant = false;
     }
 
+    // Which Peering mode?
     if (this.entry.$broadcast) {
-      if (!error) {
-        // Let all other nodes know about this transaction and our opinion
-        this.emit("broadcast", this.entry);
+      if (error) {
+        // Add error to the broadcast for passing back to the client
+        this.entry.$nodes[this.reference].error = error.reason;
       }
+      // Let all other nodes know about this transaction and our opinion
+      this.emit("broadcast", this.entry);
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
@@ -570,7 +582,7 @@ export class Process extends EventEmitter {
             let skip: string[] = [];
 
             // Determanistic Collision Managamenent
-            let collisions = [];
+            let collisions: any[] = [];
 
             // Any Changes
             if (streams.length) {
@@ -592,13 +604,10 @@ export class Process extends EventEmitter {
                       streams[i].state._id + ":volatile";
                   }
 
-                  // if it is sigless
                   // Need to add transaction to all meta documents
-                  if (this.entry.$selfsign) {
-                    streams[i].meta.txs = [this.compactTxEntry()];
-                    // Also set as intalisiser stream (stream constructor)
-                    streams[i].meta.$constructor = true;
-                  }
+                  streams[i].meta.txs = [this.entry.$umid];
+                  // Also set as intalisiser stream (stream constructor)
+                  streams[i].meta.$constructor = true;
 
                   // Need to remove rev
                   delete streams[i].state._rev;
@@ -613,7 +622,7 @@ export class Process extends EventEmitter {
                   // Updated Streams, These could be inputs
                   // So update the transaction and remove for inputs for later processing
                   if (streams[i].meta.txs && streams[i].meta.txs.length) {
-                    streams[i].meta.txs.push(this.compactTxEntry());
+                    streams[i].meta.txs.push(this.entry.$umid);
                     skip.push(streams[i].meta._id as string);
                   }
 
@@ -628,10 +637,6 @@ export class Process extends EventEmitter {
                   }
                 }
 
-                // TODO: Somehow we are getting an empty doc for now we will check on empty null
-
-                // Push Docs (Need to change null to undefined)
-
                 // Data State (Developers Control)
                 if (streams[i].state._id) docs.push(streams[i].state);
 
@@ -642,7 +647,7 @@ export class Process extends EventEmitter {
                 if (streams[i].volatile._id) docs.push(streams[i].volatile);
               }
 
-              // Any inputs left (Means not modified)
+              // Any inputs left (Means not modified, Unmodified outputs can be ignored)
               // Now we need to append transaction to the inputs of the transaction
               if (inputs && inputs.length) {
                 // Add to all docs
@@ -654,7 +659,7 @@ export class Process extends EventEmitter {
                     inputs[i].meta.txs.length
                   ) {
                     // Add Compact Transaction
-                    inputs[i].meta.txs.push(this.compactTxEntry());
+                    inputs[i].meta.txs.push(this.entry.$umid);
 
                     // Hardened Keys?
                     if (
@@ -671,6 +676,12 @@ export class Process extends EventEmitter {
                   }
                 }
               }
+
+              // Create umid document containing the transaction details
+              docs.push({
+                _id: this.entry.$umid + ":umid",
+                umid: this.compactTxEntry()
+              });
 
               /**
                * Delegate Function
@@ -748,9 +759,6 @@ export class Process extends EventEmitter {
                     this.raiseLedgerError(1510, new Error("Failed to save"));
                   });
               };
-
-              // The documents to be stored
-              // ActiveLogger.debug(docs, "Changed Documents");
 
               // Detect Collisions
               if (collisions.length) {
@@ -1120,6 +1128,36 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Transaction $i/o type for stream names
+   * Which $i/o lookup are we using. Are they labelled or stream names
+   *
+   * @private
+   * @param {boolean} [outputs=false]
+   * @memberof Process
+   */
+  private labelOrKey(outputs: boolean = false): void {
+    // Get Reference for inputs
+    let streams = this.inputs;
+    let txIO = this.entry.$tx.$i;
+
+    // Override for outputs
+    if (outputs) {
+      streams = this.outputs;
+      txIO = this.entry.$tx.$o;
+    }
+
+    // Check the first one, If labelled then loop all.
+    // Means first has to be labelled but we don't want to loop when not needed
+    if (txIO[streams[0]].$stream) {
+      let i = streams.length;
+      while (i--) {
+        // Stream label or self
+        streams[i] = txIO[streams[i]].$stream || streams[i];
+      }
+    }
+  }
+
+  /**
    * Creates a smaler trasnaction entry for ledger walking. This will also
    * keep the value deterministic (not including nodes)
    *
@@ -1154,7 +1192,7 @@ export class Process extends EventEmitter {
   ): void {
     // Store in database for activesrestore to review
     this.storeError(code, reason)
-      .then(response => {
+      .then(() => {
         // TODO : We need to execute postvote because this node error will prevent
         // the rest of the network from getting its chance for consensus.
 

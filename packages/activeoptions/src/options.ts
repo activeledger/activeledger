@@ -23,8 +23,7 @@
 
 import * as fs from "fs";
 import * as minimist from "minimist";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
+import PouchDB from "./pouchdb";
 
 export class ActiveOptions {
   /**

@@ -148,7 +148,7 @@ export class VirtualMachine {
     return this.virtual.run("return sc.getThisInterNodeComms();", "avm.js");
   }
 
-/**
+  /**
    * Gets any internode communication to pass to other nodes.
    *
    * @returns {any}
@@ -370,7 +370,7 @@ export class VirtualMachine {
         `return sc.commit(${possibleTerritoriality})`,
         "avm.js"
       ) as Promise<any>)
-        .then(commit => {
+        .then(() => {
           // Here we may update the database from the objects (commit should return)
           // Or just manipulate / check the outputs
           this.scriptFinishedExec = true;

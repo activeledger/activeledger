@@ -24,7 +24,12 @@
 import * as cluster from "cluster";
 import * as http from "http";
 //@ts-ignore
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveRequest,
+  ActiveGZip,
+  PouchDB
+} from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -34,10 +39,10 @@ import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
-// @ts-ignore
-import * as PouchDB from "pouchdb";
+
 // @ts-ignore
 import * as PouchDBFind from "pouchdb-find";
+
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
 /**
@@ -54,7 +59,6 @@ interface process {
 
 /**
  * Hosted process for API and Protocol management
- * TODO: Consider moving this into ActiveProtocol (Better Ciruclar Solution?)
  *
  * @export
  * @class Host
@@ -207,22 +211,32 @@ export class Host extends Home {
         // Capture POST data
         if (req.method == "POST") {
           // Holds the body
-          let body: string | any = "";
+          let body: Buffer[] = [];
 
           // Reads body data
           req.on("data", chunk => {
-            body += chunk.toString(); // convert Buffer to string
+            body.push(chunk);
           });
 
           // When read has compeleted continue
-          req.on("end", () => {
+          req.on("end", async () => {
+            // gzipped?
+            let gdata;
+            if (req.headers["content-encoding"] == "gzip") {
+              gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+            }
+
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(this, body, this.fetchHeader(
-              req.rawHeaders,
-              "X-Activeledger-Encrypt",
-              false
-            ) as boolean)
+            Endpoints.postConvertor(
+              this,
+              (gdata || body).toString(),
+              this.fetchHeader(
+                req.rawHeaders,
+                "X-Activeledger-Encrypt",
+                false
+              ) as boolean
+            )
               .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
@@ -232,7 +246,8 @@ export class Host extends Home {
                 this.writeResponse(
                   res,
                   error.statusCode || 500,
-                  JSON.stringify(error.content || {})
+                  JSON.stringify(error.content || {}),
+                  req.headers["accept-encoding"] as string
                 );
               });
           });
@@ -270,7 +285,7 @@ export class Host extends Home {
               // Update Home
               let neighbour = this.neighbourhood.get(msg.reference);
               if (neighbour && !neighbour.graceStop) {
-                this.neighbourhood.get(msg.reference).isHome = msg.isHome;
+                neighbour.isHome = msg.isHome;
               }
               break;
             case "hold":
@@ -334,7 +349,7 @@ export class Host extends Home {
                     if (this.sse && response.tx) {
                       this.moan("hybrid", response.tx);
                     }
-                    
+
                     // Process response back into entry for previous neighbours to know the results
                     this.processPending[msg.umid].resolve({
                       status: 200,
@@ -440,9 +455,6 @@ export class Host extends Home {
               break;
             case "release":
               // Did we release (Should always be yes)
-              if (msg.release) {
-                // Will there be anything to do?
-              }
               break;
             case "hybrid":
               delete msg.type;
@@ -480,6 +492,9 @@ export class Host extends Home {
 
                     // Reset Network
                     this.neighbourhood.reset(config.neighbourhood);
+
+                    // Rebuild Network Territory Map
+                    this.terriBuildMap();
                   }
                 })
                 .catch(e => {
@@ -499,7 +514,7 @@ export class Host extends Home {
                 // Log once
                 ActiveLogger.debug("Adding To Memory : " + msg.umid);
                 // Now run the request as workers should have the umid in memory
-                this.broadcast(msg.umid, msg.nodes);
+                this.broadcast(msg.umid);
               }
               break;
             case "txtarget":
@@ -552,7 +567,7 @@ export class Host extends Home {
    */
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
-    if (this.processPending[umid]) {      
+    if (this.processPending[umid]) {
       // Check Protocol still exists
       if (this.processPending[umid].protocol) {
         // Log once
@@ -562,7 +577,6 @@ export class Host extends Home {
       }
       (this.processPending[umid] as any).entry = null;
       (this.processPending[umid] as any) = null;
-      // delete this.processPending[msg.umid];
     }
   }
 
@@ -573,12 +587,12 @@ export class Host extends Home {
    * @param {string} umid
    * @memberof Host
    */
-  private broadcast(umid: string, selfNode: any): void {
+  private broadcast(umid: string): void {
     // Get all the neighbour nodes
     let neighbourhood = this.neighbourhood.get();
-    let nodes = Object.keys(neighbourhood);
+    let nodes = this.neighbourhood.keys();
     let i = nodes.length;
-    let promises = [];
+    let promises: any[] = [];
 
     // Loop them all and broadcast the transaction
     while (i--) {
@@ -632,7 +646,7 @@ export class Host extends Home {
           (process as any).recast = true;
           // Rebroadcast
           ActiveLogger.warn("Rebroadcasting : " + umid);
-          this.broadcast(umid, process.entry.$nodes);
+          this.broadcast(umid);
         } else {
           // Temp message for tracing
           process.entry.$nodes[this.reference].error = "broadcast timeout";
@@ -662,10 +676,6 @@ export class Host extends Home {
     // Would be good to cache this
     let input = Object.keys(v.$tx.$i || {});
     let output = Object.keys(v.$tx.$o || {});
-
-    // TODO :
-    // If a single process, We can call locker here to save
-    // CPU cycles
 
     // Ask for locks
     this.moan("hold", { umid: v.$umid, streams: Object.assign(input, output) });
@@ -765,6 +775,9 @@ export class Host extends Home {
     // Promise Response
     let response: Promise<any>;
 
+    // Can we return compressed data?
+    let gzipAccepted = req.headers["accept-encoding"] as string;
+
     // Diffrent endpoints VERB
     switch (req.method) {
       case "GET":
@@ -777,7 +790,7 @@ export class Host extends Home {
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.all(this.dbConnection);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           case "/hybrid":
@@ -806,10 +819,15 @@ export class Host extends Home {
                 });
                 return;
               } else {
-                return this.writeResponse(res, 418, "I'm a teapot");
+                return this.writeResponse(
+                  res,
+                  418,
+                  "I'm a teapot",
+                  gzipAccepted
+                );
               }
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
           default:
             // All Stream Management with start point
@@ -820,11 +838,11 @@ export class Host extends Home {
                   parseInt(req.url.substr(7))
                 );
               } else {
-                return this.writeResponse(res, 403, "Forbidden");
+                return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
               }
             } else {
               // 404 Not Found
-              return this.writeResponse(res, 404, "Not Found");
+              return this.writeResponse(res, 404, "Not Found", gzipAccepted);
             }
         }
         break;
@@ -838,18 +856,18 @@ export class Host extends Home {
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.InternalInitalise(this, body);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           case "/a/stream": // Stream Data Management (Activerestore)
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.streams(this.dbConnection, body);
             } else {
-              return this.writeResponse(res, 403, "Forbidden");
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           default:
-            return this.writeResponse(res, 404, "Not Found");
+            return this.writeResponse(res, 404, "Not Found", gzipAccepted);
         }
         break;
       case "OPTIONS":
@@ -863,7 +881,7 @@ export class Host extends Home {
         res.end();
         return;
       default:
-        return this.writeResponse(res, 404, "Not Found");
+        return this.writeResponse(res, 404, "Not Found", gzipAccepted);
     }
 
     // Wait for promise to get the response
@@ -874,7 +892,8 @@ export class Host extends Home {
         this.writeResponse(
           res,
           response.statusCode,
-          JSON.stringify(response.content || {})
+          JSON.stringify(response.content || {}),
+          gzipAccepted
         );
       })
       .catch((error: any) => {
@@ -883,7 +902,8 @@ export class Host extends Home {
         this.writeResponse(
           res,
           error.statusCode || 500,
-          JSON.stringify(error.content || "Something has gone wrong")
+          JSON.stringify(error.content || "Something has gone wrong"),
+          gzipAccepted
         );
       });
   }
@@ -894,19 +914,32 @@ export class Host extends Home {
    * @private
    * @param {http.ServerResponse} res
    * @param {number} statusCode
-   * @param {string} content
+   * @param {(string | Buffer)} content
+   * @param {string} encoding
    * @memberof Host
    */
-  private writeResponse(
+  private async writeResponse(
     res: http.ServerResponse,
     statusCode: number,
-    content: string
+    content: string | Buffer,
+    encoding: string
   ) {
-    res.writeHead(statusCode, {
+    // Setup Default Headers
+    let headers = {
       "Content-Type": "application/json",
+      "Content-Encoding": "none",
       "Access-Control-Allow-Origin": "*",
       "X-Powered-By": "Activeledger"
-    });
+    };
+
+    // Modify output if can compress
+    if (encoding == "gzip") {
+      headers["Content-Encoding"] = "gzip";
+      content = await ActiveGZip.gzip(content);
+    }
+
+    // Write the response
+    res.writeHead(statusCode, headers);
     res.write(content);
     res.end();
   }

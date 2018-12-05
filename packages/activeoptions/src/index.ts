@@ -23,5 +23,15 @@
 
 import { ActiveOptions } from "./options";
 import { ActiveRequest } from "./request";
-import { ActiveChanges } from './changes';
-export { ActiveOptions, ActiveRequest, ActiveChanges };
+import { ActiveChanges } from "./changes";
+import { ActiveGZip } from "./gzip";
+import { ActiveDataStore } from "./datastore";
+import PouchDB from "./pouchdb";
+export {
+  ActiveOptions,
+  ActiveRequest,
+  ActiveChanges,
+  ActiveGZip,
+  ActiveDataStore,
+  PouchDB
+};
