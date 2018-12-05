@@ -1,4 +1,4 @@
 export interface INeighbourBase {
   reference: string;
-  knock(): Promise<any>;
+  knock(endpoint: string, params?: any, external?: boolean): Promise<any>;
 }
