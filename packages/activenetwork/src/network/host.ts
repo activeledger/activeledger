@@ -327,7 +327,16 @@ export class Host extends Home {
                   Home.right,
                   this.dbConnection,
                   this.dbErrorConnection,
-                  this.dbEventConnection
+                  this.dbEventConnection,
+                  new ActiveCrypto.Secured(
+                    this.dbConnection,
+                    this.neighbourhood.get(),
+                    {
+                      reference: Home.reference,
+                      public: Home.publicPem,
+                      private: Home.identity.pem
+                    }
+                  )
                 );
 
                 // Store Protocol Object
@@ -858,7 +867,8 @@ export class Host extends Home {
               req.rawHeaders,
               "X-Activeledger-Encrypt",
               false
-            ) as boolean);
+            ) as boolean, this.dbConnection);
+            // Pass db conntection 
             break;
           case "/a/init": // Internal transactions
             if (this.firewallCheck(requester, req)) {
