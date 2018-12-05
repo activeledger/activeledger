@@ -161,14 +161,17 @@ export class Stream {
     safeMode = true
   ): Promise<{}> {
     return new Promise((resolve, reject) => {
-      // Set safemode
-      this.safeMode = safeMode;
+      // Safemode being enabled?
+      if (safeMode) {
+        // Set safemode
+        this.safeMode = safeMode;
 
-      // Loop all activities and set safemode
-      let keys = Object.keys(this.activities);
-      let i = keys.length;
-      while (i--) {
-        this.activities[keys[i]].setSafeMode();
+        // Loop all activities and set safemode
+        let keys = Object.keys(this.activities);
+        let i = keys.length;
+        while (i--) {
+          this.activities[keys[i]].setSafeMode();
+        }
       }
 
       // Run Decryption (On success return only data)
