@@ -323,6 +323,13 @@ export class Secured {
     });
   }
 
+  /**
+   * Decrypt data object with permissioned roles
+   *
+   * @param {ISecuredData} packet
+   * @returns {Promise<{}>}
+   * @memberof Secured
+   */
   public decrypt(packet: ISecuredData): Promise<{}> {
     return new Promise((resolve, reject) => {
       // Hold Password data for targetted encryption to node
