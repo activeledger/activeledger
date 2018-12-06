@@ -42,6 +42,7 @@ describe("Stream Management Test (Activecontracts)", () => {
     key,
     ActiveLogger,
     ActiveCrypto as any,
+    new ActiveCrypto.Secured({}, [], {}) as any, // Fix private type
     "localhost"
   );
 

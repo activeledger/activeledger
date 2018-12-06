@@ -101,10 +101,6 @@ export class Process extends EventEmitter {
 
   /**
    * Creates an instance of Process.
-   * Creates an instance of Process.
-   * right:any temporarily resolves ciruclar reference.
-   * ActiveNetwork.Home.Right is its source.
-   * TODO: Solve the reference
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
    * @param {string} selfHost
@@ -112,17 +108,19 @@ export class Process extends EventEmitter {
    * @param {*} right
    * @param {PouchDB} db
    * @param {PouchDB} error
-   * * @param {PouchDB} events
+   * @param {PouchDB} events
+   * @param {ActiveCrypto.Secured} secured
    * @memberof Process
    */
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
     private selfHost: string,
     private reference: string,
-    private right: any,
+    private right: ActiveDefinitions.INeighbourBase,
     private db: any,
     private dbe: any,
-    private dbev: any
+    private dbev: any,
+    private secured: ActiveCrypto.Secured
   ) {
     super();
 
@@ -362,7 +360,8 @@ export class Process extends EventEmitter {
           outputs,
           readonly,
           this.db,
-          this.dbev
+          this.dbev,
+          this.secured
         );
 
         // Initalise contract VM

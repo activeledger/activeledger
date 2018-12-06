@@ -1,6 +1,7 @@
 import { Process } from "../packages/activeprotocol/src/protocol/process";
 import { expect, should } from "chai";
 import "mocha";
+import { ActiveCrypto } from "../packages/activecrypto/src";
 
 describe("Process (Activeprotocol)", () => {
   // Some Random Test Data
@@ -33,10 +34,20 @@ describe("Process (Activeprotocol)", () => {
       } as any,
       "localhost:5259",
       "self",
-      "right",
+      {
+        reference: "right",
+        knock: (
+          endpoint: string,
+          params?: any,
+          external?: boolean
+        ): Promise<any> => {
+          return new Promise((resolve, reject) => {});
+        }
+      },
       {} as any,
       {} as any,
-      {} as any
+      {} as any,
+      new ActiveCrypto.Secured({}, [], {}) as any // Fix private type
     );
     expect(process).to.be.an("object");
   });
