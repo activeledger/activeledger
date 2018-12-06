@@ -1,7 +1,7 @@
 import { ActiveCrypto } from "../packages/activecrypto/src";
-import { expect, should } from "chai";
+import { expect } from "chai";
 import "mocha";
-import { ISecuredData } from "../packages/activecrypto/es/crypto/secured";
+
 
 describe("Cryptographic Test (Activecrypto)", () => {
   // Some Random Test Data
