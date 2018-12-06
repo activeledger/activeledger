@@ -1,6 +1,7 @@
 import { VirtualMachine } from "../packages/activeprotocol/src/protocol/vm";
 import { expect, should } from "chai";
 import "mocha";
+import { ActiveCrypto } from "../packages/activecrypto/src";
 
 describe("Virtual Machine Test (Activeprotocol)", () => {
   // Some Random Test Data
@@ -33,7 +34,8 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
       [],
       [],
       {} as any,
-      {} as any
+      {} as any,
+      new ActiveCrypto.Secured({}, [], {}) as any, // Fix private type
     );
     expect(VM).to.be.an("object");
   });
