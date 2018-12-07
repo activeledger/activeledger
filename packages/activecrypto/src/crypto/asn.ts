@@ -22,7 +22,7 @@
  */
 
 //@ts-ignore
-import asn1 = require("asn1.js");
+import * as asn1 from "asn1.js";
 
 /**
  * Manages parsing over PEM / ASN for cyrptograhpic keys
