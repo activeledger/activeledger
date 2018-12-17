@@ -53,8 +53,8 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.28",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.28",
     "@activeledger/activequery": "^2.0.0-rc.8.0.28",
-    "@types/node": "^10.12.10",
-    "typescript": "^3.1.6",
-    "vm2": "^3.6.4"
+    "@types/node": "^10.12.15",
+    "typescript": "^3.2.2",
+    "vm2": "3.6.4"
   }
 }
