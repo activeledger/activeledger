@@ -442,8 +442,8 @@ export class Host extends Home {
                   // Push entry into all worker (With threads will be shared memory)
                   // nodes so only reflect this node (Other nodes can't trust me anyway)
                   this.moan("txmem", {
-                    umid: entry.$umid,
-                    nodes: {
+                    $umid: entry.$umid,
+                    $nodes: {
                       [this.reference]: entry.$nodes[this.reference]
                     }
                   });
@@ -512,9 +512,9 @@ export class Host extends Home {
               break;
             case "txmem":
               // Add tx into memory if we don't know about it in this worker
-              if (!this.processPending[msg.umid]) {
+              if (!this.processPending[msg.$umid]) {
                 // Add to pending (Using Promises instead of http request)
-                this.processPending[msg.umid] = {
+                this.processPending[msg.$umid] = {
                   entry: msg,
                   resolve: null,
                   reject: null
@@ -523,7 +523,7 @@ export class Host extends Home {
                 // Log once
                 ActiveLogger.debug("Adding To Memory : " + msg.umid);
                 // Now run the request as workers should have the umid in memory
-                this.broadcast(msg.umid);
+                this.broadcast(msg.$umid);
               }
               break;
             case "txtarget":
@@ -603,35 +603,43 @@ export class Host extends Home {
     let i = nodes.length;
     let promises: any[] = [];
 
-    // We only want to send our value
-    const data = Object.assign(this.processPending[umid].entry, {
-      $nodes: {
-        [this.reference]: this.processPending[umid].entry.$nodes[this.reference]
-      }
-    });
-
-    // Loop them all and broadcast the transaction
-    while (i--) {
-      let node = neighbourhood[nodes[i]];
-
-      // Make sure they're home and not us
-      if (node.isHome && node.reference !== this.reference) {
-        // Need to detect if we have already sent and got response for nodes for performance
-        promises.push(node.knock("init", data));
-      }
-    }
-
-    // Listen for promises
-    Promise.all(promises)
-      .then(() => {
-        // Don't need to do anything on succusfful response
-      })
-      .catch(() => {
-        // Keep broadcasting until promises fully resolve
-        // Could be down nodes (So they can have 5 minute window to get back up)
-        // Or connection issues. This doesn't stop commit phase as they will eventually call us.
-        this.broadcastResolver(umid);
+    // Final check object exists
+    if (
+      this.processPending[umid].entry.$nodes &&
+      this.processPending[umid].entry.$nodes[this.reference]
+    ) {
+      // We only want to send our value
+      const data = Object.assign(this.processPending[umid].entry, {
+        $nodes: {
+          [this.reference]: this.processPending[umid].entry.$nodes[
+            this.reference
+          ]
+        }
       });
+
+      // Loop them all and broadcast the transaction
+      while (i--) {
+        let node = neighbourhood[nodes[i]];
+
+        // Make sure they're home and not us
+        if (node.isHome && node.reference !== this.reference) {
+          // Need to detect if we have already sent and got response for nodes for performance
+          promises.push(node.knock("init", data));
+        }
+      }
+
+      // Listen for promises
+      Promise.all(promises)
+        .then(() => {
+          // Don't need to do anything on succusfful response
+        })
+        .catch(() => {
+          // Keep broadcasting until promises fully resolve
+          // Could be down nodes (So they can have 5 minute window to get back up)
+          // Or connection issues. This doesn't stop commit phase as they will eventually call us.
+          this.broadcastResolver(umid);
+        });
+    }
   }
 
   /**
