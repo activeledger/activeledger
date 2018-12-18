@@ -560,7 +560,10 @@ export class Process extends EventEmitter {
         this.commiting = true;
         // Pass Nodes for possible INC injection
         this.contractVM
-          .commit(this.entry.$nodes, !this.entry.$territoriality)
+          .commit(
+            this.entry.$nodes,
+            this.entry.$territoriality == this.reference
+          )
           .then(() => {
             // Update Commit Entry
             this.nodeResponse.commit = true;
@@ -730,9 +733,7 @@ export class Process extends EventEmitter {
                     // Manage Post Processing (If Exists)
                     this.contractVM
                       .postProcess(
-                        this.entry.$territoriality == this.reference
-                          ? true
-                          : false,
+                        this.entry.$territoriality == this.reference,
                         this.entry.$territoriality
                       )
                       .then(post => {
@@ -808,7 +809,7 @@ export class Process extends EventEmitter {
               // Manage Post Processing (If Exists)
               this.contractVM
                 .postProcess(
-                  this.entry.$territoriality == this.reference ? true : false,
+                  this.entry.$territoriality == this.reference,
                   this.entry.$territoriality
                 )
                 .then(post => {
