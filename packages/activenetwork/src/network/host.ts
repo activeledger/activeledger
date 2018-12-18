@@ -370,7 +370,7 @@ export class Host extends Home {
                 });
 
                 // Manage Failure Messaging
-                protocol.on("failed", error => {
+                protocol.on("failed", (error: any) => {
                   ActiveLogger.debug(error, "TX Failed");
                   // Add this nodes error into the entry
                   this.processPending[msg.umid].entry.$nodes[
@@ -483,7 +483,7 @@ export class Host extends Home {
             case "reload":
               // Reload Neighbourhood
               ActiveOptions.extendConfig()
-                .then(config => {
+                .then((config: any) => {
                   if (config.neighbourhood) {
                     ActiveLogger.debug(config.neighbourhood, "Reset Request");
 
@@ -506,7 +506,7 @@ export class Host extends Home {
                     this.terriBuildMap();
                   }
                 })
-                .catch(e => {
+                .catch((e: any) => {
                   ActiveLogger.info(e, "Failed to reload Neighbourhood");
                 });
               break;
@@ -603,26 +603,34 @@ export class Host extends Home {
     let i = nodes.length;
     let promises: any[] = [];
 
+    // We only want to send our value
+    const data = Object.assign(this.processPending[umid].entry, {
+      $nodes: {
+        [this.reference]: this.processPending[umid].entry.$nodes[this.reference]
+      }
+    });
+
     // Loop them all and broadcast the transaction
     while (i--) {
       let node = neighbourhood[nodes[i]];
 
       // Make sure they're home and not us
       if (node.isHome && node.reference !== this.reference) {
-        // Rebuild the entry to only send this node
-        promises.push(node.knock("init", this.processPending[umid].entry));
+        // Need to detect if we have already sent and got response for nodes for performance
+        promises.push(node.knock("init", data));
       }
     }
 
     // Listen for promises
     Promise.all(promises)
       .then(() => {
-        this.broadcastResolved(umid, true);
+        // Don't need to do anything on succusfful response
       })
       .catch(() => {
-        // Possibly false posative errors will be
-        // closed sockets on consensus reach and commited somewhere in the network
-        this.broadcastResolved(umid, true);
+        // Keep broadcasting until promises fully resolve
+        // Could be down nodes (So they can have 5 minute window to get back up)
+        // Or connection issues. This doesn't stop commit phase as they will eventually call us.
+        this.broadcastResolver(umid);
       });
   }
 
@@ -631,45 +639,14 @@ export class Host extends Home {
    *
    * @private
    * @param {string} umid
-   * @param {boolean} [timeoutDelay=false]
    * @memberof Host
    */
-  private broadcastResolved(umid: string, timeoutDelay = false): void {
-    // Get Related Process
-    let process = this.processPending[umid];
-    // Check access to the protocol to check for commit phase
-    if (process && process.protocol && !process.protocol.isCommiting()) {
-      if (timeoutDelay) {
-        // Prevent hung transaction from unknown issue
-        // TODO Hook into timeout of VM if the voting code extends the timeout
-        setTimeout(() => {
-          this.broadcastResolved(umid);
-        }, 100);
-      } else {
-        // Do we only have our own response still (Connection Dropped?)
-        // Temp solution for managing connection drops have recast flag
-        if (
-          !(process as any).recast &&
-          Object.keys(process.entry.$nodes).length == 1
-        ) {
-          (process as any).recast = true;
-          // Rebroadcast
-          ActiveLogger.warn("Rebroadcasting : " + umid);
-          this.broadcast(umid);
-        } else {
-          // Temp message for tracing
-          process.entry.$nodes[this.reference].error = "broadcast timeout";
-          // We didn't reach consensus so return
-          process.resolve({
-            status: 200,
-            data: (process.protocol as any).entry
-          });
-          // Remove Locks
-          this.release(umid);
-        }
-      }
-    } else {
-      ActiveLogger.debug("Broadcasting Completed");
+  private broadcastResolver(umid: string): void {
+    // Check access to the protocol
+    if (this.processPending[umid] && this.processPending[umid].protocol) {
+      // Recast as connection errors found.
+      ActiveLogger.warn("Rebroadcasting : " + umid);
+      this.broadcast(umid);
     }
   }
 
@@ -863,12 +840,17 @@ export class Host extends Home {
             break;
           case "/a/encrypt":
             // Make sure it was encrypted here
-            response = Endpoints.ExternalEncrypt(this, body, this.fetchHeader(
-              req.rawHeaders,
-              "X-Activeledger-Encrypt",
-              false
-            ) as boolean, this.dbConnection);
-            // Pass db conntection 
+            response = Endpoints.ExternalEncrypt(
+              this,
+              body,
+              this.fetchHeader(
+                req.rawHeaders,
+                "X-Activeledger-Encrypt",
+                false
+              ) as boolean,
+              this.dbConnection
+            );
+            // Pass db conntection
             break;
           case "/a/init": // Internal transactions
             if (this.firewallCheck(requester, req)) {

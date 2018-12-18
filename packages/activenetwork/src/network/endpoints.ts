@@ -82,7 +82,7 @@ export class Endpoints {
         }
 
         // Make broadcast default, Unless single node network
-        if (host.neighbourhood.count() < 4) {
+        if (host.neighbourhood.count() == 1) {
           tx.$broadcast = false;
         } else if (!tx.$territoriality && !tx.$broadcast) {
           tx.$broadcast = true;
