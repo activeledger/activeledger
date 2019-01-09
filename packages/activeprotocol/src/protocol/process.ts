@@ -100,6 +100,14 @@ export class Process extends EventEmitter {
   private commiting = false;
 
   /**
+   *  Voting State
+   *
+   * @private
+   * @memberof Process
+   */
+  private voting = true;
+
+  /**
    * Creates an instance of Process.
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
@@ -304,11 +312,11 @@ export class Process extends EventEmitter {
    * @returns {ActiveDefinitions.INodeResponse}
    * @memberof Process
    */
-  public updatedFromBroadcast(node: any): ActiveDefinitions.INodeResponse {
+  public updatedFromBroadcast(node?: any): ActiveDefinitions.INodeResponse {
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
     // Make sure we haven't already reached consensus
-    if (!this.isCommiting()) {
+    if (!this.isCommiting() && !this.voting) {
       // Reset Reference node response
       this.nodeResponse = this.entry.$nodes[this.reference];
       // Try run commit!
@@ -440,6 +448,9 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private postVote(error: any = false): void {
+    // Set voting completed state
+    this.voting = false;
+
     // Instant Transaction Return right away
     if (!error && this.entry.$instant) {
       this.emit("commited", { instant: true });
@@ -455,6 +466,12 @@ export class Process extends EventEmitter {
       }
       // Let all other nodes know about this transaction and our opinion
       this.emit("broadcast", this.entry);
+
+      // Check we will be commiting (So we don't process as failed tx)
+      if (this.canCommit()) {
+        // Try run commit! (May have reach consensus here)
+        this.commit();
+      }
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
@@ -560,7 +577,10 @@ export class Process extends EventEmitter {
         this.commiting = true;
         // Pass Nodes for possible INC injection
         this.contractVM
-          .commit(this.entry.$nodes, !this.entry.$territoriality)
+          .commit(
+            this.entry.$nodes,
+            this.entry.$territoriality == this.reference
+          )
           .then(() => {
             // Update Commit Entry
             this.nodeResponse.commit = true;
@@ -730,9 +750,7 @@ export class Process extends EventEmitter {
                     // Manage Post Processing (If Exists)
                     this.contractVM
                       .postProcess(
-                        this.entry.$territoriality == this.reference
-                          ? true
-                          : false,
+                        this.entry.$territoriality == this.reference,
                         this.entry.$territoriality
                       )
                       .then(post => {
@@ -808,7 +826,7 @@ export class Process extends EventEmitter {
               // Manage Post Processing (If Exists)
               this.contractVM
                 .postProcess(
-                  this.entry.$territoriality == this.reference ? true : false,
+                  this.entry.$territoriality == this.reference,
                   this.entry.$territoriality
                 )
                 .then(post => {
@@ -852,7 +870,17 @@ export class Process extends EventEmitter {
         // Consensus not reached
         if (!this.nodeResponse.vote) {
           // We didn't vote right
-          ActiveLogger.debug("VM Commit Failure, We voted NO");
+          ActiveLogger.debug(
+            this.nodeResponse,
+            "VM Commit Failure, We voted NO"
+          );
+
+          // We voted false, Need to process
+          this.raiseLedgerError(
+            1505,
+            new Error("This node voted false"),
+            false
+          );
 
           // Because we voted no doesn't mean the network should error
           this.emit("commited", {});

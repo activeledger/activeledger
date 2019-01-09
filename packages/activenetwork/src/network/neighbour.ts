@@ -25,7 +25,7 @@ import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
-import { ActiveDefinitions } from '@activeledger/activedefinitions';
+import { ActiveDefinitions } from "@activeledger/activedefinitions";
 
 /**
  * Manages Node Connection Information
@@ -165,10 +165,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           ["X-Activeledger:" + Home.reference],
           post
         )
-          .then(response => {
+          .then((response: any) => {
             resolve(response);
           })
-          .catch(error => {
+          .catch((error: any) => {
             if (error && error.response && error.response.data) {
               ActiveLogger.error(
                 error.response.data,
@@ -176,6 +176,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               );
               reject(error.response.data);
             } else {
+              ActiveLogger.fatal(
+                error,
+                `Network Error - ${this.host}:${this.port}/${endpoint}`
+              );
               reject("Network Communication Error");
             }
           });
