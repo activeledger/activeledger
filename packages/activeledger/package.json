@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc.8.0.28",
+  "version": "2.0.0-rc.8.0.31",
   "description": "This package contains the main application for running the Activeledger blockchain",
   "keywords": [
     "blockchain",
@@ -39,9 +39,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.15",
+    "@types/node": "^10.12.18",
     "copyfiles": "^2.1.0",
-    "rimraf": "^2.6.2",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1",
     "typescript": "^3.2.2"
   },
@@ -53,10 +53,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8.0.28",
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.28",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.28",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.28",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.28"
+    "@activeledger/activecontracts": "^2.0.0-rc.8.0.31",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.31",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.31",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.31",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.31"
   }
 }

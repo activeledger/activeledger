@@ -20,21 +20,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 (function() {
   // Get Local PouchDB 7
   let PouchDB: any = require("pouchdb");
 
-  // Get base version of Express
-  let app: any = require("express")();
+  // Create PouchDB's express app
+  var app = require("express-pouchdb")({
+    mode: "minimumForPouchDB",
+    inMemoryConfig: true,
+    overrideMode: {
+      include: [
+        "config-infrastructure",
+        "routes/fauxton",
+        "routes/find",
+        "routes/replicate",
+        "routes/uuids"
+      ],
+      exclude: ["routes/attachments", "routes/compact", "routes/temp-views"]
+    }
+  });
 
-  // Get PouchDB (With Correct Path) Specific Express
-  app.use(
-    "/",
-    require("express-pouchdb")(
-      PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" })
-    )
-  );
+  // Attach Pouch Connection
+  app.setPouchDB(PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" }));
 
   // Start
   app.listen(process.argv[3]);
