@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc.8.0.31",
+  "version": "2.0.0-rc.8.0.32",
   "description": "This package contains the main application for running the Activeledger blockchain",
   "keywords": [
     "blockchain",
@@ -53,10 +53,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8.0.31",
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.31",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.31",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.31",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.31"
+    "@activeledger/activecontracts": "^2.0.0-rc.8.0.32",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.32",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.32",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.32",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.32"
   }
 }
