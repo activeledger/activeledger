@@ -82,7 +82,7 @@ export class Endpoints {
         }
 
         // Make broadcast default, Unless single node network
-        if (host.neighbourhood.count() == 1) {
+        if (host.neighbourhood.count() < 4) {
           tx.$broadcast = false;
         } else if (!tx.$territoriality && !tx.$broadcast) {
           tx.$broadcast = true;
@@ -467,6 +467,10 @@ export class Endpoints {
             _rev: body.$rev
           })
             .then((results: any) => {
+              // Make sure matching rev
+              if(results._rev != body.$rev) {
+                results = [];
+              }
               return resolve({
                 statusCode: 200,
                 content: results

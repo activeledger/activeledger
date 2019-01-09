@@ -521,7 +521,7 @@ export class Host extends Home {
                 };
               } else {
                 // Log once
-                ActiveLogger.debug("Adding To Memory : " + msg.umid);
+                ActiveLogger.debug("Adding To Memory : " + msg.$umid);
                 // Now run the request as workers should have the umid in memory
                 this.broadcast(msg.$umid);
               }

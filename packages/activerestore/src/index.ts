@@ -24,7 +24,11 @@
  */
 
 import * as fs from "fs";
-import { ActiveOptions, ActiveChanges, PouchDB } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveChanges,
+  PouchDB
+} from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { Sledgehammer } from "./sledgehammer";
@@ -112,8 +116,9 @@ ActiveOptions.extendConfig()
       // 1000 = Failed Vote
       // 1200 = * Stream position incorrect
       // 1210 = Read only steam not found
-      // 1520 = Failed to save (I may be the only one who voted)
-      let errorCodes = [950, 960, 1000, 1200, 1210, 1510];
+      // 1505 = I voted no, Maybe I was wrong
+      // 1510 = Failed to save (I may be the only one who voted)
+      let errorCodes = [950, 960, 1000, 1200, 1210, 1505, 1510];
 
       // Bind On Change Event
       // Manage on feed notifcation to subsribers
@@ -122,34 +127,39 @@ ActiveOptions.extendConfig()
         if (!change.doc.processed) {
           // Check error codes
           if (errorCodes.indexOf(change.doc.code) !== -1) {
-            // Compare $nodes to see if enough true in consensus
-            let nodes = Object.keys(change.doc.transaction.$nodes);
-            let i = nodes.length;
-            let votes = 0;
+            // If its broadcast we can't rely on the data for
+            if (!change.doc.transaction.$broadcast) {
+              // Compare $nodes to see if enough true in consensus
+              let nodes = Object.keys(change.doc.transaction.$nodes);
+              let i = nodes.length;
+              let votes = 0;
 
-            // loop nodes and count votes
-            while (i--) {
-              if (change.doc.transaction.$nodes[nodes[i]].vote) votes++;
-            }
+              // loop nodes and count votes
+              while (i--) {
+                if (change.doc.transaction.$nodes[nodes[i]].vote) votes++;
+              }
 
-            // If Votes reached consensus without me continue
-            // this node is also listed inside the above nodes so count works as expected
-            if (
-              (votes /
-                ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-                100 >=
-              ActiveOptions.get<any>("consensus", {}).reached
-            ) {
-              dataCheck(change);
-            } else {
-              // we can ignore everyone processed this as bad
-              // What if we are ahead? (1200 code known to be the case)
-              if (change.doc.code == 1200) {
+              // If Votes reached consensus without me continue
+              // this node is also listed inside the above nodes so count works as expected
+              if (
+                (votes /
+                  ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
+                  100 >=
+                ActiveOptions.get<any>("consensus", {}).reached
+              ) {
                 dataCheck(change);
               } else {
-                // Ignore for now
-                haveProcessed(change.doc);
+                // we can ignore everyone processed this as bad
+                // What if we are ahead? (1200 code known to be the case)
+                if (change.doc.code == 1200) {
+                  dataCheck(change);
+                } else {
+                  // Ignore for now
+                  haveProcessed(change.doc);
+                }
               }
+            } else {
+              dataCheck(change);
             }
           } else {
             haveProcessed(change.doc);
@@ -223,7 +233,7 @@ ActiveOptions.extendConfig()
               i = streams.length;
 
               // Hold all the promises to update when all done
-              let all:any = [];
+              let all: any = [];
 
               while (i--) {
                 let stream = reduction[streams[i]];
@@ -374,7 +384,7 @@ ActiveOptions.extendConfig()
 
                     // Update
                     db.put(doc)
-                      .then((response: any) => {
+                      .then(() => {
                         // Detect if this could be a contract that needs compiling
                         if (
                           correct.namespace &&

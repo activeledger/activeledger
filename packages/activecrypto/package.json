@@ -32,9 +32,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.15",
-    "@types/node-rsa": "^0.4.3",
-    "rimraf": "^2.6.2",
+    "@types/node": "^10.12.18",
+    "@types/node-rsa": "^1.0.0",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1",
     "typescript": "^3.2.2"
   },

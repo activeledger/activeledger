@@ -40,7 +40,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.12.15",
+    "@types/node": "^10.12.18",
     "@types/rimraf": "^2.0.2",
     "ts-node": "^7.0.1"
   },
@@ -58,7 +58,7 @@
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.31",
     "filehound": "^1.16.5",
     "minimist": "^1.2.0",
-    "rimraf": "^2.6.2",
+    "rimraf": "^2.6.3",
     "typescript": "^3.2.2"
   }
 }
