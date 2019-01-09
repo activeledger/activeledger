@@ -467,6 +467,10 @@ export class Endpoints {
             _rev: body.$rev
           })
             .then((results: any) => {
+              // Make sure matching rev
+              if(results._rev != body.$rev) {
+                results = [];
+              }
               return resolve({
                 statusCode: 200,
                 content: results

@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activequery",
-  "version": "2.0.0-rc.8.0.28",
+  "version": "2.0.0-rc.8.0.31",
   "description": "Wrapper to enable querying of Activeledger data.",
   "keywords": [
     "blockchain",
@@ -36,7 +36,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "rimraf": "^2.6.2",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1",
     "typescript": "^3.2.2"
   },
@@ -48,9 +48,9 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.28",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.28",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.28",
-    "sqltomango": "^1.2.3"
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.31",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.31",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.31",
+    "sqltomango": "1.2.3"
   }
 }
