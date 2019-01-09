@@ -36,7 +36,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "rimraf": "^2.6.2",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1"
   },
   "files": [
@@ -53,8 +53,8 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.31",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.31",
     "@activeledger/activequery": "^2.0.0-rc.8.0.31",
-    "@types/node": "^10.12.15",
+    "@types/node": "^10.12.18",
     "typescript": "^3.2.2",
-    "vm2": "3.6.4"
+    "vm2": "3.6.6"
   }
 }

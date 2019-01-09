@@ -36,8 +36,8 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.15",
-    "rimraf": "^2.6.2",
+    "@types/node": "^10.12.18",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1",
     "typescript": "^3.2.2"
   },

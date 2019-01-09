@@ -37,8 +37,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.12.15",
-    "rimraf": "^2.6.2",
+    "@types/node": "^10.12.18",
+    "rimraf": "^2.6.3",
     "ts-node": "^7.0.1",
     "typescript": "^3.2.2"
   },
@@ -51,7 +51,6 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.31",
-    "express": "^4.16.4",
     "express-pouchdb": "^4.1.0",
     "minimist": "^1.2.0",
     "pouchdb": "^7.0.0"
