@@ -62,13 +62,16 @@ export class AsnParser {
    * @memberof AsnParser
    */
   public static encodeECPrivateKey(
-    key: string,
+    prv: Buffer,
+    pub: Buffer,
     label = "EC PRIVATE KEY"
   ): string {
     return AsnParser.ECPrivLiteASN.encode(
       {
         version: 1,
-        privateKey: Buffer.from(key, "hex")
+        privateKey: prv,
+        params: { type: "curve", value: [1, 3, 132, 0, 10] },
+        publicKey: { unused: 0, data: pub }
       },
       "pem",
       {
@@ -109,7 +112,7 @@ export class AsnParser {
    * @returns {string}
    * @memberof AsnParser
    */
-  public static encodeECPublicKey(key: string, label = "PUBLIC KEY"): string {
+  public static encodeECPublicKey(key: Buffer, label = "PUBLIC KEY"): string {
     return AsnParser.ECPubASN.encode(
       {
         algorithm: {
@@ -118,7 +121,7 @@ export class AsnParser {
         },
         publicKey: {
           unused: 0,
-          data: new Buffer(key, "hex")
+          data: key
         }
       },
       "pem",
@@ -177,9 +180,19 @@ export class AsnParser {
       // Version
       this.key("version").int(),
       // Root Key (Optional)
-      this.key("privateKey")
-        .octstr()
+      this.key("privateKey").octstr(),
+      this.key("params")
         .optional()
+        .explicit(0)
+        .use(
+          asn1.define("params", function() {
+            this.choice({ curve: this.objid() });
+          })
+        ),
+      this.key("public_key")
+        .optional()
+        .explicit(1)
+        .bitstr()
     );
   });
 
