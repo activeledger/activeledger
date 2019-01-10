@@ -22,7 +22,6 @@
  */
 
 import { Standard, Activity } from "@activeledger/activecontracts";
-import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Default Onboarding (New Account) contract
@@ -132,9 +131,6 @@ export default class Fund extends Standard {
 
     // Get the input to verify (and prepare)
     let inputStreams = Object.keys(this.transactions.$i);
-
-    // Only manage 1 input for now
-    let inputActivity = this.getActivityStreams(inputStreams[0]);
 
     // Check they can issue
 

@@ -23,7 +23,6 @@
 
 import { ActiveledgerDatasource } from "../datasources/activeledger";
 import { param, get } from "@loopback/rest";
-// import {inject} from '@loopback/context';
 
 export class TransactionController {
   /**

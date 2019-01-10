@@ -443,7 +443,7 @@ export class Endpoints {
               content: results.docs
             });
           })
-          .catch((error: any) => {
+          .catch(() => {
             // Don't mind an error so lets say everyting is ok
             return resolve({
               statusCode: 200,
@@ -476,7 +476,7 @@ export class Endpoints {
                 content: results
               });
             })
-            .catch((error: any) => {
+            .catch(() => {
               // Don't mind an error so lets say everyting is ok
               return resolve({
                 statusCode: 200,

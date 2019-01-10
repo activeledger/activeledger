@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { Standard } from '@activeledger/activecontracts';
+import { Standard } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -44,7 +44,7 @@ export default class Onboard extends Standard {
         resolve(true);
       } else {
         reject("Should be a sigsless flagged transaction");
-      }      
+      }
     });
   }
 
@@ -79,12 +79,15 @@ export default class Onboard extends Standard {
           let activity = this.newActivityStream(
             "activeledger.default.identity." + inputs[i]
           );
-          activity.setAuthority(this.transactions.$i[inputs[i]].publicKey, this.transactions.$i[inputs[i]].type);
+          activity.setAuthority(
+            this.transactions.$i[inputs[i]].publicKey,
+            this.transactions.$i[inputs[i]].type
+          );
 
           let state = activity.getState();
           state.name = activity.getName();
 
-          // Better solution than trying to catch nulls for namespace owners.          
+          // Better solution than trying to catch nulls for namespace owners.
           state.type = `${this.transactions.$namespace}.activeledger.identity`;
           activity.setState(state);
 
