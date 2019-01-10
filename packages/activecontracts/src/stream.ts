@@ -114,37 +114,37 @@ export class Stream {
     private selfHost: string
   ) {
     // Input Steam Activities
-    let i: number = inputs.length;
+    let i: number = this.inputs.length;
     while (i--) {
-      this.activities[inputs[i].state._id as string] = new Activity(
+      this.activities[this.inputs[i].state._id as string] = new Activity(
         this.ActiveCrypto,
         null,
         null,
-        (inputs[i].state._id as string) in this.sigs,
-        inputs[i].meta,
-        inputs[i].state,
-        inputs[i].volatile
+        (this.inputs[i].state._id as string) in this.sigs,
+        this.inputs[i].meta,
+        this.inputs[i].state,
+        this.inputs[i].volatile
       );
 
       // Set Secret Key
-      this.activities[inputs[i].state._id as string].setKey(this.key);
+      this.activities[this.inputs[i].state._id as string].setKey(this.key);
     }
 
     // Output Steam Activities
-    i = outputs.length;
+    i = this.outputs.length;
     while (i--) {
-      this.activities[outputs[i].state._id as string] = new Activity(
+      this.activities[this.outputs[i].state._id as string] = new Activity(
         this.ActiveCrypto,
         null,
         null,
         false,
-        outputs[i].meta,
-        outputs[i].state,
-        outputs[i].volatile
+        this.outputs[i].meta,
+        this.outputs[i].state,
+        this.outputs[i].volatile
       );
 
       // Set Secret Key
-      this.activities[outputs[i].state._id as string].setKey(this.key);
+      this.activities[this.outputs[i].state._id as string].setKey(this.key);
     }
   }
 

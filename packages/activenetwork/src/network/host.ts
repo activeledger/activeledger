@@ -23,7 +23,6 @@
 
 import * as cluster from "cluster";
 import * as http from "http";
-//@ts-ignore
 import {
   ActiveOptions,
   ActiveRequest,

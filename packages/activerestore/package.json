@@ -57,7 +57,6 @@
     "@activeledger/activenetwork": "^2.0.0-rc.8.0.32",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.32",
     "filehound": "^1.16.5",
-    "minimist": "^1.2.0",
     "rimraf": "^2.6.3",
     "typescript": "^3.2.2"
   }

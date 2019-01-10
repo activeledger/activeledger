@@ -213,7 +213,6 @@ export class VirtualMachine {
 
       // Import Contract
       // Create limited VM
-      // TODO: Allow for VM to be customised for acces to native modules (filesystem etc)
       this.virtual = new NodeVM({
         wrapper: "none",
         sandbox: {

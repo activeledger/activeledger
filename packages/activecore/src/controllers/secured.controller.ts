@@ -23,7 +23,6 @@
 
 import { ActiveledgerDatasource } from "../datasources/activeledger";
 import { requestBody, post } from "@loopback/rest";
-// import {inject} from '@loopback/context';
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 

@@ -22,7 +22,7 @@
  */
 
 import * as fs from "fs";
-import { PostProcess, Activity } from "@activeledger/activecontracts";
+import { PostProcess } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -309,7 +309,7 @@ export default class Setup extends PostProcess {
     // Additional Contract Locks?
     if (this.transactions.$i.setup.lock) {
       setup.setContractLock([this.transactions.$i.setup.lock, "setup"]);
-    }else{
+    } else {
       setup.setContractLock("setup");
     }
 
@@ -320,7 +320,7 @@ export default class Setup extends PostProcess {
     setup.setState(state);
 
     // Are we locking
-    if(this.transactions.$i.setup.security.lock) {
+    if (this.transactions.$i.setup.security.lock) {
       setup.setContractLock(this.transactions.$i.setup.security.lock);
     }
 

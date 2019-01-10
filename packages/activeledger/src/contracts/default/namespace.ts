@@ -22,7 +22,6 @@
  */
 
 import { Query, Activity } from "@activeledger/activecontracts";
-import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Default Onboarding (New Account) contract
@@ -41,16 +40,14 @@ export default class Namespace extends Query {
    */
   private namespace: string;
 
-
   /**
    * Reference input stream name
-   * 
+   *
    * @private
    * @type {string}
    * @memberof Namespace
    */
-  private identity: Activity
-
+  private identity: Activity;
 
   /**
    * Quick Check, Allow all data but make sure it is signatureless
@@ -77,7 +74,6 @@ export default class Namespace extends Query {
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
-
       // Get Stream id
       let stream = Object.keys(this.transactions.$i)[0];
 
@@ -94,7 +90,11 @@ export default class Namespace extends Query {
       // Does the namespace exist
       // Changed to contract typing
       this.query
-        .sql(`SELECT * FROM X WHERE namespace = '${this.namespace}' AND type = '${this.transactions.$namespace}.activeledger.identity'`)
+        .sql(
+          `SELECT * FROM X WHERE namespace = '${this.namespace}' AND type = '${
+            this.transactions.$namespace
+          }.activeledger.identity'`
+        )
         .then(doc => {
           if (doc.length > 0) {
             return reject("Namespace Reserved");
@@ -115,7 +115,6 @@ export default class Namespace extends Query {
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
-
       // Update Identity to own namespace
       this.identity.setState({ namespace: this.namespace });
 

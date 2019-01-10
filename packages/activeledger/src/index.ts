@@ -379,7 +379,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                 );
               }
             })
-            .catch(e => {
+            .catch(() => {
               ActiveLogger.fatal("Networking Assertion Failed");
             });
         })
@@ -485,10 +485,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           );
 
           // Maintain Network Neighbourhood & Let Workers know
-          let activeWatch = new ActiveNetwork.Maintain(
-            activeHome,
-            activeSession
-          );
+          new ActiveNetwork.Maintain(activeHome, activeSession);
 
           // Loop CPUs and fork
           while (cpus--) {
@@ -498,7 +495,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           // Watch for worker exit / crash and restart
           cluster.on("exit", worker => {
             ActiveLogger.debug(worker, "Worker has died, Restarting");
-            let restart = activeSession.add(cluster.fork());
+            activeSession.add(cluster.fork());
             // We can restart but we need to update the workers left & right & ishome
             //worker.send({type:"neighbour",})
           });
@@ -592,7 +589,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
         extendConfig(() => {
           // Create Home Host Node
-          let activeHost = new ActiveNetwork.Host();
+          new ActiveNetwork.Host();
         });
       }
     }
