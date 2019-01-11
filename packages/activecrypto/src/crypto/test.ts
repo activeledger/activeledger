@@ -25,24 +25,57 @@ let b = {
   }
 };
 
-let ecPrv = new KeyPair("secp256k1", a.prv.pkcs8pem);
-let ecPub = new KeyPair("secp256k1", a.pub.pkcs8pem);
+let oPub =
+  "-----BEGIN PUBLIC-----\nMDQxNDdlZTllNmI5ZjM4OWQ2OWY3OWJlNDk1MzVjNGFmYTQxMzA3MmI4MGUzMWNj\nYmZmOTE2MzdhMjVmZjg1NGI2OTdiZjJjYjViMWNmMzUyYjQyMGU0NGY3YzFhNjVh\nYmI0MjdiZDJmNTk1Yzc1MTQ0MGU0NjM5NWQ4ZGE4NmNmMg==\n-----END PUBLIC-----";
+let oPrv =
+  "-----BEGIN PRIVATE-----\nZWRkZTdkYzE1NGYxNGVlM2JlYmJmNTExNTE0NTM2NzgzNTViOGFhYzc2N2YyMTJh\nNWMwOTc5NzNiMWI1ODM5OA==\n-----END PRIVATE-----";
 
-//let rsa = new KeyPair("rsa");
+let signy: any = {
+  $tx: {
+    $namespace: "default",
+    $contract: "onboard",
+    $i: {
+      prefix: {
+        type: "secp256k1",
+        publicKey:
+          "-----BEGIN PUBLIC-----\nMDQxNDdlZTllNmI5ZjM4OWQ2OWY3OWJlNDk1MzVjNGFmYTQxMzA3MmI4MGUzMWNj\nYmZmOTE2MzdhMjVmZjg1NGI2OTdiZjJjYjViMWNmMzUyYjQyMGU0NGY3YzFhNjVh\nYmI0MjdiZDJmNTk1Yzc1MTQ0MGU0NjM5NWQ4ZGE4NmNmMg==\n-----END PUBLIC-----"
+      }
+    }
+  },
+  $selfsign: true,
+  $sigs: {}
+};
 
-// console.log(rsa.generate());
+//signy = "jr2o3j4r23ioj4io23j";
 
-// console.log("Signature:")
-// console.log(rsa.sign("rergjmerogjergijeg"));
+let ecPrv = new KeyPair("secp256k1", oPrv);
+let ecPub = new KeyPair("secp256k1", oPub);
 
-console.log("=------------------------------------------");
+// let ecPrv = new KeyPair("secp256k1", a.prv.pkcs8pem);
+// let ecPub = new KeyPair("secp256k1", a.pub.pkcs8pem);
+
+// let rsa = new KeyPair("rsa");
+// let key = rsa.generate();
+// console.log(key);
+
+// let sign = rsa.sign("rergjmerogjergijeg");
+
+// console.log("Signature:");
+// console.log(sign);
+// console.log("VERIFIEDD : ");
+// console.log(rsa.verify("rergjmerogjergijeg", sign));
+// console.log("=------------------------------------------");
+
+// let enc = rsa.encrypt("Helllo World & Chris");
+// console.log(enc);
+// console.log(rsa.decrypt(enc));
 
 //console.log(ec.generate());
 
 console.log("Signature:");
-let sig = ecPrv.sign("rergjmerogjergijeg");
+let sig = ecPrv.sign(signy);
 console.log(sig);
 console.log();
 
 console.log("VERIFIEDD : ");
-console.log(ecPub.verify("rergjmerogjergijeg", sig));
+console.log(ecPub.verify(signy, sig));
