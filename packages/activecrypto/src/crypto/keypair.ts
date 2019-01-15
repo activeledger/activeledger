@@ -427,7 +427,7 @@ export class KeyPair {
       case "ethereum":
       case "secp256k1":
         try {
-          sign = crypto.createSign("SHA256");
+          sign = crypto.createSign("sha256");
           sign.update(data);
           return new Buffer(
             sign.sign(this.handler.prv.pkcs8pem, "hex"),
@@ -489,7 +489,7 @@ export class KeyPair {
         case "ethereum":
         case "secp256k1":
           try {
-            verify = crypto.createVerify("SHA256");
+            verify = crypto.createVerify("sha256");
             verify.update(data);
             return verify.verify(
               this.handler.pub.pkcs8pem,
