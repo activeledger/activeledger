@@ -329,7 +329,6 @@ export class KeyPair {
 
         // Split data
         let chunked = this.chunkString(data);
-        console.log(chunked);
 
         // Concated Encrypted string
         let encrypted = "";
