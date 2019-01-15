@@ -30,4 +30,15 @@ import PostProcess from "./postprocess";
 import PostProcessQuery from "./postprocessquery";
 import PostProcessEvent from "./postprocessevent";
 import PostProcessQueryEvent from "./postprocessqueryevent";
-export { Activity, Stream, Standard, Query, Event, QueryEvent, PostProcess, PostProcessQuery, PostProcessEvent, PostProcessQueryEvent };
+export {
+  Activity,
+  Stream,
+  Standard,
+  Query,
+  Event,
+  QueryEvent,
+  PostProcess,
+  PostProcessQuery,
+  PostProcessEvent,
+  PostProcessQueryEvent
+};

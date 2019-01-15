@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import * as NodeRsa from "node-rsa";
+import * as crypto from "crypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Hash } from "./hash";
 import { AsnParser } from "./asn";
@@ -34,7 +34,7 @@ import { AsnParser } from "./asn";
  */
 export interface KeyHandleDetails {
   pkcs8pem: string;
-  hash: string;
+  hash?: string;
 }
 
 /**
@@ -56,31 +56,21 @@ export interface KeyHandler {
  */
 export class KeyPair {
   /**
-   * RSA Object
+   * Holds Public Private Data
    *
    * @private
-   * @type {NodeRsa}
+   * @type {KeyHandler}
    * @memberof KeyPair
    */
-  private rsa: NodeRsa;
+  private handler: KeyHandler;
 
   /**
-   * Holds Curve Object
+   * EC Key been passed for compaitibility
    *
    * @private
-   * @type {*}
    * @memberof KeyPair
    */
-  private curve: any;
-
-  /**
-   * Holds Curve Key Object
-   *
-   * @private
-   * @type {*}
-   * @memberof KeyPair
-   */
-  private key: any;
+  private compatMode = false;
 
   /**
    * Creates an instance of KeyPair.
@@ -91,64 +81,157 @@ export class KeyPair {
   constructor(type?: string);
   constructor(type?: string, pem?: string);
   constructor(private type: any = "rsa", public pem?: any) {
-    switch (type) {
-      case "rsa":
-        if (pem) this.rsa = new NodeRsa(pem);
-        break;
-      case "bitcoin":
-      case "ethereum":
-      case "secp256k1":
-        // Get Curve
-        this.curve = new (require("elliptic")).ec("secp256k1");
-
-        if (pem) {
-          // Backwards compatibility mode (NO ASN PEM)
-          if (pem.indexOf("PRIVATE-") !== -1 || pem.indexOf("PUBLIC-") !== -1) {
-
-            // Learn if its private
-            let isPriv = false;
-            if (pem.indexOf("PRIVATE") !== -1) {
-              isPriv = true;
-            }
-
-            // Key should be PEM style with RAW value.
-            // Remove Header & Footer & New Lines
-            pem = pem.replace(/-*[A-Z ]*-|\n/g, "");
-
-            // Convert to HEX from base64
-            pem = Buffer.from(pem, "base64").toString();
-
-            // Private or Public key being imported?
-            if (!isPriv) {
-              this.key = this.curve.keyFromPublic(
-                pem,
-                "hex"
-              );
-            } else {
-              this.key = this.curve.keyFromPrivate(
-                pem,
-                "hex"
-              );
-            }
+    if (pem) {
+      switch (type) {
+        case "rsa":
+        case "bitcoin":
+        case "ethereum":
+        case "secp256k1":
+          if (pem.indexOf("PRIVATE") == -1) {
+            this.createHandler("", pem);
           } else {
-            // Private or Public key being imported?
-            if (pem.indexOf("PRIVATE") == -1) {
-              this.key = this.curve.keyFromPublic(
-                AsnParser.decodeECPublicKey(pem),
-                "hex"
-              );
-            } else {
-              this.key = this.curve.keyFromPrivate(
-                AsnParser.decodeECPrivateKey(pem),
-                "hex"
-              );
-            }
+            this.createHandler(pem);
           }
-        }
-        break;
-      default:
-        throw "Unknown / unset key type";
+          break;
+        default:
+          throw "Unknown / unset key type";
+      }
     }
+  }
+
+  /**
+   *Creates handler object
+   *
+   * @private
+   * @param {string} prv
+   * @param {string} [pub=""]
+   * @memberof KeyPair
+   */
+  private createHandler(prv: string, pub: string = ""): void {
+    this.handler = {
+      pub: {
+        pkcs8pem: pub
+      },
+      prv: {
+        pkcs8pem: prv
+      }
+    };
+  }
+
+  /**
+   * Parse PEM again to convert format
+   *
+   * @private
+   * @returns {boolean}
+   * @memberof KeyPair
+   */
+  private enableCompatMode(): boolean {
+    if (!this.compatMode) {
+      // Convert Public if available
+      if (this.handler.pub.pkcs8pem) {
+        if (this.handler.pub.pkcs8pem.indexOf("PUBLIC-") !== -1) {
+          // Key should be PEM style with RAW value.
+          // Remove Header & Footer & New Lines
+          let pem = this.handler.pub.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+
+          // Convert to HEX from base64
+          pem = Buffer.from(pem, "base64").toString();
+
+          // Encode into valid PEM
+          this.handler.pub.pkcs8pem = AsnParser.encodeECPublicKey(
+            Buffer.from(pem, "hex")
+          );
+        }
+      }
+
+      // Convert Private if available
+      if (this.handler.prv.pkcs8pem) {
+        // Backwards compatibility mode (NO ASN PEM)
+        if (this.handler.prv.pkcs8pem.indexOf("PRIVATE-") !== -1) {
+          // Key should be PEM style with RAW value.
+          // Remove Header & Footer & New Lines
+          let pem = this.handler.prv.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+
+          // Convert to HEX from base64
+          pem = Buffer.from(pem, "base64").toString();
+
+          // Encode into valid PEM
+          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
+            Buffer.from(pem, "hex"),
+            Buffer.from("")
+          );
+        } else {
+          // Decode Nested Parser into unnested valid PEM
+          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
+            Buffer.from(
+              AsnParser.decodeECPrivateKey(this.handler.prv.pkcs8pem),
+              "hex"
+            ),
+            Buffer.from("")
+          );
+        }
+      }
+
+      // Return from conversion
+      this.compatMode = true;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Node or Webpack Environment
+   *
+   * @private
+   * @returns {boolean}
+   * @memberof KeyPair
+   */
+  private isFullNodeEnv(): boolean {
+    return crypto.generateKeyPairSync ? true : false;
+  }
+
+  /**
+   * Makes sure the data is a string
+   *
+   * @private
+   * @param {string} data
+   * @returns {string}
+   * @memberof KeyPair
+   */
+  private getString(data: string): string;
+  private getString(data: Object): string;
+  private getString(data: Buffer): string;
+  private getString(data: any): any {
+    // Data Object to string
+    if (typeof data === "object") {
+      data = JSON.stringify(data);
+    } else if (Buffer.isBuffer(data)) {
+      data = data.toString();
+    }
+    return data;
+  }
+
+  /**
+   * Reduce string size for concated encryption
+   *
+   * @private
+   * @param {string} data
+   * @param {number} [size=100]
+   * @returns {string[]}
+   * @memberof KeyPair
+   */
+  private chunkString(data: string, size: number = 100): string[] {
+    let chunks = [];
+    if (data.length > size) {
+      chunks = [];
+      while (data !== "") {
+        chunks.push(data.slice(0, size));
+        data = data.slice(size);
+      }
+    } else {
+      chunks.push(data);
+    }
+    return chunks;
   }
 
   /**
@@ -159,52 +242,63 @@ export class KeyPair {
    * @memberof KeyPair
    */
   public generate(bits: number = 2048): KeyHandler {
-    // Return Object
-    let handler: KeyHandler;
-
     switch (this.type) {
       case "rsa":
-        this.rsa = new NodeRsa({ b: bits });
+        // Node or Browser (Webpack doesn't have this yet)
+        if (!this.isFullNodeEnv()) {
+          // Temp Import Pure JS RSA Lib to generate
+          // TODO : Use This lib for sign/verify/enc/dec if not in node or webpack shims
+          let jsRSA = require("node-rsa");
+          let rsa = new jsRSA({ b: bits });
 
-        // Create Return Object
-        handler = {
-          pub: {
-            pkcs8pem: this.rsa.exportKey("pkcs8-public-pem").toString(),
-            hash: ""
-          },
-          prv: {
-            pkcs8pem: this.rsa.exportKey("pkcs8-private-pem").toString(),
-            hash: ""
-          }
-        };
+          // Create Return Object
+          this.createHandler(
+            rsa.exportKey("pkcs8-private-pem").toString(),
+            rsa.exportKey("pkcs8-public-pem").toString()
+          );
+        } else {
+          //@ts-ignore
+          let rsa = crypto.generateKeyPairSync("rsa", {
+            modulusLength: bits,
+            publicKeyEncoding: {
+              type: "spki",
+              format: "pem"
+            },
+            privateKeyEncoding: {
+              type: "pkcs8",
+              format: "pem"
+            }
+          });
+
+          // Create Return Object
+          this.createHandler(rsa.privateKey, rsa.publicKey);
+        }
 
         // Update Hashes
-        handler.pub.hash = Hash.getHash(handler.pub.pkcs8pem);
-        handler.prv.hash = Hash.getHash(handler.prv.pkcs8pem);
+        this.handler.pub.hash = Hash.getHash(this.handler.pub.pkcs8pem);
+        this.handler.prv.hash = Hash.getHash(this.handler.prv.pkcs8pem);
 
-        return handler;
+        return this.handler;
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
-        this.key = this.curve.genKeyPair();
+        let curve: crypto.ECDH = crypto.createECDH("secp256k1");
+        curve.generateKeys();
 
         // Create Return Object
-        handler = {
-          pub: {
-            pkcs8pem: AsnParser.encodeECPublicKey(this.key.getPublic("hex")),
-            hash: ""
-          },
-          prv: {
-            pkcs8pem: AsnParser.encodeECPrivateKey(this.key.getPrivate("hex")),
-            hash: ""
-          }
-        };
+        this.createHandler(
+          AsnParser.encodeECPrivateKey(
+            curve.getPrivateKey(),
+            curve.getPublicKey()
+          ),
+          AsnParser.encodeECPublicKey(curve.getPublicKey())
+        );
 
         // Update Hashes
-        handler.pub.hash = Hash.getHash(handler.pub.pkcs8pem);
-        handler.prv.hash = Hash.getHash(handler.prv.pkcs8pem);
+        this.handler.pub.hash = Hash.getHash(this.handler.pub.pkcs8pem);
+        this.handler.prv.hash = Hash.getHash(this.handler.prv.pkcs8pem);
 
-        return handler;
+        return this.handler;
       default:
         throw ActiveLogger.fatal(`Cannot generate ${this.type} key pair type`);
     }
@@ -222,8 +316,33 @@ export class KeyPair {
   public encrypt(data: Object): string;
   public encrypt(data: Buffer): string;
   public encrypt(data: any, encoding: any = "base64"): string {
-    if (this.type == "rsa" && this.rsa) {
-      return this.rsa.encrypt(data, encoding).toString();
+    if (this.type == "rsa") {
+      // Check we have public
+      if (!this.handler.pub.pkcs8pem) {
+        throw ActiveLogger.fatal(
+          data,
+          `Cannot encrypt without ${this.type} Public Key`
+        );
+      } else {
+        // Get data as string
+        data = this.getString(data);
+
+        // Split data
+        let chunked = this.chunkString(data);
+
+        // Concated Encrypted string
+        let encrypted = "";
+
+        chunked.forEach((chunk: string) => {
+          // Get Encryption Chunk
+          encrypted +=
+            crypto
+              .publicEncrypt(this.handler.pub.pkcs8pem, Buffer.from(chunk))
+              .toString(encoding) + "|";
+        });
+
+        return encrypted.slice(0, -1);
+      }
     }
     throw ActiveLogger.fatal(data, `Cannot encrypt with ${this.type}`);
   }
@@ -240,8 +359,31 @@ export class KeyPair {
   public decrypt(data: Object): string;
   public decrypt(data: Buffer): string;
   public decrypt(data: any, encoding: any = "base64"): string {
-    if (this.type == "rsa" && this.rsa) {
-      return this.rsa.decrypt(data, encoding).toString();
+    if (this.type == "rsa") {
+      // Check we have public
+      if (!this.handler.prv.pkcs8pem) {
+        throw ActiveLogger.fatal(
+          data,
+          `Cannot decrypt without ${this.type} Private Key`
+        );
+      } else {
+        // Get data as string
+        let chunked = this.getString(data).split("|");
+
+        // Concated decrypted string
+        let decrypted = "";
+
+        // Loop and decrypt
+        chunked.forEach(chunk => {
+          decrypted += crypto
+            .privateDecrypt(
+              this.handler.prv.pkcs8pem,
+              Buffer.from(chunk, encoding)
+            )
+            .toString();
+        });
+        return Buffer.from(decrypted).toString(encoding);
+      }
     }
     throw ActiveLogger.fatal(data, `Cannot decrypt with ${this.type}`);
   }
@@ -258,26 +400,49 @@ export class KeyPair {
   public sign(data: Object): string;
   public sign(data: Buffer): string;
   public sign(data: any, encoding: any = "base64"): string {
+    // Check we have a private key
+    if (!this.handler.prv.pkcs8pem) {
+      throw ActiveLogger.fatal(
+        data,
+        `Cannot sign with ${this.type} Public key`
+      );
+    }
+
+    // Signing Digest Object
+    let sign;
+
+    // Data Object to string
+    data = this.getString(data);
+
+    // Sign by type
     switch (this.type) {
       case "rsa":
-        if (this.rsa && this.rsa.isPrivate()) {
-          return this.rsa.sign(data, encoding).toString();
-        }
-        throw ActiveLogger.fatal(data, `Failed to sign`);
+        sign = crypto.createSign("RSA-SHA256");
+        sign.update(data);
+        return new Buffer(
+          sign.sign(this.handler.prv.pkcs8pem, "hex"),
+          "hex"
+        ).toString(encoding);
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
-        if (this.key.priv) {
-          // Make sure data is string
-          if (typeof data !== "string") data = JSON.stringify(data);
-
-          // Hash Data
-          data = Hash.getHash(data);
-
-          // Parse & Hash for EC
-          return new Buffer(this.key.sign(data).toDER()).toString("base64");
+        try {
+          sign = crypto.createSign("SHA256");
+          sign.update(data);
+          return new Buffer(
+            sign.sign(this.handler.prv.pkcs8pem, "hex"),
+            "hex"
+          ).toString(encoding);
+        } catch {
+          if (this.enableCompatMode()) {
+            return this.sign(data);
+          } else {
+            throw ActiveLogger.fatal(
+              data,
+              `Cannot sign with ${this.type} supplied PEM`
+            );
+          }
         }
-        throw ActiveLogger.fatal(data, `Failed to sign`);
       default:
         throw ActiveLogger.fatal(data, `Cannot sign with ${this.type}`);
     }
@@ -299,27 +464,50 @@ export class KeyPair {
     signature: string,
     encoding: any = "base64"
   ): boolean {
-    switch (this.type) {
-      case "rsa":
-        if (this.rsa) return this.rsa.verify(data, signature, "utf8", encoding);
-        throw ActiveLogger.fatal(data, `Failed to verify with RSA`);
-      case "bitcoin":
-      case "ethereum":
-      case "secp256k1":
-        // Make sure data is string
-        if (typeof data !== "string") data = JSON.stringify(data);
+    // Presence of pub key may not be in pem.
+    if (!this.handler.pub.pkcs8pem) {
+      throw ActiveLogger.fatal(
+        data,
+        `Cannot verify with ${this.type} Private Key`
+      );
+    } else {
+      // Verify Digest Object
+      let verify;
 
-        // Hash Data
-        data = Hash.getHash(data);
+      // Data Object to string
+      data = this.getString(data);
 
-        // Verify
-        return this.curve.verify(
-          data,
-          Buffer.from(signature, "base64").toString("hex"),
-          this.key.getPublic()
-        );
-      default:
-        throw ActiveLogger.fatal(data, `Cannot verify with ${this.type}`);
+      switch (this.type) {
+        case "rsa":
+          verify = crypto.createVerify("RSA-SHA256");
+          verify.update(data);
+          return verify.verify(
+            this.handler.pub.pkcs8pem,
+            Buffer.from(signature, encoding)
+          );
+        case "bitcoin":
+        case "ethereum":
+        case "secp256k1":
+          try {
+            verify = crypto.createVerify("SHA256");
+            verify.update(data);
+            return verify.verify(
+              this.handler.pub.pkcs8pem,
+              Buffer.from(signature, encoding)
+            );
+          } catch {
+            if (this.enableCompatMode()) {
+              return this.verify(data, signature);
+            } else {
+              throw ActiveLogger.fatal(
+                data,
+                `Cannot verify with ${this.type} supplied PEM`
+              );
+            }
+          }
+        default:
+          throw ActiveLogger.fatal(data, `Cannot verify with ${this.type}`);
+      }
     }
   }
 }

@@ -47,8 +47,6 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.32",
-    "asn1.js": "^5.0.1",
-    "elliptic": "6.4.1",
-    "node-rsa": "1.0.2"
+    "asn1.js": "^5.0.1"
   }
 }
