@@ -60,11 +60,7 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 ### IDE Download
 
-* [Linux](https://activeledger.io/download/activeledger-ide-linux/)
-
-* [Windows](https://activeledger.io/download/activeledger-ide-windows/)
-
-* [OSX](https://activeledger.io/download/activeledger-ide-osx/)
+Register at our [Developer Portal](https://developers.activeledger.io/) to download the latest version of the IDE
 
 ## Public Testnet
 
