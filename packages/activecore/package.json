@@ -39,23 +39,22 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.33",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.33",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.33",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.33",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.33",
-    "@loopback/boot": "^1.0.8",
-    "@loopback/context": "^1.4.0",
-    "@loopback/core": "^1.1.3",
-    "@loopback/openapi-v3": "^1.1.5",
-    "@loopback/repository": "^1.1.1",
-    "@loopback/rest": "^1.5.1",
-    "@loopback/service-proxy": "^1.0.5",
-    "pouchdb-find": "^7.0.0"
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.34",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.34",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.34",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.34",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.34",
+    "@loopback/boot": "^1.0.10",
+    "@loopback/context": "^1.4.1",
+    "@loopback/core": "^1.1.4",
+    "@loopback/openapi-v3": "^1.1.7",
+    "@loopback/repository": "^1.1.3",
+    "@loopback/rest": "^1.5.3",
+    "@loopback/service-proxy": "^1.0.6"
   },
   "devDependencies": {
-    "@loopback/build": "^1.1.0",
-    "@loopback/testlab": "^1.0.3",
+    "@loopback/build": "^1.2.0",
+    "@loopback/testlab": "^1.0.4",
     "@types/node": "^10.12.18"
   }
 }

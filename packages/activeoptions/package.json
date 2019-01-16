@@ -53,6 +53,8 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.33",
     "express-pouchdb": "^4.1.0",
     "minimist": "^1.2.0",
-    "pouchdb": "^7.0.0"
+    "pouchdb": "^7.0.0",
+    "pouchdb-fauxton": "0.0.6",
+    "pouchdb-find": "^7.0.0"
   }
 }
