@@ -20,29 +20,83 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-(function() {
-  // Get Local PouchDB 7
-  let PouchDB: any = require("pouchdb");
+import * as http from "http";
+import * as path from "path";
+import * as fs from "fs";
+import { ActiveHttpd } from "./httpd";
+import PouchDB from "./pouchdb";
 
-  // Create PouchDB's express app
-  var app = require("express-pouchdb")({
-    mode: "minimumForPouchDB",
-    inMemoryConfig: true,
-    overrideMode: {
-      include: [
-        "config-infrastructure",
-        "routes/fauxton",
-        "routes/find",
-        "routes/replicate",
-        "routes/uuids"
-      ],
-      exclude: ["routes/attachments", "routes/compact", "routes/temp-views"]
+(function() {
+  // Fauxton Path
+  const FAUXTON_PATH = path.dirname(require.resolve("pouchdb-fauxton"));
+
+  // PouchDB Connection Handler
+  const PouchDb = PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" });
+
+  // Create Light Server
+  let http = new ActiveHttpd();
+
+  // Index
+  http.use("/", () => {
+    return {
+      activeledger: "Welcome to Activeledger data!",
+      adapters: ["leveldb"]
+    };
+  });
+
+  // Standard Session
+  http.use("_session", () => {
+    return { ok: true, userCtx: { name: null, roles: ["_admin"] } };
+  });
+
+  // List all databases
+  http.use("_all_dbs", async () => {
+    // Get Database
+    let db = new PouchDb("pouch__all_dbs__");
+
+    // Search for other databases
+    let x = await db.allDocs({
+      startkey: "db_",
+      endkey: "db_" + "\uffff"
+    });
+
+    // Correct output
+    return x.rows.map((e: any) => e.id.replace("db_", ""));
+  });
+
+  // Get Nested stuff
+  http.use("*/*/hello", () => {
+    return "it works";
+  });
+
+  // Fauxton
+  http.use("_utils", (req: http.IncomingMessage, res: http.ServerResponse) => {
+    // We want to force /_utils to /_utils/ as this is the CouchDB behavior
+    if (req.url === "/_utils") {
+      res.writeHead(301, {
+        Location: "/_utils/"
+      });
+      return;
+    }
+
+    // File to send
+    let file = FAUXTON_PATH + "/index.html";
+
+    // If path is not default overwrite
+    if (req.url !== "/_utils/") {
+      file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
+    }
+
+    if (fs.existsSync(file)) {
+      res.setHeader(
+        "Content-type",
+        ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+      );
+      // Convert To Stream
+      return fs.readFileSync(file);
     }
   });
 
-  // Attach Pouch Connection
-  app.setPouchDB(PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" }));
-
-  // Start
-  app.listen(process.argv[3]);
+  // Start Server
+  http.listen(parseInt(process.argv[3]));
 })();

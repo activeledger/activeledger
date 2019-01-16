@@ -25,10 +25,9 @@ import { QueryEngine } from "@activeledger/activequery";
 import {
   ActiveOptions,
   ActiveChanges,
-  PouchDB
+  PouchDB,
+  PouchDBFind
 } from "@activeledger/activeoptions";
-// @ts-ignore
-import * as PouchDBFind from "pouchdb-find";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 // Add Find Plugin
