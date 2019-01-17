@@ -33,6 +33,16 @@ import PouchDB from "./pouchdb";
   // PouchDB Connection Handler
   const PouchDb = PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" });
 
+  // PouchDB Connection Cache
+  let pDBCache: any = {};
+
+  function getPDB(name: string) {
+    if (!pDBCache[name]) {
+      pDBCache[name] = new PouchDb("pouch__all_dbs__");
+    }
+    return pDBCache[name];
+  }
+
   // Create Light Server
   let http = new ActiveHttpd();
 
@@ -52,16 +62,16 @@ import PouchDB from "./pouchdb";
   // List all databases
   http.use("_all_dbs", async () => {
     // Get Database
-    let db = new PouchDb("pouch__all_dbs__");
+    let db = getPDB("pouch__all_dbs__");
 
     // Search for other databases
-    let x = await db.allDocs({
+    let docs = await db.allDocs({
       startkey: "db_",
       endkey: "db_" + "\uffff"
     });
 
     // Correct output
-    return x.rows.map((e: any) => e.id.replace("db_", ""));
+    return docs.rows.map((e: any) => e.id.replace("db_", ""));
   });
 
   // Get Nested stuff
