@@ -456,7 +456,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
       // Are we only doing setups if so stopped
       if (ActiveOptions.get<boolean>("setup-only", false)) {
-        waitAndExit();
+        waitAndExit(0);
       }
 
       // Extend configuration proxy founction
