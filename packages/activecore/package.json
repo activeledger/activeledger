@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "2.0.0-rc.8.0.34",
+  "version": "2.0.0-rc.8.0.35",
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",
@@ -39,11 +39,11 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.34",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.34",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.34",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.34",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.34",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.35",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.35",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.35",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.35",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.35",
     "@loopback/boot": "^1.0.8",
     "@loopback/context": "^1.4.0",
     "@loopback/core": "^1.1.3",
