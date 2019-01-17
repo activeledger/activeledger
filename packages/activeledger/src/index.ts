@@ -144,12 +144,12 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         ActiveLogger.info("Run All Instances");
         ActiveLogger.info("----------");
         ActiveLogger.info("node testnet");
-        waitAndExit();
+        waitAndExit(0);
       });
     })
     .catch(e => {
       ActiveLogger.fatal(e, "Testnet Build Failure");
-      waitAndExit();
+      waitAndExit(0);
     });
 } else {
   // Merge Configs (Helps Build local net)
@@ -176,11 +176,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             ActiveLogger.fatal(
               `${configFile} has multiple entries in neighbourhood`
             );
-            waitAndExit();
+            waitAndExit(0);
           }
         } else {
           ActiveLogger.fatal(`Configuration file "${configFile}" not found`);
-          waitAndExit();
+          waitAndExit(0);
         }
       }
 
@@ -283,7 +283,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       // Check we are still file based
       if (ActiveOptions.get<string>("network", "")) {
         ActiveLogger.error("Network has already been asserted");
-        waitAndExit();
+        waitAndExit(0);
       }
 
       // Make sure this node belives everyone is online
@@ -302,7 +302,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
               ActiveLogger.fatal(
                 "All known nodes must been online for assertion"
               );
-              waitAndExit();
+              waitAndExit(0);
             }
           }
 
@@ -436,7 +436,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         } else {
           ActiveLogger.fatal("File not found");
         }
-        waitAndExit();
+        waitAndExit(0);
       }
 
       // Get Public Key
