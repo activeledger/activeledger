@@ -84,7 +84,10 @@ export class ActiveDataStore {
       __dirname + "/selfhost.js",
       this.dsLocation,
       `${ActiveOptions.get<any>("db", {}).selfhost.port}`
-    ]);
+    ],
+    {
+      stdio: "inherit"
+    });
 
     ActiveLogger.info(
       `Self-hosted data engine : Starting Up (${this.process.pid})`
