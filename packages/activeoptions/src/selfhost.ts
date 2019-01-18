@@ -24,30 +24,44 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
+import { ActiveLogger } from "@activeledger/activelogger";
 import PouchDB from "./pouchdb";
+import PouchDBFind from "./pouchdbfind";
 
 (function() {
+  // Add Find Plugin
+  PouchDB.plugin(PouchDBFind);
+
   // Fauxton Path
   const FAUXTON_PATH = path.dirname(require.resolve("pouchdb-fauxton"));
 
+  // Directory Prefix
+  const DIR_PREFIX = "./" + process.argv[2] + "/";
+
   // PouchDB Connection Handler
-  const PouchDb = PouchDB.defaults({ prefix: "./" + process.argv[2] + "/" });
+  const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
 
   // PouchDB Connection Cache
   let pDBCache: any = {};
 
-  function getPDB(name: string) {
+  /**
+   * Manages Pouch Connections
+   *
+   * @param {string} name
+   * @returns
+   */
+  let getPDB = (name: string) => {
     if (!pDBCache[name]) {
       pDBCache[name] = new PouchDb(name);
     }
     return pDBCache[name];
-  }
+  };
 
   // Create Light Server
   let http = new ActiveHttpd();
 
   // Index
-  http.use("/", "ALL", () => {
+  http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
       adapters: ["leveldb"]
@@ -61,73 +75,146 @@ import PouchDB from "./pouchdb";
 
   // List all databases
   http.use("_all_dbs", "ALL", async () => {
-    // Get Database
-    let db = getPDB("pouch__all_dbs__");
+    // Check to see if it is a directory and not a special directory
+    const isDirectory = (source: string) =>
+      fs.lstatSync(DIR_PREFIX + source).isDirectory() &&
+      source != process.argv[2] &&
+      source != "pouch__all_dbs__" &&
+      source != "_replicator" &&
+      source.indexOf("-mrview-") === -1;
 
-    // Search for other databases
-    let docs = await db.allDocs();
-
-    // Correct output
-    return docs.rows.map((e: any) => e.id.replace("db_", ""));
-  });
-
-  // Get Nested stuff
-  http.use("*/*/hello", "ALL", (incoming: IActiveHttpIncoming) => {
-    return `it works - path = ${incoming.url[0]}/${incoming.url[1]}/${
-      incoming.url[2]
-    } `;
+    // Return directories
+    return fs.readdirSync(DIR_PREFIX).filter(isDirectory);
   });
 
   // Get Database Info
   http.use("*", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
-    return await db.info();
+    let info = await db.info();
+
+    // Now add data_size
+    info.data_size = 0;
+    fs.readdirSync(DIR_PREFIX + incoming.url[0]).map((source: string) => {
+      info.data_size += fs.statSync(
+        DIR_PREFIX + incoming.url[0] + "/" + source
+      ).size;
+    });
+    return info;
   });
 
   // Create Database
-  http.use(
-    "*",
-    "PUT",
-    async (incoming: IActiveHttpIncoming, req: http.IncomingMessage) => {
-      // Get Database
-      let db = getPDB(incoming.body.name);
+  http.use("*", "PUT", async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getPDB(incoming.body.name);
 
-      // Create Database
-      await db.info();
+    // Create Database
+    await db.info();
 
-      // Add to Database Cache
-      db = getPDB("pouch__all_dbs__");
+    return { ok: true };
+  });
 
-      // Add to cache
-      await db.put({
-        _id: "db_" + incoming.body.name
+  // Delete Database
+  http.use("*", "DELETE", async (incoming: IActiveHttpIncoming) => {
+    // Can just delete the folder, It shouldn't have nested so can delete all the files first
+    let dir = DIR_PREFIX + incoming.url[0];
+
+    // Check Folder
+    if (fs.existsSync(dir)) {
+      // If we have this db open we need to close it
+      if (pDBCache[incoming.url[0]]) {
+        await pDBCache[incoming.url[0]].close();
+        pDBCache[incoming.url[0]] = null;
+      }
+
+      // Read all files and delete
+      fs.readdirSync(dir).map((source: string) => {
+        fs.unlinkSync(dir + "/" + source);
       });
 
-      return { ok: true };
+      // Delete the folder
+      fs.rmdirSync(dir);
     }
-  );
+    return { ok: true };
+  });
 
-  // Create Database
-  http.use(
-    "*",
-    "DELETE",
-    async (incoming: IActiveHttpIncoming, req: http.IncomingMessage) => {
-      let db = getPDB(incoming.url[0]);
-      // Delete Database
-      await db.destory(incoming.url[0]);
+  // Get UUID
+  http.use("_uuids", "GET", async (incoming: IActiveHttpIncoming) => {
+    // Credit : https://gist.github.com/jed/982883
+    let uuidGenV4 = (a?: any) =>
+      a
+        ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
+        : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
+            /[018]/g,
+            uuidGenV4
+          );
 
-      // Remove Cache db
-      db = getPDB("pouch__all_dbs__");
+    // uuid holder
+    let uuids = [];
 
-      // Add to cache
-      await db.remove({
-        _id: "db_" + incoming.url[0]
-      });
-
-      return { ok: true };
+    // Loop for how many requested
+    for (let i = 0; i < incoming.query.count; i++) {
+      uuids.push(uuidGenV4());
     }
-  );
+    return { uuids };
+  });
+
+  // Get Index
+  http.use("/*/_index", "GET", async (incoming: IActiveHttpIncoming) => {
+    // Get Db
+    let db = getPDB(incoming.url[0]);
+    return await db.getIndexes();
+  });
+
+  // Create Index
+  http.use("/*/_index", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Get Db
+    let db = getPDB(incoming.url[0]);
+    return await db.createIndex(incoming.body);
+  });
+
+  // Delete Index
+  http.use("/*/_index/*/*/*", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Get Db
+    let db = getPDB(incoming.url[0]);
+    return await db.deleteIndex({
+      ddoc: incoming.url[2],
+      type: incoming.url[3],
+      name: incoming.url[4]
+    });
+  });
+
+  // Replicator
+  // May not need to replicate here, Service could be shut down
+  // and processed directly on the files
+  let replicator = async (incoming: IActiveHttpIncoming) => {
+    if (incoming.body && incoming.body.source && incoming.body.target) {
+      // Get names from URL
+      let source = incoming.body.source.url.substr(
+        incoming.body.source.url.lastIndexOf("/") + 1
+      );
+
+      let target = incoming.body.target.url.substr(
+        incoming.body.target.url.lastIndexOf("/") + 1
+      );
+
+      // Replicate
+      ActiveLogger.info(`Replication : ${source} -> ${target}`);
+      return await getPDB(source).replicate.to(getPDB(target));
+    } else {
+      return "";
+    }
+  };
+
+  // Pouch URL
+  http.use("/_replicate", "POST", async (incoming: IActiveHttpIncoming) => {
+    return await replicator(incoming);
+  });
+
+  // Fauxton URL
+  http.use("/_replicator", "POST", async (incoming: IActiveHttpIncoming) => {
+    return await replicator(incoming);
+  });
 
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
@@ -142,16 +229,165 @@ import PouchDB from "./pouchdb";
     return await db.allDocs(incoming.query);
   });
 
+  // Get all docs filtered from a database
+  http.use("*/_all_docs", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getPDB(incoming.url[0]);
+
+    // Convert Limit
+    if (incoming.query.limit) {
+      incoming.query.limit = parseInt(incoming.query.limit) || null;
+    }
+
+    return await db.allDocs(Object.assign(incoming.query, incoming.body));
+  });
+
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
     try {
-      return await db.get(incoming.url[1]);
+      return await db.get(decodeURIComponent(incoming.url[1]));
     } catch (e) {
-      console.log(e);
       return "";
     }
+  });
+
+  // Add new / updated document to the database
+  http.use("*/*", "PUT", async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getPDB(incoming.url[0]);
+    try {
+      return await db.put(incoming.body);
+    } catch (e) {
+      return "";
+    }
+  });
+
+  // Listen for changes on the database
+  http.use(
+    "*/_changes",
+    "GET",
+    async (
+      incoming: IActiveHttpIncoming,
+      req: http.IncomingMessage,
+      res: http.ServerResponse
+    ) => {
+      // Get Database
+      let db = getPDB(incoming.url[0]);
+
+      // Limit check
+      if (incoming.query.limit < 1) {
+        incoming.query.limit = 1;
+      }
+
+      // Convert since into number if not now
+      if (incoming.query.since !== "now") {
+        incoming.query.since = parseInt(incoming.query.since);
+      }
+
+      if (
+        incoming.query.feed === "continuous" ||
+        incoming.query.feed === "longpoll"
+      ) {
+        if (incoming.query.feed === "continuous") {
+          // Currently we do not do continuous
+        } else {
+          //Long polling heartbeat
+          let hBInterval = setInterval(() => {
+            res.write("\n");
+          }, incoming.query.heartbeat);
+
+          // Clean up
+          let cleanUp = () => {
+            if (hBInterval) {
+              clearInterval(hBInterval);
+            }
+          };
+
+          // Set Header
+          res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+
+          // Read Type
+          incoming.query.live = incoming.query.continuous = false;
+
+          db.changes(incoming.query).then((complete: any) => {
+            if (complete.results.length) {
+              res.write(JSON.stringify(complete));
+              res.end();
+              cleanUp();
+            } else {
+              // do the longpolling
+              // mimicking CouchDB, start sending the JSON immediately
+              res.write('{"results":[\n');
+              incoming.query.live = incoming.query.continuous = true;
+              let changes = db
+                .changes(incoming.query)
+                .on("change", (change: any) => {
+                  res.write(JSON.stringify(change));
+                  res.write('],\n"last_seq":' + change.seq + "}\n");
+                  changes.cancel();
+                })
+                .on("error", (e: any) => {
+                  req.connection.removeListener("close", cancelChanges);
+                  res.end();
+                  cleanUp();
+                })
+                .on("complete", () => {
+                  req.connection.removeListener("close", cancelChanges);
+                  res.end();
+                  cleanUp();
+                });
+
+              // Stop listening for changes
+              let cancelChanges = () => {
+                changes.cancel();
+              };
+
+              // Run on close connection
+              req.connection.on("close", cancelChanges);
+            }
+          });
+        }
+        return "handled";
+      } else {
+        // Just get the latest
+        return await db.changes(incoming.query);
+      }
+    }
+  );
+
+  // Add new / updated BULK document to the database
+  http.use("*/_bulk_docs", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Can no longer be an array
+    if (!Array.isArray(incoming.body)) {
+      // Must have docs
+      if (incoming.body.docs) {
+        // Options for new_edits
+        let opts = {
+          new_edits: incoming.body.new_edits || false
+        };
+
+        // Get Database
+        let db = getPDB(incoming.url[0]);
+
+        // Bulk Insert
+        return await db.bulkDocs(incoming.body.docs, opts);
+      }
+    }
+  });
+
+  // Find API
+  http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getPDB(incoming.url[0]);
+    return await db.find(incoming.body);
+  });
+
+  // Explain
+  http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
+    let db = getPDB(incoming.url[0]);
+    return await db.explain(incoming.body);
   });
 
   // Fauxton

@@ -1,15 +1,57 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2018 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 import * as http from "http";
 import * as url from "url";
 import * as querystring from "querystring";
 import { ActiveLogger } from "@activeledger/activelogger";
 
+/**
+ * Interface for exposing processed request data to the endpoints
+ *
+ * @export
+ * @interface IActiveHttpIncoming
+ */
 export interface IActiveHttpIncoming {
   url: string[];
   query?: any;
   body?: any;
 }
 
+/**
+ * Lighter Dynamic Routing HTTP Server
+ *
+ * @export
+ * @class ActiveHttpd
+ */
 export class ActiveHttpd {
+
+  /**
+   * Mime Map
+   *
+   * @static
+   * @type {*}
+   * @memberof ActiveHttpd
+   */
   public static mimeType: any = {
     ".html": "text/html",
     ".js": "text/javascript",
@@ -49,7 +91,7 @@ export class ActiveHttpd {
   public use(url: string, method: string, handler: Function) {
     // Add to routes
     this.routes.push({
-      path: url.split("/").filter(url => url),
+      path: url == "/" ? [url] : url.split("/").filter(url => url),
       method,
       handler
     });
@@ -79,6 +121,11 @@ export class ActiveHttpd {
       const pathSegments = (parsedUrl.pathname as string)
         .split("/")
         .filter(url => url);
+
+      // Setup Default
+      if (!pathSegments.length) {
+        pathSegments.push("/");
+      }
 
       // Capture POST data
       if (req.method == "POST" || req.method == "PUT") {
@@ -126,13 +173,20 @@ export class ActiveHttpd {
     this.server.listen(port);
   }
 
+  /**
+   * Process Request now we have header and maybe the body
+   *
+   * @private
+   * @param {IActiveHttpIncoming} incoming
+   * @param {http.IncomingMessage} req
+   * @param {http.ServerResponse} res
+   * @memberof ActiveHttpd
+   */
   private async processListen(
     incoming: IActiveHttpIncoming,
     req: http.IncomingMessage,
     res: http.ServerResponse
   ) {
-    // Parse the url
-
     // Get Path Handler
     let handler = this.findHandler(
       incoming.url.slice(0),
@@ -141,7 +195,12 @@ export class ActiveHttpd {
     );
     if (handler) {
       const data = await handler(incoming, req, res);
+      // If the headers have been sent handler took control
       if (data) {
+        // Handler returns handled means its writing directly
+        if (data == "handled") {
+          return;
+        }
         if (!res.statusCode) {
           res.statusCode = 200;
         }
@@ -155,16 +214,18 @@ export class ActiveHttpd {
             res.write(data);
           }
         }
+        res.end();
       } else {
         res.statusCode = 404;
         res.write("404");
+        res.end();
       }
     } else {
       // 404
       res.statusCode = 404;
       res.write("404");
+      res.end();
     }
-    res.end();
   }
 
   /**
@@ -222,9 +283,7 @@ export class ActiveHttpd {
       if (path.length) {
         return this.findHandler(path, method, handlers, ++position);
       } else {
-        // Should only have 1 handler so send the first (Will handle duplicates)
-        // Unless there is a wildcard waiting for further paths
-        // Reversed array loop so pop for last
+        // Select the most relevant handler if multiple matches
         return this.selectSingleHandler(handlers, position);
       }
     } else {
@@ -247,10 +306,11 @@ export class ActiveHttpd {
     position: number
   ): Function | null {
     // Multiple Matches
+
     if (handlers.length) {
       // If more than 1 element order * to the end
       if (handlers.length > 1) {
-        handlers = handlers.sort((a,b) => {
+        handlers = handlers.sort((a, b) => {
           if (this.pathAstriskCount(a.path) > this.pathAstriskCount(b.path)) {
             return -1;
           }
@@ -276,7 +336,6 @@ export class ActiveHttpd {
     return null;
   }
 
-
   /**
    * Find how meaning leading * in the path
    *
@@ -286,14 +345,15 @@ export class ActiveHttpd {
    * @memberof ActiveHttpd
    */
   private pathAstriskCount(path: string[]): number {
-    let i = 0;
-    path.some((element: string) => {
+    let c = 0;
+    for (let i = 0; i < path.length; i++) {
+      const element = path[i];
       if (element == "*") {
-        i++;
-        return true;
+        c++;
+      } else {
+        break;
       }
-      return false;
-    });
-    return i;
+    }
+    return c;
   }
 }
