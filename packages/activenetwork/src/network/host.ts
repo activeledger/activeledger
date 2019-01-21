@@ -27,8 +27,7 @@ import {
   ActiveOptions,
   ActiveRequest,
   ActiveGZip,
-  PouchDB,
-  PouchDBFind
+  PouchDB
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -39,6 +38,7 @@ import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
+let PouchDBFind: any = require("pouchdb-find");
 
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
