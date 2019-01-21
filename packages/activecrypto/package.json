@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecrypto",
-  "version": "2.0.0-rc.8.0.35",
+  "version": "2.0.0-rc.8.0.36",
   "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
   "keywords": [
     "blockchain",
@@ -46,7 +46,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.35",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.36",
     "asn1.js": "^5.0.1"
   }
 }
