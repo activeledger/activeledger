@@ -44,7 +44,6 @@ export interface IActiveHttpIncoming {
  * @class ActiveHttpd
  */
 export class ActiveHttpd {
-
   /**
    * Mime Map
    *
@@ -90,8 +89,10 @@ export class ActiveHttpd {
    */
   public use(url: string, method: string, handler: Function) {
     // Add to routes
+    let path = url == "/" ? [url] : url.split("/").filter(url => url);
     this.routes.push({
-      path: url == "/" ? [url] : url.split("/").filter(url => url),
+      path,
+      pac: this.pathAstriskCount(path),
       method,
       handler
     });
@@ -311,7 +312,7 @@ export class ActiveHttpd {
       // If more than 1 element order * to the end
       if (handlers.length > 1) {
         handlers = handlers.sort((a, b) => {
-          if (this.pathAstriskCount(a.path) > this.pathAstriskCount(b.path)) {
+          if (a.pac > b.pac) {
             return -1;
           }
           return 1;
