@@ -27,7 +27,7 @@ import { ActiveChanges } from "./changes";
 import { ActiveGZip } from "./gzip";
 import { ActiveDataStore } from "./datastore";
 import PouchDB from "./pouchdb";
-import PouchDBFind from "./pouchdbfind";
+import PouchDBFind from './pouchdbfind';
 export {
   ActiveOptions,
   ActiveRequest,
