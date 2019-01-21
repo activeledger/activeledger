@@ -27,7 +27,8 @@ import {
   ActiveOptions,
   ActiveRequest,
   ActiveGZip,
-  PouchDB
+  PouchDB,
+  PouchDBFind
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -38,9 +39,6 @@ import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
-
-// @ts-ignore
-import * as PouchDBFind from "pouchdb-find";
 
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
@@ -219,23 +217,21 @@ export class Host extends Home {
 
           // When read has compeleted continue
           req.on("end", async () => {
+            // Join the buffer storing the data
+            let data = Buffer.concat(body);
+
             // gzipped?
-            let gdata;
             if (req.headers["content-encoding"] == "gzip") {
-              gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+              data = await ActiveGZip.ungzip(data);
             }
 
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(
-              this,
-              (gdata || body).toString(),
-              this.fetchHeader(
-                req.rawHeaders,
-                "X-Activeledger-Encrypt",
-                false
-              ) as boolean
-            )
+            Endpoints.postConvertor(this, data.toString(), this.fetchHeader(
+              req.rawHeaders,
+              "X-Activeledger-Encrypt",
+              false
+            ) as boolean)
               .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
