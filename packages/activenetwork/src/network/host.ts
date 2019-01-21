@@ -217,23 +217,21 @@ export class Host extends Home {
 
           // When read has compeleted continue
           req.on("end", async () => {
+            // Join the buffer storing the data
+            let data = Buffer.concat(body);
+
             // gzipped?
-            let gdata;
             if (req.headers["content-encoding"] == "gzip") {
-              gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+              data = await ActiveGZip.ungzip(data);
             }
 
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(
-              this,
-              (gdata || body).toString(),
-              this.fetchHeader(
-                req.rawHeaders,
-                "X-Activeledger-Encrypt",
-                false
-              ) as boolean
-            )
+            Endpoints.postConvertor(this, data.toString(), this.fetchHeader(
+              req.rawHeaders,
+              "X-Activeledger-Encrypt",
+              false
+            ) as boolean)
               .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
