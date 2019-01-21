@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.0.0-rc.8.0.35",
+  "version": "2.0.0-rc.8.0.36",
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",
@@ -49,12 +49,12 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.35",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.35",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.35",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.35",
-    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.35",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.35",
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.36",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.36",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.36",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.36",
+    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.36",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.36",
     "pouchdb-find": "^7.0.0"
   }
 }
