@@ -249,7 +249,22 @@ import PouchDBFind from "./pouchdbfind";
     try {
       return await db.get(decodeURIComponent(incoming.url[1]));
     } catch (e) {
-      return "";
+      return e;
+    }
+  });
+
+  // Specific lookup path for _local database docs
+  http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
+    console.log("HELLO WORLD");
+    console.log(decodeURIComponent(incoming.url[1] + "/" + incoming.url[2]));
+    // Get Database
+    let db = getPDB(incoming.url[0]);
+    try {
+      return await db.get(
+        decodeURIComponent(incoming.url[1] + "/" + incoming.url[2])
+      );
+    } catch (e) {
+      return e;
     }
   });
 
