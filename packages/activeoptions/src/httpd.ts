@@ -102,9 +102,10 @@ export class ActiveHttpd {
    * Start Server
    *
    * @param {number} port
+   * @param {boolean} [log=false]
    * @memberof ActiveHttpd
    */
-  public listen(port: number) {
+  public listen(port: number, log: boolean = false) {
     // Get Local Reference
     let httpd: ActiveHttpd = this;
 
@@ -116,7 +117,7 @@ export class ActiveHttpd {
       req: http.IncomingMessage,
       res: http.ServerResponse
     ) {
-      ActiveLogger.info(`${req.method} - ${req.url}`);
+      if (log) ActiveLogger.info(`${req.method} - ${req.url}`);
 
       const parsedUrl = url.parse(req.url as string);
       const pathSegments = (parsedUrl.pathname as string)

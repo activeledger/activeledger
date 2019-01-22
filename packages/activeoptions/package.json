@@ -39,7 +39,7 @@
     "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.18",
     "rimraf": "^2.6.3",
-    "ts-node": "^7.0.1",
+    "ts-node": "^8.0.1",
     "typescript": "^3.2.4"
   },
   "files": [
@@ -50,10 +50,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.35",
-    "minimist": "^1.2.0",
-    "pouchdb": "^7.0.0",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.37",
+    "minimist": "1.2.0",
+    "pouchdb": "7.0.0",
     "pouchdb-fauxton": "0.0.6",
-    "pouchdb-find": "^7.0.0"
+    "pouchdb-find": "7.0.0"
   }
 }

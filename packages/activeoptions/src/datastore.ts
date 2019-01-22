@@ -80,32 +80,21 @@ export class ActiveDataStore {
    */
   public launch(): string {
     // Launch Background Database Process
-    this.process = child.spawn("node", [
-      __dirname + "/selfhost.js",
-      this.dsLocation,
-      `${ActiveOptions.get<any>("db", {}).selfhost.port}`
-    ],
-    {
-      stdio: "inherit"
-    });
+    this.process = child.spawn(
+      "node",
+      [
+        __dirname + "/selfhost.js",
+        this.dsLocation,
+        `${ActiveOptions.get<any>("db", {}).selfhost.port}`
+      ],
+      {
+        stdio: "inherit"
+      }
+    );
 
     ActiveLogger.info(
       `Self-hosted data engine : Starting Up (${this.process.pid})`
     );
-
-    // Write process id for restore engine to manage
-    fs.writeFileSync(this.dsLocation + "/.pid", this.process.pid);
-
-    // Listen for exit to kill (restore may shutdown)
-    this.process.on("exit", () => {
-      ActiveLogger.info("Self-host data engine shutting down...");
-      this.process.kill("SIGINT");
-
-      // Wait 10 seconds and bring back up
-      setTimeout(() => {
-        this.launch();
-      }, 10000);
-    });
 
     // Return running location
     return "http://127.0.0.1:" + ActiveOptions.get<any>("db", {}).selfhost.port;
