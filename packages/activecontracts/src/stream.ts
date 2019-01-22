@@ -81,6 +81,7 @@ export class Stream {
   /**
    * Creates an instance of a Standard Activeledger Contract.
    *
+   * @param {Date} cDate
    * @param {string} umid
    * @param {ActiveDefinitions.LedgerTransaction} transactions
    * @param {ActiveDefinitions.LedgerStream[]} inputs
@@ -98,6 +99,7 @@ export class Stream {
    * @memberof Stream
    */
   constructor(
+    protected cDate: Date,
     protected umid: string,
     protected transactions: ActiveDefinitions.LedgerTransaction,
     private inputs: ActiveDefinitions.LedgerStream[],
