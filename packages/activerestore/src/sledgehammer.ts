@@ -23,11 +23,15 @@
 
 import * as fs from "fs";
 import * as ChildP from "child_process";
-// @ts-ignore
-import * as FileHound from "filehound";
-import { ActiveOptions, PouchDB } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  PouchDB,
+  ActiveRequest
+} from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import * as rimraf from "rimraf";
+// @ts-ignore
+import * as FileHound from "filehound";
 
 /**
  *
@@ -68,7 +72,9 @@ export class Sledgehammer {
 
       // Origin Database
       let origin = new PouchDB(
-        ActiveOptions.get<any>("db", {}).url + "/" + ActiveOptions.get<any>("db", {}).database
+        ActiveOptions.get<any>("db", {}).url +
+          "/" +
+          ActiveOptions.get<any>("db", {}).database
       );
 
       // Temporary Holding Database
@@ -80,47 +86,64 @@ export class Sledgehammer {
       tmpHoldings
         .destroy()
         .then(() => {
-          // Update Connection
-          let tmpHoldings = new PouchDB(
-            ActiveOptions.get<any>("db", {}).url + "/" + this.tempDb
-          );
+          if (ActiveOptions.get<any>("db", {}).selfhost) {
+            // Self Host now handles in its process fir direct file IO
+            ActiveRequest.send(
+              `${ActiveOptions.get<any>("db", {}).url}/smash?s=${
+                ActiveOptions.get<any>("db", {}).database
+              }&t=${this.tempDb}`,
+              "GET"
+            )
+              .then(() => {
+                return resolve(true);
+              })
+              .catch((e: Error) => {
+                return reject(e);
+              });
+          } else {
+            // Externally Hosted Solution
+            // Update Connection
+            let tmpHoldings = new PouchDB(
+              ActiveOptions.get<any>("db", {}).url + "/" + this.tempDb
+            );
 
-          origin.replicate
-            .to(tmpHoldings, {
-              filter: (doc: any, req: any) => {
-                if (
-                  doc.$activeledger &&
-                  doc.$activeledger.delete &&
-                  doc.$activeledger.rewrite
-                ) {
-                  // Get Rewrite for later
-                  origin
-                    .get(doc._id)
-                    .then((doc: any) => {
-                      bulkdocs.push(doc.$activeledger.rewrite);
-                    })
-                    .catch((e: Error) => ActiveLogger.info(e));
-                  return false;
-                } else {
-                  return true;
+            origin.replicate
+              .to(tmpHoldings, {
+                filter: (doc: any, req: any) => {
+                  if (
+                    doc.$activeledger &&
+                    doc.$activeledger.delete &&
+                    doc.$activeledger.rewrite
+                  ) {
+                    // Get Rewrite for later
+                    origin
+                      .get(doc._id)
+                      .then((doc: any) => {
+                        bulkdocs.push(doc.$activeledger.rewrite);
+                      })
+                      .catch((e: Error) => ActiveLogger.info(e));
+                    return false;
+                  } else {
+                    return true;
+                  }
                 }
-              }
-            })
-            .then(() => {
-              // Any Bulk docs to update
-              if (bulkdocs.length) {
-                tmpHoldings
-                  .bulkDocs(bulkdocs, { new_edits: false })
-                  .then((docs: any) => {
-                    resolve(true);
-                    // Stop Delete Move Repeat
-                    Sledgehammer.cleanUp(tmpHoldings);
-                  });
-              } else {
-                resolve(true);
-              }
-            })
-            .catch((e: Error) => reject(e));
+              })
+              .then(() => {
+                // Any Bulk docs to update
+                if (bulkdocs.length) {
+                  tmpHoldings
+                    .bulkDocs(bulkdocs, { new_edits: false })
+                    .then((docs: any) => {
+                      resolve(true);
+                      // Stop Delete Move Repeat
+                      Sledgehammer.cleanUp(tmpHoldings);
+                    });
+                } else {
+                  resolve(true);
+                }
+              })
+              .catch((e: Error) => reject(e));
+          }
         })
         .catch((e: Error) => reject(e));
     });
@@ -187,33 +210,6 @@ export class Sledgehammer {
           ChildP.execSync("systemctl start couchdb");
           ActiveLogger.fatal(e);
         });
-    } else if (ActiveOptions.get<any>("db", {}).selfhost) {
-      // Get PouchDB Process, Send Signal Kill for processing by Activeledger
-      let pid = parseInt(
-        fs.readFileSync(ActiveOptions.get<any>("db", {}).path + "/.pid").toString()
-      );
-      process.kill(pid, "SIGKILL");
-
-      // Wait a few seconds
-      setTimeout(() => {
-        // Delete current activeledger name
-        rimraf(
-          ActiveOptions.get<any>("db", {}).path +
-            "/" +
-            ActiveOptions.get<any>("db", {}).database,
-          () => {
-            // Move Holdings
-            fs.renameSync(
-              ActiveOptions.get<any>("db", {}).path +
-                "/" +
-                Sledgehammer.tempDb,
-                ActiveOptions.get<any>("db", {}).path +
-                "/" +
-                ActiveOptions.get<any>("db", {}).database
-            );
-          }
-        );
-      }, 2500);
     } else {
       ActiveLogger.fatal(
         "Super User || Self Hosted Required - Cannot Clean Up"
