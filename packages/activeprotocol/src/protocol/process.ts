@@ -362,6 +362,7 @@ export class Process extends EventEmitter {
           this.contractLocation,
           this.selfHost,
           this.entry.$umid,
+          this.entry.$datetime,
           this.entry.$tx,
           this.entry.$sigs,
           inputs,
