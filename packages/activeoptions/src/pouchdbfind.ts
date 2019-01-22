@@ -21,19 +21,5 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "./options";
-import { ActiveRequest } from "./request";
-import { ActiveChanges } from "./changes";
-import { ActiveGZip } from "./gzip";
-import { ActiveDataStore } from "./datastore";
-import PouchDB from "./pouchdb";
-import PouchDBFind from './pouchdbfind';
-export {
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip,
-  ActiveDataStore,
-  PouchDB,
-  PouchDBFind
-};
+let PouchDBFind: any = require("pouchdb-find");
+export default PouchDBFind;
