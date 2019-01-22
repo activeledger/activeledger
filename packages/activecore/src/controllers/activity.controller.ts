@@ -64,11 +64,13 @@ export class ActivityController {
       // Listen for changes
       ActiveledgerDatasource.getChanges().on("change", (change: any) => {
         // Skip Restore Engine Changes
+        // Skip any with a : (umid, volatile, stream)
         if (
-          !change.doc.$activeledger ||
-          (change.doc.$activeledger &&
-            !change.doc.$activeledger.delete &&
-            !change.doc.$activeledger.rewrite)
+          change.doc._id.indexOf(":") == -1 &&
+          (!change.doc.$activeledger ||
+            (change.doc.$activeledger &&
+              !change.doc.$activeledger.delete &&
+              !change.doc.$activeledger.rewrite))
         ) {
           // Prepare data
           let prepare = {

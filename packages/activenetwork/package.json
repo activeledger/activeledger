@@ -54,7 +54,6 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.37",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.37",
     "@activeledger/activeprotocol": "^2.0.0-rc.8.0.37",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.37",
-    "pouchdb-find": "^7.0.0"
+    "@activeledger/activequery": "^2.0.0-rc.8.0.37"
   }
 }
