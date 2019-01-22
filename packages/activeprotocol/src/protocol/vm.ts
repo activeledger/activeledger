@@ -85,22 +85,24 @@ export class VirtualMachine {
   /**
    * Creates an instance of VirtualMachine.
    * @param {string} contractPath
-   * @param {string} umid
    * @param {string} selfHost
+   * @param {string} umid
+   * @param {Date} cdate
    * @param {ActiveDefinitions.LedgerTransaction} tx
    * @param {ActiveDefinitions.LedgerSignatures} sigs
    * @param {ActiveDefinitions.LedgerStream[]} inputs
    * @param {ActiveDefinitions.LedgerStream[]} outputs
    * @param {ActiveDefinitions.LedgerIORputs} reads
-   * @param {PouchDB} db
-   * @param {PouchDB} dbev
-   * @param {ActiveCrypto.Secured} Secured
+   * @param {*} db
+   * @param {*} dbev
+   * @param {ActiveCrypto.Secured} secured
    * @memberof VirtualMachine
    */
   constructor(
     private contractPath: string,
     private selfHost: string,
     private umid: string,
+    private cdate: Date,
     private tx: ActiveDefinitions.LedgerTransaction,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private inputs: ActiveDefinitions.LedgerStream[],
@@ -223,6 +225,7 @@ export class VirtualMachine {
           event: this.event,
           contractPath: this.contractPath,
           umid: this.umid,
+          cdate: this.cdate,
           tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
           sigs: this.sigs,
           inputs: this.inputs,
@@ -240,7 +243,7 @@ export class VirtualMachine {
 
       // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
       this.virtual.run(
-        "global.sc = new (require(contractPath)).default(umid, tx, inputs, outputs, reads, sigs, key, logger, crypto, secured, self);",
+        "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, logger, crypto, secured, self);",
         "avm.js"
       );
 
