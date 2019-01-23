@@ -24,11 +24,10 @@
 import * as cluster from "cluster";
 import * as http from "http";
 import {
+  ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
-  ActiveGZip,
-  PouchDB,
-  PouchDBFind
+  ActiveGZip
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -40,8 +39,6 @@ import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
 
-// Add Find Plugin
-PouchDB.plugin(PouchDBFind);
 /**
  * Process object used to manage an individual transaction
  *
@@ -84,28 +81,28 @@ export class Host extends Home {
    * Server connection to the couchdb instance for this node
    *
    * @private
-   * @type PouchDB
+   * @type ActiveDSConnect
    * @memberof Host
    */
-  private dbConnection: any;
+  private dbConnection: ActiveDSConnect;
 
   /**
    * Server connection to the couchdb error instance for this node
    *
    * @private
-   * @type PouchDB
+   * @type ActiveDSConnect
    * @memberof Host
    */
-  private dbErrorConnection: any;
+  private dbErrorConnection: ActiveDSConnect;
 
   /**
    * Server connection to the couchdb vent instance for this node
    *
    * @private
-   * @type PouchDB
+   * @type ActiveDSConnect
    * @memberof Host
    */
-  private dbEventConnection: any;
+  private dbEventConnection: ActiveDSConnect;
 
   /**
    * Holds the processPending requests before processing
@@ -186,15 +183,15 @@ export class Host extends Home {
     let db = ActiveOptions.get<any>("db", {});
 
     // Create connection string
-    this.dbConnection = new PouchDB(db.url + "/" + db.database);
+    this.dbConnection = new ActiveDSConnect(db.url + "/" + db.database);
     this.dbConnection.info();
 
     // Create connection string
-    this.dbErrorConnection = new PouchDB(db.url + "/" + db.error);
+    this.dbErrorConnection = new ActiveDSConnect(db.url + "/" + db.error);
     this.dbErrorConnection.info();
 
     // Create connection string
-    this.dbEventConnection = new PouchDB(db.url + "/" + db.event);
+    this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
     this.dbEventConnection.info();
 
     // Create HTTP server for managing transaction requests

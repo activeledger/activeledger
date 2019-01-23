@@ -22,6 +22,7 @@
  */
 
 import * as crypto from "crypto";
+import { IActiveDSConnect } from '../../activedefinitions/src/definitions/interface';
 import { KeyPair } from "./keypair";
 
 /**
@@ -51,13 +52,13 @@ export class Secured {
   /**
    * Basic untyped constructor for public privateresolution
    *
-   * @param {*} db
+   * @param {ActiveDSConnect} db
    * @param {*} neighbour
    * @param {*} self
    * @memberof Secured
    */
   public constructor(
-    private db: any,
+    private db: IActiveDSConnect,
     private neighbour: any,
     private self: any
   ) {}
