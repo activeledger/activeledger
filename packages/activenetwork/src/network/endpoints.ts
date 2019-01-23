@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -175,7 +175,7 @@ export class Endpoints {
    * @param {Host} host
    * @param {*} body
    * @param {boolean} encHeader
-   * @param {PouchDB} db
+   * @param {ActiveDSConnect} db
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
@@ -183,7 +183,7 @@ export class Endpoints {
     host: Host,
     body: any,
     encHeader: boolean,
-    db: any
+    db: ActiveDSConnect
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       if (encHeader) {
@@ -399,12 +399,12 @@ export class Endpoints {
    * Return stream information stored on this node
    *
    * @static
-   * @param {*} db
+   * @param {ActiveDSConnect} db
    * @param {*} body
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static streams(db: any, body: any): Promise<any> {
+  public static streams(db: ActiveDSConnect, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
       if (body.$streams) {
         // Restrict Access to any volatile requests
@@ -468,7 +468,7 @@ export class Endpoints {
           })
             .then((results: any) => {
               // Make sure matching rev
-              if(results._rev != body.$rev) {
+              if (results._rev != body.$rev) {
                 results = [];
               }
               return resolve({
@@ -498,12 +498,12 @@ export class Endpoints {
    * Return all stream information
    *
    * @static
-   * @param {*} db
+   * @param {ActiveDSConnect} db
    * @param {*} [start]
    * @returns {Promise<any>}
    * @memberof Endpoints
    */
-  public static all(db: any, start?: any): Promise<any> {
+  public static all(db: ActiveDSConnect, start?: any): Promise<any> {
     return new Promise((resolve, reject) => {
       // Setup Search Options
       let options: any = { limit: 500 };

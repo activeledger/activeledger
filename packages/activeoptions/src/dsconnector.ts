@@ -21,21 +21,59 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "./options";
-import { ActiveRequest } from "./request";
-import { ActiveChanges } from "./changes";
-import { ActiveGZip } from "./gzip";
-import { ActiveDataStore } from "./datastore";
-import { ActiveDSConnect } from "./dsconnector";
 import PouchDB from "./pouchdb";
 import PouchDBFind from "./pouchdbfind";
-export {
-  ActiveDSConnect,
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip,
-  ActiveDataStore,
-  PouchDB,
-  PouchDBFind
-};
+import { ActiveDefinitions } from '@activeledger/activedefinitions';
+import { IActiveDSConnect } from '../../activedefinitions/src/definitions/interface';
+
+// Add Find Plugin
+PouchDB.plugin(PouchDBFind);
+
+export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
+  /**
+   *
+   *
+   * @private
+   * @type {*}
+   * @memberof DBConnector
+   */
+  private pDb: any;
+
+  /**
+   * Creates an instance of DBConnector.
+   * @param {string} location
+   * @memberof DBConnector
+   */
+  constructor(location: string) {
+    // Create Database
+    this.pDb = new PouchDB(location);
+  }
+
+  public info() {
+    return this.pDb.info();
+  }
+
+  public createIndex(options: any = {}) {
+    return this.pDb.createIndex(options);
+  }
+
+  public allDocs(options: any = {}) {
+    return this.pDb.allDocs(options);
+  }
+
+  public get(id: string, options: any = {}) {
+    return this.pDb.get(id, options);
+  }
+
+  public find(options: any = {}) {
+    return this.pDb.find(options);
+  }
+
+  public bulkDocs(docs: [], options: any = {}) {
+    return this.pDb.bulkDocs(docs, options);
+  }
+
+  public post(doc: {}) {
+    return this.pDb.post(doc);
+  }
+}

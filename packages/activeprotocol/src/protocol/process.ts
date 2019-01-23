@@ -24,7 +24,7 @@
 import * as fs from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -114,9 +114,9 @@ export class Process extends EventEmitter {
    * @param {string} selfHost
    * @param {string} reference
    * @param {*} right
-   * @param {PouchDB} db
-   * @param {PouchDB} error
-   * @param {PouchDB} events
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDSConnect} error
+   * @param {ActiveDSConnect} events
    * @param {ActiveCrypto.Secured} secured
    * @memberof Process
    */
@@ -125,9 +125,9 @@ export class Process extends EventEmitter {
     private selfHost: string,
     private reference: string,
     private right: ActiveDefinitions.INeighbourBase,
-    private db: any,
-    private dbe: any,
-    private dbev: any,
+    private db: ActiveDSConnect,
+    private dbe: ActiveDSConnect,
+    private dbev: ActiveDSConnect,
     private secured: ActiveCrypto.Secured
   ) {
     super();
