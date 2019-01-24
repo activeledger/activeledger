@@ -196,30 +196,32 @@ export class ActiveHttpd {
       this.routes
     );
     if (handler) {
-      const data = await handler(incoming, req, res);
-      // If the headers have been sent handler took control
-      if (data) {
-        // Handler returns handled means its writing directly
-        if (data == "handled") {
-          return;
-        }
-        if (!res.statusCode) {
-          res.statusCode = 200;
-        }
-        if (Buffer.isBuffer(data)) {
-          res.write(data);
-        } else {
-          if (typeof data == "object") {
-            res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
-            res.write(JSON.stringify(data));
-          } else {
-            res.write(data);
+      try {
+        const data = await handler(incoming, req, res);
+        // If the headers have been sent handler took control
+        if (data) {
+          // Handler returns handled means its writing directly
+          if (data == "handled") {
+            return;
           }
+          if (!res.statusCode) {
+            res.statusCode = 200;
+          }
+          if (Buffer.isBuffer(data)) {
+            res.write(data);
+          } else {
+            this.writeAsHttpData(data, res);
+          }
+          res.end();
+        } else {
+          res.statusCode = 404;
+          res.write("404");
+          res.end();
         }
-        res.end();
-      } else {
-        res.statusCode = 404;
-        res.write("404");
+      } catch (error) {
+        // Default to internal server error
+        res.statusCode = 500;
+        this.writeAsHttpData(error, res);
         res.end();
       }
     } else {
@@ -227,6 +229,23 @@ export class ActiveHttpd {
       res.statusCode = 404;
       res.write("404");
       res.end();
+    }
+  }
+
+  /**
+   * Write the data correctly for the response
+   *
+   * @private
+   * @param {*} data
+   * @param {http.ServerResponse} res
+   * @memberof ActiveHttpd
+   */
+  private writeAsHttpData(data: any, res: http.ServerResponse) {
+    if (typeof data == "object") {
+      res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+      res.write(JSON.stringify(data));
+    } else {
+      res.write(data);
     }
   }
 

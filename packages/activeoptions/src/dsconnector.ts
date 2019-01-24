@@ -44,8 +44,12 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async info() {
-    return await ActiveRequest.send(`${this.location}`, "GET");
+  public info(): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}`, "GET")
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
+    });
   }
 
   /**
@@ -55,13 +59,12 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async createIndex(options: any = {}) {
-    return await ActiveRequest.send(
-      `${this.location}/_index`,
-      "POST",
-      undefined,
-      options
-    );
+  public createIndex(options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}/_index`, "POST", undefined, options)
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
+    });
   }
 
   /**
@@ -71,13 +74,16 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async allDocs(options: any = {}) {
-    return await ActiveRequest.send(
-      `${this.location}/_all_docs`,
-      "GET",
-      undefined,
-      options
-    );
+  public allDocs(options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `${this.location}/_all_docs`,
+        "GET",
+        undefined,
+        options
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 
   /**
@@ -88,13 +94,16 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async get(id: string, options: any = {}) {
-    return await ActiveRequest.send(
-      `${this.location}/${id}`,
-      "GET",
-      undefined,
-      options
-    );
+  public get(id: string, options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `${this.location}/${id}`,
+        "GET",
+        undefined,
+        options
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 
   /**
@@ -104,13 +113,16 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async find(options: any = {}) {
-    return await ActiveRequest.send(
-      `${this.location}/_find`,
-      "POST",
-      undefined,
-      options
-    );
+  public find(options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `${this.location}/_find`,
+        "POST",
+        undefined,
+        options
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 
   /**
@@ -121,37 +133,56 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async bulkDocs(docs: any[], options: any = {}) {
-    return await ActiveRequest.send(
-      `${this.location}/_bulk_docs`,
-      "POST",
-      undefined,
-      {
-        docs,
-        options
-      }
-    );
+  public bulkDocs(docs: any[], options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `${this.location}/_bulk_docs`,
+        "POST",
+        undefined,
+        {
+          docs,
+          options
+        }
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 
   /**
    * Create a document with auto generated id
    *
-   * @param {{}} doc
+   * @param {} doc
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async post(doc: {}) {
-    return await ActiveRequest.send(`${this.location}`, "POST", undefined, doc);
+  public post(doc: {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        this.location,
+        "POST",
+        undefined,
+        doc
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 
   /**
    * Create / Append a document
    *
-   * @param {{}} doc
+   * @param {{ _id: string }} doc
    * @returns
    * @memberof ActiveDSConnect
    */
-  public async put(doc: {}) {
-    return await ActiveRequest.send(`${this.location}`, "PUT", undefined, doc);
+  public put(doc: { _id: string }): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `${this.location}/${doc._id}`,
+        "PUT",
+        undefined,
+        doc
+      ).then((response: any) => resolve(response.data))
+      .catch(error => reject(error));
+    });
   }
 }

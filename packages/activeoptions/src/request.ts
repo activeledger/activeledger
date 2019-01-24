@@ -155,11 +155,6 @@ export class ActiveRequest {
 
       // End Request
       request.end();
-
-      // Handle timeout (May not need)
-      //   request.setTimeout(30000, () => {
-      //     request.abort();
-      //   });
     });
   }
 }

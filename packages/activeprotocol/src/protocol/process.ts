@@ -153,7 +153,8 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    ActiveLogger.info(this.entry, "Starting TX");
+    ActiveLogger.info("New TX : " + this.entry.$umid);
+    ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
     if (this.entry.$tx.$namespace == "default") {
@@ -500,7 +501,6 @@ export class Process extends EventEmitter {
             })
             .catch((error: any) => {
               // Need to manage errors this would mean the node is unreachable
-              // TODO : Maybe issue a "rebase" of the network here?
               ActiveLogger.debug(error, "Knock Failure");
 
               // if debug mode forward

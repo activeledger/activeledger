@@ -127,8 +127,9 @@ ActiveOptions.extendConfig()
         if (!change.doc.processed) {
           // Check error codes
           if (errorCodes.indexOf(change.doc.code) !== -1) {
-            // If its broadcast we can't rely on the data for
-            if (!change.doc.transaction.$broadcast) {
+            // If I am wrong cannot rely on the data in the body
+            // If its broadcast we can't rely on the data for            
+            if (change.doc.code != 1510 && !change.doc.transaction.$broadcast) {
               // Compare $nodes to see if enough true in consensus
               let nodes = Object.keys(change.doc.transaction.$nodes);
               let i = nodes.length;
