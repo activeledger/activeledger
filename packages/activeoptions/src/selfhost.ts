@@ -377,6 +377,17 @@ import PouchDBFind from "./pouchdbfind";
     }
   });
 
+  // Add new / updated document to the database with auto id
+  http.use("*/*", "POST", async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getPDB(incoming.url[0]);
+    try {
+      return await db.post(incoming.body);
+    } catch (e) {
+      return "";
+    }
+  });
+
   // Listen for changes on the database
   http.use(
     "*/_changes",

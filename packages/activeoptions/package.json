@@ -36,6 +36,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.38",
     "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.18",
     "rimraf": "^2.6.3",

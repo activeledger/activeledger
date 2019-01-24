@@ -42,7 +42,7 @@ export class QueryEngine {
 
   /**
    * Creates an instance of QueryEngine.
-   * @param {PouchDB} db
+   * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {boolean} [isContract=true]
    * @param {number} [limit=0]
    * @memberof QueryEngine
@@ -154,7 +154,7 @@ export class EventEngine {
 
   /**
    * Creates an instance of EventEngine.
-   * @param {PouchDB} db
+   * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {string} contract
    * @param {*} transaction
    * @memberof EventEngine

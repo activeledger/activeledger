@@ -20,60 +20,138 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveRequest } from "./request";
 
-import PouchDB from "./pouchdb";
-import PouchDBFind from "./pouchdbfind";
-import { ActiveDefinitions } from '@activeledger/activedefinitions';
-import { IActiveDSConnect } from '../../activedefinitions/src/definitions/interface';
-
-// Add Find Plugin
-PouchDB.plugin(PouchDBFind);
-
+/**
+ * Sends HTTP requests to the data store
+ *
+ * @export
+ * @class ActiveDSConnect
+ * @implements {ActiveDefinitions.IActiveDSConnect}
+ */
 export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
-  /**
-   *
-   *
-   * @private
-   * @type {*}
-   * @memberof DBConnector
-   */
-  private pDb: any;
-
   /**
    * Creates an instance of DBConnector.
    * @param {string} location
    * @memberof DBConnector
    */
-  constructor(location: string) {
-    // Create Database
-    this.pDb = new PouchDB(location);
+  constructor(private location: string) {}
+
+  /**
+   * Creates Database / Get Database Info
+   *
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async info() {
+    return await ActiveRequest.send(`${this.location}`, "GET");
   }
 
-  public info() {
-    return this.pDb.info();
+  /**
+   * Create an index
+   *
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async createIndex(options: any = {}) {
+    return await ActiveRequest.send(
+      `${this.location}/_index`,
+      "POST",
+      undefined,
+      options
+    );
   }
 
-  public createIndex(options: any = {}) {
-    return this.pDb.createIndex(options);
+  /**
+   * Returns all the documents in the database
+   *
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async allDocs(options: any = {}) {
+    return await ActiveRequest.send(
+      `${this.location}/_all_docs`,
+      "GET",
+      undefined,
+      options
+    );
   }
 
-  public allDocs(options: any = {}) {
-    return this.pDb.allDocs(options);
+  /**
+   * Get a specific document
+   *
+   * @param {string} id
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async get(id: string, options: any = {}) {
+    return await ActiveRequest.send(
+      `${this.location}/${id}`,
+      "GET",
+      undefined,
+      options
+    );
   }
 
-  public get(id: string, options: any = {}) {
-    return this.pDb.get(id, options);
+  /**
+   * Query the data store
+   *
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async find(options: any = {}) {
+    return await ActiveRequest.send(
+      `${this.location}/_find`,
+      "POST",
+      undefined,
+      options
+    );
   }
 
-  public find(options: any = {}) {
-    return this.pDb.find(options);
+  /**
+   * Create / Append multiple documents at the same time
+   *
+   * @param {any[]} docs
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async bulkDocs(docs: any[], options: any = {}) {
+    return await ActiveRequest.send(
+      `${this.location}/_bulk_docs`,
+      "POST",
+      undefined,
+      {
+        docs,
+        options
+      }
+    );
   }
 
-  public bulkDocs(docs: [], options: any = {}) {
-    return this.pDb.bulkDocs(docs, options);
+  /**
+   * Create a document with auto generated id
+   *
+   * @param {{}} doc
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async post(doc: {}) {
+    return await ActiveRequest.send(`${this.location}`, "POST", undefined, doc);
   }
 
-  public post(doc: {}) {
-    return this.pDb.post(doc);
+  /**
+   * Create / Append a document
+   *
+   * @param {{}} doc
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public async put(doc: {}) {
+    return await ActiveRequest.send(`${this.location}`, "PUT", undefined, doc);
   }
 }
