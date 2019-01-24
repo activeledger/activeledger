@@ -69,7 +69,7 @@ export interface IActiveDSConnect {
   /**
    * Create a document with auto generated id
    *
-   * @param {{}} doc
+   * @param {} doc
    * @returns {Promise<any>}
    * @memberof IActiveDSConnect
    */
@@ -79,9 +79,9 @@ export interface IActiveDSConnect {
   /**
    * Create / Append a document
    *
-   * @param {{}} doc
+   * @param {{ _id: string }} doc
    * @returns {Promise<any>}
    * @memberof IActiveDSConnect
    */
-  put(doc: {}): Promise<any>;
+  put(doc: { _id: string }): Promise<any>;
 }

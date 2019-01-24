@@ -353,8 +353,6 @@ import PouchDBFind from "./pouchdbfind";
 
   // Specific lookup path for _local database docs
   http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    console.log("HELLO WORLD");
-    console.log(decodeURIComponent(incoming.url[1] + "/" + incoming.url[2]));
     // Get Database
     let db = getPDB(incoming.url[0]);
     try {
@@ -378,7 +376,7 @@ import PouchDBFind from "./pouchdbfind";
   });
 
   // Add new / updated document to the database with auto id
-  http.use("*/*", "POST", async (incoming: IActiveHttpIncoming) => {
+  http.use("*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
     try {
@@ -489,7 +487,7 @@ import PouchDBFind from "./pouchdbfind";
       if (incoming.body.docs) {
         // Options for new_edits
         let opts = {
-          new_edits: incoming.body.new_edits || false
+          new_edits: incoming.body.new_edits || true
         };
 
         // Get Database
