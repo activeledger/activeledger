@@ -27,6 +27,7 @@ import * as fs from "fs";
 import {
   ActiveOptions,
   ActiveChanges,
+  ActiveDSConnect,
   PouchDB
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -93,7 +94,7 @@ ActiveOptions.extendConfig()
     let network: ActiveNetwork.Home = new ActiveNetwork.Home();
 
     // Live Database Connection
-    let db = new PouchDB(
+    let db: ActiveDSConnect = new ActiveDSConnect(
       ActiveOptions.get<any>("db", {}).url +
         "/" +
         ActiveOptions.get<any>("db", {}).database
@@ -113,10 +114,10 @@ ActiveOptions.extendConfig()
       // Code & Reason
       // 950 = Stream not found
       // 960 = State not found
-      // 1000 = Failed Vote
+      // 1000 = Failed Vote (Similar to 1505 different report time)
       // 1200 = * Stream position incorrect
       // 1210 = Read only steam not found
-      // 1505 = I voted no, Maybe I was wrong
+      // 1505 = I voted no, Maybe I was wrong (Similar to 1000 different report time)
       // 1510 = Failed to save (I may be the only one who voted)
       let errorCodes = [950, 960, 1000, 1200, 1210, 1505, 1510];
 
@@ -127,8 +128,10 @@ ActiveOptions.extendConfig()
         if (!change.doc.processed) {
           // Check error codes
           if (errorCodes.indexOf(change.doc.code) !== -1) {
+            // If I am wrong cannot rely on the data in the body
+            // If vote failure I won't have any of the node responses (I maybe wrong)
             // If its broadcast we can't rely on the data for
-            if (!change.doc.transaction.$broadcast) {
+            if (change.doc.code != 1510 && change.doc.code != 1000 && !change.doc.transaction.$broadcast) {
               // Compare $nodes to see if enough true in consensus
               let nodes = Object.keys(change.doc.transaction.$nodes);
               let i = nodes.length;
@@ -159,6 +162,7 @@ ActiveOptions.extendConfig()
                 }
               }
             } else {
+              // What if all nodes voted no. Data check will verify this. They may have voted no because my revision is wrong
               dataCheck(change);
             }
           } else {
@@ -263,15 +267,13 @@ ActiveOptions.extendConfig()
                         db.get(stream)
                           .then((doc: any) => {
                             // Now compare our revision to the consensus one
-                            // if (doc._rev == rev) {
-                            // Really shouldn't be here but just in case lets mark as processed
-                            // Actually if we get 2 errors and we "catch up" we need to mark the old or new one asprocessed
-                            //  haveProcessed(change.doc);
-                            // } else {
-                            dataFix(doc, stream, rev, false)
-                              .then(resolve)
-                              .catch(reject);
-                            // }
+                            if (doc._rev == rev) {
+                              resolve(false);
+                            } else {
+                              dataFix(doc, stream, rev, false)
+                                .then(resolve)
+                                .catch(reject);
+                            }
                           })
                           .catch((e: Error) => {
                             // We may not actualy have the file! So we still need to process
@@ -294,23 +296,28 @@ ActiveOptions.extendConfig()
 
               // Tidy up & Sledghammer if needed when everything is done
               Promise.all(all)
-                .then(() => {
+                .then((results: unknown[]) => {
                   haveProcessed(change.doc);
-                  // Lets just hammer time
-                  // Run the sledgehammer!
-                  Sledgehammer.smash()
-                    .then(bits => {
-                      ActiveLogger.info("Smashing Completed");
-                      // Resume for now
-                      errorFeed.resume();
-                    })
-                    .catch(e => {
-                      ActiveLogger.error(e, "Hammer Broke");
-                      // Resume for now
-                      errorFeed.resume();
-                      // Ignore errors for now
-                      ActiveLogger.info(e);
-                    });
+                  // If all is asll false no sledghammer it could be a false negative
+                  if (results.some((e: boolean) => e)) {
+                    // Lets just hammer time
+                    // Run the sledgehammer!
+                    Sledgehammer.smash()
+                      .then(bits => {
+                        ActiveLogger.info("Smashing Completed");
+                        // Resume for now
+                        errorFeed.resume();
+                      })
+                      .catch(e => {
+                        ActiveLogger.error(e, "Hammer Broke");
+                        // Resume for now
+                        errorFeed.resume();
+                        // Ignore errors for now
+                        ActiveLogger.info(e);
+                      });
+                  } else {
+                    ActiveLogger.warn("Data Check - False Positive");
+                  }
                 })
                 .catch((e: Error) => {
                   ActiveLogger.error(e, "All Datafix had errors");
@@ -376,6 +383,18 @@ ActiveOptions.extendConfig()
 
                   // Make sure it is defined or not an empty array
                   if (correct && !Array.isArray(correct)) {
+                    // Did document not exist? (Got deleted)
+                    if (
+                      doc.error &&
+                      doc.status &&
+                      doc.message &&
+                      doc.docId &&
+                      doc.status == 404 &&
+                      doc.message == "missing"
+                    ) {
+                      doc._id = doc.docId;
+                    }
+
                     // Update document set with correct data and mark for replication deletetion
                     doc.$activeledger = {
                       delete: true,
@@ -406,7 +425,7 @@ ActiveOptions.extendConfig()
                               resolve(true);
                             })
                             .catch(() => {
-                              resolve(false);
+                              resolve(true);
                             });
                         } else {
                           resolve(true);

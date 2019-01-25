@@ -26,14 +26,14 @@ import { ActiveRequest } from "./request";
 import { ActiveChanges } from "./changes";
 import { ActiveGZip } from "./gzip";
 import { ActiveDataStore } from "./datastore";
+import { ActiveDSConnect } from "./dsconnector";
 import PouchDB from "./pouchdb";
-import PouchDBFind from './pouchdbfind';
 export {
+  ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
   ActiveChanges,
   ActiveGZip,
   ActiveDataStore,
-  PouchDB,
-  PouchDBFind
+  PouchDB
 };

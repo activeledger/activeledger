@@ -24,7 +24,7 @@
 import * as fs from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -108,15 +108,24 @@ export class Process extends EventEmitter {
   private voting = true;
 
   /**
+   * So we only restore once per tx
+   * we use this as a flag for the storeError
+   *
+   * @private
+   * @memberof Process
+   */
+  private storeSingleError = false;
+
+  /**
    * Creates an instance of Process.
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
    * @param {string} selfHost
    * @param {string} reference
    * @param {*} right
-   * @param {PouchDB} db
-   * @param {PouchDB} error
-   * @param {PouchDB} events
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDSConnect} error
+   * @param {ActiveDSConnect} events
    * @param {ActiveCrypto.Secured} secured
    * @memberof Process
    */
@@ -125,9 +134,9 @@ export class Process extends EventEmitter {
     private selfHost: string,
     private reference: string,
     private right: ActiveDefinitions.INeighbourBase,
-    private db: any,
-    private dbe: any,
-    private dbev: any,
+    private db: ActiveDSConnect,
+    private dbe: ActiveDSConnect,
+    private dbev: ActiveDSConnect,
     private secured: ActiveCrypto.Secured
   ) {
     super();
@@ -153,7 +162,8 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    ActiveLogger.info(this.entry, "Starting TX");
+    ActiveLogger.info("New TX : " + this.entry.$umid);
+    ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
     if (this.entry.$tx.$namespace == "default") {
@@ -401,8 +411,11 @@ export class Process extends EventEmitter {
                     // Vote failed (Not and error continue casting vote on the network)
                     ActiveLogger.debug(error, "Vote Failure");
 
-                    // Update errors
-                    this.storeError(1000, new Error("Vote Failure"))
+                    // Update errors (Dont know what the contract will reject as so string)
+                    this.storeError(
+                      1000,
+                      new Error("Vote Failure - " + JSON.stringify(error))
+                    )
                       .then(() => {
                         // Continue Execution of consensus
                         // Update Error
@@ -500,7 +513,6 @@ export class Process extends EventEmitter {
             })
             .catch((error: any) => {
               // Need to manage errors this would mean the node is unreachable
-              // TODO : Maybe issue a "rebase" of the network here?
               ActiveLogger.debug(error, "Knock Failure");
 
               // if debug mode forward
@@ -877,6 +889,7 @@ export class Process extends EventEmitter {
           );
 
           // We voted false, Need to process
+          // TODO : Research if we can remove this, As 1000 should always publish an error
           this.raiseLedgerError(
             1505,
             new Error("This node voted false"),
@@ -1225,9 +1238,6 @@ export class Process extends EventEmitter {
     // Store in database for activesrestore to review
     this.storeError(code, reason)
       .then(() => {
-        // TODO : We need to execute postvote because this node error will prevent
-        // the rest of the network from getting its chance for consensus.
-
         // Emit failed event for execution
         if (!stop) {
           this.emit("failed", {
@@ -1261,16 +1271,23 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private storeError(code: number, reason: Error): Promise<any> {
-    // Build Document for couch
-    let doc = {
-      code: code,
-      processed: false,
-      umid: this.entry.$umid, // Easier umid lookup
-      transaction: this.entry,
-      reason: reason && reason.message ? reason.message : reason
-    };
+    if (!this.storeSingleError) {
+      // Build Document for couch
+      let doc = {
+        code: code,
+        processed: this.storeSingleError,
+        umid: this.entry.$umid, // Easier umid lookup
+        transaction: this.entry,
+        reason: reason && reason.message ? reason.message : reason
+      };
 
-    // Return
-    return this.dbe.post(doc);
+      // Now if we store another error it wont be prossed
+      this.storeSingleError = true;
+
+      // Return
+      return this.dbe.post(doc);
+    } else {
+      return Promise.resolve();
+    }
   }
 }

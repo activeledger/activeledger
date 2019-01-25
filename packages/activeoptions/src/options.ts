@@ -23,7 +23,7 @@
 
 import * as fs from "fs";
 import * as minimist from "minimist";
-import PouchDB from "./pouchdb";
+import { ActiveDSConnect } from "./dsconnector";
 
 export class ActiveOptions {
   /**
@@ -93,7 +93,7 @@ export class ActiveOptions {
    */
   public static extendConfig(automerge: boolean = true): Promise<any> {
     return new Promise((resolve, reject) => {
-      let tmpDb = new PouchDB(
+      let tmpDb = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).database

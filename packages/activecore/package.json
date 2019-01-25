@@ -53,6 +53,7 @@
     "@loopback/service-proxy": "^1.0.6"
   },
   "devDependencies": {
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.38",
     "@loopback/build": "^1.2.0",
     "@loopback/testlab": "^1.0.4",
     "@types/node": "^10.12.18"

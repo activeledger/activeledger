@@ -22,4 +22,7 @@
  */
 
 let PouchDB:any = require('pouchdb');
+let PouchDBFind: any = require("pouchdb-find");
+// Add Find Plugin
+PouchDB.plugin(PouchDBFind);
 export default PouchDB;

@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity } from "@activeledger/activecontracts";
 import { QueryEngine, EventEngine } from "@activeledger/activequery";
@@ -93,8 +93,8 @@ export class VirtualMachine {
    * @param {ActiveDefinitions.LedgerStream[]} inputs
    * @param {ActiveDefinitions.LedgerStream[]} outputs
    * @param {ActiveDefinitions.LedgerIORputs} reads
-   * @param {*} db
-   * @param {*} dbev
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDSConnect} dbev
    * @param {ActiveCrypto.Secured} secured
    * @memberof VirtualMachine
    */
@@ -108,8 +108,8 @@ export class VirtualMachine {
     private inputs: ActiveDefinitions.LedgerStream[],
     private outputs: ActiveDefinitions.LedgerStream[],
     private reads: ActiveDefinitions.LedgerIORputs,
-    private db: any,
-    private dbev: any,
+    private db: ActiveDSConnect,
+    private dbev: ActiveDSConnect,
     private secured: ActiveCrypto.Secured
   ) {
     // Setup Event Engine
@@ -225,7 +225,7 @@ export class VirtualMachine {
           event: this.event,
           contractPath: this.contractPath,
           umid: this.umid,
-          cdate: this.cdate,
+          cdate: new Date(+this.cdate),
           tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
           sigs: this.sigs,
           inputs: this.inputs,

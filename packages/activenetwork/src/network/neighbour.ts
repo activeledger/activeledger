@@ -111,7 +111,8 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   public knock(
     endpoint: string,
     params?: any,
-    external?: boolean
+    external?: boolean,
+    resend?: number
   ): Promise<any> {
     if (!params) {
       // Not Params, Sent Get without signature
@@ -176,11 +177,23 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               );
               reject(error.response.data);
             } else {
-              ActiveLogger.fatal(
-                error,
-                `Network Error - ${this.host}:${this.port}/${endpoint}`
-              );
-              reject("Network Communication Error");
+              // Simple resend counter for attempt tracking
+              // TODO : Perhaps manage in protocol/process.ts:483 to failures
+              // TODO : If connection failure rebase neighbourhood?
+              let attempts = resend || 0;
+              if (5 >= attempts && error.code == "ECONNRESET") {
+                // Resend Attempt
+                ActiveLogger.warn(
+                  "Network Issue : Resending due to unexpected closed socket"
+                );
+                return this.knock(endpoint, params, external, ++attempts);
+              } else {
+                ActiveLogger.fatal(
+                  error,
+                  `Network Error - ${this.host}:${this.port}/${endpoint}`
+                );
+                reject("Network Communication Error");
+              }
             }
           });
       });

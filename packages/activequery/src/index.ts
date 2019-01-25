@@ -42,7 +42,7 @@ export class QueryEngine {
 
   /**
    * Creates an instance of QueryEngine.
-   * @param {PouchDB} db
+   * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {boolean} [isContract=true]
    * @param {number} [limit=0]
    * @memberof QueryEngine
@@ -62,7 +62,7 @@ export class QueryEngine {
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
     // Convert to json query
-    return this.mango(sqltomango.parse(sql));
+    return this.mango(this.stripUnnecessaryAnds(sqltomango.parse(sql)));
   }
 
   /**
@@ -135,6 +135,41 @@ export class QueryEngine {
   public getLastWarning(): QueryWarning | undefined {
     return this.warning ? this.warning : undefined;
   }
+
+  /**
+   * Remove nested $and as they are not needed
+   *
+   * @private
+   * @param {*} obj
+   * @returns {*}
+   * @memberof QueryEngine
+   */
+  private stripUnnecessaryAnds(obj: any): any {
+    let out: any = {};
+
+    // If array most likely inside an $and
+    if (Array.isArray(obj)) {
+      // Loop each other if object process again
+      obj.forEach(elm => {
+        if (typeof elm === "object") {
+          out = Object.assign(out, this.stripUnnecessaryAnds(elm));
+        }
+      });
+    } else {
+      // Loop object and find any $and or other objects
+      let keys = Object.keys(obj);
+      keys.forEach(elm => {
+        if (elm == "$and") {
+          out = Object.assign(out, this.stripUnnecessaryAnds(obj[elm]));
+        } else if (typeof obj[elm] === "object") {
+          out[elm] = this.stripUnnecessaryAnds(obj[elm]);
+        } else {
+          out[elm] = obj[elm];
+        }
+      });
+    }
+    return out;
+  }
 }
 
 /**
@@ -154,7 +189,7 @@ export class EventEngine {
 
   /**
    * Creates an instance of EventEngine.
-   * @param {PouchDB} db
+   * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {string} contract
    * @param {*} transaction
    * @memberof EventEngine
