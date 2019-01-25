@@ -27,7 +27,7 @@ import * as fs from "fs";
 import {
   ActiveOptions,
   ActiveChanges,
-  PouchDB
+  ActiveDSConnect
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
@@ -93,7 +93,7 @@ ActiveOptions.extendConfig()
     let network: ActiveNetwork.Home = new ActiveNetwork.Home();
 
     // Live Database Connection
-    let db = new PouchDB(
+    let db = new ActiveDSConnect(
       ActiveOptions.get<any>("db", {}).url +
         "/" +
         ActiveOptions.get<any>("db", {}).database
@@ -101,7 +101,7 @@ ActiveOptions.extendConfig()
 
     if (!ActiveOptions.get<boolean>("full", false)) {
       // Error Database Connection
-      let dbe = new PouchDB(
+      let dbe = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).error
@@ -128,7 +128,7 @@ ActiveOptions.extendConfig()
           // Check error codes
           if (errorCodes.indexOf(change.doc.code) !== -1) {
             // If I am wrong cannot rely on the data in the body
-            // If its broadcast we can't rely on the data for            
+            // If its broadcast we can't rely on the data for
             if (change.doc.code != 1510 && !change.doc.transaction.$broadcast) {
               // Compare $nodes to see if enough true in consensus
               let nodes = Object.keys(change.doc.transaction.$nodes);
@@ -160,6 +160,7 @@ ActiveOptions.extendConfig()
                 }
               }
             } else {
+              // What if all nodes voted no. Data check will verify this. They may have voted no because my revision is wrong
               dataCheck(change);
             }
           } else {
@@ -377,6 +378,18 @@ ActiveOptions.extendConfig()
 
                   // Make sure it is defined or not an empty array
                   if (correct && !Array.isArray(correct)) {
+                    // Did document not exist? (Got deleted)
+                    if (
+                      doc.error &&
+                      doc.status &&
+                      doc.message &&
+                      doc.docId &&
+                      doc.status == 404 &&
+                      doc.message == "missing"
+                    ) {
+                      doc._id = doc.docId;
+                    }
+
                     // Update document set with correct data and mark for replication deletetion
                     doc.$activeledger = {
                       delete: true,

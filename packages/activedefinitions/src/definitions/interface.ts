@@ -65,7 +65,6 @@ export interface IActiveDSConnect {
    */
   bulkDocs(docs: any[], options?: any): Promise<any>;
 
-
   /**
    * Create a document with auto generated id
    *
@@ -75,7 +74,6 @@ export interface IActiveDSConnect {
    */
   post(doc: {}): Promise<any>;
 
-
   /**
    * Create / Append a document
    *
@@ -83,5 +81,14 @@ export interface IActiveDSConnect {
    * @returns {Promise<any>}
    * @memberof IActiveDSConnect
    */
-  put(doc: { _id: string }): Promise<any>;
+  put(doc: { _id: string; _rev?: string }): Promise<any>;
+
+  /**
+   * Fetch latest changes (not streaming)
+   *
+   * @param {{}} opts
+   * @returns {Promise<any>}
+   * @memberof IActiveDSConnect
+   */
+  changes(opts: {}): Promise<any>;
 }

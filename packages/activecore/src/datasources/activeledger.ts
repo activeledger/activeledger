@@ -25,34 +25,33 @@ import { QueryEngine } from "@activeledger/activequery";
 import {
   ActiveOptions,
   ActiveChanges,
-  PouchDB,
-  PouchDBFind
+  ActiveDSConnect
 } from "@activeledger/activeoptions";
+import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 // Add Find Plugin
-PouchDB.plugin(PouchDBFind);
 
 export class ActiveledgerDatasource {
   /**
-   * PouchDB Connection
+   * DS Connection
    *
    * @private
    * @static
    * @type {*}
    * @memberof ActiveledgerDatasource
    */
-  private static db: any;
+  private static db: ActiveDefinitions.IActiveDSConnect;
 
   /**
-   * PouchDB Connection to event store
+   * DS Connection to event store
    *
    * @private
    * @static
    * @type {*}
    * @memberof ActiveledgerDatasource
    */
-  private static dbEvents: any;
+  private static dbEvents: ActiveDefinitions.IActiveDSConnect;
 
   /**
    * Follows changes from the ledger
@@ -142,13 +141,13 @@ export class ActiveledgerDatasource {
       }
 
       // Create Database Connections
-      this.db = new PouchDB(
+      this.db = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).database
       );
 
-      this.dbEvents = new PouchDB(
+      this.dbEvents = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).event

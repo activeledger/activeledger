@@ -20,6 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import * as querystring from "querystring";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveRequest } from "./request";
 
@@ -81,8 +82,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         "GET",
         undefined,
         options
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+      )
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 
@@ -96,13 +98,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public get(id: string, options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(
-        `${this.location}/${id}`,
-        "GET",
-        undefined,
-        options
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 
@@ -115,13 +113,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public find(options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(
-        `${this.location}/_find`,
-        "POST",
-        undefined,
-        options
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+      ActiveRequest.send(`${this.location}/_find`, "POST", undefined, options)
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 
@@ -135,16 +129,12 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public bulkDocs(docs: any[], options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(
-        `${this.location}/_bulk_docs`,
-        "POST",
-        undefined,
-        {
-          docs,
-          options
-        }
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+      ActiveRequest.send(`${this.location}/_bulk_docs`, "POST", undefined, {
+        docs,
+        options
+      })
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 
@@ -157,13 +147,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public post(doc: {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(
-        this.location,
-        "POST",
-        undefined,
-        doc
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+      ActiveRequest.send(this.location, "POST", undefined, doc)
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 
@@ -174,15 +160,29 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public put(doc: { _id: string }): Promise<any> {
+  public put(doc: { _id: string, _rev?: string }): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
+    });
+  }
+
+  /**
+   * Fetch latest changes (not streaming)
+   *
+   * @param {{}} opts
+   * @returns {Promise<any>}
+   * @memberof DBConnector
+   */
+  public changes(opts: {}): Promise<any> {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(
-        `${this.location}/${doc._id}`,
-        "PUT",
-        undefined,
-        doc
-      ).then((response: any) => resolve(response.data))
-      .catch(error => reject(error));
+        `${this.location}/_changes?${querystring.stringify(opts)}`,
+        "GET"
+      )
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
     });
   }
 }

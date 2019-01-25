@@ -28,7 +28,6 @@ import { ActiveGZip } from "./gzip";
 import { ActiveDataStore } from "./datastore";
 import { ActiveDSConnect } from "./dsconnector";
 import PouchDB from "./pouchdb";
-import PouchDBFind from "./pouchdbfind";
 export {
   ActiveDSConnect,
   ActiveOptions,
@@ -36,6 +35,5 @@ export {
   ActiveChanges,
   ActiveGZip,
   ActiveDataStore,
-  PouchDB,
-  PouchDBFind
+  PouchDB
 };
