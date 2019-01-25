@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "2.0.0-rc.8.0.39",
+  "version": "2.0.0-rc.8.0.40",
   "description": "This package contains the main application for running the Activeledger blockchain",
   "keywords": [
     "blockchain",
@@ -56,7 +56,7 @@
     "@activeledger/activecontracts": "^2.0.0-rc.8.0.39",
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.39",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.39",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.39",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.39"
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.40",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.40"
   }
 }
