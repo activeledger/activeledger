@@ -88,7 +88,7 @@ export class ActiveRequest {
       }
 
       // Manage Data
-      if (data && options.method == "POST") {
+      if (data && (options.method == "POST" || options.method == "PUT")) {
         // convert data to string
         data = JSON.stringify(data);
 
@@ -148,7 +148,7 @@ export class ActiveRequest {
       request.on("error", err => reject(err));
 
       // Write data if sending
-      if (data && options.method == "POST") {
+      if (data && (options.method == "POST" || options.method == "PUT")) {
         // Write Data
         request.write(data);
       }

@@ -93,7 +93,6 @@ export class ActiveOptions {
    */
   public static extendConfig(automerge: boolean = true): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveDSConnect;
       let tmpDb = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +

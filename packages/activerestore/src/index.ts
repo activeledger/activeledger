@@ -27,7 +27,8 @@ import * as fs from "fs";
 import {
   ActiveOptions,
   ActiveChanges,
-  ActiveDSConnect
+  ActiveDSConnect,
+  PouchDB
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
@@ -93,7 +94,7 @@ ActiveOptions.extendConfig()
     let network: ActiveNetwork.Home = new ActiveNetwork.Home();
 
     // Live Database Connection
-    let db = new ActiveDSConnect(
+    let db: ActiveDSConnect = new ActiveDSConnect(
       ActiveOptions.get<any>("db", {}).url +
         "/" +
         ActiveOptions.get<any>("db", {}).database
@@ -101,7 +102,7 @@ ActiveOptions.extendConfig()
 
     if (!ActiveOptions.get<boolean>("full", false)) {
       // Error Database Connection
-      let dbe = new ActiveDSConnect(
+      let dbe = new PouchDB(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).error
