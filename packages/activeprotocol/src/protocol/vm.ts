@@ -225,7 +225,7 @@ export class VirtualMachine {
           event: this.event,
           contractPath: this.contractPath,
           umid: this.umid,
-          cdate: this.cdate,
+          cdate: new Date(+this.cdate),
           tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
           sigs: this.sigs,
           inputs: this.inputs,

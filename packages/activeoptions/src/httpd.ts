@@ -24,6 +24,7 @@ import * as http from "http";
 import * as url from "url";
 import * as querystring from "querystring";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveGZip } from "./gzip";
 
 /**
  * Interface for exposing processed request data to the endpoints
@@ -142,7 +143,16 @@ export class ActiveHttpd {
         // When read has compeleted continue
         req.on("end", async () => {
           // Combine Body Buffer
-          let data = Buffer.concat(body).toString();
+          let data: string;
+
+          // Data Compression
+          if (req.headers["content-encoding"] == "gzip") {
+            // Decompress and get as string
+            data = (await ActiveGZip.ungzip(Buffer.concat(body))).toString();
+          } else {
+            // Get string
+            data = Buffer.concat(body).toString();
+          }
 
           // Auto Parse if JSON
           if (req.headers["content-type"] == "application/json") {
