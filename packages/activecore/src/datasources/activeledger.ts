@@ -25,7 +25,7 @@ import { QueryEngine } from "@activeledger/activequery";
 import {
   ActiveOptions,
   ActiveChanges,
-  ActiveDSConnect
+  PouchDB
 } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -141,13 +141,13 @@ export class ActiveledgerDatasource {
       }
 
       // Create Database Connections
-      this.db = new ActiveDSConnect(
+      this.db = new PouchDB(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).database
       );
 
-      this.dbEvents = new ActiveDSConnect(
+      this.dbEvents = new PouchDB(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).event

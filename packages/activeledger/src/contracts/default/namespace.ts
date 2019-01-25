@@ -91,9 +91,9 @@ export default class Namespace extends Query {
       // Changed to contract typing
       this.query
         .sql(
-          `SELECT * FROM X WHERE namespace = '${this.namespace}' AND type = '${
-            this.transactions.$namespace
-          }.activeledger.identity'`
+          `SELECT * FROM X WHERE _id > "" AND namespace = '${
+            this.namespace
+          }' AND type = '${this.transactions.$namespace}.activeledger.identity'`
         )
         .then(doc => {
           if (doc.length > 0) {
