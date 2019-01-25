@@ -29,7 +29,6 @@ import {
   ActiveRequest
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
-import * as rimraf from "rimraf";
 // @ts-ignore
 import * as FileHound from "filehound";
 

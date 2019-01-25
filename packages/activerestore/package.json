@@ -39,9 +39,8 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.18",
-    "@types/rimraf": "^2.0.2",
+    "rimraf": "^2.6.3",
     "ts-node": "^8.0.1"
   },
   "files": [
@@ -57,7 +56,6 @@
     "@activeledger/activenetwork": "^2.0.0-rc.8.0.38",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.38",
     "filehound": "1.16.7",
-    "rimraf": "2.6.3",
     "typescript": "^3.2.4"
   }
 }

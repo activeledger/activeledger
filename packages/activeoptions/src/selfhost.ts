@@ -26,12 +26,8 @@ import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
 import { ActiveLogger } from "@activeledger/activelogger";
 import PouchDB from "./pouchdb";
-import PouchDBFind from "./pouchdbfind";
 
 (function() {
-  // Add Find Plugin
-  PouchDB.plugin(PouchDBFind);
-
   // Fauxton Path
   const FAUXTON_PATH = path.dirname(require.resolve("pouchdb-fauxton"));
 
@@ -340,12 +336,32 @@ import PouchDBFind from "./pouchdbfind";
     return await db.allDocs(Object.assign(incoming.query, incoming.body));
   });
 
+  /**
+   * Reusable Get for mutliple paths
+   *
+   * @param {string} dbLoc
+   * @param {string} path
+   * @returns {Promise<any>}
+   */
+  let genericGet = (dbLoc: string, path: string): Promise<any> => {
+    // Get Database
+    let db = getPDB(dbLoc);
+    return db.get(decodeURIComponent(path));
+  };
+
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    // Get Database
-    let db = getPDB(incoming.url[0]);
     try {
-      return await db.get(decodeURIComponent(incoming.url[1]));
+      return await genericGet(incoming.url[0], incoming.url[1]);
+    } catch (e) {
+      return e;
+    }
+  });
+
+  // Specific lookup path for _design database docs
+  http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
+    try {
+      return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
     } catch (e) {
       return e;
     }
@@ -353,19 +369,15 @@ import PouchDBFind from "./pouchdbfind";
 
   // Specific lookup path for _local database docs
   http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    // Get Database
-    let db = getPDB(incoming.url[0]);
     try {
-      return await db.get(
-        decodeURIComponent(incoming.url[1] + "/" + incoming.url[2])
-      );
+      return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
     } catch (e) {
       return e;
     }
   });
 
   // Add new / updated document to the database
-  http.use("*/*", "PUT", async (incoming: IActiveHttpIncoming) => {
+  http.use("*/**", "PUT", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
     try {
