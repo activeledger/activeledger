@@ -1,3 +1,4 @@
+import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
 import { Process } from "../packages/activeprotocol/src/protocol/process";
 import { expect, should } from "chai";
 import "mocha";
@@ -47,7 +48,7 @@ describe("Process (Activeprotocol)", () => {
       {} as any,
       {} as any,
       {} as any,
-      new ActiveCrypto.Secured({}, [], {}) as any // Fix private type
+      new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any // Fix private type
     );
     expect(process).to.be.an("object");
   });

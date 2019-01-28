@@ -1,3 +1,4 @@
+import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
 import { VirtualMachine } from "../packages/activeprotocol/src/protocol/vm";
 import { expect, should } from "chai";
 import "mocha";
@@ -14,6 +15,7 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
       "",
       "localhost:5259",
       "",
+      new Date(),
       {
         $namespace: "default",
         $contract: "onboard",
@@ -35,7 +37,7 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
       [],
       {} as any,
       {} as any,
-      new ActiveCrypto.Secured({}, [], {}) as any, // Fix private type
+      new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any // Fix private type
     );
     expect(VM).to.be.an("object");
   });
@@ -63,7 +65,7 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
   });
 
   it("should get error as no valid contract loaded to retrieve from", () => {
-    // Transaction 
+    // Transaction
     should().throw(() => {
       VM.getThrowsFromVM();
     });
@@ -78,6 +80,4 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
       VM.getInternodeCommsFromVM();
     });
   });
-
-  
 });
