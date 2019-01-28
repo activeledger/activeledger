@@ -1,7 +1,7 @@
+import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
 import { ActiveCrypto } from "../packages/activecrypto/src";
 import { expect } from "chai";
 import "mocha";
-
 
 describe("Cryptographic Test (Activecrypto)", () => {
   // Some Random Test Data
@@ -76,7 +76,7 @@ describe("Cryptographic Test (Activecrypto)", () => {
 
   it("Should encrypt with nested permissions", () => {
     // Get Secured Object & Encrypt
-    new ActiveCrypto.Secured({}, [], {
+    new ActiveCrypto.Secured({} as IActiveDSConnect, [], {
       reference: "mockTest",
       public: pubKey,
       private: prvKey
@@ -120,7 +120,7 @@ describe("Cryptographic Test (Activecrypto)", () => {
 
   it("Should decrypt with nested permissions", () => {
     // Get Secured Object & Encrypt
-    new ActiveCrypto.Secured({}, [], {
+    new ActiveCrypto.Secured({} as IActiveDSConnect, [], {
       reference: "mockTest",
       public: pubKey,
       private: prvKey

@@ -1,3 +1,4 @@
+import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
 import { ActiveLogger } from "../packages/activelogger/src";
 import { ActiveCrypto } from "../packages/activecrypto/src";
 import { Stream } from "../packages/activecontracts/src";
@@ -9,7 +10,7 @@ describe("Stream Management Test (Activecontracts)", () => {
   const key = Math.floor(Math.random() * 10000 + 1);
 
   // Predefined Stream
-  const activeledgerStream = new Stream(
+  const activeledgerStream = new Stream(new Date(),
     "umid",
     {
       $namespace: "default",
@@ -42,7 +43,7 @@ describe("Stream Management Test (Activecontracts)", () => {
     key,
     ActiveLogger,
     ActiveCrypto as any,
-    new ActiveCrypto.Secured({}, [], {}) as any, // Fix private type
+    new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any, // Fix private type
     "localhost"
   );
 
