@@ -17,8 +17,7 @@ export interface INeighbourBase {
  * @export
  * @interface IActiveDSConnect
  */
-export interface IActiveDSConnect {  
-  new (location: string): IActiveDSConnect;
+export interface IActiveDSConnect {
   /**
    * Creates Database / Get Database Info
    *
