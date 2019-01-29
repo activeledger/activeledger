@@ -27,13 +27,11 @@ import { ActiveChanges } from "./changes";
 import { ActiveGZip } from "./gzip";
 import { ActiveDataStore } from "./datastore";
 import { ActiveDSConnect } from "./dsconnector";
-import PouchDB from "./pouchdb";
 export {
   ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
   ActiveChanges,
   ActiveGZip,
-  ActiveDataStore,
-  PouchDB
+  ActiveDataStore
 };
