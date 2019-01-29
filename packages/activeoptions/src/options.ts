@@ -34,7 +34,7 @@ export class ActiveOptions {
    * @type {minimist.ParsedArgs}
    * @memberof ActiveOptions
    */
-  private static argv: minimist.ParsedArgs;
+  private static argv: minimist.ParsedArgs = { _: [] };
 
   /**
    * Holds Configuration

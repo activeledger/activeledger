@@ -22,7 +22,11 @@
  */
 import * as querystring from "querystring";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveRequest } from "./request";
+import { EventEmitter } from "events";
+import { ActiveOptions } from "./options";
+import PouchDB from "./pouchdb";
 
 /**
  * Sends HTTP requests to the data store
@@ -37,7 +41,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {string} location
    * @memberof DBConnector
    */
-  constructor(private location: string) {}
+  constructor(private location: string) {
+    // Search to make sure the database exists
+  }
 
   /**
    * Creates Database / Get Database Info
@@ -160,7 +166,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    * @memberof ActiveDSConnect
    */
-  public put(doc: { _id: string, _rev?: string }): Promise<any> {
+  public put(doc: { _id: string; _rev?: string }): Promise<any> {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
         .then((response: any) => resolve(response.data))
@@ -169,20 +175,195 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
-   * Fetch latest changes (not streaming)
+   * Restore needs to happen, Proxy to selfhost or processing external
+   *
+   * @param {string} source
+   * @param {string} target
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public static smash(source: string, target: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (ActiveOptions.get<any>("db", {}).selfhost) {
+        // Internal, Can use File System exposed via hosted /smash
+        ActiveRequest.send(
+          `${
+            ActiveOptions.get<any>("db", {}).url
+          }/smash?s=${source}&t=${target}`,
+          "GET"
+        )
+          .then((response: any) => resolve(response.data))
+          .catch(error => reject(error));
+      } else {
+        // External, Need Double replication (Local First for filter)
+        let sourceDb = new PouchDB(source);
+        let targetDb = new PouchDB(target);
+
+        // Rewrited Document Store
+        let bulkdocs: any[] = [];
+
+        // Make sure the target database is empty
+        targetDb
+          .destroy()
+          .then(() => {
+            // Close connection and create again
+            targetDb.close();
+            targetDb = new PouchDB(target);
+
+            // Make sure db has been created
+            targetDb
+              .info()
+              .then(() => {
+                // Replicate to target
+                sourceDb.replicate
+                  .to(target, {
+                    filter: (doc: any, req: any) => {
+                      if (
+                        doc.$activeledger &&
+                        doc.$activeledger.delete &&
+                        doc.$activeledger.rewrite
+                      ) {
+                        // Get Rewrite for later
+                        bulkdocs.push(doc.$activeledger.rewrite);
+                        return false;
+                      } else {
+                        return true;
+                      }
+                    }
+                  })
+                  .then(() => {
+                    // Any Bulk docs to update
+                    ActiveLogger.warn(
+                      `Restoration : ${bulkdocs.length} streams being corrected`
+                    );
+                    targetDb
+                      .bulkDocs(bulkdocs, { new_edits: false })
+                      .then(() => {
+                        // Delete original source database
+                        sourceDb
+                          .destroy()
+                          .then(() => {
+                            // Now replicate back to a new "source"
+                            targetDb.replicate
+                              .to(source)
+                              .then(() => {
+                                resolve({ ok: true });
+                              })
+                              .catch((e: Error) => reject(e));
+                          })
+                          .catch((e: Error) => reject(e));
+                      })
+                      .catch((e: Error) => reject(e));
+                  })
+                  .catch((e: Error) => reject(e));
+              })
+              .catch((e: Error) => reject(e));
+          })
+          .catch((e: Error) => reject(e));
+      }
+    });
+  }
+
+  /**
+   * Fetch latest changes
    *
    * @param {{}} opts
-   * @returns {Promise<any>}
+   * @returns {Promise<ActiveDSChanges | any>}
    * @memberof DBConnector
    */
-  public changes(opts: {}): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ActiveRequest.send(
-        `${this.location}/_changes?${querystring.stringify(opts)}`,
-        "GET"
-      )
-        .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
-    });
+  public changes(opts: {
+    live?: boolean;
+    [opt: string]: any;
+  }): Promise<any> | ActiveDSChanges {
+    if (opts.live) {
+      return new ActiveDSChanges(opts, `${this.location}/_changes`);
+    } else {
+      return new Promise((resolve, reject) => {
+        ActiveRequest.send(
+          `${this.location}/_changes?${querystring.stringify(opts)}`,
+          "GET"
+        )
+          .then((response: any) => resolve(response.data))
+          .catch(error => reject(error));
+      });
+    }
+  }
+}
+
+/**
+ * Simple DS Changes Listener
+ *
+ * @export
+ * @class ActiveDSChanges
+ * @extends {EventEmitter}
+ * @implements {ActiveDefinitions.IActiveDSChanges}
+ */
+export class ActiveDSChanges extends EventEmitter
+  implements ActiveDefinitions.IActiveDSChanges {
+  /**
+   * Flag for cancelling the next listeing round
+   *
+   * @private
+   * @memberof ActiveDSChanges
+   */
+  private stop = false;
+
+  /**
+   *Creates an instance of ActiveDSChanges.
+   * @param {{ live?: boolean; [opt: string]: any }} opts
+   * @param {string} location
+   * @memberof ActiveDSChanges
+   */
+  constructor(
+    private opts: { live?: boolean; [opt: string]: any },
+    private location: string
+  ) {
+    super();
+
+    // Set default feed type (currently longpoll supported only on httpd)
+    if (!opts.feed) {
+      opts.feed = "longpoll";
+    }
+
+    // Give time before listening
+    setTimeout(() => {
+      this.listen();
+    }, 250);
+  }
+
+  /**
+   * Listen for changes from the data store
+   *
+   * @private
+   * @memberof ActiveDSChanges
+   */
+  private listen(): void {
+    ActiveRequest.send(
+      `${this.location}?${querystring.stringify(this.opts)}`,
+      "GET"
+    )
+      .then((response: any) => {
+        if (!this.stop) {
+          // Map last_seq -> seq (Matches Pouch Connector)
+          // and update since for next round of listening
+          this.opts.since = response.data.seq = response.data.last_seq;
+
+          // Emit changed data
+          this.emit("change", response.data);
+
+          // Listen for next update
+          this.listen();
+        }
+      })
+      .catch(error => this.emit("error", error));
+  }
+
+  /**
+   * Cancels the changes listner
+   *
+   * @memberof ActiveDSChanges
+   */
+  public cancel(): void {
+    this.stop = true;
   }
 }

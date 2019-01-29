@@ -20,36 +20,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-import * as fs from "fs";
-import * as ChildP from "child_process";
-import {
-  ActiveOptions,
-  PouchDB,
-  ActiveRequest
-} from "@activeledger/activeoptions";
-import { ActiveLogger } from "@activeledger/activelogger";
-// @ts-ignore
-import * as FileHound from "filehound";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 
 /**
- *
+ * Smash the correct data back to the ledger
  *
  * @export
  * @class Sledgehammer
  */
 export class Sledgehammer {
   /**
-   *
-   *
-   * @private
-   * @static
-   * @memberof Sledgehammer
-   */
-  private static pathDb = "/opt/couchdb/data/shards/00000000-ffffffff/";
-
-  /**
-   *
+   * Temporary holding name
    *
    * @private
    * @static
@@ -66,153 +47,28 @@ export class Sledgehammer {
    */
   public static smash(): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      // Array of rewrite updates
-      let bulkdocs: any = [];
+      // Vars to hold database urls or name
+      let source, target: string;
 
-      // Origin Database
-      let origin = new PouchDB(
-        ActiveOptions.get<any>("db", {}).url +
-          "/" +
-          ActiveOptions.get<any>("db", {}).database
-      );
+      // What type of smash needs to happen
+      if (ActiveOptions.get<any>("db", {}).selfhost) {
+        // Self hosted just needs database name
+        source = ActiveOptions.get<any>("db", {}).database;
+        target = this.tempDb;
+      } else {
+        const dbUrl = ActiveOptions.get<any>("db", {}).url + "/";
+        source = dbUrl + ActiveOptions.get<any>("db", {}).database;
+        target = dbUrl + this.tempDb;
+      }
 
-      // Temporary Holding Database
-      let tmpHoldings = new PouchDB(
-        ActiveOptions.get<any>("db", {}).url + "/" + this.tempDb
-      );
-
-      // Make sure the database doesn't exist
-      tmpHoldings
-        .destroy()
+      // Data connector can manage the data fixing
+      ActiveDSConnect.smash(source, target)
         .then(() => {
-          if (ActiveOptions.get<any>("db", {}).selfhost) {
-            // Self Host now handles in its process fir direct file IO
-            ActiveRequest.send(
-              `${ActiveOptions.get<any>("db", {}).url}/smash?s=${
-                ActiveOptions.get<any>("db", {}).database
-              }&t=${this.tempDb}`,
-              "GET"
-            )
-              .then(() => {
-                return resolve(true);
-              })
-              .catch((e: Error) => {
-                return reject(e);
-              });
-          } else {
-            // Externally Hosted Solution
-            // Update Connection
-            let tmpHoldings = new PouchDB(
-              ActiveOptions.get<any>("db", {}).url + "/" + this.tempDb
-            );
-
-            origin.replicate
-              .to(tmpHoldings, {
-                filter: (doc: any, req: any) => {
-                  if (
-                    doc.$activeledger &&
-                    doc.$activeledger.delete &&
-                    doc.$activeledger.rewrite
-                  ) {
-                    // Get Rewrite for later
-                    origin
-                      .get(doc._id)
-                      .then((doc: any) => {
-                        bulkdocs.push(doc.$activeledger.rewrite);
-                      })
-                      .catch((e: Error) => ActiveLogger.info(e));
-                    return false;
-                  } else {
-                    return true;
-                  }
-                }
-              })
-              .then(() => {
-                // Any Bulk docs to update
-                if (bulkdocs.length) {
-                  tmpHoldings
-                    .bulkDocs(bulkdocs, { new_edits: false })
-                    .then((docs: any) => {
-                      resolve(true);
-                      // Stop Delete Move Repeat
-                      Sledgehammer.cleanUp(tmpHoldings);
-                    });
-                } else {
-                  resolve(true);
-                }
-              })
-              .catch((e: Error) => reject(e));
-          }
+          resolve(true);
         })
-        .catch((e: Error) => reject(e));
-    });
-  }
-
-  /**
-   *
-   *
-   * @private
-   * @static
-   * @param {*} tmp
-   * @memberof Sledgehammer
-   */
-  private static cleanUp(tmp: any): void {
-    // Only work if we have sudo
-    // Will need to come up with solution for none Debian based Linux & Other
-    if (process.env.SUDO_UID) {
-      // Path override
-      let path = ActiveOptions.get<any>("db", {}).path || Sledgehammer.pathDb;
-
-      // Stop Couchdb
-      ActiveLogger.info("Stopping Database Service");
-      ChildP.execSync("systemctl stop couchdb");
-
-      // Rename cleaned db to original
-      // get temporary file system (not cluster support enabled yet)
-      let cleaned = FileHound.create()
-        .paths(Sledgehammer.pathDb)
-        .match(Sledgehammer.tempDb + ".*.couch")
-        .find();
-
-      let dirty = FileHound.create()
-        .paths(Sledgehammer.pathDb)
-        .match(ActiveOptions.get<any>("db", {}).database + ".*.couch")
-        .find();
-
-      // Wait for the files to be searched
-      Promise.all([cleaned, dirty])
-        .then(files => {
-          // Which database files are to be changed
-          let cleaned = files[0][0];
-          let dirty = files[1][0];
-
-          // Do we have clean for dirty
-          if (cleaned && dirty) {
-            ActiveLogger.info("Hot Swapping Database from Dity to Clean");
-            // Rename
-            fs.renameSync("/" + cleaned, "/" + dirty);
-          }
-          // Start Couchdb
-          ActiveLogger.info("Starting Database Service");
-          ChildP.execSync("systemctl start couchdb");
-
-          // Delete the temporary
-          setTimeout(() => {
-            tmp.destroy().then(() => {
-              ActiveLogger.info("Clean Database Removed");
-            });
-          }, 5000);
-        })
-        .catch(e => {
-          // Start Couchdb
-          ActiveLogger.info("Starting Database Service");
-          ChildP.execSync("systemctl start couchdb");
-          ActiveLogger.fatal(e);
+        .catch((e: Error) => {
+          return reject(e);
         });
-    } else {
-      ActiveLogger.fatal(
-        "Super User || Self Hosted Required - Cannot Clean Up"
-      );
-    }
+    });
   }
 }

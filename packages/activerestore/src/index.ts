@@ -26,9 +26,8 @@
 import * as fs from "fs";
 import {
   ActiveOptions,
-  ActiveChanges,
   ActiveDSConnect,
-  PouchDB
+  ActiveChanges
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
@@ -102,7 +101,7 @@ ActiveOptions.extendConfig()
 
     if (!ActiveOptions.get<boolean>("full", false)) {
       // Error Database Connection
-      let dbe = new PouchDB(
+      let dbe = new ActiveDSConnect(
         ActiveOptions.get<any>("db", {}).url +
           "/" +
           ActiveOptions.get<any>("db", {}).error

@@ -127,13 +127,14 @@ export class ActiveRequest {
             if (body.length) {
               // Add to "data" to mimic old lib
               try {
+                const bodyBuffer = Buffer.concat(body);
                 // Gziped?
                 let gdata;
                 if (response.headers["content-encoding"] == "gzip") {
-                  gdata = await ActiveGZip.ungzip(Buffer.concat(body));
+                  gdata = await ActiveGZip.ungzip(bodyBuffer);
                 }
                 resolve({
-                  data: JSON.parse((gdata || body).toString())
+                  data: JSON.parse((gdata || bodyBuffer).toString())
                 });
               } catch (error) {
                 reject(new Error("Failed to parse body"));
