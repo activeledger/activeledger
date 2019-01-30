@@ -211,53 +211,40 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
             targetDb = new PouchDB(target);
 
             // Make sure db has been created
-            targetDb
-              .info()
-              .then(() => {
-                // Replicate to target
-                sourceDb.replicate
-                  .to(target, {
-                    filter: (doc: any, req: any) => {
-                      if (
-                        doc.$activeledger &&
-                        doc.$activeledger.delete &&
-                        doc.$activeledger.rewrite
-                      ) {
-                        // Get Rewrite for later
-                        bulkdocs.push(doc.$activeledger.rewrite);
-                        return false;
-                      } else {
-                        return true;
-                      }
+            targetDb.info().then(() => {
+              // Replicate to target
+              sourceDb.replicate
+                .to(target, {
+                  filter: (doc: any, req: any) => {
+                    if (
+                      doc.$activeledger &&
+                      doc.$activeledger.delete &&
+                      doc.$activeledger.rewrite
+                    ) {
+                      // Get Rewrite for later
+                      bulkdocs.push(doc.$activeledger.rewrite);
+                      return false;
+                    } else {
+                      return true;
                     }
-                  })
-                  .then(() => {
-                    // Any Bulk docs to update
-                    ActiveLogger.warn(
-                      `Restoration : ${bulkdocs.length} streams being corrected`
-                    );
-                    targetDb
-                      .bulkDocs(bulkdocs, { new_edits: false })
-                      .then(() => {
-                        // Delete original source database
-                        sourceDb
-                          .destroy()
-                          .then(() => {
-                            // Now replicate back to a new "source"
-                            targetDb.replicate
-                              .to(source)
-                              .then(() => {
-                                resolve({ ok: true });
-                              })
-                              .catch((e: Error) => reject(e));
-                          })
-                          .catch((e: Error) => reject(e));
-                      })
-                      .catch((e: Error) => reject(e));
-                  })
-                  .catch((e: Error) => reject(e));
-              })
-              .catch((e: Error) => reject(e));
+                  }
+                })
+                .then(() => {
+                  // Any Bulk docs to update
+                  ActiveLogger.warn(
+                    `Restoration : ${bulkdocs.length} streams being corrected`
+                  );
+                  targetDb.bulkDocs(bulkdocs, { new_edits: false }).then(() => {
+                    // Delete original source database
+                    sourceDb.destroy().then(() => {
+                      // Now replicate back to a new "source"
+                      targetDb.replicate.to(source).then(() => {
+                        resolve({ ok: true });
+                      });
+                    });
+                  });
+                });
+            });
           })
           .catch((e: Error) => reject(e));
       }
@@ -312,11 +299,13 @@ export class ActiveDSChanges extends EventEmitter
    *Creates an instance of ActiveDSChanges.
    * @param {{ live?: boolean; [opt: string]: any }} opts
    * @param {string} location
+   * @param {boolean} [bulk=false]
    * @memberof ActiveDSChanges
    */
   constructor(
     private opts: { live?: boolean; [opt: string]: any },
-    private location: string
+    private location: string,
+    private bulk: boolean = false
   ) {
     super();
 
@@ -346,10 +335,20 @@ export class ActiveDSChanges extends EventEmitter
         if (!this.stop) {
           // Map last_seq -> seq (Matches Pouch Connector)
           // and update since for next round of listening
-          this.opts.since = response.data.seq = response.data.last_seq;
+          this.opts.since = response.data.last_seq;
 
-          // Emit changed data
-          this.emit("change", response.data);
+          if (this.bulk) {
+            // Emit all changed data
+            this.emit("change", response.data);
+          } else {
+            // Emit each change
+            response.data.results.forEach((elm: any) => {
+              this.emit("change", {
+                doc: elm.doc,
+                seq: elm.seq
+              });
+            });
+          }
 
           // Listen for next update
           this.listen();

@@ -190,6 +190,41 @@ import PouchDB from "./pouchdb";
     });
   });
 
+  // Delete Index (Fauxton Way)
+  http.use(
+    "/*/_index/_bulk_delete",
+    "POST",
+    async (incoming: IActiveHttpIncoming) => {
+      // Get Db
+      let db = getPDB(incoming.url[0]);
+
+      // Get all Indexes
+      const indexes: any[] = (await db.getIndexes()).indexes;
+
+      // Loop all indexes Fauxton wants to delete
+      incoming.body.docids.forEach(async (docId: string) => {
+        // Do we have this as a design index
+        let index = indexes.find(
+          (index: any): boolean => {
+            return index.ddoc == docId;
+          }
+        );
+
+        // Did we find a match to delete?
+        if (index) {
+          // Deleta via index delete
+          await db.deleteIndex({
+            ddoc: index.ddoc,
+            type: index.type,
+            name: index.name
+          });
+        }
+      });
+
+      return { ok: true };
+    }
+  );
+
   // Replicator
   // May not need to replicate here, Service could be shut down
   // and processed directly on the files

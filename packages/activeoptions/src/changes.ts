@@ -23,7 +23,7 @@
 
 import * as events from "events";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveDSConnect, ActiveDSChanges } from "./dsconnector";
+import { ActiveDSConnect, ActiveDSChanges } from "./dsconnect";
 
 /**
  * Watches for changes to the datastore and emits
