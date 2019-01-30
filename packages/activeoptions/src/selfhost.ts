@@ -29,7 +29,7 @@ import PouchDB from "./pouchdb";
 
 (function() {
   // Fauxton Path
-  const FAUXTON_PATH = path.dirname(require.resolve("pouchdb-fauxton"));
+  const FAUXTON_PATH = __dirname + "/fauxton/";
 
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
