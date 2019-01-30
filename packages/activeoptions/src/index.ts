@@ -26,7 +26,7 @@ import { ActiveRequest } from "./request";
 import { ActiveChanges } from "./changes";
 import { ActiveGZip } from "./gzip";
 import { ActiveDataStore } from "./datastore";
-import { ActiveDSConnect } from "./dsconnector";
+import { ActiveDSConnect } from "./dsconnect";
 export {
   ActiveDSConnect,
   ActiveOptions,

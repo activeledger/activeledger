@@ -1,4 +1,4 @@
-import { ActiveDSConnect, ActiveDSChanges } from "./dsconnector";
+import { ActiveDSConnect, ActiveDSChanges } from "./dsconnect";
 
 let ds = new ActiveDSConnect("http://localhost:5259/test");
 
