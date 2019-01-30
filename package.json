@@ -2,7 +2,7 @@
   "name": "activeledger-monorepo",
   "private": true,
   "scripts": {
-    "build": "npm run build:options && npm run build:logger && npm run build:definitions && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
+    "build": "npm run build:definitions && npm run build:logger && npm run build:options && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
     "build:options": "cd ./packages/activeoptions/ && npm run build",
     "build:logger": "cd ./packages/activelogger/ && npm run build",
     "build:definitions": "cd ./packages/activedefinitions/ && npm run build",
@@ -20,13 +20,13 @@
     "@types/chai": "^4.1.7",
     "@types/mocha": "^5.2.5",
     "chai": "^4.2.0",
-    "lerna": "^3.10.6",
+    "lerna": "^3.10.7",
     "mocha": "^5.2.0",
     "nyc": "^13.1.0",
-    "ts-node": "^8.0.1",
+    "ts-node": "^8.0.2",
     "typescript": "^3.2.4"
   },
   "dependencies": {
-    "@types/node": "^10.12.18"
+    "@types/node": "^10.12.19"
   }
 }

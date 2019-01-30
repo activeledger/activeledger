@@ -254,7 +254,7 @@ export class Host extends Home {
     this.dbConnection
       .createIndex({
         index: {
-          fields: ["_id", "type", "namespace"]
+          fields: ["namespace", "type", "_id"]
         }
       })
       .then(() => {

@@ -23,13 +23,13 @@
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
-import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
 import PouchDB from "./pouchdb";
 
 (function() {
   // Fauxton Path
-  const FAUXTON_PATH = path.dirname(require.resolve("pouchdb-fauxton"));
+  const FAUXTON_PATH = __dirname + "/fauxton/";
 
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
@@ -190,6 +190,41 @@ import PouchDB from "./pouchdb";
     });
   });
 
+  // Delete Index (Fauxton Way)
+  http.use(
+    "/*/_index/_bulk_delete",
+    "POST",
+    async (incoming: IActiveHttpIncoming) => {
+      // Get Db
+      let db = getPDB(incoming.url[0]);
+
+      // Get all Indexes
+      const indexes: any[] = (await db.getIndexes()).indexes;
+
+      // Loop all indexes Fauxton wants to delete
+      incoming.body.docids.forEach(async (docId: string) => {
+        // Do we have this as a design index
+        let index = indexes.find(
+          (index: any): boolean => {
+            return index.ddoc == docId;
+          }
+        );
+
+        // Did we find a match to delete?
+        if (index) {
+          // Deleta via index delete
+          await db.deleteIndex({
+            ddoc: index.ddoc,
+            type: index.type,
+            name: index.name
+          });
+        }
+      });
+
+      return { ok: true };
+    }
+  );
+
   // Replicator
   // May not need to replicate here, Service could be shut down
   // and processed directly on the files
@@ -266,30 +301,33 @@ import PouchDB from "./pouchdb";
               ActiveLogger.warn(
                 `Restoration : ${bulkdocs.length} streams being corrected`
               );
-              target.bulkDocs(bulkdocs, { new_edits: false }).then(async () => {
-                // Now we need to delete the source, rename the target
-                ActiveLogger.warn(`Restoration : Datastore stopping...`);
+              target
+                .bulkDocs(bulkdocs, { new_edits: false })
+                .then(async () => {
+                  // Now we need to delete the source, rename the target
+                  ActiveLogger.warn(`Restoration : Datastore stopping...`);
 
-                // Close Source Databases
-                await source.close();
-                pDBCache[incoming.query.s] = null;
+                  // Close Source Databases
+                  await source.close();
+                  pDBCache[incoming.query.s] = null;
 
-                // Close Target Databases
-                await target.close();
-                pDBCache[incoming.query.t] = null;
+                  // Close Target Databases
+                  await target.close();
+                  pDBCache[incoming.query.t] = null;
 
-                // Delete Source Database
-                deleteDb(DIR_PREFIX + incoming.query.s);
+                  // Delete Source Database
+                  deleteDb(DIR_PREFIX + incoming.query.s);
 
-                // Rename Target to Source
-                fs.renameSync(
-                  DIR_PREFIX + incoming.query.t,
-                  DIR_PREFIX + incoming.query.s
-                );
-                ActiveLogger.warn(`Restoration : Datastore starting...`);
+                  // Rename Target to Source
+                  fs.renameSync(
+                    DIR_PREFIX + incoming.query.t,
+                    DIR_PREFIX + incoming.query.s
+                  );
+                  ActiveLogger.warn(`Restoration : Datastore starting...`);
 
-                resolve({ ok: true });
-              });
+                  resolve({ ok: true });
+                })
+                .catch((e: Error) => reject(e));
             } else {
               resolve({ ok: true });
             }

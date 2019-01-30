@@ -1,3 +1,11 @@
+import { EventEmitter } from "events";
+
+/**
+ * Basice interface for Neighbours
+ *
+ * @export
+ * @interface INeighbourBase
+ */
 export interface INeighbourBase {
   reference: string;
   knock(endpoint: string, params?: any, external?: boolean): Promise<any>;
@@ -90,5 +98,12 @@ export interface IActiveDSConnect {
    * @returns {Promise<any>}
    * @memberof IActiveDSConnect
    */
-  changes(opts: {}): Promise<any>;
+  changes(opts: {
+    live?: boolean;
+    [opt: string]: any;
+  }): Promise<any> | IActiveDSChanges;
+}
+
+export interface IActiveDSChanges extends EventEmitter {
+  cancel(): void;
 }

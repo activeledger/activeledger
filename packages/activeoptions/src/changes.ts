@@ -23,6 +23,7 @@
 
 import * as events from "events";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveDSConnect, ActiveDSChanges } from "./dsconnect";
 
 /**
  * Watches for changes to the datastore and emits
@@ -33,31 +34,13 @@ import { ActiveLogger } from "@activeledger/activelogger";
  */
 export class ActiveChanges extends events.EventEmitter {
   /**
-   * Changes Name
-   *
-   * @private
-   * @type {*}
-   * @memberof ActiveChanges
-   */
-  private name: string;
-
-  /**
-   * Pouch Database Connection
-   *
-   * @private
-   * @type {*}
-   * @memberof ActiveChanges
-   */
-  private db: any;
-
-  /**
    * Follow Changes Object
    *
    * @private
    * @type {*}
    * @memberof ActiveChanges
    */
-  private dbChanges: any;
+  private dbChanges: ActiveDSChanges;
 
   /**
    * Store last sequence value
@@ -78,15 +61,13 @@ export class ActiveChanges extends events.EventEmitter {
   private restarting: boolean = false;
 
   /**
-   *Creates an instance of ActiveChanges.
+   * Creates an instance of ActiveChanges.
    * @param {string} name
-   * @param {*} db
+   * @param {ActiveDSConnect} db
    * @memberof ActiveChanges
    */
-  constructor(name: string, db: any) {
+  constructor(private name: string, private db: ActiveDSConnect) {
     super();
-    this.db = db;
-    this.name = name;
   }
 
   /**
@@ -110,7 +91,7 @@ export class ActiveChanges extends events.EventEmitter {
         live: true,
         include_docs: true,
         timeout: false
-      });
+      }) as ActiveDSChanges;
 
       // Listen to changes
       this.dbChanges.on("change", (change: any) => {
@@ -142,7 +123,7 @@ export class ActiveChanges extends events.EventEmitter {
    */
   public pause(): void {
     this.dbChanges.cancel();
-    this.dbChanges = undefined;
+    this.dbChanges = (null as unknown) as ActiveDSChanges;
   }
 
   /**
@@ -188,6 +169,6 @@ export class ActiveChanges extends events.EventEmitter {
   public stop(): void {
     this.lastSequence = undefined;
     this.dbChanges.cancel();
-    this.dbChanges = undefined;
+    this.dbChanges = (null as unknown) as ActiveDSChanges;
   }
 }

@@ -381,6 +381,8 @@ export class ActiveHttpd {
       const element = path[i];
       if (element == "*") {
         c++;
+      } else if (element == "**") {
+        c += 2; // Or just ++ will we ever have a ** clash to resolve?
       } else {
         break;
       }
