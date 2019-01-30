@@ -20,7 +20,7 @@
     "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
     "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
     "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es",
+    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/",
     "buildw": "npm run build:commonjsw",
     "ts": "ts-node src/",
     "ts4": "node -r ts-node/register src/",
@@ -38,9 +38,10 @@
   "devDependencies": {
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.39",
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.12.18",
+    "@types/node": "^10.12.19",
+    "copyfiles": "^2.1.0",
     "rimraf": "^2.6.3",
-    "ts-node": "^8.0.1",
+    "ts-node": "^8.0.2",
     "typescript": "^3.2.4"
   },
   "files": [
@@ -54,7 +55,6 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.39",
     "minimist": "1.2.0",
     "pouchdb": "7.0.0",
-    "pouchdb-fauxton": "0.0.6",
     "pouchdb-find": "7.0.0"
   }
 }
