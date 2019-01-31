@@ -341,38 +341,43 @@ import PouchDB from "./pouchdb";
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
-
-    // Convert Limit
-    if (incoming.query.limit) {
-      incoming.query.limit = parseInt(incoming.query.limit) || null;
-    }
-
-    // Convert startkey to remove "
-    if (incoming.query.startkey) {
-      incoming.query.startkey = incoming.query.startkey.replace(/"/g, "");
-    }
-
-    // Convert endkey to remove " and keep unicode search
-    if (incoming.query.endkey) {
-      incoming.query.endkey = incoming.query.endkey.replace(/"/g, "");
-      incoming.query.endkey = incoming.query.endkey.slice(0, -1) + "\u9999";
-    }
-
-    return await db.allDocs(incoming.query);
+    return await db.allDocs(prepareAllDocs(incoming.query));
   });
 
   // Get all docs filtered from a database
   http.use("*/_all_docs", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
+    return await db.allDocs(
+      prepareAllDocs(Object.assign(incoming.query, incoming.body))
+    );
+  });
 
+  /**
+   * C/Pouch conversion utility tool for _all_docs
+   *
+   * @param {*} options
+   * @returns
+   */
+  let prepareAllDocs = (options: any) => {
     // Convert Limit
-    if (incoming.query.limit) {
-      incoming.query.limit = parseInt(incoming.query.limit) || null;
+    if (options.limit) {
+      options.limit = parseInt(options.limit) || null;
     }
 
-    return await db.allDocs(Object.assign(incoming.query, incoming.body));
-  });
+    // Convert startkey to remove "
+    if (options.startkey) {
+      options.startkey = options.startkey.replace(/"/g, "");
+    }
+
+    // Convert endkey to remove " and keep unicode search
+    if (options.endkey) {
+      options.endkey = options.endkey.replace(/"/g, "");
+      options.endkey = options.endkey.slice(0, -1) + "\u9999";
+    }
+
+    return options;
+  };
 
   /**
    * Reusable Get for mutliple paths

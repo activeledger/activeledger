@@ -77,15 +77,16 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   /**
    * Returns all the documents in the database
    *
-   * @param {*} [options={}]
+   * @param {*} [options]
    * @returns
    * @memberof ActiveDSConnect
    */
-  public allDocs(options: any = {}): Promise<any> {
+
+  public allDocs(options?: any): Promise<any> {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(
         `${this.location}/_all_docs`,
-        "GET",
+        options ? "POST" : "GET",
         undefined,
         options
       )
