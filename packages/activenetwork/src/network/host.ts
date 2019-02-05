@@ -871,11 +871,14 @@ export class Host extends Home {
         }
         break;
       case "OPTIONS":
-        // Accept all for now
+        // Accept all for now (Return Request Headers)
         res.writeHead(200, {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST",
-          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Headers": this.fetchHeader(
+            req.rawHeaders,
+            "Access-Control-Request-Headers"
+          ) as string,
           "X-Powered-By": "Activeledger"
         });
         res.end();
