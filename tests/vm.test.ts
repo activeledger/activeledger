@@ -79,5 +79,8 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
     should().throw(() => {
       VM.getInternodeCommsFromVM();
     });
+
+    // Prevent timeout checks
+    (VM as any).scriptFinishedExec = true;
   });
 });
