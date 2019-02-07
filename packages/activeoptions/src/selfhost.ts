@@ -388,35 +388,30 @@ import PouchDB from "./pouchdb";
    */
   let genericGet = (dbLoc: string, path: string): Promise<any> => {
     // Get Database
-    let db = getPDB(dbLoc);
-    return db.get(decodeURIComponent(path));
+    return new Promise(async (resolve, reject) => {
+      // Get Database
+      let db = getPDB(dbLoc);
+      db.get(decodeURIComponent(path))
+        .then((doc: unknown) => resolve(doc))
+        .catch((e: unknown) => {
+          reject(e);
+        });
+    });
   };
 
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    try {
-      return await genericGet(incoming.url[0], incoming.url[1]);
-    } catch (e) {
-      return e;
-    }
+    return await genericGet(incoming.url[0], incoming.url[1]);
   });
 
   // Specific lookup path for _design database docs
   http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    try {
-      return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
-    } catch (e) {
-      return e;
-    }
+    return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
   });
 
   // Specific lookup path for _local database docs
   http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    try {
-      return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
-    } catch (e) {
-      return e;
-    }
+    return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
   });
 
   // Add new / updated document to the database

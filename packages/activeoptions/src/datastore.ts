@@ -96,6 +96,17 @@ export class ActiveDataStore {
       `Self-hosted data engine : Starting Up (${this.process.pid})`
     );
 
+    // Listen for possible exits
+    this.process.on("exit", (code: number, signal: string) => {
+      // Just restart as we need the database up
+      ActiveLogger.error(
+        `Self-hosted data engine has shutdown (${code} : ${signal ||
+          "No Signal"})`
+      );
+      // As its an attached process killing activeledger will prevent this restart
+      this.launch();
+    });
+
     // Return running location
     return "http://127.0.0.1:" + ActiveOptions.get<any>("db", {}).selfhost.port;
   }

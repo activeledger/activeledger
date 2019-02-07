@@ -224,11 +224,12 @@ export class Host extends Home {
 
             // All posted data should be JSON
             // Convert data for potential encryption
-            Endpoints.postConvertor(this, data.toString(), this.fetchHeader(
-              req.rawHeaders,
-              "X-Activeledger-Encrypt",
-              false
-            ) as boolean)
+            Endpoints.postConvertor(
+              this,
+              data.toString(),
+              ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
+                false
+            )
               .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
@@ -705,40 +706,6 @@ export class Host extends Home {
   }
 
   /**
-   * Fetch custom header from request
-   *
-   * @private
-   * @param {string[]} headers
-   * @param {string} search
-   * @param {boolean} [valueReturn=true]
-   * @returns {(string | boolean)}
-   * @memberof Host
-   */
-  private fetchHeader(
-    headers: string[],
-    search: string,
-    valueReturn: boolean = true,
-    valueDefault: any = "NA"
-  ): string | boolean {
-    // Make sure lower case search
-    search = search.toLowerCase();
-    // Loop Headers
-    let i = headers.length;
-    while (i--) {
-      if (headers[i].toLowerCase() === search) {
-        if (valueReturn) {
-          return headers[i + 1];
-        } else {
-          return true;
-        }
-      }
-    }
-
-    // Not found returns
-    return valueReturn ? valueDefault : false;
-  }
-
-  /**
    * Process Activeledger request endpoints
    *
    * @private
@@ -753,10 +720,7 @@ export class Host extends Home {
     body?: any
   ) {
     // Internal or External Request
-    let requester = this.fetchHeader(
-      req.rawHeaders,
-      "x-activeledger"
-    ) as string;
+    let requester = (req.headers["x-activeledger"] as string) || "";
 
     // Promise Response
     let response: Promise<any>;
@@ -843,11 +807,8 @@ export class Host extends Home {
             response = Endpoints.ExternalEncrypt(
               this,
               body,
-              this.fetchHeader(
-                req.rawHeaders,
-                "X-Activeledger-Encrypt",
-                false
-              ) as boolean,
+              ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
+                false,
               this.dbConnection
             );
             // Pass db conntection
@@ -871,11 +832,12 @@ export class Host extends Home {
         }
         break;
       case "OPTIONS":
-        // Accept all for now
+        // Accept all for now (Return Request Headers)
         res.writeHead(200, {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "GET, POST",
-          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Headers":
+            (req.headers["access-control-request-headers"] as string) || "*",
           "X-Powered-By": "Activeledger"
         });
         res.end();
@@ -957,12 +919,8 @@ export class Host extends Home {
     return (
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
-        (this.fetchHeader(
-          req.rawHeaders,
-          "x-forwarded-for",
-          true,
-          ""
-        ) as string) || (req.connection.remoteAddress as string)
+        (req.headers["x-forwarded-for"] as string) ||
+          (req.connection.remoteAddress as string)
       )
     );
   }
