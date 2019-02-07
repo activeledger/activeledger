@@ -229,8 +229,8 @@ export class ActiveHttpd {
           res.end();
         }
       } catch (error) {
-        // Default to internal server error
-        res.statusCode = 500;
+        // Defined error or default to internal server error
+        res.statusCode = error.status || error.statusCode || 500;
         this.writeAsHttpData(error, res);
         res.end();
       }
