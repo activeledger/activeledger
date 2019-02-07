@@ -38,7 +38,7 @@
   "devDependencies": {
     "rimraf": "^2.6.3",
     "ts-node": "^8.0.2",
-    "typescript": "^3.2.4"
+    "typescript": "^3.3.1"
   },
   "files": [
     "es",
@@ -50,7 +50,6 @@
   "dependencies": {
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.41",
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.41",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.41",
-    "sqltomango": "1.2.3"
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.41"
   }
 }

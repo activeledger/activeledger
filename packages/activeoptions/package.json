@@ -38,11 +38,11 @@
   "devDependencies": {
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.41",
     "@types/minimist": "^1.2.0",
-    "@types/node": "^10.12.19",
+    "@types/node": "^10.12.21",
     "copyfiles": "^2.1.0",
     "rimraf": "^2.6.3",
     "ts-node": "^8.0.2",
-    "typescript": "^3.2.4"
+    "typescript": "^3.3.1"
   },
   "files": [
     "es",
