@@ -21,8 +21,7 @@
  * SOFTWARE.
  */
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-// @ts-ignore definition missing
-import * as sqltomango from "sqltomango";
+import { SQL } from "./sql";
 
 /**
  *  Query Engine used to look up data on Activeledger
@@ -62,7 +61,7 @@ export class QueryEngine {
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
     // Convert to json query
-    return this.mango(this.stripUnnecessaryAnds(sqltomango.parse(sql)));
+    return this.mango(new SQL(sql).parse());
   }
 
   /**
@@ -134,41 +133,6 @@ export class QueryEngine {
    */
   public getLastWarning(): QueryWarning | undefined {
     return this.warning ? this.warning : undefined;
-  }
-
-  /**
-   * Remove nested $and as they are not needed
-   *
-   * @private
-   * @param {*} obj
-   * @returns {*}
-   * @memberof QueryEngine
-   */
-  private stripUnnecessaryAnds(obj: any): any {
-    let out: any = {};
-
-    // If array most likely inside an $and
-    if (Array.isArray(obj)) {
-      // Loop each other if object process again
-      obj.forEach(elm => {
-        if (typeof elm === "object") {
-          out = Object.assign(out, this.stripUnnecessaryAnds(elm));
-        }
-      });
-    } else {
-      // Loop object and find any $and or other objects
-      let keys = Object.keys(obj);
-      keys.forEach(elm => {
-        if (elm == "$and") {
-          out = Object.assign(out, this.stripUnnecessaryAnds(obj[elm]));
-        } else if (typeof obj[elm] === "object") {
-          out[elm] = this.stripUnnecessaryAnds(obj[elm]);
-        } else {
-          out[elm] = obj[elm];
-        }
-      });
-    }
-    return out;
   }
 }
 

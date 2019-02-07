@@ -50,7 +50,6 @@
   "dependencies": {
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.41",
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.41",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.41",
-    "sqltomango": "1.2.3"
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.41"
   }
 }
