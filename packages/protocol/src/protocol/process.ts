@@ -151,6 +151,15 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public destroy(): void {
+    // Record un commited transactions as an error    
+    if (!this.nodeResponse.commit) {
+      this.raiseLedgerError(
+        1600,
+        new Error("Failed to commit before timeout"),
+        true
+      );
+    }
+
     // Close VM and entry (cirular reference)
     (this.contractVM as any) = null;
     (this.entry as any) = null;
@@ -898,9 +907,15 @@ export class Process extends EventEmitter {
           // Because we voted no doesn't mean the network should error
           this.emit("commited", {});
         } else {
-          // Network didn't reach consensus
-          ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-          this.raiseLedgerError(1510, new Error("Failed Network Voting Round"));
+          // Not needed for broadcast because we check on destory
+          if (!this.entry.$broadcast) {
+            // Network didn't reach consensus
+            ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+            this.raiseLedgerError(
+              1510,
+              new Error("Failed Network Voting Round")
+            );
+          }
         }
       }
     } else {

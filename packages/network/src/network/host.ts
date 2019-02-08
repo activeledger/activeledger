@@ -630,7 +630,9 @@ export class Host extends Home {
           // Keep broadcasting until promises fully resolve
           // Could be down nodes (So they can have 5 minute window to get back up)
           // Or connection issues. This doesn't stop commit phase as they will eventually call us.
-          this.broadcastResolver(umid);
+          setTimeout(() => {
+            this.broadcastResolver(umid);
+          }, 500);
         });
     }
   }
@@ -648,6 +650,24 @@ export class Host extends Home {
       // Recast as connection errors found.
       ActiveLogger.warn("Rebroadcasting : " + umid);
       this.broadcast(umid);
+    } else {
+      // No longer in memory. Create a new error document outside protocol
+      // We could have comitted but no idea we may have needed a rebroadcast back.
+      let doc = {
+        code: 1610,
+        processed: false,
+        umid: umid,
+        // simulate tx for restore
+        transaction: {
+          $broadcast: true,
+          $tx: {},
+          $revs: {}
+        },
+        reason: "Failed to rebroadcast while in memory"
+      };
+
+      // Return
+      this.dbErrorConnection.post(doc);
     }
   }
 
@@ -702,7 +722,7 @@ export class Host extends Home {
 
       // Let other workers know they can release
       this.moan("txmemclear", { umid: umid });
-    }, 300000);
+    }, 20000); //300000
   }
 
   /**
@@ -781,18 +801,36 @@ export class Host extends Home {
             }
           default:
             // All Stream Management with start point
-            if (req.url && req.url.substr(0, 7) == "/a/all/") {
-              if (this.firewallCheck(requester, req)) {
-                response = Endpoints.all(
-                  this.dbConnection,
-                  parseInt(req.url.substr(7))
-                );
+            if (this.firewallCheck(requester, req)) {
+              if (req.url) {
+                let match = req.url.substr(0, 7);
+                switch (match) {
+                  case "/a/all/":
+                    response = Endpoints.all(
+                      this.dbConnection,
+                      parseInt(req.url.substr(7))
+                    );
+                    break;
+                  case "/a/umid":
+                    response = Endpoints.umid(
+                      this.dbConnection,
+                      req.url.substr(8)
+                    );
+                    break;
+                  default:
+                    // 404 Not Found
+                    return this.writeResponse(
+                      res,
+                      404,
+                      "Not Found",
+                      gzipAccepted
+                    );
+                }
               } else {
-                return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+                return this.writeResponse(res, 404, "Not Found", gzipAccepted);
               }
             } else {
-              // 404 Not Found
-              return this.writeResponse(res, 404, "Not Found", gzipAccepted);
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
         }
         break;

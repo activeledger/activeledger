@@ -537,8 +537,18 @@ import PouchDB from "./pouchdb";
       if (incoming.body.docs) {
         // Options for new_edits
         let opts = {
-          new_edits: incoming.body.new_edits || true
+          new_edits:
+            incoming.body.new_edits ||
+            (incoming.body.options && incoming.body.options.new_edits)
         };
+
+        // Protect from being empty or bad value
+        if (
+          typeof opts.new_edits === "undefined" ||
+          typeof opts.new_edits !== "boolean"
+        ) {
+          opts.new_edits = true;
+        }
 
         // Get Database
         let db = getPDB(incoming.url[0]);
