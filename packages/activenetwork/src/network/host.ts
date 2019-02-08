@@ -720,7 +720,7 @@ export class Host extends Home {
     body?: any
   ) {
     // Internal or External Request
-    let requester = (req.headers["x-activeledger"] as string) || "";
+    let requester = (req.headers["x-activeledger"] as string) || "NA";
 
     // Promise Response
     let response: Promise<any>;
