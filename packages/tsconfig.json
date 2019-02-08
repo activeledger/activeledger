@@ -1,15 +1,15 @@
 {
     "references": [
-        { "path": "activecontracts" },
-        { "path": "activecore" },
-        { "path": "activecrypto" },
-        { "path": "activedefinitions" },
+        { "path": "contracts" },
+        { "path": "core" },
+        { "path": "crypto" },
+        { "path": "definitions" },
         { "path": "activeledger" },
-        { "path": "activelogger" },
-        { "path": "activenetwork" },
-        { "path": "activeoptions" },
-        { "path": "activeprotocol" },
-        { "path": "activequery" },
-        { "path": "activerestore" }
+        { "path": "logger" },
+        { "path": "network" },
+        { "path": "options" },
+        { "path": "protocol" },
+        { "path": "query" },
+        { "path": "restore" }
     ]
 }
