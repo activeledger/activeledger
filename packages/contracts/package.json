@@ -1,7 +1,7 @@
 {
-  "name": "@activeledger/activeledger",
+  "name": "@activeledger/activecontracts",
   "version": "2.0.0-rc.8.0.46",
-  "description": "This package contains the main application for running the Activeledger blockchain",
+  "description": "This package contains the base classes that smart contracts must inherit from for use with Activeledger",
   "keywords": [
     "blockchain",
     "dlt",
@@ -13,15 +13,12 @@
     "node"
   ],
   "homepage": "https://activeledger.io",
-  "preferGlobal": true,
-  "bin": {
-    "activeledger": "./lib/index.js"
-  },
+  "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
     "test": "cd ../../ && npm test",
-    "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/default.config.json ./lib",
-    "build:es": "tsc --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:es": "tsc --outDir es --module es6",
     "build": "npm run build:commonjs && npm run build:es",
     "prepublishOnly": "npm run build"
   },
@@ -36,7 +33,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^10.12.23",
-    "copyfiles": "^2.1.0",
     "typescript": "^3.3.3"
   },
   "files": [
@@ -47,10 +43,9 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.0.0-rc.8.0.43",
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.46",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.46",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.46",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.46",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.46"
+    "@activeledger/activequery": "^2.0.0-rc.8.0.46"
   }
 }
