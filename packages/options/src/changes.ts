@@ -64,9 +64,14 @@ export class ActiveChanges extends events.EventEmitter {
    * Creates an instance of ActiveChanges.
    * @param {string} name
    * @param {ActiveDSConnect} db
+   * @param {number} [limit]
    * @memberof ActiveChanges
    */
-  constructor(private name: string, private db: ActiveDSConnect) {
+  constructor(
+    private name: string,
+    private db: ActiveDSConnect,
+    private limit?: number
+  ) {
     super();
   }
 
@@ -90,7 +95,8 @@ export class ActiveChanges extends events.EventEmitter {
         since: since,
         live: true,
         include_docs: true,
-        timeout: false
+        timeout: false,
+        limit: this.limit || 25
       }) as ActiveDSChanges;
 
       // Listen to changes
@@ -122,8 +128,11 @@ export class ActiveChanges extends events.EventEmitter {
    * @memberof ActiveChanges
    */
   public pause(): void {
-    this.dbChanges.cancel();
-    this.dbChanges = (null as unknown) as ActiveDSChanges;
+    // Make sure changes exists
+    if (this.dbChanges) {
+      this.dbChanges.cancel();
+      this.dbChanges = (null as unknown) as ActiveDSChanges;
+    }
   }
 
   /**

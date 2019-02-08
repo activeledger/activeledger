@@ -151,6 +151,15 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public destroy(): void {
+    // Record un commited transactions as an error    
+    if (!this.nodeResponse.commit) {
+      this.raiseLedgerError(
+        1600,
+        new Error("Failed to commit before timeout"),
+        true
+      );
+    }
+
     // Close VM and entry (cirular reference)
     (this.contractVM as any) = null;
     (this.entry as any) = null;
@@ -620,6 +629,12 @@ export class Process extends EventEmitter {
             // Determanistic Collision Managamenent
             let collisions: any[] = [];
 
+            // Compile streams for umid & return reference
+            let refStreams = {
+              new: [] as any[],
+              updated: [] as any[]
+            };
+
             // Any Changes
             if (streams.length) {
               // Process Changes to the database
@@ -654,6 +669,12 @@ export class Process extends EventEmitter {
                   if (streams[i].meta.umid !== this.entry.$umid) {
                     collisions.push(streams[i].meta._id);
                   }
+
+                  // Add to reference
+                  refStreams.new.push({
+                    id: streams[i].state._id,
+                    name: streams[i].meta.name
+                  });
                 } else {
                   // Updated Streams, These could be inputs
                   // So update the transaction and remove for inputs for later processing
@@ -671,6 +692,12 @@ export class Process extends EventEmitter {
                       streams[i].state._id as string
                     ].$nhpk;
                   }
+
+                  // Add to reference
+                  refStreams.updated.push({
+                    id: streams[i].state._id,
+                    name: streams[i].meta.name
+                  });
                 }
 
                 // Data State (Developers Control)
@@ -716,7 +743,8 @@ export class Process extends EventEmitter {
               // Create umid document containing the transaction details
               docs.push({
                 _id: this.entry.$umid + ":umid",
-                umid: this.compactTxEntry()
+                umid: this.compactTxEntry(),
+                streams: refStreams
               });
 
               /**
@@ -737,27 +765,7 @@ export class Process extends EventEmitter {
 
                     // If Origin Explain streams in output
                     if (this.reference == this.entry.$origin) {
-                      this.entry.$streams = {
-                        new: [],
-                        updated: []
-                      };
-
-                      // Loop the docs again
-                      let i = streams.length;
-                      while (i--) {
-                        // New has no _rev
-                        if (!streams[i].meta._rev) {
-                          this.entry.$streams.new.push({
-                            id: streams[i].state._id as string,
-                            name: streams[i].meta.name as string
-                          });
-                        } else {
-                          this.entry.$streams.updated.push({
-                            id: streams[i].state._id as string,
-                            name: streams[i].meta.name as string
-                          });
-                        }
-                      }
+                      this.entry.$streams = refStreams;
                     }
 
                     // Manage Post Processing (If Exists)
@@ -899,9 +907,15 @@ export class Process extends EventEmitter {
           // Because we voted no doesn't mean the network should error
           this.emit("commited", {});
         } else {
-          // Network didn't reach consensus
-          ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-          this.raiseLedgerError(1510, new Error("Failed Network Voting Round"));
+          // Not needed for broadcast because we check on destory
+          if (!this.entry.$broadcast) {
+            // Network didn't reach consensus
+            ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+            this.raiseLedgerError(
+              1510,
+              new Error("Failed Network Voting Round")
+            );
+          }
         }
       }
     } else {
