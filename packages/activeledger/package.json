@@ -19,14 +19,10 @@
   },
   "scripts": {
     "start": "node lib/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration && copyfiles -f ./src/default.config.json ./lib",
-    "build:commonjsw": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration -w",
-    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
+    "test": "cd ../../ && npm test",
+    "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/default.config.json ./lib",
+    "build:es": "tsc --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
     "build": "npm run build:commonjs && npm run build:es",
-    "buildw": "npm run build:commonjsw",
-    "ts": "ts-node src/",
-    "ts4": "node -r ts-node/register src/",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -39,11 +35,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.21",
+    "@types/node": "^10.12.23",
     "copyfiles": "^2.1.0",
-    "rimraf": "^2.6.3",
-    "ts-node": "^8.0.2",
-    "typescript": "^3.3.1"
+    "typescript": "^3.3.3"
   },
   "files": [
     "es",
