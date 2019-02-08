@@ -1,7 +1,7 @@
 {
-  "name": "@activeledger/activecrypto",
+  "name": "@activeledger/activequery",
   "version": "2.0.0-rc.8.0.43",
-  "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
+  "description": "Wrapper to enable querying of Activeledger data.",
   "keywords": [
     "blockchain",
     "dlt",
@@ -15,11 +15,11 @@
   "homepage": "https://activeledger.io",
   "main": "./lib/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build:commonjs": "rimraf lib && tsc --target es2017 --outDir lib --module commonjs --declaration",
-    "build:es": "rimraf es && tsc --target es2017 --outDir es --module es6",
+    "start": "node lib/index.js",
+    "test": "cd ../../ && npm test",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:es": "tsc --outDir es --module es6",
     "build": "npm run build:commonjs && npm run build:es",
-    "ts": "ts-node src/",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -32,12 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.43",
-    "@types/node": "^10.12.21",
-    "@types/node-rsa": "^1.0.0",
-    "rimraf": "^2.6.3",
-    "ts-node": "^8.0.2",
-    "typescript": "^3.3.1"
+    "typescript": "^3.3.3"
   },
   "files": [
     "es",
@@ -47,7 +42,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.43",
-    "asn1.js": "5.0.1"
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.43",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.43",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.43"
   }
 }

@@ -1,14 +1,15 @@
 {
-    "compilerOptions": {
-        "composite": true,
-        "declaration": true,
-        "declarationMap": true,
-        "sourceMap": true,
-        "lib": ["es2017"],
-        "alwaysStrict": true,
-        "strictNullChecks": true,
-        "noImplicitAny": true,
-        "moduleResolution": "node",
-        "removeComments": true
-    }
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "lib": ["es2018"],
+    "alwaysStrict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "moduleResolution": "node",
+    "removeComments": true
+  },
+  "exclude": ["**/lib/", "**/es/"]
 }

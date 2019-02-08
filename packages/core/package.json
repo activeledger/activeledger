@@ -1,0 +1,60 @@
+{
+  "name": "@activeledger/activecore",
+  "version": "2.0.0-rc.8.0.44",
+  "description": "This package contains the basic API application to access the data stored on Activeledger.",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://activeledger.io",
+  "preferGlobal": true,
+  "bin": {
+    "activecore": "./lib/index.js"
+  },
+  "scripts": {
+    "build:apidocs": "lb-apidocs",
+    "build": "lb-clean lib && lb-tsc es2017 --outDir lib",
+    "build:watch": "lb-clean lib && lb-tsc --watch",
+    "clean": "lb-clean lib",
+    "start": "node lib/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "dependencies": {
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.43",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.43",
+    "@activeledger/activenetwork": "^2.0.0-rc.8.0.44",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.43",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.43",
+    "@loopback/boot": "^1.0.11",
+    "@loopback/context": "^1.5.0",
+    "@loopback/core": "^1.1.5",
+    "@loopback/openapi-v3": "^1.2.0",
+    "@loopback/repository": "^1.1.4",
+    "@loopback/rest": "^1.5.4",
+    "@loopback/service-proxy": "^1.0.7"
+  },
+  "devDependencies": {
+    "@loopback/build": "^1.2.1",
+    "@loopback/testlab": "^1.0.5",
+    "@types/node": "^10.12.23"
+  }
+}
