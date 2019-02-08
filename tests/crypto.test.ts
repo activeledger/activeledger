@@ -1,5 +1,5 @@
-import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
-import { ActiveCrypto } from "../packages/activecrypto/src";
+import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
+import { ActiveCrypto } from "../packages/crypto/src";
 import { expect } from "chai";
 import "mocha";
 
