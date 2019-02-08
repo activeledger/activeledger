@@ -1,8 +1,8 @@
-import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
-import { VirtualMachine } from "../packages/activeprotocol/src/protocol/vm";
+import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
+import { VirtualMachine } from "../packages/protocol/src/protocol/vm";
+import { ActiveCrypto } from "../packages/crypto/src";
 import { expect, should } from "chai";
 import "mocha";
-import { ActiveCrypto } from "../packages/activecrypto/src";
 
 describe("Virtual Machine Test (Activeprotocol)", () => {
   // Some Random Test Data

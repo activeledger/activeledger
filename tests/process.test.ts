@@ -1,8 +1,8 @@
-import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
-import { Process } from "../packages/activeprotocol/src/protocol/process";
-import { expect, should } from "chai";
+import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
+import { Process } from "../packages/protocol/src/protocol/process";
+import { ActiveCrypto } from "../packages/crypto/src";
+import { expect } from "chai";
 import "mocha";
-import { ActiveCrypto } from "../packages/activecrypto/src";
 
 describe("Process (Activeprotocol)", () => {
   // Some Random Test Data
