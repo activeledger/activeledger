@@ -160,42 +160,45 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
       // Send SignedFor Post Request
       return new Promise((resolve, reject) => {
-        ActiveRequest.send(
-          url,
-          "POST",
-          ["X-Activeledger:" + Home.reference],
-          post
-        )
-          .then((response: any) => {
-            resolve(response);
-          })
-          .catch((error: any) => {
-            if (error && error.response && error.response.data) {
-              ActiveLogger.error(
-                error.response.data,
-                `${this.host}:${this.port}/${endpoint} - POST Failed`
-              );
-              reject(error.response.data);
-            } else {
-              // Simple resend counter for attempt tracking
-              // TODO : Perhaps manage in protocol/process.ts:483 to failures
-              // TODO : If connection failure rebase neighbourhood?
-              let attempts = resend || 0;
-              if (5 >= attempts && error.code == "ECONNRESET") {
-                // Resend Attempt
-                ActiveLogger.warn(
-                  "Network Issue : Resending due to unexpected closed socket"
+        let attempt = (attempts: number) => {
+          ActiveRequest.send(
+            url,
+            "POST",
+            ["X-Activeledger:" + Home.reference],
+            post
+          )
+            .then(resolve)
+            .catch((error: any) => {
+              if (error && error.response && error.response.data) {
+                ActiveLogger.error(
+                  error.response.data,
+                  `${this.host}:${this.port}/${endpoint} - POST Failed`
                 );
-                return this.knock(endpoint, params, external, ++attempts);
+                reject(error.response.data);
               } else {
-                ActiveLogger.fatal(
-                  error,
-                  `Network Error - ${this.host}:${this.port}/${endpoint}`
-                );
-                reject("Network Communication Error");
+                // TODO : If connection failure rebase neighbourhood?
+                if (
+                  resend &&
+                  resend >= attempts &&
+                  error.code == "ECONNRESET"
+                ) {
+                  // Resend Attempt
+                  ActiveLogger.warn(
+                    "Network Issue : Resending due to unexpected closed socket"
+                  );
+                  attempt(++attempts);
+                } else {
+                  ActiveLogger.fatal(
+                    error,
+                    `Network Error - ${this.host}:${this.port}/${endpoint}`
+                  );
+                  reject("Network Communication Error");
+                }
               }
-            }
-          });
+            });
+        };
+        // Start
+        attempt(0);
       });
     }
   }

@@ -529,6 +529,32 @@ export class Endpoints {
   }
 
   /**
+   * Gets UMID Document
+   *
+   * @static
+   * @param {ActiveDSConnect} db
+   * @param {string} umid
+   * @returns {Promise<any>}
+   * @memberof Endpoints
+   */
+  public static umid(db: ActiveDSConnect, umid: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Fetch and return
+      db.get(umid + ":umid")
+        .then((response: any) => {
+          resolve({
+            statusCode: 200,
+            content: response
+          });
+        })
+        .catch(() => {
+          // Problem on the server
+          reject({});
+        });
+    });
+  }
+
+  /**
    * Map the list documents
    *
    * @private
