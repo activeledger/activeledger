@@ -3,30 +3,30 @@
   "private": true,
   "scripts": {
     "build": "npm run build:definitions && npm run build:logger && npm run build:options && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
-    "build:options": "cd ./packages/activeoptions/ && npm run build",
-    "build:logger": "cd ./packages/activelogger/ && npm run build",
-    "build:definitions": "cd ./packages/activedefinitions/ && npm run build",
-    "build:crypto": "cd ./packages/activecrypto/ && npm run build",
-    "build:query": "cd ./packages/activequery/ && npm run build",
-    "build:contracts": "cd ./packages/activecontracts/ && npm run build",
-    "build:protocol": "cd ./packages/activeprotocol/ && npm run build",
-    "build:network": "cd ./packages/activenetwork/ && npm run build",
+    "build:options": "cd ./packages/options/ && npm run build",
+    "build:logger": "cd ./packages/logger/ && npm run build",
+    "build:definitions": "cd ./packages/definitions/ && npm run build",
+    "build:crypto": "cd ./packages/crypto/ && npm run build",
+    "build:query": "cd ./packages/query/ && npm run build",
+    "build:contracts": "cd ./packages/contracts/ && npm run build",
+    "build:protocol": "cd ./packages/protocol/ && npm run build",
+    "build:network": "cd ./packages/network/ && npm run build",
     "build:ledger": "cd ./packages/activeledger/ && npm run build && npm link",
-    "build:restore": "cd ./packages/activerestore/ && npm run build && npm link",
-    "build:core": "cd ./packages/activecore/ && npm run build && npm link",
+    "build:restore": "cd ./packages/restore/ && npm run build && npm link",
+    "build:core": "cd ./packages/core/ && npm run build && npm link",
     "test": "mocha -r ts-node/register tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
     "@types/chai": "^4.1.7",
     "@types/mocha": "^5.2.5",
     "chai": "^4.2.0",
-    "lerna": "^3.10.7",
+    "lerna": "^3.11.0",
     "mocha": "^5.2.0",
-    "nyc": "^13.1.0",
+    "nyc": "^13.2.0",
     "ts-node": "^8.0.2",
-    "typescript": "^3.2.4"
+    "typescript": "^3.3.3"
   },
   "dependencies": {
-    "@types/node": "^10.12.19"
+    "@types/node": "^10.12.23"
   }
 }
