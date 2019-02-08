@@ -1,7 +1,7 @@
-import { IActiveDSConnect } from "../packages/activedefinitions/lib/definitions";
-import { ActiveLogger } from "../packages/activelogger/src";
-import { ActiveCrypto } from "../packages/activecrypto/src";
-import { Stream } from "../packages/activecontracts/src";
+import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
+import { ActiveLogger } from "../packages/logger/src";
+import { ActiveCrypto } from "../packages/crypto/src";
+import { Stream } from "../packages/contracts/src";
 import { expect, should } from "chai";
 import "mocha";
 
