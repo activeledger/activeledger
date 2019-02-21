@@ -117,6 +117,18 @@ export class Process extends EventEmitter {
   private storeSingleError = false;
 
   /**
+   * Prioritise the error sent to the requestee
+   *
+   * @private
+   * @memberof Process
+   */
+  private errorOut = {
+    code: 0,
+    reason: "",
+    priority: 0
+  };
+
+  /**
    * Creates an instance of Process.
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
@@ -151,7 +163,7 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public destroy(): void {
-    // Record un commited transactions as an error    
+    // Record un commited transactions as an error
     if (!this.nodeResponse.commit) {
       this.raiseLedgerError(
         1600,
@@ -423,7 +435,8 @@ export class Process extends EventEmitter {
                     // Update errors (Dont know what the contract will reject as so string)
                     this.storeError(
                       1000,
-                      new Error("Vote Failure - " + JSON.stringify(error))
+                      new Error("Vote Failure - " + JSON.stringify(error)),
+                      10
                     )
                       .then(() => {
                         // Continue Execution of consensus
@@ -1255,8 +1268,8 @@ export class Process extends EventEmitter {
         // Emit failed event for execution
         if (!stop) {
           this.emit("failed", {
-            status: code,
-            error: reason && reason.message ? reason.message : reason
+            status: this.errorOut.code,
+            error: this.errorOut.reason
           });
         }
       })
@@ -1281,10 +1294,25 @@ export class Process extends EventEmitter {
    * @private
    * @param {number} code
    * @param {Error} reason
+   * @param {number} priority
    * @returns {Promise<any>}
    * @memberof Process
    */
-  private storeError(code: number, reason: Error): Promise<any> {
+  private storeError(
+    code: number,
+    reason: Error,
+    priority: number = 0
+  ): Promise<any> {
+    // Only want to send 1 error to the browser as well.
+    // As we may only need to store one we may need to manage Contract errors
+    if (priority >= this.errorOut.priority) {
+      this.errorOut.code = code;
+      this.errorOut.reason = (reason && reason.message
+        ? reason.message
+        : reason) as string;
+      this.errorOut.priority = priority;
+    }
+
     if (!this.storeSingleError) {
       // Build Document for couch
       let doc = {
