@@ -20,9 +20,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-let PouchDB:any = require('pouchdb');
+let PouchDB: any = require("pouchdb");
 let PouchDBFind: any = require("pouchdb-find");
+// Export LevelDB Sub Modules
+let PouchRequire = require.cache[require.resolve("pouchdb")];
+let leveldown: any = PouchRequire.require("leveldown");
+let levelup: any = PouchRequire.require("levelup");
 // Add Find Plugin
 PouchDB.plugin(PouchDBFind);
-export default PouchDB;
+export { PouchDB, leveldown, levelup };

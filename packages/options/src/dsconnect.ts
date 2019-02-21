@@ -26,7 +26,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveRequest } from "./request";
 import { EventEmitter } from "events";
 import { ActiveOptions } from "./options";
-import PouchDB from "./pouchdb";
+import { PouchDB } from "./pouchdb";
 
 /**
  * Sends HTTP requests to the data store
@@ -176,6 +176,21 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
+   * Purges document from the database
+   *
+   * @param {{}} doc
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public purge(doc: { _id: string; _rev?: string }): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}/${doc._id}`, "DELETE")
+        .then((response: any) => resolve(response.data))
+        .catch(error => reject(error));
+    });
+  }
+
+  /**
    * Restore needs to happen, Proxy to selfhost or processing external
    *
    * @param {string} source
@@ -187,14 +202,16 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       if (ActiveOptions.get<any>("db", {}).selfhost) {
         // Internal, Can use File System exposed via hosted /smash
-        ActiveRequest.send(
-          `${
-            ActiveOptions.get<any>("db", {}).url
-          }/smash?s=${source}&t=${target}`,
-          "GET"
-        )
-          .then((response: any) => resolve(response.data))
-          .catch(error => reject(error));
+        // ActiveRequest.send(
+        //   `${
+        //     ActiveOptions.get<any>("db", {}).url
+        //   }/smash?s=${source}&t=${target}`,
+        //   "GET"
+        // )
+        //   .then((response: any) => resolve(response.data))
+        //   .catch(error => reject(error));
+        // Internal, We have Purge Ability
+        resolve({ status: "ok" });
       } else {
         // External, Need Double replication (Local First for filter)
         let sourceDb = new PouchDB(source);
