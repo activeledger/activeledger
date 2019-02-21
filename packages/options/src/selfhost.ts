@@ -25,7 +25,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
-import PouchDB from "./pouchdb";
+import { PouchDB, leveldown, levelup } from "./pouchdb";
 
 (function() {
   // Fauxton Path
@@ -36,6 +36,9 @@ import PouchDB from "./pouchdb";
 
   // PouchDB Connection Handler
   const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
+
+  // How PouchDB wraps documents keys
+  const PouchDBDocBuffer = Buffer.from("ÿdocument-storeÿ");
 
   // PouchDB Connection Cache
   let pDBCache: any = {};
@@ -98,9 +101,6 @@ import PouchDB from "./pouchdb";
       ).size;
     });
     return info;
-    // } else {
-    //   return false;
-    // }
   });
 
   // Create Database
@@ -398,6 +398,47 @@ import PouchDB from "./pouchdb";
         });
     });
   };
+
+  /**
+   * Reusable delete (purge like) for mutliple paths
+   * TODO: Allow recusive delete docName []
+   *
+   * @param {string} dbLoc
+   * @param {string} path
+   * @returns {Promise<any>}
+   */
+  let genericDelete = (dbLoc: string, docName: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      // Get Database
+      let db = getPDB(dbLoc);
+      // Close Connection
+      db.close().then(() => {
+        // Clear Cachhe
+        pDBCache[dbLoc] = null;
+        // Open database as raw
+        const db = levelup(leveldown(DIR_PREFIX + dbLoc));
+
+        // Direct Delete
+        db.del(Buffer.concat([PouchDBDocBuffer, Buffer.from(docName)]))
+          .then(() => {
+            // Close raw connection
+            db.close();
+
+            // Reopen Pouch
+            getPDB(dbLoc);
+
+            // Return Ok
+            return resolve({ success: "ok" });
+          })
+          .catch((e: any) => reject(e));
+      });
+    });
+  };
+
+  // TODO : Verify request source
+  http.use("*/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
+    return await genericDelete(incoming.url[0], incoming.url[1]);
+  });
 
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {

@@ -390,13 +390,16 @@ ActiveOptions.extendConfig()
 
       // Attempts to add umid into activeledger
       let insertUmid = (umidDoc: any): void => {
-        db.bulkDocs([umidDoc], { new_edits: false })
-          .then(() => {
-            ActiveLogger.info("UMID Added");
-          })
-          .catch(e => {
-            ActiveLogger.info(e, "UMID Failed");
-          });
+        // May have been a bad TX so no umid
+        if (umidDoc) {
+          db.bulkDocs([umidDoc], { new_edits: false })
+            .then(() => {
+              ActiveLogger.info("UMID Added");
+            })
+            .catch(e => {
+              ActiveLogger.info(e || umidDoc, "UMID Failed");
+            });
+        }
       };
 
       // Process Flag
@@ -449,63 +452,85 @@ ActiveOptions.extendConfig()
                 if (!responses[i].error) {
                   let correct = responses[i];
 
+                  // Did document not exist? (Got deleted)
+                  if (
+                    doc.error &&
+                    doc.status &&
+                    doc.message &&
+                    doc.docId &&
+                    doc.status == 404 &&
+                    doc.message == "missing"
+                  ) {
+                    doc._id = doc.docId;
+                  }
+
                   // Make sure it is defined or not an empty array
                   if (correct && !Array.isArray(correct)) {
-                    // Did document not exist? (Got deleted)
-                    if (
-                      doc.error &&
-                      doc.status &&
-                      doc.message &&
-                      doc.docId &&
-                      doc.status == 404 &&
-                      doc.message == "missing"
-                    ) {
-                      doc._id = doc.docId;
-                    }
-
-                    // Update document set with correct data and mark for replication deletetion
-                    doc.$activeledger = {
-                      delete: true,
-                      rewrite: correct
-                    };
-
-                    // Update
-                    db.put(doc)
-                      .then(() => {
-                        // Detect if this could be a contract that needs compiling
-                        if (
-                          correct.namespace &&
-                          correct.contract &&
-                          correct.compiled
-                        ) {
-                          // Potential false positives, Will need to manage in the future
-                          Contract.rebuild(correct);
-                        }
-
-                        // Do we need volatile to be created (stream was non-existant)
-                        // Only need to do 1 volatile so check on stream
-                        if (volatile && doc._id.indexOf(":stream")) {
-                          db.put({
-                            _id: doc._id.replace(":stream", ":volatile"),
-                            _rev: doc._rev
-                          })
+                    // Internal, We can purge and put
+                    if (ActiveOptions.get<any>("db", {}).selfhost) {
+                      db.purge(doc)
+                        .then(() => {
+                          db.bulkDocs([correct], { new_edits: false })
                             .then(() => {
                               resolve(true);
                             })
-                            .catch(() => {
-                              resolve(true);
+                            .catch((e: Error) => {
+                              // Ignore errors for now
+                              ActiveLogger.info(e, "Error Message");
+                              ActiveLogger.info(doc, "Document ");
+                              resolve(false);
                             });
-                        } else {
-                          resolve(true);
-                        }
-                      })
-                      .catch((e: Error) => {
-                        // Ignore errors for now
-                        ActiveLogger.info(e, "Error Message");
-                        ActiveLogger.info(doc, "Document ");
-                        resolve(false);
-                      });
+                        })
+                        .catch((e: Error) => {
+                          // Ignore errors for now
+                          ActiveLogger.info(e, "Error Message");
+                          ActiveLogger.info(doc, "Document ");
+                          resolve(false);
+                        });
+                    } else {
+                      // Update document set with correct data and mark for replication deletetion
+                      doc.$activeledger = {
+                        delete: true,
+                        rewrite: correct
+                      };
 
+                      // Update
+                      db.put(doc)
+                        .then(() => {
+                          // Detect if this could be a contract that needs compiling
+                          if (
+                            correct.namespace &&
+                            correct.contract &&
+                            correct.compiled
+                          ) {
+                            // Potential false positives, Will need to manage in the future
+                            Contract.rebuild(correct);
+                          }
+
+                          // Do we need volatile to be created (stream was non-existant)
+                          // Only need to do 1 volatile so check on stream
+                          if (volatile && doc._id.indexOf(":stream")) {
+                            db.put({
+                              _id: doc._id.replace(":stream", ":volatile"),
+                              _rev: doc._rev
+                            })
+                              .then(() => {
+                                resolve(true);
+                              })
+                              .catch(() => {
+                                resolve(true);
+                              });
+                          } else {
+                            resolve(true);
+                          }
+                        })
+                        .catch((e: Error) => {
+                          // Ignore errors for now
+                          ActiveLogger.info(e, "Error Message");
+                          ActiveLogger.info(doc, "Document ");
+                          resolve(false);
+                        });
+                    }
                     // Only need to process one
                     break;
                   }
