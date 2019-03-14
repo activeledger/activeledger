@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { Standard, Activity } from "@activeledger/activecontracts";
+import { Standard, Activity, ActiveLogger } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -127,7 +127,7 @@ export default class Fund extends Standard {
     reject: (reason?: any) => void
   ): void {
     // Lets see what we have
-    this.ActiveLogger.debug(this.transactions, "TX");
+    ActiveLogger.debug(this.transactions, "TX");
 
     // Get the input to verify (and prepare)
     let inputStreams = Object.keys(this.transactions.$i);
