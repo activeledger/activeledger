@@ -228,6 +228,27 @@ export class Stream {
   }
 
   /**
+   * Does the transaction signatories have enought stake on the this Activity Stream
+   *
+   * @param {number} minimum
+   * @param {Activity} acitivty
+   * @returns {boolean}
+   * @memberof Stream
+   */
+  public hasAuthorityStake(minimum: number, activity: Activity): boolean {
+    let authorities = activity.getAuthorities();
+    let i = authorities.length;
+    let total = 0;
+    while (i--) {
+      // total += authorities[i].stake;
+      if (total >= minimum) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Gets read only stream data defined by $r of the transactions
    *
    * @param {string} name
@@ -431,35 +452,26 @@ export class Activity {
 
   /**
    * Set access control of this stream (Contract Managed)
-   * TODO: Allow multiple values to a single name
    *
+   * @deprecated
    * @param {string} name
    * @param {string} stream
    * @memberof Activity
    */
   public setACL(name: string, stream: string) {
-    if (this.safeMode) {
-      throw new Error("Cannot set ACL in Safe Mode");
-    } else {
-      if (!this.meta.acl) this.meta.acl = {};
-      this.meta.acl[name] = stream;
-
-      // Set Update Flag
-      this.updated = true;
-    }
+    throw new Error("setACL has been deprecated : Use setAuthorities");
   }
 
   /**
    * Confirms access type and assigned stream
-   * TODO: Allow multiple values to a single name
    *
+   * @deprecated
    * @param {string} name
    * @returns {boolean}
    * @memberof Activity
    */
   public hasACL(name: string): boolean {
-    if (this.meta.acl && this.meta.acl[name] == name) return true;
-    return false;
+    throw new Error("hasACL has been deprecated : Use getAuthorities");
   }
 
   /**
@@ -476,22 +488,27 @@ export class Activity {
    * If stream is holding an identity it needs to know the signing authority
    * if unknown use getAuthority of another acitivty stream
    *
-   * @param {string} pubkey
+   * No need to keep meta.public going here as we will default to authorities first
+   *
+   * @deprecated Use setAuthorities
+   * @param {string} pubKey
    * @param {string} [type="rsa"]
    * @memberof Activity
    */
-  public setAuthority(pubkey: string, type: string = "rsa"): void {
+  public setAuthority(pubKey: string, type: string = "rsa"): void {
     if (this.safeMode) {
       throw new Error("Cannot set authority in Safe Mode");
     } else {
       // Only Inputs & New Streams can be here
       if (this.signature || (this.umid && this.name)) {
-        this.meta.public = pubkey;
-        this.meta.type = type;
-        this.meta.hash = ActiveCrypto.Hash.getHash(pubkey, "sha256");
-
-        // Set Update Flag
-        this.updated = true;
+        // Reset Array with this authority, As this was a single authority solution
+        this.meta.authorities = [
+          {
+            public: pubKey,
+            type,
+            stake: 100
+          }
+        ];
       } else {
         throw new Error("Cannot set new authority on output stream");
       }
@@ -499,17 +516,117 @@ export class Activity {
   }
 
   /**
+   * Set Authority key for this activity stream. Stake allows for contract developers
+   * to create their own mini consensus within Activeledger over ownership.
+   *
+   * @param {(ActiveDefinitions.ILedgerAuthority
+   *       | ActiveDefinitions.ILedgerAuthority[])} authority
+   * @param {number} [stake=0]
+   * @param {number} [stake=0]
+   * @memberof Activity
+   */
+  public setAuthorities(
+    authority:
+      | ActiveDefinitions.ILedgerAuthority
+      | ActiveDefinitions.ILedgerAuthority[]
+  ): void {
+    if (this.safeMode) {
+      throw new Error("Cannot set authorities in Safe Mode");
+    } else {
+      // Only Inputs & New Streams can be here
+      if (this.signature || (this.umid && this.name)) {
+        // Upgrade to array if not passed one
+        if (!(authority instanceof Array)) {
+          authority = [authority];
+        }
+
+        // Do we have the authority array
+        if (this.meta.authorities) {
+          this.meta.authorities.push(...authority);
+        } else {
+          this.meta.authorities = authority;
+        }
+        // Set Update Flag
+        this.updated = true;
+      } else {
+        throw new Error("Cannot set new authorities on output stream");
+      }
+    }
+  }
+
+  /**
+   * Iterate over the allowed authorities and remove the keys which cannot control this Activity Stream
+   *
+   * @param {(string | string[])} pubKey
+   * @memberof Activity
+   */
+  public deleteAuthorities(pubKey: string | string[]): void {
+    if (this.safeMode) {
+      throw new Error("Cannot delete authorities in Safe Mode");
+    } else {
+      // Only Inputs & New Streams can be here
+      if (this.signature || (this.umid && this.name)) {
+        // Filter out the authorities being passed
+        this.meta.authorities.filter((authority: any) => {
+          // Array Filter
+          if (pubKey instanceof Array) {
+            let i = pubKey.length;
+            while (i--) {
+              if (authority.public == pubKey[i]) {
+                return false;
+              }
+            }
+          } else {
+            // Direct Filter
+            if (authority.public == pubKey) {
+              return false;
+            }
+          }
+          return true;
+        });
+      } else {
+        throw new Error("Cannot delete authorities on output stream");
+      }
+    }
+  }
+
+  /**
    * Returns signing authority useful for setting authority to another stream
    *
+   * Needs to degrade back to meta.public meta.type for backwards compatibility
+   *
+   * @deprecated Use getAuthorities
    * @returns {(string | undefined)}
    * @memberof Activity
    */
   public getAuthority(type: boolean = false): string | undefined {
-    if (type) {
-      return this.meta.type;
+    // Degrade Check
+    if (!this.meta.authorities) {
+      if (type) {
+        return this.meta.type;
+      } else {
+        return this.meta.public;
+      }
     } else {
-      return this.meta.public;
+      if (this.meta.authorities.length) {
+        // Return first
+        if (type) {
+          return this.meta.authorities[0].type;
+        } else {
+          return this.meta.authorities[0].public;
+        }
+      }
     }
+  }
+
+  /**
+   * Returns all the authorities of this Activity Stream
+   *
+   * @returns {ActiveDefinitions.ILedgerAuthority[]}
+   * @memberof Activity
+   */
+  public getAuthorities(): ActiveDefinitions.ILedgerAuthority[] {
+    return this.meta.authorities;
   }
 
   /**
