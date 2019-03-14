@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { Standard } from "@activeledger/activecontracts";
+import { Standard, ActiveLogger } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -57,7 +57,7 @@ export default class Onboard extends Standard {
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Auto Approve (Demo Onboarding Contract)
-      this.ActiveLogger.debug("Always Exposed Logging");
+      ActiveLogger.debug("Always Exposed Logging");
       resolve(true);
     });
   }
