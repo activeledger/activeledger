@@ -22,7 +22,7 @@
  */
 
 import * as fs from "fs";
-import { PostProcess } from "@activeledger/activecontracts";
+import { PostProcess, ActiveCrypto } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -246,7 +246,7 @@ export default class Setup extends PostProcess {
         // Matching Signature?
         if (signatures[`${network.host}:${network.port}`]) {
           // Get Keypair via proxy (TODO: Fix definitions)
-          let kp: any = new (this.ActiveCrypto.KeyPair as any)(
+          let kp: any = new (ActiveCrypto.KeyPair as any)(
             network.identity.type,
             network.identity.public
           ) as any;
@@ -806,7 +806,7 @@ export default class Setup extends PostProcess {
         // Matching Signature?
         if (signatures[`${network.host}:${network.port}`]) {
           // Get Keypair via proxy (TODO: Fix definitions)
-          let kp: any = new (this.ActiveCrypto.KeyPair as any)(
+          let kp: any = new (ActiveCrypto.KeyPair as any)(
             network.identity.type,
             network.identity.public
           ) as any;

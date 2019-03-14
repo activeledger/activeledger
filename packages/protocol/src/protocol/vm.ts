@@ -305,8 +305,13 @@ export class VirtualMachine {
           resolve(true);
         })
         .catch(e => {
-          // Rethrow error
-          reject(e);
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
         });
     });
   }
@@ -337,8 +342,13 @@ export class VirtualMachine {
           resolve(true);
         })
         .catch(e => {
-          // Rethrow error
-          reject(e);
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
         });
     });
   }
@@ -381,9 +391,14 @@ export class VirtualMachine {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(error => {
-          // Rethrow error
-          reject(error);
+        .catch(e => {
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
         });
     });
   }
@@ -445,9 +460,14 @@ export class VirtualMachine {
           }
           resolve(postProcess);
         })
-        .catch(error => {
-          // Rethrow error
-          reject(error);
+        .catch(e => {
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
         });
     });
   }
@@ -537,5 +557,39 @@ export class VirtualMachine {
 
     // Script has timed out
     return false;
+  }
+
+  /**
+   * Manages Exceptions / Throws from a VM call
+   *
+   * @private
+   * @param {Error} e
+   * @returns {*}
+   * @memberof VirtualMachine
+   */
+  private catchException(e: Error): any {
+    // Exception
+    if (e.stack) {
+      // Get file with line numbers
+      let msg = e.stack
+        .split("\n", 2)[1]
+        .trim()
+        .replace(/.*\(|\)/gi, "");
+
+      // Extract Line numbers
+      // Add Contract Name
+      msg =
+        this.contractPath.substr(this.contractPath.lastIndexOf("/") + 1) +
+        ":" +
+        msg.substr(msg.indexOf(".js") + 4);
+
+      //return reject(e.message + "@" + msg);
+      return {
+        error: e.message,
+        at: msg
+      };
+    } else {
+      return e.message;
+    }
   }
 }
