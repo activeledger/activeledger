@@ -52,7 +52,7 @@ export class SQL {
     let out: IQuery = { selector: {} };
 
     // Breakdown the string into its main parts
-    let [select, , where, order, limit] = this.query
+    let [select, , where, orderOrLimit, limit] = this.query
       .split(/SELECT|FROM|WHERE|ORDER BY|LIMIT/g)
       .filter(Boolean)
       .map(s => s.trim());
@@ -88,17 +88,23 @@ export class SQL {
     }
 
     // Process ORDER BY
-    if (order) {
-      // Split selects on , and loop
-      let orders = order.split(",").filter(Boolean);
-      out.sort = [];
-      orders.forEach((item: string) => {
-        // Trim white space to split on space
-        let [order, direction] = item.trim().split(" ");
-        // Add to sort
-        if (out.sort)
-          out.sort.push({ [order]: (direction || "asc").toLowerCase() });
-      });
+    if (orderOrLimit) {
+      // It could be limit if order has been ommitted
+      if (this.query.indexOf("ORDER BY") == -1) {
+        // Update as limit
+        limit = orderOrLimit;
+      } else {
+        // Split selects on , and loop
+        let orders = orderOrLimit.split(",").filter(Boolean);
+        out.sort = [];
+        orders.forEach((item: string) => {
+          // Trim white space to split on space
+          let [order, direction] = item.trim().split(" ");
+          // Add to sort
+          if (out.sort)
+            out.sort.push({ [order]: (direction || "asc").toLowerCase() });
+        });
+      }
     }
 
     // Add Limit
