@@ -1090,20 +1090,66 @@ export class Process extends EventEmitter {
               }
 
               // Now can check signature
-              if (
-                !this.signatureCheck(
-                  (stream[i].meta as any).public,
-                  this.entry.$sigs[streamId],
-                  (stream[i].meta as any).type
-                    ? (stream[i].meta as any).type
-                    : "rsa"
-                )
-              )
-                // Break loop and reject
-                return reject({
-                  code: 1220,
-                  reason: (inputs ? "Input" : "Output") + " Signature Incorrect"
-                });
+              if ((stream[i].meta as any).authorities) {
+                // Some will return true early. At this stage we only need 1
+                // The Smart contract developer can use the other signatures to create
+                // a mini consensus within their own application (Such as ownership)
+
+                if (this.entry.$sigs[streamId] instanceof Array) {
+                  // Multiple signatures passed
+                  // Check that they haven't sent more signatures than we have authorities
+                  if(this.entry.$sigs[streamId].length > (stream[i].meta as any).authorities.length) {
+                    return reject({
+                      code: 1225,
+                      reason:
+                        (inputs ? "Input" : "Output") + " Incorrectg Signature List Length"
+                    });
+                  }
+
+                  // Loop all signatures with all authorities
+                  // TODO: Cache the results into sigs? for hasAuthorityStake performance?
+                  // TODO: but then we have to process them all instead of 1 and may not need it!
+
+                } else {
+                  // Only one signature passed
+                  if (
+                    !(stream[i].meta as any).authorities.some(
+                      (authority: ActiveDefinitions.ILedgerAuthority) => {
+                        this.signatureCheck(
+                          authority.public,
+                          this.entry.$sigs[streamId],
+                          authority.type
+                        );
+                      }
+                    )
+                  ) {
+                    // Break loop and reject
+                    return reject({
+                      code: 1220,
+                      reason:
+                        (inputs ? "Input" : "Output") + " Signature Incorrect"
+                    });
+                  }
+                }
+              } else {
+                // Backwards Compatible Check
+                if (
+                  !this.signatureCheck(
+                    (stream[i].meta as any).public,
+                    this.entry.$sigs[streamId],
+                    (stream[i].meta as any).type
+                      ? (stream[i].meta as any).type
+                      : "rsa"
+                  )
+                ) {
+                  // Break loop and reject
+                  return reject({
+                    code: 1220,
+                    reason:
+                      (inputs ? "Input" : "Output") + " Signature Incorrect"
+                  });
+                }
+              }
             }
           }
           // Everything is good

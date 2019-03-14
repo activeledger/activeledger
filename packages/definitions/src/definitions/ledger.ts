@@ -35,7 +35,7 @@ export interface LedgerEntry {
   $datetime: Date;
   $umid: string;
   $tx: LedgerTransaction; // | LedgerTransaction[];
-  $sigs: LedgerSignatures;
+  $sigs: LedgerSignatures | LedgerSignatures[];
   $selfsign: boolean;
   $revs: LedgerRevs;
   $multi: boolean;
@@ -117,13 +117,13 @@ export interface LedgerIORputs {
 /**
  * If hardenedKeys security enabled inputs will need a new key
  * nhpk = New Hardened Public Key
- * 
+ *
  * @export
  * @interface LedgerInputs
  * @extends {LedgerIOputs}
  */
-export interface LedgerInputs extends LedgerIORputs{
-  $nhpk?: string
+export interface LedgerInputs extends LedgerIORputs {
+  $nhpk?: string;
 }
 
 /**
@@ -168,6 +168,18 @@ export interface LedgerStream {
   meta: IMeta;
   state: IFullState;
   volatile: IVolatile;
+}
+
+/**
+ * Authority Structure over an Activity Stream
+ *
+ * @export
+ * @interface ILedgerAuthority
+ */
+export interface ILedgerAuthority {
+  public: string;
+  type: string;
+  stake: number;
 }
 
 /**
