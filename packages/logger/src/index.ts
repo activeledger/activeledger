@@ -40,6 +40,15 @@ export class ActiveLogger {
   public static enableDebug: boolean = false;
 
   /**
+   * Holds the value of where the call is coming from
+   *
+   * @static
+   * @type {boolean}
+   * @memberof ActiveLogger
+   */
+  public static isVMRuntime: boolean = false;
+
+  /**
    * Creates a trace log entry
    *
    * @static
@@ -57,7 +66,7 @@ export class ActiveLogger {
         ActiveLogger.timestamp() +
         ActiveLogger.colour("TRACE", 42) +
         ActiveLogger.process() +
-        ActiveLogger.colour(p2 || p1, 36);
+        ActiveLogger.colour(p2 || p1, this.isVM());
 
       // Is there an object?
       if (p2) {
@@ -96,19 +105,19 @@ export class ActiveLogger {
   public static debug(obj: object, msg?: string, ...args: any[]): void;
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
-    if(ActiveLogger.enableDebug) {
+    if (ActiveLogger.enableDebug) {
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
         ActiveLogger.colour("DEBUG", 46) +
         ActiveLogger.process() +
-        ActiveLogger.colour(p2 || p1, 36);
-  
+        ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
+
       // Is there an object?
       if (p2) {
         out += ActiveLogger.object(p1);
       }
-  
+
       // Output
       console.debug(out);
     }
@@ -145,7 +154,7 @@ export class ActiveLogger {
       ActiveLogger.timestamp() +
       ActiveLogger.colour("INFO ", 92) +
       ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, 36);
+      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
 
     // Is there an object?
     if (p2) {
@@ -187,7 +196,7 @@ export class ActiveLogger {
       ActiveLogger.timestamp() +
       ActiveLogger.colour("WARN ", 93) +
       ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, 36);
+      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
 
     // Is there an object?
     if (p2) {
@@ -229,7 +238,7 @@ export class ActiveLogger {
       ActiveLogger.timestamp() +
       ActiveLogger.colour("ERROR", 91) +
       ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, 36);
+      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
 
     // Is there an object?
     if (p2) {
@@ -272,7 +281,7 @@ export class ActiveLogger {
       ActiveLogger.timestamp() +
       ActiveLogger.colour("FATAL", 41) +
       ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, 36);
+      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
 
     // Is there an object?
     if (p2) {
@@ -298,6 +307,39 @@ export class ActiveLogger {
   public fatal(msg: string, ...args: any[]): void;
   public fatal(p1: any, p2: any, args: any): void {
     ActiveLogger.fatal(p1, p2);
+  }
+
+  /**
+   * Set VM Runtime as static
+   *
+   * @static
+   * @param {boolean} isVM
+   * @memberof ActiveLogger
+   */
+  public static setVMRuntime(isVM: boolean): void {
+    ActiveLogger.isVMRuntime = isVM;
+  }
+
+  /**
+   * Definition Proxy
+   *
+   * @param {boolean} isVM
+   * @memberof ActiveLogger
+   */
+  public setVMRuntime(isVM: boolean): void {
+    ActiveLogger.isVMRuntime = isVM;
+  }
+
+  /**
+   * Detects if called from within VM
+   *
+   * @private
+   * @static
+   * @returns {number}
+   * @memberof ActiveLogger
+   */
+  private static isVM(): number {
+    return ActiveLogger.isVMRuntime ? 93 : 36;
   }
 
   /**

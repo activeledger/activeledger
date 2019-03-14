@@ -243,7 +243,7 @@ export class VirtualMachine {
 
       // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
       this.virtual.run(
-        "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, logger, crypto, secured, self);",
+        "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, self);",
         "avm.js"
       );
 
