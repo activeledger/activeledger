@@ -22,8 +22,8 @@
  */
 
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger as DefaultActiveLogger } from "@activeledger/activelogger";
+import { ActiveCrypto as DefaultActiveCrypto } from "@activeledger/activecrypto";
 
 /**
  * Stream management class. This will control ACL and permissions for activeledger
@@ -89,12 +89,6 @@ export class Stream {
    * @param {ActiveDefinitions.LedgerIORputs} reads
    * @param {ActiveDefinitions.LedgerSignatures} sigs
    * @param {number} key
-   * @param {ActiveLogger} ActiveLogger
-   * @param {{
-   *       Hash: ActiveCrypto.Hash;
-   *       KeyPair: ActiveCrypto.KeyPair;
-   *     }} ActiveCrypto
-   * @param {ActiveCrypto.Secured} secured
    * @param {string} selfHost
    * @memberof Stream
    */
@@ -107,19 +101,12 @@ export class Stream {
     private reads: ActiveDefinitions.LedgerIORputs,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private key: number,
-    protected ActiveLogger: ActiveLogger,
-    protected ActiveCrypto: {
-      Hash: ActiveCrypto.Hash;
-      KeyPair: ActiveCrypto.KeyPair;
-    },
-    protected secured: ActiveCrypto.Secured,
     private selfHost: string
   ) {
     // Input Steam Activities
     let i: number = this.inputs.length;
     while (i--) {
       this.activities[this.inputs[i].state._id as string] = new Activity(
-        this.ActiveCrypto,
         null,
         null,
         (this.inputs[i].state._id as string) in this.sigs,
@@ -136,7 +123,6 @@ export class Stream {
     i = this.outputs.length;
     while (i--) {
       this.activities[this.outputs[i].state._id as string] = new Activity(
-        this.ActiveCrypto,
         null,
         null,
         false,
@@ -159,7 +145,7 @@ export class Stream {
    * @memberof Stream
    */
   public attemptDecrypt(
-    data: ActiveCrypto.ISecuredData | {},
+    data: DefaultActiveCrypto.ISecuredData | {},
     safeMode = true
   ): Promise<{}> {
     return new Promise((resolve, reject) => {
@@ -177,8 +163,7 @@ export class Stream {
       }
 
       // Run Decryption (On success return only data)
-      this.secured
-        .decrypt(data as ActiveCrypto.ISecuredData)
+      ActiveCrypto.Secured.decrypt(data as DefaultActiveCrypto.ISecuredData)
         .then((results: any) => {
           resolve(results.data);
         })
@@ -200,7 +185,6 @@ export class Stream {
     } else {
       // Create new activity
       let activity = new Activity(
-        this.ActiveCrypto,
         deterministic ? deterministic : this.umid,
         name,
         false
@@ -381,10 +365,6 @@ export class Activity {
    * @memberof Activity
    */
   constructor(
-    private ActiveCrypto: {
-      Hash: ActiveCrypto.Hash;
-      KeyPair: ActiveCrypto.KeyPair;
-    },
     private umid: string | null,
     private name: string | null,
     private signature: boolean,
@@ -395,7 +375,7 @@ export class Activity {
     // Only if name is defined (Quick solution)
     if (umid && name) {
       // Create stream that is name safe
-      let stream = this.ActiveCrypto.Hash.getHash(umid + name, "sha256");
+      let stream = ActiveCrypto.Hash.getHash(umid + name, "sha256");
 
       this.state._id = stream;
       this.meta._id = stream + ":stream";
@@ -508,7 +488,7 @@ export class Activity {
       if (this.signature || (this.umid && this.name)) {
         this.meta.public = pubkey;
         this.meta.type = type;
-        this.meta.hash = this.ActiveCrypto.Hash.getHash(pubkey, "sha256");
+        this.meta.hash = ActiveCrypto.Hash.getHash(pubkey, "sha256");
 
         // Set Update Flag
         this.updated = true;
@@ -714,5 +694,94 @@ export class Activity {
       num += input.charCodeAt(i);
     }
     return num;
+  }
+}
+
+/**
+ * Reexport ActiveCrypto Wrapper
+ *
+ * @export
+ * @class ActiveCrypto
+ */
+export class ActiveCrypto {
+  /**
+   * Typed reference to external crypto object
+   *
+   * @private
+   * @static
+   * @memberof ActiveLogger
+   */
+  private static reference = ((global as unknown) as any).crypto;
+
+  public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
+  public static KeyPair: DefaultActiveCrypto.KeyPair =
+    ActiveCrypto.reference.KeyPair;
+  public static Secured: DefaultActiveCrypto.Secured =
+    ActiveCrypto.reference.Secured;
+}
+
+/**
+ * Rexport ActiveLogger via wrapper to change console log output colour
+ *
+ * @export
+ * @class ActiveLogger
+ */
+export class ActiveLogger {
+  /**
+   * Typed reference to external logger object
+   *
+   * @private
+   * @static
+   * @memberof ActiveLogger
+   */
+  private static reference = ((global as unknown) as any)
+    .logger as DefaultActiveLogger;
+
+  public static trace(msg: string): void;
+  public static trace(obj: object, msg?: string): void;
+  public static trace(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.trace(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
+  }
+
+  public static debug(msg: string): void;
+  public static debug(obj: object, msg?: string): void;
+  public static debug(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.debug(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
+  }
+
+  public static info(msg: string): void;
+  public static info(obj: object, msg?: string): void;
+  public static info(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.info(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
+  }
+
+  public static warn(msg: string): void;
+  public static warn(obj: object, msg?: string): void;
+  public static warn(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.warn(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
+  }
+
+  public static error(msg: string): void;
+  public static error(obj: object, msg?: string): void;
+  public static error(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.error(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
+  }
+
+  public static fatal(msg: string): void;
+  public static fatal(obj: object, msg?: string): void;
+  public static fatal(p1: any, p2?: any): void {
+    ActiveLogger.reference.setVMRuntime(true);
+    ActiveLogger.reference.fatal(p1, p2);
+    ActiveLogger.reference.setVMRuntime(false);
   }
 }
