@@ -78,6 +78,10 @@ export class Stream {
    */
   private safeMode: boolean = false;
 
+  // Backwards Compatible
+  public ActiveLogger = ActiveLogger;
+  public ActiveCrypto = ActiveCrypto;
+
   /**
    * Creates an instance of a Standard Activeledger Contract.
    *
@@ -236,16 +240,23 @@ export class Stream {
    * @memberof Stream
    */
   public hasAuthorityStake(minimum: number, activity: Activity): boolean {
-    let authorities = activity.getAuthorities();
-    let i = authorities.length;
+    // Running Total
     let total = 0;
-    while (i--) {
-      // total += authorities[i].stake;
-      if (total >= minimum) {
-        return true;
-      }
-    }
-    return false;
+    // Get Authority signatures as array
+    let authSigs = Object.keys(this.sigs[activity.getId()]);
+    activity.getAuthorities().map(authority => {
+      authSigs.some(authHash => {
+        // Signature already verified in procss.ts (Reject Code 1228)
+        if (authHash == authority.hash) {
+          total += authority.stake;
+          return true;
+        }
+        return false;
+      });
+    });
+
+    // Have we reached authority stake requested for their conesnsus
+    return total >= minimum;
   }
 
   /**
@@ -506,9 +517,12 @@ export class Activity {
           {
             public: pubKey,
             type,
-            stake: 100
+            stake: 100,
+            hash: ActiveCrypto.Hash.getHash(pubKey, "sha256")
           }
         ];
+        // Set Update Flag
+        this.updated = true;
       } else {
         throw new Error("Cannot set new authority on output stream");
       }
@@ -540,12 +554,29 @@ export class Activity {
           authority = [authority];
         }
 
+        // Check we have a hash
+        authority.forEach(auth => {
+          if (!auth.hash) {
+            auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
+          }
+        });
+
         // Do we have the authority array
         if (this.meta.authorities) {
           this.meta.authorities.push(...authority);
         } else {
           this.meta.authorities = authority;
         }
+
+        // Enforce Unique Public Keys (Newest duplicated selected)
+        this.meta.authorities = this.meta.authorities.filter(
+          (
+            value: ActiveDefinitions.ILedgerAuthority,
+            i: number,
+            self: Array<ActiveDefinitions.ILedgerAuthority>
+          ) => self.map(x => x.hash).indexOf(value.hash) == i
+        );
+
         // Set Update Flag
         this.updated = true;
       } else {
@@ -567,23 +598,30 @@ export class Activity {
       // Only Inputs & New Streams can be here
       if (this.signature || (this.umid && this.name)) {
         // Filter out the authorities being passed
-        this.meta.authorities.filter((authority: any) => {
-          // Array Filter
-          if (pubKey instanceof Array) {
-            let i = pubKey.length;
-            while (i--) {
-              if (authority.public == pubKey[i]) {
+        let filteredAuthorities = this.meta.authorities.filter(
+          (authority: any) => {
+            // Array Filter
+            if (pubKey instanceof Array) {
+              let i = pubKey.length;
+              while (i--) {
+                if (authority.public == pubKey[i]) {
+                  return false;
+                }
+              }
+            } else {
+              // Direct Filter
+              if (authority.public == pubKey) {
                 return false;
               }
             }
-          } else {
-            // Direct Filter
-            if (authority.public == pubKey) {
-              return false;
-            }
+            return true;
           }
-          return true;
-        });
+        );
+        // Make sure we still have an authority over the stream
+        if (filteredAuthorities.length) {
+          this.meta.authorities = filteredAuthorities;
+        }
+        throw new Error("Operation denied this will delete all authorities");
       } else {
         throw new Error("Cannot delete authorities on output stream");
       }
