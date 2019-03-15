@@ -28,6 +28,7 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { LedgerTypeChecks } from "../../../definitions/lib/definitions";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -63,6 +64,14 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private outputs: string[];
+
+  /**
+   * Maps streamId to their labels
+   *
+   * @private
+   * @memberof Process
+   */
+  private ioLabelMap: any = { i: {}, o: {} };
 
   /**
    * Flag for checking or setting revisions
@@ -287,7 +296,7 @@ export class Process extends EventEmitter {
                 if (
                   !this.signatureCheck(
                     input.publicKey,
-                    signature,
+                    signature as string,
                     input.type ? input.type : "rsa"
                   )
                 ) {
@@ -890,7 +899,12 @@ export class Process extends EventEmitter {
 
             // If debug mode forward full error
             if (ActiveOptions.get<boolean>("debug", false)) {
-              this.raiseLedgerError(1302, new Error(error.message));
+              this.raiseLedgerError(
+                1302,
+                new Error(
+                  "Commit Failure - " + JSON.stringify(error.message || error)
+                )
+              );
             } else {
               this.raiseLedgerError(
                 1301,
@@ -1077,16 +1091,29 @@ export class Process extends EventEmitter {
               inputs ||
               ActiveOptions.get<any>("security", {}).signedOutputs
             ) {
+              // Authorities need to be check flag
+              let nhpkCheck = false;
+              // Label or Key support 
+              let nhpkCheckIOMap = inputs
+                ? this.ioLabelMap.i
+                : this.ioLabelMap.o;
+              let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
               // Check to see if key hardening is enabled and done
               if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
-                let checks = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
-                if (!checks[streamId].$nhpk)
+                // Maybe specific authority of the stream now, $nhpk could be string or object of strings
+                // Need to map over because it may not be stream id!
+                if (!nhpkCheckIO[nhpkCheckIOMap[streamId]].$nhpk) {
+                  // TODO: Code is here but reject isn't beinged passed
                   return reject({
                     code: 1230,
                     reason:
                       (inputs ? "Input" : "Output") +
                       " Security Hardened Key Transactions Only"
                   });
+                } else {
+                  // Now need to check if $nhpk is nested with authorities
+                  nhpkCheck = true;
+                }
               }
 
               // Now can check signature
@@ -1095,31 +1122,94 @@ export class Process extends EventEmitter {
                 // The Smart contract developer can use the other signatures to create
                 // a mini consensus within their own application (Such as ownership)
 
-                if (this.entry.$sigs[streamId] instanceof Array) {
+                if (
+                  LedgerTypeChecks.isLedgerAuthSignatures(
+                    this.entry.$sigs[streamId]
+                  )
+                ) {
                   // Multiple signatures passed
                   // Check that they haven't sent more signatures than we have authorities
-                  if(this.entry.$sigs[streamId].length > (stream[i].meta as any).authorities.length) {
+                  let sigStreamKeys = Object.keys(this.entry.$sigs[streamId]);
+                  if (
+                    sigStreamKeys.length >
+                    (stream[i].meta as any).authorities.length
+                  ) {
                     return reject({
                       code: 1225,
                       reason:
-                        (inputs ? "Input" : "Output") + " Incorrectg Signature List Length"
+                        (inputs ? "Input" : "Output") +
+                        " Incorrect Signature List Length"
                     });
                   }
 
-                  // Loop all signatures with all authorities
-                  // TODO: Cache the results into sigs? for hasAuthorityStake performance?
-                  // TODO: but then we have to process them all instead of 1 and may not need it!
+                  // Loop over signatures
+                  // Every supplied signature should exist and pass
+                  if (
+                    !sigStreamKeys.every((sigStream: string) => {
+                      // Get Signature form tx object
+                      const signature = (this.entry.$sigs[
+                        streamId
+                      ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
 
+                      // Have all the supplied keys given new public keys
+                      if (nhpkCheck) {
+                        if (!nhpkCheckIO[nhpkCheckIOMap[streamId]].$nhpk[sigStream]) {
+                          return reject({
+                            code: 1230,
+                            reason:
+                              (inputs ? "Input" : "Output") +
+                              " Security Hardened Key Transactions Only"
+                          });
+                        }
+                      }
+
+                      // Loop authorities and find a match
+                      return (stream[i].meta as any).authorities.some(
+                        (authority: ActiveDefinitions.ILedgerAuthority) => {
+                          // If matching hash do sig check
+                          if (authority.hash == sigStream) {
+                            return this.signatureCheck(
+                              authority.public,
+                              signature,
+                              authority.type
+                            );
+                          } else {
+                            return false;
+                          }
+                        }
+                      );
+                    })
+                  ) {
+                    // Break loop and reject
+                    return reject({
+                      code: 1228,
+                      reason:
+                        (inputs ? "Input" : "Output") +
+                        " Signature List Incorrect"
+                    });
+                  }
                 } else {
-                  // Only one signature passed
+                  // Only one signature passed (Do not need to check for nhpk as its done above with 1:1)
                   if (
                     !(stream[i].meta as any).authorities.some(
                       (authority: ActiveDefinitions.ILedgerAuthority) => {
-                        this.signatureCheck(
-                          authority.public,
-                          this.entry.$sigs[streamId],
-                          authority.type
-                        );
+                        if (
+                          authority.hash &&
+                          this.signatureCheck(
+                            authority.public,
+                            this.entry.$sigs[streamId] as string,
+                            authority.type
+                          )
+                        ) {
+                          // Remap $sigs for later consumption
+                          this.entry.$sigs[streamId] = {
+                            [authority.hash]: this.entry.$sigs[
+                              streamId
+                            ] as string
+                          };
+                          return true;
+                        }
+                        return false;
                       }
                     )
                   ) {
@@ -1136,7 +1226,7 @@ export class Process extends EventEmitter {
                 if (
                   !this.signatureCheck(
                     (stream[i].meta as any).public,
-                    this.entry.$sigs[streamId],
+                    this.entry.$sigs[streamId] as string,
                     (stream[i].meta as any).type
                       ? (stream[i].meta as any).type
                       : "rsa"
@@ -1257,11 +1347,13 @@ export class Process extends EventEmitter {
     // Get Reference for inputs
     let streams = this.inputs;
     let txIO = this.entry.$tx.$i;
+    let map = this.ioLabelMap.i;
 
     // Override for outputs
     if (outputs) {
       streams = this.outputs;
       txIO = this.entry.$tx.$o;
+      map = this.ioLabelMap.o;
     }
 
     // Check the first one, If labelled then loop all.
@@ -1270,7 +1362,9 @@ export class Process extends EventEmitter {
       let i = streams.length;
       while (i--) {
         // Stream label or self
-        streams[i] = txIO[streams[i]].$stream || streams[i];
+        let streamId = txIO[streams[i]].$stream || streams[i];
+        map[streamId] = streams[i];
+        streams[i] = streamId;
       }
     }
   }

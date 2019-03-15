@@ -35,7 +35,7 @@ export interface LedgerEntry {
   $datetime: Date;
   $umid: string;
   $tx: LedgerTransaction; // | LedgerTransaction[];
-  $sigs: LedgerSignatures | LedgerSignatures[];
+  $sigs: LedgerSignatures; // | LedgerSignatures[];
   $selfsign: boolean;
   $revs: LedgerRevs;
   $multi: boolean;
@@ -154,8 +154,18 @@ export interface LedgerRevIO {
  * @interface LedgerSignatures
  */
 export interface LedgerSignatures {
-  [reference: string]: string;
+  [reference: string]: string | LedgerAuthSignatures;
   $sig: string;
+}
+
+/**
+ * Nested Signatures for multi signature consensus on a single stream
+ *
+ * @export
+ * @interface LedgerAuthSignatures
+ */
+export interface LedgerAuthSignatures {
+  [reference: string]: string;
 }
 
 /**
@@ -180,6 +190,9 @@ export interface ILedgerAuthority {
   public: string;
   type: string;
   stake: number;
+  hash?: string;
+  label?: string;
+  metadata?: any;
 }
 
 /**
@@ -236,5 +249,19 @@ export class LedgerTypeChecks {
    */
   public static isSignature(object: any): object is LedgerSignatures {
     return "$sig" in object;
+  }
+
+  /**
+   * Is object of type LedgerAuthSignatures
+   *
+   * @static
+   * @param {*} object
+   * @returns {object is LedgerAuthSignatures}
+   * @memberof LedgerTypeChecks
+   */
+  public static isLedgerAuthSignatures(
+    object: any
+  ): object is LedgerAuthSignatures {
+    return typeof object === "object";
   }
 }
