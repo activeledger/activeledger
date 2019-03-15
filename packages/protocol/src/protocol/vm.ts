@@ -570,24 +570,55 @@ export class VirtualMachine {
   private catchException(e: Error): any {
     // Exception
     if (e.stack) {
-      // Get file with line numbers
-      let msg = e.stack
-        .split("\n", 2)[1]
-        .trim()
-        .replace(/.*\(|\)/gi, "");
+      // Get Current Contract Filename only
+      const contract = this.contractPath.substr(
+        this.contractPath.lastIndexOf("/") + 1
+      );
 
-      // Extract Line numbers
-      // Add Contract Name
-      msg =
-        this.contractPath.substr(this.contractPath.lastIndexOf("/") + 1) +
-        ":" +
-        msg.substr(msg.indexOf(".js") + 4);
+      // Find Contract Code in Stacktrace
+      const contractErrorLine = e.stack.match(
+        new RegExp(`^.*${contract}.*$`, "m")
+      );
 
-      //return reject(e.message + "@" + msg);
-      return {
-        error: e.message,
-        at: msg
-      };
+      // Was our contract in the stack trace
+      if (contractErrorLine && contractErrorLine.length) {
+        // Get First Match
+        const contractLastCallLine = contractErrorLine[0].trim();
+
+        // Find Contract Start
+        const lastIndexFolder = contractLastCallLine.indexOf(contract) + 1;
+
+        // Extract Contract + Line Numbers
+        let contractErrorInfo = contractLastCallLine.substring(
+          lastIndexFolder,
+          contractLastCallLine.length - 1
+        );
+
+        return {
+          error: e.message,
+          at: contractErrorInfo
+        };
+      } else {
+        // Degrade to first line from the trace
+        // Get file with line numbers
+        let msg = e.stack
+          .split("\n", 2)[1]
+          .trim()
+          .replace(/.*\(|\)/gi, "");
+
+        // Extract Line numbers
+        // Add Contract Name
+        msg =
+          this.contractPath.substr(this.contractPath.lastIndexOf("/") + 1) +
+          ":" +
+          msg.substr(msg.indexOf(".js") + 4);
+
+        //return reject(e.message + "@" + msg);
+        return {
+          error: e.message,
+          at: msg
+        };
+      }
     } else {
       return e.message;
     }
