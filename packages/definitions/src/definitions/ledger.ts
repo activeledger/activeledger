@@ -35,7 +35,7 @@ export interface LedgerEntry {
   $datetime: Date;
   $umid: string;
   $tx: LedgerTransaction; // | LedgerTransaction[];
-  $sigs: LedgerSignatures;
+  $sigs: LedgerSignatures; // | LedgerSignatures[];
   $selfsign: boolean;
   $revs: LedgerRevs;
   $multi: boolean;
@@ -117,13 +117,13 @@ export interface LedgerIORputs {
 /**
  * If hardenedKeys security enabled inputs will need a new key
  * nhpk = New Hardened Public Key
- * 
+ *
  * @export
  * @interface LedgerInputs
  * @extends {LedgerIOputs}
  */
-export interface LedgerInputs extends LedgerIORputs{
-  $nhpk?: string
+export interface LedgerInputs extends LedgerIORputs {
+  $nhpk?: string;
 }
 
 /**
@@ -154,8 +154,18 @@ export interface LedgerRevIO {
  * @interface LedgerSignatures
  */
 export interface LedgerSignatures {
-  [reference: string]: string;
+  [reference: string]: string | LedgerAuthSignatures;
   $sig: string;
+}
+
+/**
+ * Nested Signatures for multi signature consensus on a single stream
+ *
+ * @export
+ * @interface LedgerAuthSignatures
+ */
+export interface LedgerAuthSignatures {
+  [reference: string]: string;
 }
 
 /**
@@ -168,6 +178,21 @@ export interface LedgerStream {
   meta: IMeta;
   state: IFullState;
   volatile: IVolatile;
+}
+
+/**
+ * Authority Structure over an Activity Stream
+ *
+ * @export
+ * @interface ILedgerAuthority
+ */
+export interface ILedgerAuthority {
+  public: string;
+  type: string;
+  stake: number;
+  hash?: string;
+  label?: string;
+  metadata?: any;
 }
 
 /**
@@ -224,5 +249,19 @@ export class LedgerTypeChecks {
    */
   public static isSignature(object: any): object is LedgerSignatures {
     return "$sig" in object;
+  }
+
+  /**
+   * Is object of type LedgerAuthSignatures
+   *
+   * @static
+   * @param {*} object
+   * @returns {object is LedgerAuthSignatures}
+   * @memberof LedgerTypeChecks
+   */
+  public static isLedgerAuthSignatures(
+    object: any
+  ): object is LedgerAuthSignatures {
+    return typeof object === "object";
   }
 }

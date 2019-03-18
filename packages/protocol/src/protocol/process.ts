@@ -28,6 +28,7 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { LedgerTypeChecks } from "../../../definitions/lib/definitions";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -63,6 +64,14 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private outputs: string[];
+
+  /**
+   * Maps streamId to their labels
+   *
+   * @private
+   * @memberof Process
+   */
+  private ioLabelMap: any = { i: {}, o: {} };
 
   /**
    * Flag for checking or setting revisions
@@ -251,7 +260,6 @@ export class Process extends EventEmitter {
               })
               .catch(error => {
                 // Forward Error On
-                //this.raiseLedgerError(error.code, error.error, true);
                 // We may not have the output stream, So we need to pass over the knocks
                 this.postVote({
                   code: error.code,
@@ -261,7 +269,6 @@ export class Process extends EventEmitter {
           })
           .catch(error => {
             // Forward Error On
-            //this.raiseLedgerError(error.code, error.error, true);
             // We may not have the input stream, So we need to pass over the knocks
             this.postVote({
               code: error.code,
@@ -287,7 +294,7 @@ export class Process extends EventEmitter {
                 if (
                   !this.signatureCheck(
                     input.publicKey,
-                    signature,
+                    signature as string,
                     input.type ? input.type : "rsa"
                   )
                 ) {
@@ -527,7 +534,7 @@ export class Process extends EventEmitter {
 
               // Normal, Or getting other node opinions?
               if (error) {
-                this.raiseLedgerError(error.code, error.reason, true);
+                this.raiseLedgerError(error.code, error.reason, true, 10);
               }
 
               // Run the Commit Phase
@@ -648,6 +655,10 @@ export class Process extends EventEmitter {
               updated: [] as any[]
             };
 
+            // Cache Harden Key Flag
+            let nhkCheck = ActiveOptions.get<any>("security", {})
+              .hardenedKeys as boolean;
+
             // Any Changes
             if (streams.length) {
               // Process Changes to the database
@@ -697,13 +708,31 @@ export class Process extends EventEmitter {
                   }
 
                   // Hardened Keys?
-                  if (
-                    streams[i].state._id &&
-                    ActiveOptions.get<any>("security", {}).hardenedKeys
-                  ) {
-                    streams[i].meta.public = this.entry.$tx.$i[
-                      streams[i].state._id as string
+                  if (streams[i].state._id && nhkCheck) {
+                    // Get nhpk
+                    let nhpk = this.entry.$tx.$i[
+                      this.getLabelIOMap(true, streams[i].state._id as string)
                     ].$nhpk;
+
+                    // Loop Signatures as they should be rewritten with authoritied nested
+                    // That way if any new auths were added they will be skipped
+                    let txSigAuthsKeys = Object.keys(
+                      this.entry.$sigs[streams[i].state._id as string]
+                    );
+
+                    // Loop all authorities to try and find a match
+                    streams[i].meta.authorities.forEach(
+                      (authority: ActiveDefinitions.ILedgerAuthority) => {
+                        // Get tx auth signature if existed
+                        const txSigAuthKey = txSigAuthsKeys.indexOf(
+                          authority.hash as string
+                        );
+                        if (txSigAuthKey !== -1) {
+                          (authority as any).public =
+                            nhpk[txSigAuthsKeys[txSigAuthKey]];
+                        }
+                      }
+                    );
                   }
 
                   // Add to reference
@@ -738,13 +767,31 @@ export class Process extends EventEmitter {
                     inputs[i].meta.txs.push(this.entry.$umid);
 
                     // Hardened Keys?
-                    if (
-                      inputs[i].state._id &&
-                      ActiveOptions.get<any>("security", {}).hardenedKeys
-                    ) {
-                      streams[i].meta.public = this.entry.$tx.$i[
-                        inputs[i].state._id as string
+                    if (inputs[i].state._id && nhkCheck) {
+                      // Get nhpk
+                      let nhpk = this.entry.$tx.$i[
+                        this.getLabelIOMap(true, inputs[i].state._id as string)
                       ].$nhpk;
+
+                      // Loop Signatures as they should be rewritten with authoritied nested
+                      // That way if any new auths were added they will be skipped
+                      let txSigAuthsKeys = Object.keys(
+                        this.entry.$sigs[inputs[i].state._id as string]
+                      );
+
+                      // Loop all authorities to try and find a match
+                      inputs[i].meta.authorities.forEach(
+                        (authority: ActiveDefinitions.ILedgerAuthority) => {
+                          // Get tx auth signature if existed
+                          const txSigAuthKey = txSigAuthsKeys.indexOf(
+                            authority.hash as string
+                          );
+                          if (txSigAuthKey !== -1) {
+                            (authority as any).public =
+                              nhpk[txSigAuthsKeys[txSigAuthKey]];
+                          }
+                        }
+                      );
                     }
 
                     // Push to docs (Only Meta)
@@ -890,7 +937,12 @@ export class Process extends EventEmitter {
 
             // If debug mode forward full error
             if (ActiveOptions.get<boolean>("debug", false)) {
-              this.raiseLedgerError(1302, new Error(error.message));
+              this.raiseLedgerError(
+                1302,
+                new Error(
+                  "Commit Failure - " + JSON.stringify(error.message || error)
+                )
+              );
             } else {
               this.raiseLedgerError(
                 1301,
@@ -1077,33 +1129,172 @@ export class Process extends EventEmitter {
               inputs ||
               ActiveOptions.get<any>("security", {}).signedOutputs
             ) {
+              // Authorities need to be check flag
+              let nhpkCheck = false;
+              // Label or Key support
+              // let nhpkCheckIOMap = inputs
+              //   ? this.ioLabelMap.i
+              //   : this.ioLabelMap.o;
+              let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
               // Check to see if key hardening is enabled and done
               if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
-                let checks = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
-                if (!checks[streamId].$nhpk)
+                // Maybe specific authority of the stream now, $nhpk could be string or object of strings
+                // Need to map over because it may not be stream id!
+                if (!nhpkCheckIO[this.getLabelIOMap(inputs, streamId)].$nhpk) {
                   return reject({
                     code: 1230,
                     reason:
                       (inputs ? "Input" : "Output") +
                       " Security Hardened Key Transactions Only"
                   });
+                } else {
+                  // Now need to check if $nhpk is nested with authorities
+                  nhpkCheck = true;
+                }
               }
 
               // Now can check signature
-              if (
-                !this.signatureCheck(
-                  (stream[i].meta as any).public,
-                  this.entry.$sigs[streamId],
-                  (stream[i].meta as any).type
-                    ? (stream[i].meta as any).type
-                    : "rsa"
-                )
-              )
-                // Break loop and reject
-                return reject({
-                  code: 1220,
-                  reason: (inputs ? "Input" : "Output") + " Signature Incorrect"
-                });
+              if ((stream[i].meta as any).authorities) {
+                // Some will return true early. At this stage we only need 1
+                // The Smart contract developer can use the other signatures to create
+                // a mini consensus within their own application (Such as ownership)
+
+                if (
+                  LedgerTypeChecks.isLedgerAuthSignatures(
+                    this.entry.$sigs[streamId]
+                  )
+                ) {
+                  // Multiple signatures passed
+                  // Check that they haven't sent more signatures than we have authorities
+                  let sigStreamKeys = Object.keys(this.entry.$sigs[streamId]);
+                  if (
+                    sigStreamKeys.length >
+                    (stream[i].meta as any).authorities.length
+                  ) {
+                    return reject({
+                      code: 1225,
+                      reason:
+                        (inputs ? "Input" : "Output") +
+                        " Incorrect Signature List Length"
+                    });
+                  }
+
+                  // Loop over signatures
+                  // Every supplied signature should exist and pass
+                  if (
+                    !sigStreamKeys.every((sigStream: string) => {
+                      // Get Signature form tx object
+                      const signature = (this.entry.$sigs[
+                        streamId
+                      ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
+
+                      // Have all the supplied keys given new public keys
+                      if (nhpkCheck) {
+                        if (
+                          !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
+                            .$nhpk[sigStream]
+                        ) {
+                          return reject({
+                            code: 1230,
+                            reason:
+                              (inputs ? "Input" : "Output") +
+                              " Security Hardened Key Transactions Only"
+                          });
+                        }
+                      }
+
+                      // Loop authorities and find a match
+                      return (stream[i].meta as any).authorities.some(
+                        (authority: ActiveDefinitions.ILedgerAuthority) => {
+                          // If matching hash do sig check
+                          if (authority.hash == sigStream) {
+                            return this.signatureCheck(
+                              authority.public,
+                              signature,
+                              authority.type
+                            );
+                          } else {
+                            return false;
+                          }
+                        }
+                      );
+                    })
+                  ) {
+                    // Break loop and reject
+                    return reject({
+                      code: 1228,
+                      reason:
+                        (inputs ? "Input" : "Output") +
+                        " Signature List Incorrect"
+                    });
+                  }
+                } else {
+                  // Only one signature passed (Do not need to check for nhpk as its done above with 1:1)
+                  if (
+                    !(stream[i].meta as any).authorities.some(
+                      (authority: ActiveDefinitions.ILedgerAuthority) => {
+                        if (
+                          authority.hash &&
+                          this.signatureCheck(
+                            authority.public,
+                            this.entry.$sigs[streamId] as string,
+                            authority.type
+                          )
+                        ) {
+                          // Check for new keys for this authority
+                          if (nhpkCheck) {
+                            if (
+                              !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
+                                .$nhpk
+                            ) {
+                              return reject({
+                                code: 1230,
+                                reason:
+                                  (inputs ? "Input" : "Output") +
+                                  " Security Hardened Key Transactions Only"
+                              });
+                            }
+                          }
+
+                          // Remap $sigs for later consumption
+                          this.entry.$sigs[streamId] = {
+                            [authority.hash]: this.entry.$sigs[
+                              streamId
+                            ] as string
+                          };
+                          return true;
+                        }
+                        return false;
+                      }
+                    )
+                  ) {
+                    // Break loop and reject
+                    return reject({
+                      code: 1220,
+                      reason:
+                        (inputs ? "Input" : "Output") + " Signature Incorrect"
+                    });
+                  }
+                }
+              } else {
+                // Backwards Compatible Check
+                if (
+                  !this.signatureCheck(
+                    (stream[i].meta as any).public,
+                    this.entry.$sigs[streamId] as string,
+                    (stream[i].meta as any).type
+                      ? (stream[i].meta as any).type
+                      : "rsa"
+                  )
+                ) {
+                  // Break loop and reject
+                  return reject({
+                    code: 1220,
+                    reason:
+                      (inputs ? "Input" : "Output") + " Signature Incorrect"
+                  });
+                }
+              }
             }
           }
           // Everything is good
@@ -1211,11 +1402,13 @@ export class Process extends EventEmitter {
     // Get Reference for inputs
     let streams = this.inputs;
     let txIO = this.entry.$tx.$i;
+    let map = this.ioLabelMap.i;
 
     // Override for outputs
     if (outputs) {
       streams = this.outputs;
       txIO = this.entry.$tx.$o;
+      map = this.ioLabelMap.o;
     }
 
     // Check the first one, If labelled then loop all.
@@ -1224,9 +1417,31 @@ export class Process extends EventEmitter {
       let i = streams.length;
       while (i--) {
         // Stream label or self
-        streams[i] = txIO[streams[i]].$stream || streams[i];
+        let streamId = txIO[streams[i]].$stream || streams[i];
+        map[streamId] = streams[i];
+        streams[i] = streamId;
       }
     }
+  }
+
+  /**
+   * Get the correct input for Label or key
+   *
+   * @private
+   * @param {boolean} inputs
+   * @param {string} streamId
+   * @returns {string}
+   * @memberof Process
+   */
+  private getLabelIOMap(inputs: boolean, streamId: string): string {
+    // Get Correct Map
+    let checkIOMap = inputs ? this.ioLabelMap.i : this.ioLabelMap.o;
+
+    // If map empty default to key stream
+    if (!Object.keys(checkIOMap).length) {
+      return streamId;
+    }
+    return checkIOMap[streamId];
   }
 
   /**
@@ -1260,10 +1475,11 @@ export class Process extends EventEmitter {
   private raiseLedgerError(
     code: number,
     reason: Error,
-    stop: Boolean = false
+    stop: Boolean = false,
+    priority: number = 0
   ): void {
     // Store in database for activesrestore to review
-    this.storeError(code, reason)
+    this.storeError(code, reason, priority)
       .then(() => {
         // Emit failed event for execution
         if (!stop) {
