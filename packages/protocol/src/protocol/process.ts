@@ -260,7 +260,6 @@ export class Process extends EventEmitter {
               })
               .catch(error => {
                 // Forward Error On
-                //this.raiseLedgerError(error.code, error.error, true);
                 // We may not have the output stream, So we need to pass over the knocks
                 this.postVote({
                   code: error.code,
@@ -270,7 +269,6 @@ export class Process extends EventEmitter {
           })
           .catch(error => {
             // Forward Error On
-            //this.raiseLedgerError(error.code, error.error, true);
             // We may not have the input stream, So we need to pass over the knocks
             this.postVote({
               code: error.code,
@@ -536,7 +534,7 @@ export class Process extends EventEmitter {
 
               // Normal, Or getting other node opinions?
               if (error) {
-                this.raiseLedgerError(error.code, error.reason, true);
+                this.raiseLedgerError(error.code, error.reason, true, 10);
               }
 
               // Run the Commit Phase
@@ -657,6 +655,10 @@ export class Process extends EventEmitter {
               updated: [] as any[]
             };
 
+            // Cache Harden Key Flag
+            let nhkCheck = ActiveOptions.get<any>("security", {})
+              .hardenedKeys as boolean;
+
             // Any Changes
             if (streams.length) {
               // Process Changes to the database
@@ -706,13 +708,31 @@ export class Process extends EventEmitter {
                   }
 
                   // Hardened Keys?
-                  if (
-                    streams[i].state._id &&
-                    ActiveOptions.get<any>("security", {}).hardenedKeys
-                  ) {
-                    streams[i].meta.public = this.entry.$tx.$i[
-                      streams[i].state._id as string
+                  if (streams[i].state._id && nhkCheck) {
+                    // Get nhpk
+                    let nhpk = this.entry.$tx.$i[
+                      this.getLabelIOMap(true, streams[i].state._id as string)
                     ].$nhpk;
+
+                    // Loop Signatures as they should be rewritten with authoritied nested
+                    // That way if any new auths were added they will be skipped
+                    let txSigAuthsKeys = Object.keys(
+                      this.entry.$sigs[streams[i].state._id as string]
+                    );
+
+                    // Loop all authorities to try and find a match
+                    streams[i].meta.authorities.forEach(
+                      (authority: ActiveDefinitions.ILedgerAuthority) => {
+                        // Get tx auth signature if existed
+                        const txSigAuthKey = txSigAuthsKeys.indexOf(
+                          authority.hash as string
+                        );
+                        if (txSigAuthKey !== -1) {
+                          (authority as any).public =
+                            nhpk[txSigAuthsKeys[txSigAuthKey]];
+                        }
+                      }
+                    );
                   }
 
                   // Add to reference
@@ -747,13 +767,31 @@ export class Process extends EventEmitter {
                     inputs[i].meta.txs.push(this.entry.$umid);
 
                     // Hardened Keys?
-                    if (
-                      inputs[i].state._id &&
-                      ActiveOptions.get<any>("security", {}).hardenedKeys
-                    ) {
-                      streams[i].meta.public = this.entry.$tx.$i[
-                        inputs[i].state._id as string
+                    if (inputs[i].state._id && nhkCheck) {
+                      // Get nhpk
+                      let nhpk = this.entry.$tx.$i[
+                        this.getLabelIOMap(true, inputs[i].state._id as string)
                       ].$nhpk;
+
+                      // Loop Signatures as they should be rewritten with authoritied nested
+                      // That way if any new auths were added they will be skipped
+                      let txSigAuthsKeys = Object.keys(
+                        this.entry.$sigs[inputs[i].state._id as string]
+                      );
+
+                      // Loop all authorities to try and find a match
+                      inputs[i].meta.authorities.forEach(
+                        (authority: ActiveDefinitions.ILedgerAuthority) => {
+                          // Get tx auth signature if existed
+                          const txSigAuthKey = txSigAuthsKeys.indexOf(
+                            authority.hash as string
+                          );
+                          if (txSigAuthKey !== -1) {
+                            (authority as any).public =
+                              nhpk[txSigAuthsKeys[txSigAuthKey]];
+                          }
+                        }
+                      );
                     }
 
                     // Push to docs (Only Meta)
@@ -1093,17 +1131,16 @@ export class Process extends EventEmitter {
             ) {
               // Authorities need to be check flag
               let nhpkCheck = false;
-              // Label or Key support 
-              let nhpkCheckIOMap = inputs
-                ? this.ioLabelMap.i
-                : this.ioLabelMap.o;
+              // Label or Key support
+              // let nhpkCheckIOMap = inputs
+              //   ? this.ioLabelMap.i
+              //   : this.ioLabelMap.o;
               let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
               // Check to see if key hardening is enabled and done
               if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
                 // Maybe specific authority of the stream now, $nhpk could be string or object of strings
                 // Need to map over because it may not be stream id!
-                if (!nhpkCheckIO[nhpkCheckIOMap[streamId]].$nhpk) {
-                  // TODO: Code is here but reject isn't beinged passed
+                if (!nhpkCheckIO[this.getLabelIOMap(inputs, streamId)].$nhpk) {
                   return reject({
                     code: 1230,
                     reason:
@@ -1153,7 +1190,10 @@ export class Process extends EventEmitter {
 
                       // Have all the supplied keys given new public keys
                       if (nhpkCheck) {
-                        if (!nhpkCheckIO[nhpkCheckIOMap[streamId]].$nhpk[sigStream]) {
+                        if (
+                          !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
+                            .$nhpk[sigStream]
+                        ) {
                           return reject({
                             code: 1230,
                             reason:
@@ -1201,6 +1241,21 @@ export class Process extends EventEmitter {
                             authority.type
                           )
                         ) {
+                          // Check for new keys for this authority
+                          if (nhpkCheck) {
+                            if (
+                              !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
+                                .$nhpk
+                            ) {
+                              return reject({
+                                code: 1230,
+                                reason:
+                                  (inputs ? "Input" : "Output") +
+                                  " Security Hardened Key Transactions Only"
+                              });
+                            }
+                          }
+
                           // Remap $sigs for later consumption
                           this.entry.$sigs[streamId] = {
                             [authority.hash]: this.entry.$sigs[
@@ -1370,6 +1425,26 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Get the correct input for Label or key
+   *
+   * @private
+   * @param {boolean} inputs
+   * @param {string} streamId
+   * @returns {string}
+   * @memberof Process
+   */
+  private getLabelIOMap(inputs: boolean, streamId: string): string {
+    // Get Correct Map
+    let checkIOMap = inputs ? this.ioLabelMap.i : this.ioLabelMap.o;
+
+    // If map empty default to key stream
+    if (!Object.keys(checkIOMap).length) {
+      return streamId;
+    }
+    return checkIOMap[streamId];
+  }
+
+  /**
    * Creates a smaler trasnaction entry for ledger walking. This will also
    * keep the value deterministic (not including nodes)
    *
@@ -1400,10 +1475,11 @@ export class Process extends EventEmitter {
   private raiseLedgerError(
     code: number,
     reason: Error,
-    stop: Boolean = false
+    stop: Boolean = false,
+    priority: number = 0
   ): void {
     // Store in database for activesrestore to review
-    this.storeError(code, reason)
+    this.storeError(code, reason, priority)
       .then(() => {
         // Emit failed event for execution
         if (!stop) {
