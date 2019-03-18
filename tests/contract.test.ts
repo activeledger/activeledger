@@ -1,6 +1,10 @@
-import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
 import { ActiveLogger } from "../packages/logger/src";
 import { ActiveCrypto } from "../packages/crypto/src";
+
+// Setup VM Global variables
+((global as unknown) as any).crypto = ActiveCrypto;
+((global as unknown) as any).logger = ActiveLogger;
+
 import { Stream } from "../packages/contracts/src";
 import { expect, should } from "chai";
 import "mocha";
@@ -10,7 +14,8 @@ describe("Stream Management Test (Activecontracts)", () => {
   const key = Math.floor(Math.random() * 10000 + 1);
 
   // Predefined Stream
-  const activeledgerStream = new Stream(new Date(),
+  const activeledgerStream = new Stream(
+    new Date(),
     "umid",
     {
       $namespace: "default",
@@ -41,9 +46,6 @@ describe("Stream Management Test (Activecontracts)", () => {
       $sig: ""
     },
     key,
-    ActiveLogger,
-    ActiveCrypto as any,
-    new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any, // Fix private type
     "localhost"
   );
 
