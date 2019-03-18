@@ -28,7 +28,6 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { LedgerTypeChecks } from "../../../definitions/lib/definitions";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -1160,7 +1159,7 @@ export class Process extends EventEmitter {
                 // a mini consensus within their own application (Such as ownership)
 
                 if (
-                  LedgerTypeChecks.isLedgerAuthSignatures(
+                  ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
                     this.entry.$sigs[streamId]
                   )
                 ) {
