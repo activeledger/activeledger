@@ -114,13 +114,17 @@ ActiveOptions.extendConfig()
       // 950 = Stream not found
       // 960 = State not found
       // 1000 = Failed Vote (Similar to 1505 different report time)
+      //      = Removed, Don't need to check on contract rejects, code errors. As they should all error with
+      //      = the same matching input / output data which is thrown by the code below. If this was just an error on this node
+      //      = the next pass on the stream will throw a 1200 anyway. This could happen with a contract mismatch.
       // 1200 = * Stream position incorrect
       // 1210 = Read only steam not found
       // 1505 = I voted no, Maybe I was wrong (Similar to 1000 different report time)
+      //      = May also be safe to remove same reasons as 1000.
       // 1510 = Failed to save (I may be the only one who voted)
       // 1600 = Failed to commit before timeout (broadcast)
       // 1610 = Failed to get a response back in a rebroadcast while tx was in memory
-      let errorCodes = [950, 960, 1000, 1200, 1210, 1505, 1510, 1600, 1610];
+      let errorCodes = [950, 960, 1200, 1210, 1510, 1600, 1610];
 
       // Bind On Change Event
       // Manage on feed notifcation to subsribers
