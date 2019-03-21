@@ -251,7 +251,7 @@ export class Host extends Home {
       }
     );
 
-    // Create Index (TODO: Contracts may need indexs)
+    // Create Index
     this.dbConnection
       .createIndex({
         index: {
@@ -289,9 +289,15 @@ export class Host extends Home {
                 // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
                 // While it is global we need to manage it here to keep the encapsulation
                 this.unhandledRejection[msg.umid] = (reason: any, p: any) => {
-                  this.processPending[msg.umid].reject(
-                    `UnhandledRejection: ${reason.toString()} @ ${p.toString()}`
-                  );
+                  // Make sure the object exists
+                  if (
+                    this.processPending[msg.umid] &&
+                    this.processPending[msg.umid].reject
+                  ) {
+                    this.processPending[msg.umid].reject(
+                      `UnhandledRejection: ${reason.toString()} @ ${p.toString()}`
+                    );
+                  }
                   // Remove Locks
                   this.release(msg.umid);
                 };
@@ -697,32 +703,34 @@ export class Host extends Home {
    */
   private release(umid: string) {
     // Get Pending Process
-    let v = this.processPending[umid].entry;
+    if (this.processPending[umid]) {
+      let v = this.processPending[umid].entry;
 
-    // Build a list of streams to release
-    // Would be good to cache this
-    let input = Object.keys(v.$tx.$i || {});
-    let output = Object.keys(v.$tx.$o || {});
+      // Build a list of streams to release
+      // Would be good to cache this
+      let input = Object.keys(v.$tx.$i || {});
+      let output = Object.keys(v.$tx.$o || {});
 
-    // Release unhandledRejection (Manages Memory)
-    if (this.unhandledRejection[v.$umid] instanceof Function) {
-      process.off("unhandledRejection", this.unhandledRejection[v.$umid]);
+      // Release unhandledRejection (Manages Memory)
+      if (this.unhandledRejection[v.$umid] instanceof Function) {
+        process.off("unhandledRejection", this.unhandledRejection[v.$umid]);
+      }
+
+      // Ask for releases
+      this.moan("release", {
+        umid: v.$umid,
+        streams: Object.assign(input, output)
+      });
+
+      // Keep transaction in memory for a bit (5 Minutes)
+      setTimeout(() => {
+        // Remove from pending list
+        this.destroy(umid);
+
+        // Let other workers know they can release
+        this.moan("txmemclear", { umid: umid });
+      }, 20000); //300000
     }
-
-    // Ask for releases
-    this.moan("release", {
-      umid: v.$umid,
-      streams: Object.assign(input, output)
-    });
-
-    // Keep transaction in memory for a bit (5 Minutes)
-    setTimeout(() => {
-      // Remove from pending list
-      this.destroy(umid);
-
-      // Let other workers know they can release
-      this.moan("txmemclear", { umid: umid });
-    }, 20000); //300000
   }
 
   /**
