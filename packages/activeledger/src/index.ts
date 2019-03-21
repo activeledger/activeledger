@@ -589,7 +589,12 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
         extendConfig(() => {
           // Create Home Host Node
-          new ActiveNetwork.Host();
+          try {
+            new ActiveNetwork.Host();
+          } catch (error) {
+            // Server may be down on index check
+            process.exit(1);
+          }
         });
       }
     }
