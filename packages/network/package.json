@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.0.0-rc.8.0.53",
+  "version": "2.0.0-rc.8.0.54",
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",
@@ -46,8 +46,8 @@
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.50",
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.49",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.50",
-    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.51",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.54",
+    "@activeledger/activeprotocol": "^2.0.0-rc.8.0.54",
     "@activeledger/activequery": "^2.0.0-rc.8.0.50"
   }
 }
