@@ -43,6 +43,22 @@ import { PouchDB, leveldown, levelup } from "./pouchdb";
   // PouchDB Connection Cache
   let pDBCache: any = {};
 
+  // Leveldown Cache
+  let leveldownCache: any = {};
+
+  /**
+   * Custom leveldown for Pouch (allows acceess to leveldown)
+   *
+   * @param {string} name
+   * @returns
+   */
+  let levelupdown = (name: string) => {
+    if (!leveldownCache[name]) {
+      leveldownCache[name] = leveldown(name);
+    }
+    return leveldownCache[name];
+  };
+
   /**
    * Manages Pouch Connections
    *
@@ -51,7 +67,9 @@ import { PouchDB, leveldown, levelup } from "./pouchdb";
    */
   let getPDB = (name: string) => {
     if (!pDBCache[name]) {
-      pDBCache[name] = new PouchDb(name);
+      pDBCache[name] = new PouchDb(name, {
+        db: levelupdown
+      });
     }
     return pDBCache[name];
   };
@@ -408,30 +426,28 @@ import { PouchDB, leveldown, levelup } from "./pouchdb";
    * @returns {Promise<any>}
    */
   let genericDelete = (dbLoc: string, docName: string): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      // Get Database
-      let db = getPDB(dbLoc);
-      // Close Connection
-      db.close().then(() => {
-        // Clear Cachhe
-        pDBCache[dbLoc] = null;
-        // Open database as raw
-        const db = levelup(leveldown(DIR_PREFIX + dbLoc));
+    return new Promise(async (resolve, reject) => {
+      // Let Pouch create the connection
+      await getPDB(dbLoc).info();
+      // Get Database as leveldown
+      let db = levelupdown(DIR_PREFIX + dbLoc);
 
+      // make sure the database was opened by pouch
+      if (db.status === "open") {
         // Direct Delete
-        db.del(Buffer.concat([PouchDBDocBuffer, Buffer.from(docName)]))
-          .then(() => {
-            // Close raw connection
-            db.close();
-
-            // Reopen Pouch
-            getPDB(dbLoc);
-
+        db.del(
+          Buffer.concat([PouchDBDocBuffer, Buffer.from(docName)]),
+          (error: unknown) => {
+            if (error) {
+              return reject(error);
+            }
             // Return Ok
             return resolve({ success: "ok" });
-          })
-          .catch((e: any) => reject(e));
-      });
+          }
+        );
+      } else {
+        return reject("database not opened");
+      }
     });
   };
 

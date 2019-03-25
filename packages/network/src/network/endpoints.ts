@@ -409,6 +409,8 @@ export class Endpoints {
       if (body.$streams) {
         // Restrict Access to any volatile requests
         let i = body.$streams.length;
+        let fetchStream = [];
+
         while (i--) {
           // Check that :volatile doesn't exist
           if (body.$streams[i].indexOf(":volatile") !== -1) {
@@ -418,29 +420,33 @@ export class Endpoints {
               content: "Request not allowed"
             });
           }
+
+          // Fetch Request (Catch error here and forward on as an object to process in .all)
+          fetchStream.push(
+            db.get(body.$streams[i]).catch(error => {
+              return { _error: error };
+            })
+          );
         }
 
-        // Fetch Both State & Stream file with revisions
-        // Search Options (Should add an index?)
-        let options: any = {
-          selector: {
-            _id: {
-              $in: body.$streams
+        // Wait for all streams to be returned
+        Promise.all(fetchStream)
+          .then((docs: any) => {
+            // Could just pass docs but that will send unnecessary data at this point
+            let i = docs.length;
+            let streams = [];
+            while (i--) {
+              // Make sure not an error
+              if (docs[i]._id) {
+                streams.push({
+                  _id: docs[i]._id,
+                  _rev: docs[i]._rev
+                });
+              }
             }
-          }
-        };
-
-        // Request all data?
-        if (!body.$allFields) {
-          options.fields = ["_id", "_rev"];
-        }
-
-        // Search (Need Index?)
-        db.find(options)
-          .then((results: any) => {
             return resolve({
               statusCode: 200,
-              content: results.docs
+              content: streams
             });
           })
           .catch(() => {
