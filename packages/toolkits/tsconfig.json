@@ -1,6 +1,10 @@
 {
   "extends": "../tsconfig.settings.json",
   "compilerOptions": {
-    "rootDir": "./src/"
-  }  
+    "rootDir": "./src/",
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "allowJs": true
+  }
 }

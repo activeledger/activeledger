@@ -22,18 +22,11 @@
  */
 
 import { PDF } from "./pdf";
-import { writeFileSync } from "fs";
+export { PDF };
 
-// Testing before re-exporting
-let pdf = new PDF();
 
-pdf.document.fontSize(25).text("Hello World, How are you? GoodBye", 100, 100);
+// let x = new PDF({content:"hello"});
 
-pdf
-  .getDataURI()
-  .then(dataUrl => {
-    //    console.log(x);
-    let buffer = Buffer.from(dataUrl.split(",")[1], "base64");
-    writeFileSync("fromBufferToURI.pdf", buffer);
-  })
-  .catch(e => console.log);
+// x.getDataURI().then((y:any) => {
+//     console.log("done");
+// }).catch(x => console.log)

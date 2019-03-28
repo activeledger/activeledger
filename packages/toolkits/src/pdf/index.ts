@@ -22,8 +22,9 @@
  */
 
 //@ts-ignore
-import * as pdfkit from "./pdfkit.js";
+import * as pdfmake from "./external/pdfmake.js";
 import { EventEmitter } from "events";
+import { TDocumentDefinitions } from "pdfmake/build/pdfmake";
 
 /**
  * Activeledger PDF Toolkit
@@ -63,13 +64,64 @@ export class PDF extends EventEmitter {
    *Creates an instance of PDF.
    * @memberof PDF
    */
-  constructor() {
+  constructor(pdfMake: TDocumentDefinitions) {
     super();
-    // Create Document Object
-    this.document = new pdfkit();
+
+    // Make sure the font is one of the supported
+    const supportedFonts = [
+      "Courier",
+      "Helvetica",
+      "Times",
+      "Symbol",
+      "ZapfDingbats"
+    ];
+    if (
+      !pdfMake.defaultStyle ||
+      !pdfMake.defaultStyle.font ||
+      supportedFonts.indexOf(pdfMake.defaultStyle.font) !== -1
+    ) {
+      pdfMake.defaultStyle = {
+        font: "Helvetica"
+      };
+    }
+
+    // Get PdfMake Printer
+    const printer: any = new (pdfmake as any)({
+      Courier: {
+        normal: "Courier",
+        bold: "Courier-Bold",
+        italics: "Courier-Oblique",
+        bolditalics: "Courier-BoldOblique"
+      },
+      Helvetica: {
+        normal: "Helvetica",
+        bold: "Helvetica-Bold",
+        italics: "Helvetica-Oblique",
+        bolditalics: "Helvetica-BoldOblique"
+      },
+      Times: {
+        normal: "Times-Roman",
+        bold: "Times-Bold",
+        italics: "Times-Italic",
+        bolditalics: "Times-BoldItalic"
+      },
+      Symbol: {
+        normal: "Symbol"
+      },
+      ZapfDingbats: {
+        normal: "ZapfDingbats"
+      }
+    });
+
+    // Create Document Object from PdfMake Definitions
+    this.document = printer.createPdfKitDocument(pdfMake);
 
     // Listen on data out to build buffers
-    this.document.on("data", this.buffers.push.bind(this.buffers));
+    this.document.on("data", ui8a => {
+      if (ui8a) {
+        this.buffers.push(Buffer.from(ui8a));
+      }
+    });
 
     // Finalise buffer event
     this.document.on("end", () => {

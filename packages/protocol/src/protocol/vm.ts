@@ -187,9 +187,10 @@ export class VirtualMachine {
       // Manage Externals & buildit
       let external: string[] = [
         this.contractPath,
-        "@activeledger/activecontracts"
+        "@activeledger/activecontracts",
+        "@activeledger/activetoolkits"
       ];
-      let builtin: string[] = ["buffer"];
+      let builtin: string[] = ["buffer", "events"];
       if (this.tx.$namespace == "default") {
         switch (this.tx.$contract) {
           case "contract":
