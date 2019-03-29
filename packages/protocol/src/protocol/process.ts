@@ -472,9 +472,9 @@ export class Process extends EventEmitter {
               });
           })
           .catch(e => {
-            ActiveLogger.debug(e, "VM Failure" + __dirname);
-            // Contract not found
-            this.raiseLedgerError(1401, new Error("Virtual Machine Failure"));
+            // Contract not found / failed to start
+            ActiveLogger.debug(e, "VM initialisation failed");
+            this.raiseLedgerError(1401, new Error("VM Init Failure - " + JSON.stringify(e.message || e)));
           });
       })
       .catch(e => {
