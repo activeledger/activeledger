@@ -393,6 +393,18 @@ export class ActiveLogger {
         "[ OBJECT ]",
         31
       )}-------------`;
+    } else {
+      if (obj.toString) {
+        out += `\r\n-------------${ActiveLogger.colour(
+          "[ toString() ]",
+          32
+        )}-------------\r\n`;
+        out += obj.toString();
+        out += `\r\n-------------${ActiveLogger.colour(
+          "[ toString() ]",
+          31
+        )}-------------`;
+      }
     }
     return out;
   }
