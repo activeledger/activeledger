@@ -287,7 +287,6 @@ export class VirtualMachine {
       } catch (e) {
         if (e instanceof Error) {
           // Exception
-          console.log(e.stack);
           reject(this.catchException(e));
         }
       }
