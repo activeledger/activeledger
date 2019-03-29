@@ -181,100 +181,116 @@ export class VirtualMachine {
   public initalise(): Promise<boolean> {
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
-      // Set Secret Key
-      this.key = Math.floor(Math.random() * 100);
+      try {
+        // Set Secret Key
+        this.key = Math.floor(Math.random() * 100);
 
-      // Manage Externals & buildit
-      let external: string[] = [
-        this.contractPath,
-        "@activeledger/activecontracts",
-        "@activeledger/activetoolkits"
-      ];
-      let builtin: string[] = ["buffer", "events"];
-      if (this.tx.$namespace == "default") {
-        switch (this.tx.$contract) {
-          case "contract":
-            external.push("typescript");
-            builtin.push("fs", "path", "os", "crypto");
-            break;
-          case "setup":
-            builtin.push("fs", "path");
-            break;
+        // Manage Externals & buildit
+        let external: string[] = [
+          this.contractPath,
+          "@activeledger/activecontracts",
+          "@activeledger/activetoolkits"
+        ];
+        let builtin: string[] = ["buffer", "events"];
+        if (this.tx.$namespace == "default") {
+          switch (this.tx.$contract) {
+            case "contract":
+              external.push("typescript");
+              builtin.push("fs", "path", "os", "crypto");
+              break;
+            case "setup":
+              builtin.push("fs", "path");
+              break;
+          }
+        } else {
+          // Now check configuration for allowed standard libs for this namespace
+          let security = ActiveOptions.get<any>("security", {});
+
+          // Check to see if this namespace exists
+          if (security.namespace && security.namespace[this.tx.$namespace]) {
+            security.namespace[this.tx.$namespace].std.forEach(
+              (item: string) => {
+                // Add to builtin VM
+                builtin.push(item);
+              }
+            );
+          }
         }
-      } else {
-        // Now check configuration for allowed standard libs for this namespace
-        let security = ActiveOptions.get<any>("security", {});
 
-        // Check to see if this namespace exists
-        if (security.namespace && security.namespace[this.tx.$namespace]) {
-          security.namespace[this.tx.$namespace].std.forEach((item: string) => {
-            // Add to builtin VM
-            builtin.push(item);
-          });
-        }
-      }
+        // Import Contract
+        // Create limited VM
+        this.virtual = new NodeVM({
+          wrapper: "none",
+          sandbox: {
+            logger: ActiveLogger,
+            crypto: ActiveCrypto,
+            secured: this.secured,
+            query: new QueryEngine(this.db, true),
+            event: this.event,
+            contractPath: this.contractPath,
+            umid: this.umid,
+            cdate: new Date(this.cdate), // + copy of date has random issues
+            tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
+            sigs: this.sigs,
+            inputs: this.inputs,
+            outputs: this.outputs,
+            reads: this.reads,
+            key: this.key,
+            self: this.selfHost
+          },
+          require: {
+            context: "sandbox",
+            builtin,
+            external
+          }
+        });
 
-      // Import Contract
-      // Create limited VM
-      this.virtual = new NodeVM({
-        wrapper: "none",
-        sandbox: {
-          logger: ActiveLogger,
-          crypto: ActiveCrypto,
-          secured: this.secured,
-          query: new QueryEngine(this.db, true),
-          event: this.event,
-          contractPath: this.contractPath,
-          umid: this.umid,
-          cdate: new Date(this.cdate), // + copy of date has random issues
-          tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
-          sigs: this.sigs,
-          inputs: this.inputs,
-          outputs: this.outputs,
-          reads: this.reads,
-          key: this.key,
-          self: this.selfHost
-        },
-        require: {
-          context: "sandbox",
-          builtin,
-          external
-        }
-      });
-
-      // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
-      this.virtual.run(
-        "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, self);",
-        "avm.js"
-      );
-
-      // Do they want the query engine
-      this.virtual.run(`if("setQuery" in sc) { sc.setQuery(query) }`, "avm.js");
-
-      // Do they want the event engine
-      this.virtual.run(`if("setEvent" in sc) { sc.setEvent(event) }`, "avm.js");
-
-      // Default Namespace can accept config, Could just read the file
-      // However when it comes to working from the ledger it will be in memory anyway
-      if (this.tx.$namespace == "default") {
+        // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
         this.virtual.run(
-          `if("sysConfig" in sc) { sc.sysConfig(${JSON.stringify(
-            ActiveOptions.fetch(false)
-          )}) }`,
+          "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, self);",
           "avm.js"
         );
+
+        // Do they want the query engine
+        this.virtual.run(
+          `if("setQuery" in sc) { sc.setQuery(query) }`,
+          "avm.js"
+        );
+
+        // Do they want the event engine
+        this.virtual.run(
+          `if("setEvent" in sc) { sc.setEvent(event) }`,
+          "avm.js"
+        );
+
+        // Default Namespace can accept config, Could just read the file
+        // However when it comes to working from the ledger it will be in memory anyway
+        if (this.tx.$namespace == "default") {
+          this.virtual.run(
+            `if("sysConfig" in sc) { sc.sysConfig(${JSON.stringify(
+              ActiveOptions.fetch(false)
+            )}) }`,
+            "avm.js"
+          );
+        }
+
+        // Start time initialise the date object
+        this.maxTimeout = new Date();
+
+        // Convert to max timeout date (Minutes converted to milliseconds)
+        this.maxTimeout.setMilliseconds(
+          ActiveOptions.get<number>("contractMaxTimeout", 20) * 60 * 1000
+        );
+
+        // Continue
+        resolve(true);
+      } catch (e) {
+        if (e instanceof Error) {
+          // Exception
+          console.log(e.stack);
+          reject(this.catchException(e));
+        }
       }
-
-      // Start time initialise the date object
-      this.maxTimeout = new Date();
-
-      // Convert to max timeout date (Minutes converted to milliseconds)
-      this.maxTimeout.setMilliseconds(
-        ActiveOptions.get<number>("contractMaxTimeout", 20) * 60 * 1000
-      );
-
-      // Continue
-      resolve(true);
     });
   }
 
@@ -592,7 +608,7 @@ export class VirtualMachine {
         // Extract Contract + Line Numbers
         let contractErrorInfo = contractLastCallLine.substring(
           lastIndexFolder,
-          contractLastCallLine.length - 1
+          contractLastCallLine.length
         );
 
         return {
