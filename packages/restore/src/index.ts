@@ -38,6 +38,7 @@ import {
 } from "./interfaces/document.interfaces";
 import { Sledgehammer } from "./sledgehammer";
 import { Contract } from "./contract";
+import { rejects } from "assert";
 
 class ActiveRestore {
   private verbose = true;
@@ -224,8 +225,12 @@ class ActiveRestore {
   // #endregion
 
   // #region Error Feed Listening
-  metConsensus = (votes: number) =>
-    (votes / this.neighbourCount) * 100 >= this.consensusReachedAmount
+  getNeighbourCount = (dontIncludeSelf: boolean) =>
+    dontIncludeSelf ? this.neighbourCount - 1 : this.neighbourCount;
+
+  metConsensus = (votes: number, dontIncludeSelf: boolean = false) =>
+    (votes / this.getNeighbourCount(dontIncludeSelf)) * 100 >=
+    this.consensusReachedAmount
       ? true
       : false;
 
@@ -449,12 +454,9 @@ class ActiveRestore {
           const revisionCount = stream[revisionIndex];
 
           // this.metConsensus(revisionCount)
-          if (
-            (revisionCount / (this.neighbourCount - 1)) * 100 >=
-            this.consensusReachedAmount
-          ) {
-            ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
 
+          if (this.metConsensus(revisionCount, true)) {
+            ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
             promiseHolder.push(this.fixStream(streamIndex, revisionIndex));
           }
         }
@@ -490,11 +492,14 @@ class ActiveRestore {
             this.insertUmid(this.umidDoc);
           }
 
+          // TODO: Move this to the end of promise call, and all the others too
           this.errorFeed.resume();
+          resolve();
         })
         .catch((error: Error) => {
           ActiveLogger.error(error, "Hammer broke");
           this.errorFeed.resume();
+          reject();
         });
     });
   }
@@ -596,43 +601,47 @@ class ActiveRestore {
     stream: any,
     volatile: boolean
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
+    const isVolatileStreamData = (volatile: boolean, data: any) =>
+      volatile && data._id.indexOf(":stream") > -1 ? true : false;
+
+    const isRequiredStreamData = (stream: any) =>
+      stream.namespace && stream.contract && stream.compiled ? true : false;
+
+    return new Promise(async (resolve, reject) => {
+      this.output("Begginning data remote rebuild process");
+      this.output("Re-writing stream");
       document.$activeledger = {
         delete: true,
         rewrite: stream
       };
 
-      this.database
-        .put(document)
-        .then(() => {
-          if (stream.namespace && stream.contract && stream.compiled) {
-            Contract.rebuild(stream);
-          }
+      this.output("Attempting to add updated document to database");
+      try {
+        await this.database.put(document);
+      } catch (error) {
+        reject(error);
+      }
 
-          if (volatile && document._id.indexOf(":stream")) {
-            this.database
-              .put({
-                _id: document._id.replace(":stream", ":volatile"),
-                _rev: document._rev
-              })
-              .then(() => {
-                resolve(true);
-              })
-              .catch(() => {
-                resolve(true);
-              });
-          } else {
-            resolve(true);
-          }
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
+      this.output("Checking stream data");
+      isRequiredStreamData(stream)
+        ? Contract.rebuild(stream)
+        : this.output("Stream data does not contain required data");
+
+      this.output("Checking for volatile");
+      isVolatileStreamData(volatile, document)
+        ? await this.database.put({
+            _id: document._id.replace(":stream", ":volatile"),
+            _rev: document._rev
+          })
+        : this.output("Data is not volatile");
+
+      resolve(true);
     });
   }
 
   private rebuildSelf(document: any, stream: any): Promise<boolean> {
     return new Promise((resolve, reject) => {
+      this.output("Begginning data rebuild process on self");
       this.database
         .purge(document)
         .then(() => {
@@ -665,6 +674,7 @@ class ActiveRestore {
         })
         .catch((error: Error) => {
           this.errorFeed.resume();
+          reject(error);
         });
     });
   }
@@ -679,28 +689,30 @@ class ActiveRestore {
       }
 
       // Is the revision already there
-      if (!reduction[stream._id][stream._rev]) {
-        reduction[stream._id][stream._rev] = 0;
-      } else {
-        reduction[stream._id][stream._rev]++;
-      }
+      !reduction[stream._id][stream._rev]
+        ? (reduction[stream._id][stream._rev] = 0)
+        : reduction[stream._id][stream._rev]++;
     }
   }
 
-  private setProcessed(document: IChangeDocument): void {
-    document.processed = true;
-    document.processedAt = new Date();
+  private setProcessed(document: IChangeDocument): Promise<void> {
+    return new Promise((resolve, reject) => {
+      document.processed = true;
+      document.processedAt = new Date();
 
-    this.errorDatabase
-      .put(document)
-      .then(() => {
-        this.errorFeed.resume();
-      })
-      .catch((error: Error) => {
-        // There may be conflicts as there are multiple streams per transaction, so multiple may have the haveProcessed flag
-        // In the future this will be handled differently, but for now just resolve
-        this.errorFeed.resume();
-      });
+      this.errorDatabase
+        .put(document)
+        .then(() => {
+          this.errorFeed.resume();
+          resolve();
+        })
+        .catch((error: Error) => {
+          // There may be conflicts as there are multiple streams per transaction, so multiple may have the haveProcessed flag
+          // In the future this will be handled differently, but for now just resolve
+          this.errorFeed.resume();
+          reject(error);
+        });
+    });
   }
   // #endregion
 
