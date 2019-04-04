@@ -258,14 +258,11 @@ END Benchmarking Setup
                 let votes = 0;
 
                 // loop nodes and count votes
-                benchmarking["1"].start = Date.now();
                 let i = nodes.length;
 
                 while (i--) {
                   if (change.doc.transaction.$nodes[nodes[i]].vote) votes++;
                 }
-
-                benchmarking["1"].result = Date.now() - benchmarking["1"].start;
 
                 // If Votes reached consensus without me continue
                 // this node is also listed inside the above nodes so count works as expected

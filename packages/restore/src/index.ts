@@ -92,11 +92,7 @@ class ActiveRestore {
 
   private output(message: string, other?: any) {
     if (this.verbose) {
-      if (other) {
-        ActiveLogger.info(message, other);
-      } else {
-        ActiveLogger.info(message);
-      }
+      other ? ActiveLogger.info(other, message) : ActiveLogger.info(message);
     }
   }
 
@@ -354,58 +350,79 @@ class ActiveRestore {
   }
 
   private getRevisions(document: IChangeDocument): Promise<string[]> {
-    const documentHasError = (data: any) => (data.error ? true : false);
+    const responseHasError = (data: any) => (data.error ? true : false);
 
     const createStreamCache = (data: any) => {
       this.umidDoc = data;
+      let concatArray;
 
-      return [...data.streams.new, ...data.streams.updated];
+      data.streams
+        ? (concatArray = [...data.streams.new, ...data.streams.updated])
+        : (concatArray = []);
+
+      return concatArray;
     };
 
     const revisionAlreadyStored = (revisions: any, revision: any) =>
       revisions[revision] ? true : false;
 
     return new Promise((resolve, reject) => {
-      this.output(`Getting data from network. Using UMID: ${document.umid}`);
+      this.output("Getting revisions");
+      const transaction = document.transaction;
+
+      const revisions: string[] = [
+        ...(Object.keys(transaction.$revs.$i || {}) as string[]),
+        ...(Object.keys(transaction.$revs.$o || {}) as string[]),
+        ...(Object.values(transaction.$tx.$r || {}) as string[])
+      ];
+
+      this.output(`Getting data from network. Using UMID:`, document.umid);
       this.network.neighbourhood
-        .knockAll(`umid/${document.umid}`)
+        .knockAll(`umid/${document.umid}`, null, true)
         .then((responses: IResponse[]) => {
           let streamCache: any[] = [];
-          const transaction = document.transaction;
-          const revs: string[] = Object.keys(transaction.$revs.$i || {});
 
-          revs.concat(Object.keys(transaction.$revs.$o || {}));
-          revs.concat(Object.values(transaction.$tx.$r || {}));
+          this.output("Network data", responses);
 
           // Merge streams from responses
           for (let i = responses.length; i--; ) {
             const response = responses[i];
 
-            if (documentHasError(response)) {
-              streamCache = createStreamCache(response);
-            } else if (!this.attemptUmidDoc) {
-              // The error could be on this node
-              this.attemptUmidDoc = true;
-              // Attempt to try and add the UMID
-            }
+            responseHasError(response)
+              ? streamCache.push(...createStreamCache(response))
+              : !this.attemptUmidDoc
+              ? // The error could be on this node
+                // Attempt to try and add the UMID
+                (this.attemptUmidDoc = true)
+              : reject("Unable to retrieve necessary data");
           }
 
-          // Go through the streams and add to the revisions list
-          for (let i = streamCache.length; i--; ) {
-            const streamId = streamCache[i].id;
+          streamCache.length > 0
+            ? this.output("Stream cache:", streamCache)
+            : this.attemptUmidDoc
+            ? this.output("Attempting UMID doc? " + this.attemptUmidDoc)
+            : this.output("Stream cache empty and not attempting UMID doc.");
 
-            if (!revisionAlreadyStored(revs, streamId)) {
-              revs.push(streamId);
-            }
-          }
+          const getId = (data: any) => data.id;
+          const revNotStored = (data: any) => {
+            return (array: string[]) => {
+              return array.indexOf(data) > -1;
+            };
+          };
+
+          const streamIds: string[] = streamCache
+            .filter(revNotStored)
+            .map(getId);
+
+          revisions.concat(...streamIds);
 
           // Need to add :stream as well
           // As revs is prepopulated we need to go through the revs array and add :stream
-          for (let i = revs.length; i--; ) {
-            revs.push(`${revs[i]}:stream`);
+          for (let i = revisions.length; i--; ) {
+            revisions.push(`${revisions[i]}:stream`);
           }
 
-          resolve(revs);
+          resolve(revisions);
         })
         .catch((err: unknown) => {
           console.error(err);
