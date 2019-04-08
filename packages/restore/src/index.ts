@@ -28,7 +28,6 @@ import {
   ActiveDSConnect,
   ActiveChanges
 } from "@activeledger/activeoptions";
-import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import {
@@ -38,196 +37,39 @@ import {
 } from "./interfaces/document.interfaces";
 import { Sledgehammer } from "./sledgehammer";
 import { Contract } from "./contract";
-import { rejects } from "assert";
+import { Helper } from "./modules/helper/helper";
+import { Provider } from "./modules/provider/provider";
+import { ProviderDataTypes } from "./modules/provider/provider.enum";
 
 class ActiveRestore {
   private verbose = true;
-
-  private configName = "config.json";
-
-  private network: ActiveNetwork.Home;
-
-  private isSelfhost = false;
-
-  private database: ActiveDSConnect;
-
-  private errorDatabase: ActiveDSConnect;
-
-  private errorFeed: ActiveChanges;
-
-  private isQuickFullRestore = false;
-
-  private neighbourCount: number;
-
-  private consensusReachedAmount: number;
 
   private attemptUmidDoc = false;
 
   private umidDoc: any;
 
   constructor() {
-    ActiveOptions.init();
+    Helper.verbose = this.verbose;
 
-    this.getIdentity()
-      .then(() => {
-        return this.getConfig();
-      })
-      .then(() => {
-        return this.setupDatabase();
-      })
-      .then(() => {
-        return this.getConsensusData();
-      })
-      .then(() => {
-        if (!this.isQuickFullRestore) {
-          this.errorListener();
-          this.errorFeed.start();
-        } else {
-          this.runQuickFullRestore();
-        }
-      })
-      .catch((error: Error) => {
-        ActiveLogger.error(error);
-      });
-  }
-
-  private output(message: string, other?: any) {
-    if (this.verbose) {
-      other ? ActiveLogger.info(other, message) : ActiveLogger.info(message);
-    }
+    Provider.initialise().then(() => {
+      if (!this.isQuickFullRestore) {
+        this.errorListener();
+        Provider.get(ProviderDataTypes.ErrorFeed).start();
+      } else {
+        this.runQuickFullRestore();
+      }
+    });
   }
 
   // #region Initialisation
-  private setConfigData(key: string, data: string) {
-    this.output("Setting " + key);
-    ActiveOptions.set(key, data);
-  }
 
-  private getConfig(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.output("Getting Config");
-
-      let path = ActiveOptions.get<string>("path", "");
-      let config = ActiveOptions.get<string>("config", this.configName);
-
-      path
-        ? this.setConfigData("config", path + config)
-        : this.output("No config path found");
-
-      !fs.existsSync(config)
-        ? () => {
-            throw ActiveLogger.fatal(`No config file found (${config})`);
-          }
-        : this.output("Config path found");
-
-      this.output("Parsing Config");
-      ActiveOptions.parseConfig();
-
-      this.output("Extending Config");
-      ActiveOptions.extendConfig()
-        .then(() => {
-          this.output("Config Extended");
-          resolve();
-        })
-        .catch((err: unknown) => {
-          reject(err);
-        });
-    });
-  }
-
-  private getIdentity(): Promise<void> {
-    return new Promise((resolve) => {
-      this.output("Getting Identity");
-
-      const identity = ActiveOptions.get<string | boolean>("identity", false);
-      const path = ActiveOptions.get<string>("path", ".") + "/.identity";
-
-      identity
-        ? this.setConfigData("identity", path)
-        : this.output("No identity found");
-
-      !fs.existsSync(path)
-        ? () => {
-            throw ActiveLogger.fatal(`No Identity file found (${path})`);
-          }
-        : this.output("Identity path found");
-
-      resolve();
-    });
-  }
-
-  private setupSelfHostDB(dbConfig: any) {
-    this.output("Setting up self hosted database");
-    this.isSelfhost = true;
-    dbConfig.url = "http://127.0.0.1:" + dbConfig.selfhost.port;
-
-    // Update path to override the default CoudhDB
-    dbConfig.path = dbConfig.selfhost.dir || "./.ds";
-
-    // Set the modified data
-    ActiveOptions.set("db", dbConfig);
-  }
-
-  private setupErrorDB(dbConfig: any) {
-    // Get error database connection
-    this.errorDatabase = new ActiveDSConnect(
-      `${dbConfig.url}/${dbConfig.error}`
-    );
-
-    // Initialise Error feed
-    this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
-  }
-
-  private setupDatabase(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const dbConfig = ActiveOptions.get<any>("db", {});
-
-      // Check if selfhosted
-      dbConfig.selfhost
-        ? this.setupSelfHostDB(dbConfig)
-        : this.output("Not using self hosted database");
-
-      // Initialise ActiveNetwork for communications management (knock all)
-      this.output("Initialising ActiveNetwork");
-      this.network = new ActiveNetwork.Home();
-
-      // Initialise live database connection
-      this.output("Initialising ActiveDSConnect");
-      this.database = new ActiveDSConnect(
-        `${dbConfig.url}/${dbConfig.database}`
-      );
-
-      !ActiveOptions.get<boolean>("full", false)
-        ? this.setupErrorDB(dbConfig)
-        : (this.isQuickFullRestore = true);
-
-      resolve();
-    });
-  }
-
-  private getConsensusData(): Promise<void> {
-    return new Promise((resolve) => {
-      // Get the amount of neighbours in the network
-      this.neighbourCount = ActiveOptions.get<Array<any>>(
-        "neighbourhood",
-        []
-      ).length;
-
-      // Get the minimum amount to reach consensus
-      this.consensusReachedAmount = ActiveOptions.get<any>(
-        "consensus",
-        {}
-      ).reached;
-
-      resolve();
-    });
-  }
   // #endregion
 
   // #region Error Feed Listening
   getNeighbourCount = (dontIncludeSelf: boolean) =>
     dontIncludeSelf ? this.neighbourCount - 1 : this.neighbourCount;
 
+  // Has the transaction met consensus
   metConsensus = (votes: number, dontIncludeSelf: boolean = false) =>
     (votes / this.getNeighbourCount(dontIncludeSelf)) * 100 >=
     this.consensusReachedAmount
@@ -251,11 +93,9 @@ class ActiveRestore {
     // Does the transaction have votes
     const hasVote = (data: any) => (data.vote ? true : false);
 
-    // Has the transaction met consensus
-
     // Handle consensus not being met
     const handleConsensusNotMet = (changeDoc: any) => {
-      this.output("Conensus not met.");
+      Helper.output("Conensus not met.");
       changeDoc.code === 1200
         ? this.dataIntegrityCheck(changeDoc)
         : this.setProcessed(changeDoc);
@@ -267,14 +107,14 @@ class ActiveRestore {
 
     const beginMain = (changeDoc: any, transaction: any) => {
       // Check for true votes
-      this.output("Checking votes");
+      Helper.output("Checking votes");
       const votes = Object.values(transaction.$nodes).filter(hasVote).length;
-      this.output(`Vote total: ${votes}`);
+      Helper.output(`Vote total: ${votes}`);
 
       // Check if votes reached consensus
       // Code 1200: If votes did not, transaction was voted incorrect by majority, we can safely ignore it
       // Everything else: Might be ahead so check for incorrect stream position
-      this.output("Checking if consensus has been met.");
+      Helper.output("Checking if consensus has been met.");
       this.metConsensus(votes)
         ? this.dataIntegrityCheck(changeDoc)
         : handleConsensusNotMet(changeDoc);
@@ -289,15 +129,15 @@ class ActiveRestore {
         : false;
 
     const handleNotProcessed = (changeDoc: any) => {
-      this.output("Document not yet processed.");
+      Helper.output("Document not yet processed.");
       // Check the error codes
       if (hasErrorCode(changeDoc)) {
-        this.output("Document has errored.");
+        Helper.output("Document has errored.");
         // If failed to save can't rely on data in the body
         // If vote failed might not have node responses
         // If broadcast can't rely on the data
 
-        this.output(
+        Helper.output(
           `Is this a compatible transaction: ${isCompatibleTransaction(
             changeDoc
           )}`
@@ -309,19 +149,19 @@ class ActiveRestore {
             // They might have voted no because this revision is wrong.
             this.dataIntegrityCheck(changeDoc);
       } else {
-        this.output("Document has no error code.");
+        Helper.output("Document has no error code.");
         this.setProcessed(changeDoc);
       }
     };
 
     this.errorFeed.on("change", (change: IChange) => {
-      this.output("Change event received, pausing error feed.");
+      Helper.output("Change event received, pausing error feed.");
       // Pause error feed to process
       this.errorFeed.pause();
 
       const changeDoc = change.doc;
 
-      this.output("Checking if document already processed.");
+      Helper.output("Checking if document already processed.");
       // Has the document been processed? If yes resume feed
       !changeDoc.processed
         ? handleNotProcessed(changeDoc)
@@ -337,21 +177,21 @@ class ActiveRestore {
       ActiveLogger.info("Data Check - Resuming");
 
       //  Get the revisions
-      this.output("Getting revisions");
+      Helper.output("Getting revisions");
       const revs = await this.getRevisions(document);
 
       // Output possible stream changes
       ActiveLogger.info(revs, "$stream revisions");
 
-      this.output("Getting network stream data");
+      Helper.output("Getting network stream data");
       const reducedStreamData = await this.getNetworkStreamData(revs);
 
-      this.output("Checking for consensus");
+      Helper.output("Checking for consensus");
       const checkForConsensus = await this.consensusCheck(
         reducedStreamData,
         document
       );
-    }, 6000);
+    }, 500);
   }
 
   private getRevisions(document: IChangeDocument): Promise<string[]> {
@@ -372,7 +212,7 @@ class ActiveRestore {
       revisions[revision] ? true : false;
 
     return new Promise((resolve, reject) => {
-      this.output("Getting revisions");
+      Helper.output("Getting revisions");
       const transaction = document.transaction;
 
       const revisions: string[] = [
@@ -381,13 +221,13 @@ class ActiveRestore {
         ...(Object.values(transaction.$tx.$r || {}) as string[])
       ];
 
-      this.output(`Getting data from network. Using UMID:`, document.umid);
+      Helper.output(`Getting data from network. Using UMID:`, document.umid);
       this.network.neighbourhood
         .knockAll(`umid/${document.umid}`, null, true)
         .then((responses: IResponse[]) => {
           let streamCache: any[] = [];
 
-          this.output("Network data", responses);
+          Helper.output("Network data", responses);
 
           // Merge streams from responses
           for (let i = responses.length; i--; ) {
@@ -403,10 +243,10 @@ class ActiveRestore {
           }
 
           streamCache.length > 0
-            ? this.output("Stream cache:", streamCache)
+            ? Helper.output("Stream cache:", streamCache)
             : this.attemptUmidDoc
-            ? this.output("Attempting UMID doc? " + this.attemptUmidDoc)
-            : this.output("Stream cache empty and not attempting UMID doc.");
+            ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
+            : Helper.output("Stream cache empty and not attempting UMID doc.");
 
           const getId = (data: any) => data.id;
           const revNotStored = (data: any) => {
@@ -439,6 +279,11 @@ class ActiveRestore {
     reducedStreamData: any,
     document: IChangeDocument
   ): Promise<any> {
+    const handleStreamFixPromise = (streamIndex: any, revisionIndex: any) => {
+      ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
+      // promiseHolder.push(this.fixStream(streamIndex, revisionIndex));
+      return this.fixStream(streamIndex, revisionIndex);
+    };
     return new Promise((resolve, reject) => {
       const streams = Object.keys(reducedStreamData);
       const promiseHolder = [];
@@ -453,12 +298,11 @@ class ActiveRestore {
           const revisionIndex = revs[i];
           const revisionCount = stream[revisionIndex];
 
-          // this.metConsensus(revisionCount)
-
-          if (this.metConsensus(revisionCount, true)) {
-            ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
-            promiseHolder.push(this.fixStream(streamIndex, revisionIndex));
-          }
+          this.metConsensus(revisionCount, true)
+            ? promiseHolder.push(
+                handleStreamFixPromise(streamIndex, revisionIndex)
+              )
+            : promiseHolder.push(true);
         }
       }
 
@@ -467,6 +311,7 @@ class ActiveRestore {
           this.setProcessed(document);
 
           if (results.some((e: boolean) => e)) {
+            Helper.output("Fetching hammer");
             this.hammerTime();
           } else {
             ActiveLogger.warn("Data Check - False Positive");
@@ -518,22 +363,38 @@ class ActiveRestore {
   }
 
   private fixStream(streamId: any, revision: any): Promise<boolean> {
+    Helper.output(`Stream ${streamId} revision ${revision} needs fixing...`);
     return new Promise((resolve, reject) => {
       this.database
         .get(streamId)
         .then((document: any) => {
+          // Helper.output("Fetched stream data:", document);
+
           if (document._rev === revision) {
+            // Helper.output("Found revision");
             resolve(false);
           } else {
+            Helper.output("Revision not found fixing", document);
             this.fixDocument(document, streamId, revision, false)
-              .then(resolve)
-              .catch(reject);
+              .then((resolution: boolean) => {
+                Helper.output("Document fix resolution: " + resolution);
+                resolve(resolution);
+              })
+              .catch(() => {
+                resolve(false);
+              });
           }
         })
         .catch((err: unknown) => {
+          Helper.output("Error getting document found fixing");
           this.fixDocument({ _id: streamId }, streamId, revision, false)
-            .then(resolve)
-            .catch(reject);
+            .then((resolution: boolean) => {
+              Helper.output("Document fix resolution: " + resolution);
+              resolve(resolution);
+            })
+            .catch(() => {
+              resolve(false);
+            });
         });
     });
   }
@@ -545,12 +406,15 @@ class ActiveRestore {
     volatile: boolean
   ): Promise<boolean> {
     return new Promise(async (resolve, reject) => {
+      Helper.output("Fixing document");
       const streamData = await this.getNeighbourhoodStreamData(
         document,
         streamId,
         revision,
         volatile
       );
+      Helper.output("Stream Data: " + streamData);
+      resolve(streamData);
     });
   }
 
@@ -560,31 +424,50 @@ class ActiveRestore {
     $rev: string,
     volatile: boolean
   ): Promise<any> {
+    const isDocMissing = (doc: any) =>
+      document.error &&
+      document.status &&
+      document.message &&
+      document.docId &&
+      document.status === 404 &&
+      document.message === "missing"
+        ? true
+        : false;
+
+    const isStreamDefinedAndNotEmptyArray = (stream: any) =>
+      stream && !Array.isArray(stream) ? true : false;
+
     return new Promise((resolve, reject) => {
+      Helper.output(
+        "Fetching neighbourhood stream data, beginning door duty..."
+      );
       this.network.neighbourhood
         .knockAll("stream", { $stream, $rev }, true)
         .then((streams: any) => {
+          Helper.output("Received the following data: ", streams);
           for (let i = streams.length; i--; ) {
             const stream = streams[i];
-            if (stream.error) {
-              if (
-                document.error &&
-                document.status &&
-                document.message &&
-                document.docId &&
-                document.status === 404 &&
-                document.message === "missing"
-              ) {
+            if (!stream.error) {
+              if (isDocMissing(document)) {
                 document._id = document.docId;
               }
 
-              if (stream && !Array.isArray(stream)) {
+              Helper.output(
+                "Checking stream correct: " +
+                  isStreamDefinedAndNotEmptyArray(stream),
+                stream
+              );
+              if (isStreamDefinedAndNotEmptyArray(stream)) {
                 if (this.isSelfhost) {
+                  Helper.output("Self host enabled, rebuilding self.");
                   return this.rebuildSelf(document, stream);
                 } else {
+                  Helper.output("Rebuilding remote.");
                   return this.rebuildRemote(document, stream, volatile);
                 }
               }
+            } else {
+              Helper.output("Stream contains an error...", stream);
             }
           }
         })
@@ -608,32 +491,32 @@ class ActiveRestore {
       stream.namespace && stream.contract && stream.compiled ? true : false;
 
     return new Promise(async (resolve, reject) => {
-      this.output("Begginning data remote rebuild process");
-      this.output("Re-writing stream");
+      Helper.output("Begginning data remote rebuild process");
+      Helper.output("Re-writing stream");
       document.$activeledger = {
         delete: true,
         rewrite: stream
       };
 
-      this.output("Attempting to add updated document to database");
+      Helper.output("Attempting to add updated document to database");
       try {
         await this.database.put(document);
       } catch (error) {
         reject(error);
       }
 
-      this.output("Checking stream data");
+      Helper.output("Checking stream data");
       isRequiredStreamData(stream)
         ? Contract.rebuild(stream)
-        : this.output("Stream data does not contain required data");
+        : Helper.output("Stream data does not contain required data");
 
-      this.output("Checking for volatile");
+      Helper.output("Checking for volatile");
       isVolatileStreamData(volatile, document)
         ? await this.database.put({
             _id: document._id.replace(":stream", ":volatile"),
             _rev: document._rev
           })
-        : this.output("Data is not volatile");
+        : Helper.output("Data is not volatile");
 
       resolve(true);
     });
@@ -641,7 +524,7 @@ class ActiveRestore {
 
   private rebuildSelf(document: any, stream: any): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      this.output("Begginning data rebuild process on self");
+      Helper.output("Beginning data rebuild process on self");
       this.database
         .purge(document)
         .then(() => {
@@ -670,6 +553,8 @@ class ActiveRestore {
             }
           }
 
+          Helper.output("Reduction complete", reduction);
+
           resolve(reduction);
         })
         .catch((error: Error) => {
@@ -680,8 +565,14 @@ class ActiveRestore {
   }
 
   private reduceStreamData(streams: any, reduction: any): any {
+    Helper.output("Current reduction:", reduction);
+    Helper.output("Reducing: ", streams);
     for (let i = streams.length; i--; ) {
       const stream = streams[i];
+
+      if (!reduction) {
+        reduction = {};
+      }
 
       // Is the stream ID already there
       if (!reduction[stream._id]) {
@@ -689,10 +580,14 @@ class ActiveRestore {
       }
 
       // Is the revision already there
-      !reduction[stream._id][stream._rev]
-        ? (reduction[stream._id][stream._rev] = 0)
-        : reduction[stream._id][stream._rev]++;
+      if (!reduction[stream._id][stream._rev]) {
+        reduction[stream._id][stream._rev] = 0;
+      }
+
+      reduction[stream._id][stream._rev]++;
     }
+
+    return reduction;
   }
 
   private setProcessed(document: IChangeDocument): Promise<void> {
