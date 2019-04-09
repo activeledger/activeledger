@@ -22,11 +22,15 @@
  */
 
 import { ActiveledgerDatasource } from "../datasources/activeledger";
-import { RestBindings, Response, param, get } from "@loopback/rest";
+import { HeartBeat } from "../heatbeat.service";
+import { RestBindings, Response, Request, param, get } from "@loopback/rest";
 import { inject } from "@loopback/context";
 
 export class EventController {
-  constructor(@inject(RestBindings.Http.RESPONSE) private response: Response) {}
+  constructor(
+    @inject(RestBindings.Http.REQUEST) public request: Request,
+    @inject(RestBindings.Http.RESPONSE) private response: Response
+  ) {}
 
   /**
    * Subscribe to all events
@@ -47,8 +51,13 @@ export class EventController {
       // Make sure we have an array
       this.response.status(200).contentType("text/event-stream");
 
+      // Start Heartbeat
+      const heartBeat = HeartBeat.Start(this.response);
+
       // Listen for changes
-      ActiveledgerDatasource.getEvents().on("change", (change: any) => {
+      ActiveledgerDatasource.getEvents(
+        this.request.header("Last-Event-ID") || "now"
+      ).on("change", (change: any) => {
         // Prepare data
         let prepare = {
           event: {
@@ -63,12 +72,14 @@ export class EventController {
         if (this.response.writable) {
           // Write new event
           this.response.write(
-            `event: message\ndata:${JSON.stringify(prepare)}`
+            `id:${change.seq}\nevent: message\ndata:${JSON.stringify(prepare)}`
           );
           this.response.write("\n\n");
         } else {
           // End Server Side
           this.response.end();
+          // End Heartbeat
+          HeartBeat.Stop(heartBeat);
           reject("socket closed");
         }
       });
@@ -96,8 +107,13 @@ export class EventController {
     return new Promise((resolve, reject) => {
       this.response.status(200).contentType("text/event-stream");
 
+      // Start Heartbeat
+      const heartBeat = HeartBeat.Start(this.response);
+
       // Listen for changes
-      ActiveledgerDatasource.getEvents().on("change", (change: any) => {
+      ActiveledgerDatasource.getEvents(
+        this.request.header("Last-Event-ID") || "now"
+      ).on("change", (change: any) => {
         // This Contract?
         if (change.doc.contract === contract) {
           // Prepare data
@@ -114,12 +130,16 @@ export class EventController {
           if (this.response.writable) {
             // Write new event
             this.response.write(
-              `event: message\ndata:${JSON.stringify(prepare)}`
+              `id:${change.seq}\nevent: message\ndata:${JSON.stringify(
+                prepare
+              )}`
             );
             this.response.write("\n\n");
           } else {
             // End Server Side
             this.response.end();
+            // End Heartbeat
+            HeartBeat.Stop(heartBeat);
             reject("socket closed");
           }
         }
@@ -150,8 +170,13 @@ export class EventController {
     return new Promise((resolve, reject) => {
       this.response.status(200).contentType("text/event-stream");
 
+      // Start Heartbeat
+      const heartBeat = HeartBeat.Start(this.response);
+
       // Listen for changes
-      ActiveledgerDatasource.getEvents().on("change", (change: any) => {
+      ActiveledgerDatasource.getEvents(
+        this.request.header("Last-Event-ID") || "now"
+      ).on("change", (change: any) => {
         // This Contract && This Event?
         if (change.doc.contract === contract && change.doc.name === event) {
           // Prepare data
@@ -168,12 +193,16 @@ export class EventController {
           if (this.response.writable) {
             // Write new event
             this.response.write(
-              `event: message\ndata:${JSON.stringify(prepare)}`
+              `id:${change.seq}\nevent: message\ndata:${JSON.stringify(
+                prepare
+              )}`
             );
             this.response.write("\n\n");
           } else {
             // End Server Side
             this.response.end();
+            // End Heartbeat
+            HeartBeat.Stop(heartBeat);
             reject("socket closed");
           }
         }
