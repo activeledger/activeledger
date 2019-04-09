@@ -7,42 +7,25 @@ import {
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { ProviderDataTypes } from "./provider.enum";
 
 export class Provider {
-  private readonly configName = "config.json";
+  private static readonly configName = "config.json";
 
-  private static isSelfhost: boolean;
+  public static isSelfhost: boolean;
 
-  private static errorDatabase: ActiveDSConnect;
+  public static errorDatabase: ActiveDSConnect;
 
-  private static errorFeed: ActiveChanges;
+  public static errorFeed: ActiveChanges;
 
-  private static network: ActiveNetwork.Home;
+  public static network: ActiveNetwork.Home;
 
-  private static isQuickFullRestore = false;
+  public static isQuickFullRestore = false;
 
-  private static neighbourCount: number;
+  public static neighbourCount: number;
 
-  private static consensusReachedAmount: number;
+  public static consensusReachedAmount: number;
 
-  private static database: ActiveDSConnect;
-
-  public get<T>(data: ProviderDataTypes): T {
-    const map = {
-      [ProviderDataTypes.IsSelfHost]: Provider.isSelfhost,
-      [ProviderDataTypes.ErrorDatabase]: Provider.errorDatabase,
-      [ProviderDataTypes.ErrorFeed]: Provider.errorFeed,
-      [ProviderDataTypes.Network]: Provider.network,
-      [ProviderDataTypes.IsQuickFullRestore]: Provider.isQuickFullRestore,
-      [ProviderDataTypes.NeighbourCount]: Provider.neighbourCount,
-      [ProviderDataTypes.ConsensusReachedAmount]:
-        Provider.consensusReachedAmount,
-      [ProviderDataTypes.Database]: Provider.database
-    };
-
-    return (map[data] as unknown) as T;
-  }
+  public static database: ActiveDSConnect;
 
   public static initialise(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -58,19 +41,21 @@ export class Provider {
         .then(() => {
           return this.getConsensusData();
         })
-        .then(() => {})
+        .then(() => {
+          resolve();
+        })
         .catch((error: Error) => {
           ActiveLogger.error(error);
         });
     });
   }
 
-  private setConfigData(key: string, data: string) {
+  private static setConfigData(key: string, data: string) {
     Helper.output("Setting " + key);
     ActiveOptions.set(key, data);
   }
 
-  private getConfig(): Promise<void> {
+  private static getConfig(): Promise<void> {
     return new Promise((resolve, reject) => {
       Helper.output("Getting Config");
 
@@ -102,7 +87,7 @@ export class Provider {
     });
   }
 
-  private getIdentity(): Promise<void> {
+  private static getIdentity(): Promise<void> {
     return new Promise((resolve) => {
       Helper.output("Getting Identity");
 
@@ -123,9 +108,9 @@ export class Provider {
     });
   }
 
-  private setupSelfHostDB(dbConfig: any) {
+  private static setupSelfHostDB(dbConfig: any) {
     Helper.output("Setting up self hosted database");
-    this._isSelfhost = true;
+    this.isSelfhost = true;
     dbConfig.url = "http://127.0.0.1:" + dbConfig.selfhost.port;
 
     // Update path to override the default CoudhDB
@@ -135,7 +120,7 @@ export class Provider {
     ActiveOptions.set("db", dbConfig);
   }
 
-  private setupErrorDB(dbConfig: any) {
+  private static setupErrorDB(dbConfig: any) {
     // Get error database connection
     this.errorDatabase = new ActiveDSConnect(
       `${dbConfig.url}/${dbConfig.error}`
@@ -145,7 +130,7 @@ export class Provider {
     this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
   }
 
-  private setupDatabase(): Promise<void> {
+  private static setupDatabase(): Promise<void> {
     return new Promise((resolve, reject) => {
       const dbConfig = ActiveOptions.get<any>("db", {});
 
@@ -172,7 +157,7 @@ export class Provider {
     });
   }
 
-  private getConsensusData(): Promise<void> {
+  private static getConsensusData(): Promise<void> {
     return new Promise((resolve) => {
       // Get the amount of neighbours in the network
       this.neighbourCount = ActiveOptions.get<Array<any>>(
