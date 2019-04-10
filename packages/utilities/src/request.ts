@@ -27,6 +27,16 @@ import * as url from "url";
 import { ActiveGZip } from "./gzip";
 
 /**
+ * Returned HTTP Resonse data
+ *
+ * @interface IHTTPResponse
+ */
+interface IHTTPResponse {
+  raw: string,
+  data?: unknown
+}
+
+/**
  * Simple HTTP Request Object
  *
  * @export
@@ -50,8 +60,8 @@ export class ActiveRequest {
     type: string,
     header?: string[],
     data?: any,
-    enableGZip: boolean = false,
-  ): Promise<any> {
+    enableGZip: boolean = false
+  ): Promise<IHTTPResponse> {
     // return new pending promise
     return new Promise(async (resolve, reject) => {
       // Parse URL
@@ -87,8 +97,11 @@ export class ActiveRequest {
 
       // Manage Data
       if (data && (options.method == "POST" || options.method == "PUT")) {
-        // convert data to string
-        data = JSON.stringify(data);
+        // convert data to string if object
+        if (typeof data === "object") {
+          data = JSON.stringify(data);
+          (options.headers as any)["Content-Type"] = "application/json";
+        }
 
         // Compressable?
         if (enableGZip) {
@@ -98,7 +111,6 @@ export class ActiveRequest {
         }
 
         // Additional Post headers
-        (options.headers as any)["Content-Type"] = "application/json";
         (options.headers as any)["Content-Length"] = data.length;
       }
 
@@ -131,9 +143,21 @@ export class ActiveRequest {
                 if (response.headers["content-encoding"] == "gzip") {
                   gdata = await ActiveGZip.ungzip(bodyBuffer);
                 }
-                resolve({
-                  data: JSON.parse((gdata || bodyBuffer).toString())
-                });
+
+                // Raw Response Data
+                let raw = (gdata || bodyBuffer).toString();
+
+                // JSON response?
+                if (response.headers["content-type"] == "application/json") {
+                  resolve({
+                    raw,
+                    data: JSON.parse(raw)
+                  });
+                } else {
+                  resolve({
+                    raw
+                  });
+                }
               } catch (error) {
                 reject(new Error("Failed to parse body"));
               }
