@@ -23,10 +23,3 @@
 
 import { PDF } from "./pdf";
 export { PDF };
-
-
-// let x = new PDF({content:"hello"});
-
-// x.getDataURI().then((y:any) => {
-//     console.log("done");
-// }).catch(x => console.log)
