@@ -10,7 +10,7 @@ import { Sledgehammer } from "../sledgehammer/sledgehammer";
 import { Contract } from "../contract/contract";
 import { ErrorCodes } from "./error-codes.enum";
 
-export class FeedHandler {
+export class Interagent {
   private errorCodes = [
     ErrorCodes.StreamNotFound,
     ErrorCodes.StateNotFound,

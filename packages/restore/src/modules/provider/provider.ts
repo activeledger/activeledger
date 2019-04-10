@@ -62,15 +62,19 @@ export class Provider {
       let path = ActiveOptions.get<string>("path", "");
       let config = ActiveOptions.get<string>("config", this.configName);
 
+      config === this.configName
+        ? Helper.output("Using default config")
+        : Helper.output("Config provided");
+
       path
         ? this.setConfigData("config", path + config)
-        : Helper.output("No config path found");
+        : Helper.output("No path provided");
 
       !fs.existsSync(config)
         ? () => {
             throw ActiveLogger.fatal(`No config file found (${config})`);
           }
-        : Helper.output("Config path found");
+        : Helper.output("Config file found");
 
       Helper.output("Parsing Config");
       ActiveOptions.parseConfig();

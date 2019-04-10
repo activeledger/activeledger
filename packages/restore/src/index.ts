@@ -25,42 +25,24 @@
 
 import { Helper } from "./modules/helper/helper";
 import { Provider } from "./modules/provider/provider";
-import { FeedHandler } from "./modules/feed-handler/feed-handler";
+import { Interagent } from "./modules/interagent/interagent";
 import { QuickRestore } from "./modules/quick-restore/quick-restore";
 
 class ActiveRestore {
   private verbose = true;
-
-  private feedHandler: FeedHandler;
 
   constructor() {
     Helper.verbose = this.verbose;
 
     Provider.initialise().then(() => {
       if (!Provider.isQuickFullRestore) {
-        this.feedHandler = new FeedHandler();
+        new Interagent();
         Provider.errorFeed.start();
       } else {
-        QuickRestore.initialise();
+        new QuickRestore();
       }
     });
   }
-
-  private changeListener(): void {
-    Provider.errorFeed.start();
-  }
-
-  // #region Initialisation
-
-  // #endregion
-
-  // #region Error Feed Listening
-
-  // #endregion
-
-  // #region Quick Full Restore
-
-  // #endregion
 }
 
 new ActiveRestore();
