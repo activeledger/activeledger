@@ -25,7 +25,6 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import { ActiveGZip } from "./gzip";
-import { ActiveOptions } from "./options";
 
 /**
  * Simple HTTP Request Object
@@ -42,6 +41,7 @@ export class ActiveRequest {
    * @param {string} type
    * @param {string[]} [header]
    * @param {*} [data]
+   * @param {boolean} [enableGZip=false]
    * @returns {Promise<any>}
    * @memberof ActiveRequest
    */
@@ -49,7 +49,8 @@ export class ActiveRequest {
     reqUrl: string,
     type: string,
     header?: string[],
-    data?: any
+    data?: any,
+    enableGZip: boolean = false,
   ): Promise<any> {
     // return new pending promise
     return new Promise(async (resolve, reject) => {
@@ -58,9 +59,6 @@ export class ActiveRequest {
 
       // select http or https module, depending on reqested url
       const lib = reqUrl.startsWith("https") ? https : http;
-
-      // Temporary Experimental Mode
-      let enableGZip = ActiveOptions.get<any>("experimental", {}).gzip || false;
 
       // Build Base Options
       let options: https.RequestOptions = {

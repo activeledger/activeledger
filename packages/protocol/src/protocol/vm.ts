@@ -185,13 +185,32 @@ export class VirtualMachine {
         // Set Secret Key
         this.key = Math.floor(Math.random() * 100);
 
+        // Toolkit Availability Check
+        let toolkitAvailable = true;
+        try {
+          require.resolve("@activeledger/activetoolkits");
+        } catch (error) {
+          // Toolkits not installed
+          toolkitAvailable = false;
+        }
+
         // Manage Externals & buildit
         let external: string[] = [
           this.contractPath,
-          "@activeledger/activecontracts",
-          "@activeledger/activetoolkits"
+          "@activeledger/activecontracts"
         ];
-        let builtin: string[] = ["buffer", "events"];
+        let builtin: string[] = ["buffer"];
+
+        // With toolkit allow additional externals & builtin
+        if (toolkitAvailable) {
+          external.push(
+            "@activeledger/activeutilities",
+            "@activeledger/activetoolkits"
+          );
+          builtin.push("events", "http", "https", "url", "zlib");
+        }
+
+        // Add additional External & builtin by namespace
         if (this.tx.$namespace == "default") {
           switch (this.tx.$contract) {
             case "contract":
