@@ -1,7 +1,7 @@
 {
-  "name": "@activeledger/activeoptions",
+  "name": "@activeledger/activeutilities",
   "version": "2.0.0-rc.8.0.56",
-  "description": "This package manages the optional runtime classes used within Activeledger",
+  "description": "This package manages shared classes between Activeledger and Activetoolkits",
   "keywords": [
     "blockchain",
     "dlt",
@@ -19,7 +19,7 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/",
+    "build": "npm run build:commonjs && npm run build:es",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -35,7 +35,6 @@
     "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
     "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.23",
-    "copyfiles": "^2.1.0",
     "typescript": "^3.3.3"
   },
   "files": [
@@ -45,11 +44,5 @@
   "types": "./lib/index.d.ts",
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
-  "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
-    "@activeledger/activeutilities": "^2.0.0-rc.8.0.56",
-    "minimist": "1.2.0",
-    "pouchdb": "7.0.0",
-    "pouchdb-find": "7.0.0"
-  }
+  "dependencies": {}
 }
