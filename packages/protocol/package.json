@@ -48,5 +48,8 @@
     "@types/node": "10.12.21",
     "typescript": "3.3.1",
     "vm2": "3.6.10"
+  },
+  "optionalDependencies": {
+    "@activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
   }
 }
