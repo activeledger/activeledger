@@ -1,5 +1,6 @@
 {
   "name": "@activeledger/activetoolkits",
+  "private": false,
   "version": "2.0.0-rc.8.0.50",
   "description": "To be added",
   "keywords": [
@@ -46,6 +47,6 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.50"
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.56"
   }
 }
