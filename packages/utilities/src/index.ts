@@ -21,16 +21,6 @@
  * SOFTWARE.
  */
 
-import { ActiveGZip, ActiveRequest } from "@activeledger/activeutilities";
-import { ActiveOptions } from "./options";
-import { ActiveChanges } from "./changes";
-import { ActiveDataStore } from "./datastore";
-import { ActiveDSConnect } from "./dsconnect";
-export {
-  ActiveDSConnect,
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip,
-  ActiveDataStore
-};
+import { ActiveRequest } from "./request";
+import { ActiveGZip } from "./gzip";
+export { ActiveRequest, ActiveGZip };
