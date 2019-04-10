@@ -21,5 +21,6 @@
  * SOFTWARE.
  */
 
+import { ActiveRequest as HTTP } from "@activeledger/activeutilities";
 import { PDF } from "./pdf";
-export { PDF };
+export { PDF, HTTP };
