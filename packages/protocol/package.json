@@ -50,6 +50,6 @@
     "vm2": "3.6.10"
   },
   "optionalDependencies": {
-    "@activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
+    "@_activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
   }
 }

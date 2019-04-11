@@ -54,6 +54,6 @@
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.56"
   },
   "optionalDependencies": {
-    "@activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
+    "@_activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
   }
 }
