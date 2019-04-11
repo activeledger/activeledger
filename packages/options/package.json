@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.0.0-rc.8.0.56",
+  "version": "2.0.0-rc.8.0.57",
   "description": "This package manages the optional runtime classes used within Activeledger",
   "keywords": [
     "blockchain",
@@ -47,7 +47,7 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
-    "@activeledger/activeutilities": "^2.0.0-rc.8.0.56",
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.57",
     "minimist": "1.2.0",
     "pouchdb": "7.0.0",
     "pouchdb-find": "7.0.0"
