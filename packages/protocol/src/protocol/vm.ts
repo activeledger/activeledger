@@ -188,7 +188,7 @@ export class VirtualMachine {
         // Toolkit Availability Check
         let toolkitAvailable = true;
         try {
-          require.resolve("@activeledger/activetoolkits");
+          require.resolve("@_activeledger/activetoolkits");
         } catch (error) {
           // Toolkits not installed
           toolkitAvailable = false;
@@ -205,7 +205,7 @@ export class VirtualMachine {
         if (toolkitAvailable) {
           external.push(
             "@activeledger/activeutilities",
-            "@activeledger/activetoolkits"
+            "@_activeledger/activetoolkits"
           );
           builtin.push("events", "http", "https", "url", "zlib");
         }
