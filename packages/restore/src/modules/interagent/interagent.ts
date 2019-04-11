@@ -1,3 +1,26 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { Helper } from "../helper/helper";
 import { Provider } from "../provider/provider";
 import {
@@ -10,6 +33,12 @@ import { Sledgehammer } from "../sledgehammer/sledgehammer";
 import { Contract } from "../contract/contract";
 import { ErrorCodes } from "./error-codes.enum";
 
+/**
+ * Interagent that listens for error events and attempts to fix them
+ *
+ * @export
+ * @class Interagent
+ */
 export class Interagent {
   private errorCodes = [
     ErrorCodes.StreamNotFound,
@@ -21,14 +50,37 @@ export class Interagent {
     ErrorCodes.FailedToGetResponse
   ];
 
+  /**
+   * Flag dictating if the process should attempt to create a UMID doc
+   *
+   * @private
+   * @memberof Interagent
+   */
   private attemptUmidDoc = false;
 
+  /**
+   * UMID document holder
+   *
+   * @private
+   * @type {*}
+   * @memberof Interagent
+   */
   private umidDoc: any;
 
+  /**
+   * Creates an instance of Interagent.
+   * @memberof Interagent
+   */
   constructor() {
     this.listener();
   }
 
+  /**
+   * Begins listenning to the errorfeed
+   *
+   * @private
+   * @memberof Interagent
+   */
   private listener(): void {
     Provider.errorFeed.on("change", (change: IChange) => {
       Helper.output("Change event received, pausing error feed.");

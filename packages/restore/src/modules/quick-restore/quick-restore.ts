@@ -1,117 +1,220 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Provider } from "../provider/provider";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { IStreamInformation } from "./quick-restore.interface";
+import {
+  IStreamInformation,
+  INetworkData,
+  IReductionData,
+  IRestoreStream,
+  IKnockData,
+  IConsensusData,
+  IBaseData,
+  INeighbourhood
+} from "../../interfaces/quick-restore.interface";
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
-import { rejects } from "assert";
 
+/**
+ * Perform a full restore on a nodes database
+ *
+ * @export
+ * @class QuickRestore
+ */
 export class QuickRestore {
+  /**
+   * Creates an instance of QuickRestore.
+   * @memberof QuickRestore
+   */
   constructor() {
     this.runQuickFullRestore();
   }
 
-  private isNotThisNode = (node: any) =>
-    node.reference !== ActiveNetwork.Home.reference;
+  /**
+   * Check that a node is not this one
+   *
+   * @private
+   * @memberof QuickRestore
+   */
+  private isNotThisNode = (node: string) =>
+    node !== ActiveNetwork.Home.reference;
 
+  /**
+   * Run the restoration process
+   *
+   * @private
+   * @returns {Promise<void>}
+   * @memberof QuickRestore
+   */
   private async runQuickFullRestore(): Promise<void> {
-    const preparePromise = (node: any) =>
-      this.asyncRecursiveRebuild(neighbourhood[node]);
+    const preparePromise = (node: string) =>
+      this.getRebuildData(neighbourhood[node]);
+
+    const startTime = Date.now();
 
     ActiveLogger.info("Starting Quick Full Restore");
 
-    const neighbourhood = Provider.network.neighbourhood.get();
-    const nodes = Object.keys(neighbourhood);
+    const neighbourhood: INeighbourhood = Provider.network.neighbourhood.get();
+    const nodes: string[] = Object.keys(neighbourhood);
 
-    const promises: Promise<any>[] = nodes
+    const promises: Promise<IStreamInformation>[] = nodes
       .filter(this.isNotThisNode)
       .map(preparePromise);
 
     try {
-      const streamInformation = await this.processPromises(promises);
-      const consensusData = await this.checkConsensus(streamInformation);
+      const streamInformation: IReductionData = await this.processRebuildPromises(
+        promises
+      );
+      const consensusData: IConsensusData[] = await this.checkConsensus(
+        streamInformation
+      );
       await this.fetchDocuments(consensusData);
+      const duration = Date.now() - startTime;
+      ActiveLogger.info(`Rebuild Complete; Duration: ${duration}ms`);
     } catch (error) {
       ActiveLogger.error(
-        "There was an error running quick full restore",
-        error
+        error,
+        "There was an error running quick full restore"
       );
     }
   }
 
-  private fetchDocuments(consensusData: any): Promise<any> {
-    const preparePromise = (data: any) =>
+  /**
+   * Fetch data from around the network
+   *
+   * @private
+   * @param {*} consensusData
+   * @returns {Promise<void>}
+   * @memberof QuickRestore
+   */
+  private fetchDocuments(consensusData: IConsensusData[]): Promise<void> {
+    const preparePromise = (data: IConsensusData) =>
       Provider.network.neighbourhood.knockAll(
         "stream",
-        { $stream: data.stream, $rev: data.rev },
+        { $stream: data.stream, $rev: data.revision },
         true
       );
 
     return new Promise(async (resolve, reject) => {
       try {
-        const promises: Promise<any>[] = consensusData.map(preparePromise);
+        Helper.output("Fetch documents: Conesensus data", consensusData);
+        const promises: Promise<unknown>[] = consensusData.map(preparePromise);
 
-        const networkData = await this.handleNetworkData(promises);
+        const networkData: INetworkData = await this.handleNetworkData(
+          promises
+        );
 
-        await this.processNetworkData(networkData);
+        await this.uploadData(networkData);
+        resolve();
       } catch (error) {
         reject(error);
-      } finally {
-        resolve();
       }
     });
   }
 
-  private processNetworkData(networkData: {
-    documents: any;
-    volatile: any;
-  }): Promise<any> {
+  /**
+   * Upload the data to the database
+   *
+   * @private
+   * @param {INetworkData} networkData
+   * @returns {Promise<void>}
+   * @memberof QuickRestore
+   */
+  private uploadData(networkData: INetworkData): Promise<void> {
     return new Promise(async (resolve, reject) => {
+      Helper.output("Processing Network Data", networkData);
+
       try {
         await Provider.database.bulkDocs(networkData.documents, {
           new_edits: false
         });
-        await Provider.database.bulkDocs(networkData.volatile, {
-          new_edits: false
-        });
       } catch (error) {
+        ActiveLogger.error(
+          "Error occurred in processNetworkData: Uploading documents to database"
+        );
         reject(error);
-      } finally {
+      }
+
+      try {
+        await Provider.database.bulkDocs(networkData.volatile, {
+          new_edits: true
+        });
         resolve();
+      } catch (error) {
+        ActiveLogger.error(
+          "Error occurred in processNetworkData: Uploading volatile to database"
+        );
+        reject(error);
       }
     });
   }
 
+  /**
+   * Process the data, rebuild contracts, add volatiles
+   *
+   * @private
+   * @param {Promise<unknown>[]} promises
+   * @returns {Promise<INetworkData>}
+   * @memberof QuickRestore
+   */
   private handleNetworkData(
-    promises: Promise<any>[]
-  ): Promise<{ documents: any; volatile: any }> {
-    const hasNotErrored = (data: any) => (data.error ? true : false);
+    promises: Promise<unknown>[]
+  ): Promise<INetworkData> {
+    const hasNotErrored = (data: IBaseData) => (data.error ? false : true);
 
-    const isNotStream = (data: any) =>
-      data._id.indexOf(":stream") === -1 ? true : false;
+    const isNotStreamOrUmid = (data: IBaseData) =>
+      data._id.indexOf(":stream") === -1 &&
+      data._id.indexOf(":umid") === -1 &&
+      data._id.indexOf("_design") === -1
+        ? true
+        : false;
 
-    const hasRequiredData = (data: any) =>
+    const hasRequiredData = (data: IBaseData) =>
       data.namespace && data.contract && data.compiled ? true : false;
 
     return new Promise((resolve, reject) => {
-      const documents: any[] = [];
-      const volatile: any[] = [];
+      const documents: unknown[] = [];
+      const volatile: unknown[] = [];
 
       Promise.all(promises)
-        .then((responses) => {
+        .then((responses: unknown[]) => {
           for (let i = responses.length; i--; ) {
-            const response = responses[i];
+            const response: unknown[] = responses[i] as unknown[];
 
             for (let r = response.length; r--; ) {
-              const data = response[r];
+              const data: IBaseData = response[r] as IBaseData;
 
               if (hasNotErrored(data)) {
-                documents.push(data[r]);
+                documents.push(data);
 
-                if (isNotStream(data)) {
-                  volatile.push({ _id: `${data._id}: volatile` });
+                if (isNotStreamOrUmid(data)) {
+                  volatile.push({ _id: `${data._id}:volatile` });
 
-                  if (hasRequiredData) Contract.rebuild(data);
+                  hasRequiredData(data)
+                    ? Contract.rebuild(data)
+                    : Helper.output("Data does not have required fields", data);
                 }
                 // Only need to find one non-erroring stream
                 break;
@@ -121,18 +224,28 @@ export class QuickRestore {
 
           resolve({ documents, volatile });
         })
-        .catch((err: unknown) => {
-          console.error(err);
+        .catch((error: Error) => {
+          reject(error);
         });
     });
   }
 
-  private checkConsensus(streamInformation: any): Promise<any[]> {
-    const streamIdCorrect = (streamId: any) =>
+  /**
+   * Check the consensus data of a stream
+   *
+   * @private
+   * @param {*} streamInformation
+   * @returns {Promise<IConsensusData[]>}
+   * @memberof QuickRestore
+   */
+  private checkConsensus(
+    streamInformation: IReductionData
+  ): Promise<IConsensusData[]> {
+    const streamIdCorrect = (streamId: string) =>
       streamId && streamId !== "undefined" ? true : false;
 
-    return new Promise((resolve, reject) => {
-      const consensusReached: any[] = [];
+    return new Promise((resolve) => {
+      const consensusReached: IConsensusData[] = [];
       const streams = Object.keys(streamInformation);
 
       for (let i = streams.length; i--; ) {
@@ -146,8 +259,13 @@ export class QuickRestore {
             const revision = revisions[i];
             const vote = stream[revision];
 
+            Helper.output("Check Consensus: Adding", {
+              stream: streamId,
+              revision
+            });
+
             if (Helper.metConsensus(vote)) {
-              consensusReached.push({ stream, revision });
+              consensusReached.push({ stream: streamId, revision });
               break;
             }
           }
@@ -158,9 +276,19 @@ export class QuickRestore {
     });
   }
 
-  private processPromises(promises: Promise<any>[]): Promise<any> {
-    const streamDataCorrect = (data: any) =>
-      typeof data === "string" ? false : true;
+  /**
+   * Process the data rebuild promises, clean the returned data and reduce it.
+   *
+   * @private
+   * @param {Promise<IStreamInformation>[]} promises
+   * @returns {Promise<IReductionData>}
+   * @memberof QuickRestore
+   */
+  private processRebuildPromises(
+    promises: Promise<IStreamInformation>[]
+  ): Promise<IReductionData> {
+    const streamDataCorrect = (data: IStreamInformation) =>
+      data ? true : false;
 
     return new Promise((resolve, reject) => {
       Promise.all(promises)
@@ -169,38 +297,45 @@ export class QuickRestore {
             streamDataCorrect
           );
 
-          // Helper.output("streamInformation", streamInformation);
-          // Helper.output("cleanedStreamInformation", cleanedStreamInformation);
+          Helper.output("cleanedStreamInformation", cleanedStreamInformation);
 
           Object.keys(cleanedStreamInformation).length > 0
             ? resolve(this.reduceStreamInformation(cleanedStreamInformation))
             : reject("No data to process");
         })
-        .catch((err: unknown) => {
-          reject(err);
+        .catch((error: Error) => {
+          reject(error);
         });
     });
   }
 
+  /**
+   *  Reduce the given stream information
+   *
+   * @private
+   * @param {IStreamInformation[]} streamInformation
+   * @returns {*}
+   * @memberof QuickRestore
+   */
   private reduceStreamInformation(
     streamInformation: IStreamInformation[]
-  ): any {
-    const haveStream = (stream: any) =>
-      reduction[stream["id"]] ? true : false;
+  ): IReductionData {
+    const haveStream = (stream: IRestoreStream) =>
+      reduction[stream.id] ? true : false;
 
-    const haveRevision = (stream: any) =>
-      reduction[stream["id"]][stream.rev] ? true : false;
+    const haveRevision = (stream: IRestoreStream) =>
+      reduction[stream.id][stream.rev] ? true : false;
 
-    const incrementStreamRevisionCounter = (stream: any) =>
-      reduction[stream["id"]][stream.rev]++;
+    const incrementStreamRevisionCounter = (stream: IRestoreStream) =>
+      reduction[stream.id][stream.rev]++;
 
-    const startStreamRevisionCounter = (stream: any) =>
-      (reduction[stream["id"]][stream.rev] = 1);
+    const startStreamRevisionCounter = (stream: IRestoreStream) =>
+      (reduction[stream.id][stream.rev] = 1);
 
-    const initialiseStreamCounter = (stream: any) =>
-      (reduction[stream["id"]] = { [stream.rev]: 1 });
+    const initialiseStreamCounter = (stream: IRestoreStream) =>
+      (reduction[stream.id] = { [stream.rev]: 1 });
 
-    let reduction: any = {};
+    let reduction: IReductionData = {};
 
     Helper.output("Stream Information", streamInformation);
 
@@ -213,7 +348,6 @@ export class QuickRestore {
           const stream = streams[s];
 
           if (stream) {
-            // Helper.output("Reduction stream", (streams[s] as any).id);
             Helper.output("Reducing stream", stream);
 
             haveStream(stream)
@@ -231,21 +365,50 @@ export class QuickRestore {
     return reduction;
   }
 
-  private asyncRecursiveRebuild(
+  /**
+   * Get the data needed for the rebuild from the network
+   *
+   * @private
+   * @param {ActiveNetwork.Neighbour} node
+   * @returns {(Promise<IStreamInformation>)}
+   * @memberof QuickRestore
+   */
+  private getRebuildData(
     node: ActiveNetwork.Neighbour
-  ): Promise<IStreamInformation | string> {
-    const hasData = (data: any) =>
-      data.data && data.data.length > 0 ? true : false;
+  ): Promise<IStreamInformation> {
+    const hasData = (knockData: IKnockData) =>
+      knockData.data && knockData.data.length > 0 ? true : false;
 
-    const getId = (data: any) => data.data[data.data.length - 1]["id"];
+    const getId = (knockData: IKnockData) =>
+      knockData.data[knockData.data.length - 1]["id"];
 
     return new Promise(async (resolve, reject) => {
-      let streams: any[] = [];
-      const knockResults = await node.knock("all");
+      let streams: IRestoreStream[] = [];
+      let knockResults: IKnockData = {} as IKnockData;
 
-      if (hasData(knockResults)) {
-        const knockResult = await node.knock(`all/${getId(knockResults)}`);
-        streams = knockResult.data;
+      try {
+        knockResults = await node.knock("all");
+      } catch (error) {
+        ActiveLogger.error(
+          "An error occured in getRebuildData: node.knock('all')"
+        );
+        reject(error);
+      }
+
+      try {
+        if (hasData(knockResults)) {
+          const knockResult: IKnockData = await node.knock(
+            `all/${getId(knockResults)}`
+          );
+          streams = knockResult.data;
+        }
+      } catch (error) {
+        ActiveLogger.error(
+          `An error occured in getRebuildData: node.knock("all/${getId(
+            knockResults
+          )}")`
+        );
+        reject(error);
       }
 
       streams.length > 0
@@ -253,7 +416,7 @@ export class QuickRestore {
             reference: node.reference,
             streams
           })
-        : resolve("No output");
+        : resolve(undefined);
     });
   }
 }

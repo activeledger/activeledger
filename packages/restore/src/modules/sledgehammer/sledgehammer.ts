@@ -1,6 +1,6 @@
 /*
  * MIT License (MIT)
- * Copyright (c) 2018 Activeledger
+ * Copyright (c) 2019 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,7 +20,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+import { Provider } from "../provider/provider";
+import { IHostData } from "../../interfaces/sledgehammer.interface";
 
 /**
  * Smash the correct data back to the ledger
@@ -36,10 +39,41 @@ export class Sledgehammer {
    * @static
    * @memberof Sledgehammer
    */
-  private static tempDb = "activeledgerholdings";
+  private static holdingDatabase = "activeledgerholdings";
 
   /**
+   * Generate and return data for self host
    *
+   * @private
+   * @static
+   * @returns {IHostData}
+   * @memberof Sledgehammer
+   */
+  private static setupSelfHost(): IHostData {
+    const source = ActiveOptions.get<any>("db", {}).database,
+      target = this.holdingDatabase;
+
+    return { source, target };
+  }
+
+  /**
+   * Setup and return data for remote host
+   *
+   * @private
+   * @static
+   * @returns {IHostData}
+   * @memberof Sledgehammer
+   */
+  private static setupRemoteHost(): IHostData {
+    const databaseURL = ActiveOptions.get<any>("db", {}).url + "/",
+      source = databaseURL + ActiveOptions.get<any>("db", {}).database,
+      target = databaseURL + this.holdingDatabase;
+
+    return { source, target };
+  }
+
+  /**
+   * Smash the document into submission
    *
    * @static
    * @returns {Promise<bool>}
@@ -47,22 +81,14 @@ export class Sledgehammer {
    */
   public static smash(): Promise<boolean> {
     return new Promise((resolve, reject) => {
-      // Vars to hold database urls or name
-      let source, target: string;
-
-      // What type of smash needs to happen
-      if (ActiveOptions.get<any>("db", {}).selfhost) {
-        // Self hosted just needs database name
-        source = ActiveOptions.get<any>("db", {}).database;
-        target = this.tempDb;
-      } else {
-        const dbUrl = ActiveOptions.get<any>("db", {}).url + "/";
-        source = dbUrl + ActiveOptions.get<any>("db", {}).database;
-        target = dbUrl + this.tempDb;
-      }
+      // What type of smash needs to happen and returned host intformation
+      // Self hosted just needs database name
+      const hostData = Provider.isSelfhost
+        ? this.setupSelfHost()
+        : this.setupRemoteHost();
 
       // Data connector can manage the data fixing
-      ActiveDSConnect.smash(source, target)
+      ActiveDSConnect.smash(hostData.source, hostData.target)
         .then(() => {
           resolve(true);
         })

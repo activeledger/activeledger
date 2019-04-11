@@ -21,55 +21,48 @@
  * SOFTWARE.
  */
 
-export interface IChange {
-  doc: IChangeDocument;
+import { ActiveNetwork } from "@activeledger/activenetwork";
+
+export interface IRestoreStream {
+  id: string;
+  rev: string;
 }
 
-export interface IChangeDocument {
+export interface IStreamInformation {
+  reference: string;
+  streams: IRestoreStream[];
+}
+
+export interface INetworkData {
+  documents: any;
+  volatile: any;
+}
+
+interface IReductionRevisionData {
+  [revision: string]: number;
+}
+
+export interface IReductionData {
+  [identity: string]: IReductionRevisionData;
+}
+
+export interface IKnockData {
+  data: IRestoreStream[];
+}
+
+export interface IConsensusData {
+  stream: string;
+  revision: string;
+}
+
+export interface IBaseData {
   _id: string;
-  _rev?: string;
-  processed: boolean;
-  processedAt: Date;
-  code: number;
-  transaction: IChangeDocumentTransaction;
-  umid: string;
-  error: Error;
-  status: number;
-  message: string;
-  docId: string;
-  $activeledger: {};
+  error?: string | {};
+  namespace?: string;
+  contract?: [];
+  compiled?: string[];
 }
 
-interface IRevisionData {
-  $i: {};
-  $o: {};
-}
-
-interface ITransactionData {
-  $r: {};
-}
-
-interface IChangeDocumentTransaction {
-  $nodes: INodesData;
-  $broadcast: boolean;
-  $revs: IRevisionData;
-  $tx: ITransactionData;
-}
-
-interface INodesData {
-  [node: string]: INodeData;
-}
-
-interface INodeData {
-  vote: boolean;
-}
-
-interface IResponseStreamData {
-  new: string[];
-  updated: string[];
-}
-
-export interface IResponse {
-  error: Error;
-  streams: IResponseStreamData;
+export interface INeighbourhood {
+  [reference: string]: ActiveNetwork.Neighbour;
 }

@@ -2,7 +2,7 @@
 
 /*
  * MIT License (MIT)
- * Copyright (c) 2018 Activeledger
+ * Copyright (c) 2019 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,7 @@ import { Interagent } from "./modules/interagent/interagent";
 import { QuickRestore } from "./modules/quick-restore/quick-restore";
 
 class ActiveRestore {
-  private verbose = true;
+  private verbose = false;
 
   constructor() {
     Helper.verbose = this.verbose;
