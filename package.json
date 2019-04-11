@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:options && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
-	"build:utilities": "cd ./packages/utilities/ && npm run build",
+    "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
     "build:logger": "cd ./packages/logger/ && npm run build",
     "build:definitions": "cd ./packages/definitions/ && npm run build",
