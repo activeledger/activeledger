@@ -4,7 +4,7 @@
   "publishConfig": {
     "registry": "http://registry.activeledger.io"
   },
-  "version": "2.0.0-rc.8.0.57",
+  "version": "2.0.0-rc.8.0.58",
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",

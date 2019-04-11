@@ -24,7 +24,7 @@
 //@ts-ignore
 import * as pdfmake from "./external/pdfmake.js";
 import { EventEmitter } from "events";
-import { TDocumentDefinitions } from "pdfmake/build/pdfmake";
+import { TDocumentDefinitions, PDFKit } from "./interfaces";
 
 /**
  * Activeledger PDF Toolkit
