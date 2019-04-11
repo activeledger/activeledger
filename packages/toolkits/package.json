@@ -4,7 +4,7 @@
   "publishConfig": {
     "registry": "http://registry.activeledger.io"
   },
-  "version": "2.0.0-rc.8.0.56",
+  "version": "2.0.0-rc.8.0.57",
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",
@@ -22,8 +22,10 @@
     "start": "node lib/index.js",
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:commonjs:dist": "tsc --outDir lib --module commonjs -d --emitDeclarationOnly --allowJs false",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es",
+    "build:es:dist": "tsc --outDir es --module es6 -d --emitDeclarationOnly --allowJs false",
+    "build": "npm run build:commonjs && npm run build:commonjs:dist && npm run build:es && npm run build:es:dist",
     "prepublishOnly": "npm run build"
   },
   "repository": {
