@@ -22,8 +22,8 @@
  */
 import * as querystring from "querystring";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveRequest } from "@activeledger/activeutilities";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveRequest } from "./request";
 import { EventEmitter } from "events";
 import { ActiveOptions } from "./options";
 import { PouchDB } from "./pouchdb";

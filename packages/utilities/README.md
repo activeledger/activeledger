@@ -1,8 +1,8 @@
 <img src="https://www.activeledger.io/wp-content/uploads/2018/09/Asset-23.png" alt="Activeledger" width="300"/>
 
-# Activeoptions
+# Activeutilities
 
-This package manages the optional runtime classes used within Activeledger.
+This package manages shared classes between Activeledger and Activetoolkits
 
 |Language| |
 |--------|-|

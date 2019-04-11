@@ -1,7 +1,7 @@
 {
   "name": "@activeledger/activeoptions",
   "version": "2.0.0-rc.8.0.56",
-  "description": "This package manages the configuration for Activeledger (file and ledger based).",
+  "description": "This package manages the optional runtime classes used within Activeledger",
   "keywords": [
     "blockchain",
     "dlt",
@@ -47,6 +47,7 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.56",
     "minimist": "1.2.0",
     "pouchdb": "7.0.0",
     "pouchdb-find": "7.0.0"
