@@ -1,6 +1,6 @@
 {
   "name": "@_activeledger/activetoolkits",
-  "private": true,
+  "private": false,
   "publishConfig": {
     "registry": "http://registry.activeledger.io"
   },
