@@ -525,7 +525,7 @@ import { PouchDB, leveldown } from "./pouchdb";
           //Long polling heartbeat
           let hBInterval = setInterval(() => {
             res.write("\n");
-          }, incoming.query.heartbeat);
+          }, incoming.query.heartbeat || 60000);
 
           // Clean up
           let cleanUp = () => {
