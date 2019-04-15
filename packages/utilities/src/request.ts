@@ -32,8 +32,8 @@ import { ActiveGZip } from "./gzip";
  * @interface IHTTPResponse
  */
 interface IHTTPResponse {
-  raw: string,
-  data?: unknown
+  raw: string;
+  data?: unknown;
 }
 
 /**
@@ -129,8 +129,16 @@ export class ActiveRequest {
           // Hold response data
           const body: Buffer[] = [];
 
+          // Skipable heartbeats
+          const heartBeats = ["\0", "\n"];
+
           // On data recieved add to the array
-          response.on("data", chunk => body.push(chunk));
+          response.on("data", (chunk: Buffer) => {
+            // Skip Heartbeats
+            if (chunk.length > 1 || !heartBeats.includes(chunk.toString())) {
+              body.push(chunk);
+            }
+          });
 
           // Completed join the data array and parse as JSON
           response.on("end", async () => {
