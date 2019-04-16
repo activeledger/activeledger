@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeutilities",
-  "version": "2.0.0-rc.8.0.58",
+  "version": "2.0.0-rc.8.0.59",
   "description": "This package manages shared classes between Activeledger and Activetoolkits",
   "publishConfig": {
     "access": "public"
