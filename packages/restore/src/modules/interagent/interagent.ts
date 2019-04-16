@@ -82,7 +82,8 @@ export class Interagent {
    * @memberof Interagent
    */
   private listener(): void {
-    Provider.errorFeed.on("change", (change: IChange) => {
+    Provider.errorFeed.on("change", async (change: IChange) => {
+      const start = Date.now();
       Helper.output("Change event received, pausing error feed.");
       // Pause error feed to process
       Provider.errorFeed.pause();
@@ -92,10 +93,20 @@ export class Interagent {
       Helper.output("Checking if document already processed.");
 
       // Has the document been processed?
-      if (!changeDoc.processed) this.processDocument(changeDoc);
-
-      Provider.errorFeed.resume();
-      Helper.output("Restoration complete.");
+      if (!changeDoc.processed) {
+        this.processDocument(changeDoc)
+          .then(() => {
+            Provider.errorFeed.resume();
+            const end = Date.now() - start;
+            ActiveLogger.info(`Process took ${end} ms to complete`);
+            Helper.output("Restoration complete.");
+          })
+          .catch((error: Error) => {
+            ActiveLogger.error(error);
+          });
+      } else {
+        Provider.errorFeed.resume();
+      }
     });
   }
 
@@ -309,10 +320,9 @@ export class Interagent {
 
         Helper.output("Checking for consensus");
         await this.consensusCheck(reducedStreamData, document);
+        Promise.resolve();
       } catch (error) {
         Promise.reject(error);
-      } finally {
-        Promise.resolve();
       }
     }, 500);
   }
