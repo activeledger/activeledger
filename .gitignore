@@ -3,3 +3,7 @@ node_modules
 
 # lock files
 package-lock.json
+
+# TS Build files
+
+**/tsconfig.tsbuildinfo

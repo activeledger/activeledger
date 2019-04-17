@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /*
  * MIT License (MIT)
  * Copyright (c) 2019 Activeledger
@@ -23,26 +21,48 @@
  * SOFTWARE.
  */
 
-import { Helper } from "./modules/helper/helper";
-import { Provider } from "./modules/provider/provider";
-import { Interagent } from "./modules/interagent/interagent";
-import { QuickRestore } from "./modules/quick-restore/quick-restore";
+import { ActiveNetwork } from "@activeledger/activenetwork";
 
-class ActiveRestore {
-  private verbose = false;
-
-  constructor() {
-    Helper.verbose = this.verbose;
-
-    Provider.initialise().then(() => {
-      if (!Provider.isQuickFullRestore) {
-        new Interagent();
-        Provider.errorFeed.start();
-      } else {
-        new QuickRestore();
-      }
-    });
-  }
+export interface IRestoreStream {
+  id: string;
+  rev: string;
 }
 
-new ActiveRestore();
+export interface IStreamInformation {
+  reference: string;
+  streams: IRestoreStream[];
+}
+
+export interface INetworkData {
+  documents: any;
+  volatile: any;
+}
+
+interface IReductionRevisionData {
+  [revision: string]: number;
+}
+
+export interface IReductionData {
+  [identity: string]: IReductionRevisionData;
+}
+
+export interface IKnockData {
+  data: IRestoreStream[];
+}
+
+export interface IConsensusData {
+  stream: string;
+  revision: string;
+}
+
+export interface IBaseData {
+  _id: string;
+  error?: string | {};
+  namespace?: string;
+  contract?: [];
+  compiled?: string[];
+}
+
+export interface INeighbourhood {
+  [reference: string]: ActiveNetwork.Neighbour;
+}
