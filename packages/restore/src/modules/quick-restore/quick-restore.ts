@@ -126,11 +126,7 @@ export class QuickRestore {
 
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
           const streamDataPromise = await streamData(activity);
-          ActiveLogger.info(
-            `[Fetching Complete] ${activity.stream} : ${
-              streamDataPromise.length
-            }`
-          );
+          ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
           const networkData: INetworkData = this.handleNetworkData(
             streamDataPromise
           );
