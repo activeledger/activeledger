@@ -29,7 +29,7 @@ import { Interagent } from "./modules/interagent/interagent";
 import { QuickRestore } from "./modules/quick-restore/quick-restore";
 
 class ActiveRestore {
-  private verbose = true;
+  private verbose = false;
 
   constructor() {
     Helper.verbose = this.verbose;

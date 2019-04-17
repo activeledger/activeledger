@@ -83,7 +83,6 @@ export class Interagent {
    */
   private listener(): void {
     Provider.errorFeed.on("change", async (change: IChange) => {
-      const start = Date.now();
       Helper.output("Change event received, pausing error feed.");
       // Pause error feed to process
       Provider.errorFeed.pause();
@@ -97,8 +96,6 @@ export class Interagent {
         this.processDocument(changeDoc)
           .then(() => {
             Provider.errorFeed.resume();
-            const end = Date.now() - start;
-            ActiveLogger.info(`Process took ${end} ms to complete`);
             Helper.output("Restoration complete.");
           })
           .catch((error: Error) => {
@@ -301,30 +298,32 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private async dataIntegrityCheck(document: IChangeDocument): Promise<void> {
-    ActiveLogger.info("Data Check - Blocking Network");
+    return new Promise((resolve, reject) => {
+      ActiveLogger.info("Data Check - Blocking Network");
 
-    // Delay to allow network to finish processing
-    setTimeout(async () => {
-      ActiveLogger.info("Data Check - Resuming");
+      // Delay to allow network to finish processing
+      setTimeout(async () => {
+        ActiveLogger.info("Data Check - Resuming");
 
-      try {
-        //  Get the revisions
-        Helper.output("Getting revisions");
-        const revs = await this.getRevisions(document);
+        try {
+          //  Get the revisions
+          Helper.output("Getting revisions");
+          const revs = await this.getRevisions(document);
 
-        // Output possible stream changes
-        ActiveLogger.info(revs, "$stream revisions");
+          // Output possible stream changes
+          ActiveLogger.info(revs, "$stream revisions");
 
-        Helper.output("Getting network stream data");
-        const reducedStreamData = await this.getNetworkStreamData(revs);
+          Helper.output("Getting network stream data");
+          const reducedStreamData = await this.getNetworkStreamData(revs);
 
-        Helper.output("Checking for consensus");
-        await this.consensusCheck(reducedStreamData, document);
-        Promise.resolve();
-      } catch (error) {
-        Promise.reject(error);
-      }
-    }, 500);
+          Helper.output("Checking for consensus");
+          await this.consensusCheck(reducedStreamData, document);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      }, 500);
+    });
   }
 
   /**
