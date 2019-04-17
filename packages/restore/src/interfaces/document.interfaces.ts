@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /*
  * MIT License (MIT)
  * Copyright (c) 2019 Activeledger
@@ -23,26 +21,55 @@
  * SOFTWARE.
  */
 
-import { Helper } from "./modules/helper/helper";
-import { Provider } from "./modules/provider/provider";
-import { Interagent } from "./modules/interagent/interagent";
-import { QuickRestore } from "./modules/quick-restore/quick-restore";
-
-class ActiveRestore {
-  private verbose = false;
-
-  constructor() {
-    Helper.verbose = this.verbose;
-
-    Provider.initialise().then(() => {
-      if (!Provider.isQuickFullRestore) {
-        new Interagent();
-        Provider.errorFeed.start();
-      } else {
-        new QuickRestore();
-      }
-    });
-  }
+export interface IChange {
+  doc: IChangeDocument;
 }
 
-new ActiveRestore();
+export interface IChangeDocument {
+  _id: string;
+  _rev?: string;
+  processed: boolean;
+  processedAt: Date;
+  code: number;
+  transaction: IChangeDocumentTransaction;
+  umid: string;
+  error: Error;
+  status: number;
+  message: string;
+  docId: string;
+  $activeledger: {};
+}
+
+interface IRevisionData {
+  $i: {};
+  $o: {};
+}
+
+interface ITransactionData {
+  $r: {};
+}
+
+interface IChangeDocumentTransaction {
+  $nodes: INodesData;
+  $broadcast: boolean;
+  $revs: IRevisionData;
+  $tx: ITransactionData;
+}
+
+interface INodesData {
+  [node: string]: INodeData;
+}
+
+interface INodeData {
+  vote: boolean;
+}
+
+interface IResponseStreamData {
+  new: string[];
+  updated: string[];
+}
+
+export interface IResponse {
+  error: Error;
+  streams: IResponseStreamData;
+}
