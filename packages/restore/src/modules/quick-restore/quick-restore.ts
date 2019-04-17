@@ -110,7 +110,7 @@ export class QuickRestore {
    * @memberof QuickRestore
    */
   private fetchDocuments(consensusData: IConsensusData[]): Promise<void> {
-    const preparePromise = (data: IConsensusData) =>
+    const streamData = (data: IConsensusData) =>
       Provider.network.neighbourhood.knockAll(
         "stream",
         { $stream: data.stream, $rev: data.revision },
@@ -120,13 +120,23 @@ export class QuickRestore {
     return new Promise(async (resolve, reject) => {
       try {
         Helper.output("Fetch documents: Conesensus data", consensusData);
-        const promises: Promise<unknown>[] = consensusData.map(preparePromise);
 
-        const networkData: INetworkData = await this.handleNetworkData(
-          promises
-        );
+        for (let i = consensusData.length; i--; ) {
+          const activity = consensusData[i];
 
-        await this.uploadData(networkData);
+          ActiveLogger.info(`[Fetching] ${activity.stream}`);
+          const streamDataPromise = await streamData(activity);
+          ActiveLogger.info(
+            `[Fetching Complete] ${activity.stream} : ${
+              streamDataPromise.length
+            }`
+          );
+          const networkData: INetworkData = this.handleNetworkData(
+            streamDataPromise
+          );
+          await this.uploadData(networkData);
+        }
+
         resolve();
       } catch (error) {
         reject(error);
@@ -179,9 +189,7 @@ export class QuickRestore {
    * @returns {Promise<INetworkData>}
    * @memberof QuickRestore
    */
-  private handleNetworkData(
-    promises: Promise<unknown>[]
-  ): Promise<INetworkData> {
+  private handleNetworkData(activityData: any): INetworkData {
     const hasNotErrored = (data: IBaseData) => (data.error ? false : true);
 
     const isNotStreamOrUmid = (data: IBaseData) =>
@@ -194,40 +202,28 @@ export class QuickRestore {
     const hasRequiredData = (data: IBaseData) =>
       data.namespace && data.contract && data.compiled ? true : false;
 
-    return new Promise((resolve, reject) => {
-      const documents: unknown[] = [];
-      const volatile: unknown[] = [];
+    const documents: unknown[] = [];
+    const volatile: unknown[] = [];
 
-      Promise.all(promises)
-        .then((responses: unknown[]) => {
-          for (let i = responses.length; i--; ) {
-            const response: unknown[] = responses[i] as unknown[];
+    for (let r = activityData.length; r--; ) {
+      const data: IBaseData = activityData[r] as IBaseData;
 
-            for (let r = response.length; r--; ) {
-              const data: IBaseData = response[r] as IBaseData;
+      if (hasNotErrored(data)) {
+        documents.push(data);
 
-              if (hasNotErrored(data)) {
-                documents.push(data);
+        if (isNotStreamOrUmid(data)) {
+          volatile.push({ _id: `${data._id}:volatile` });
 
-                if (isNotStreamOrUmid(data)) {
-                  volatile.push({ _id: `${data._id}:volatile` });
+          hasRequiredData(data)
+            ? Contract.rebuild(data)
+            : Helper.output("Data does not have required fields", data);
+        }
+        // Only need to find one non-erroring stream
+        break;
+      }
+    }
 
-                  hasRequiredData(data)
-                    ? Contract.rebuild(data)
-                    : Helper.output("Data does not have required fields", data);
-                }
-                // Only need to find one non-erroring stream
-                break;
-              }
-            }
-          }
-
-          resolve({ documents, volatile });
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
-    });
+    return { documents, volatile };
   }
 
   /**
@@ -376,37 +372,23 @@ export class QuickRestore {
   private getRebuildData(
     node: ActiveNetwork.Neighbour
   ): Promise<IStreamInformation> {
-    const hasData = (knockData: IKnockData) =>
-      knockData.data && knockData.data.length > 0 ? true : false;
-
-    const getId = (knockData: IKnockData) =>
-      knockData.data[knockData.data.length - 1]["id"];
-
     return new Promise(async (resolve, reject) => {
       let streams: IRestoreStream[] = [];
       let knockResults: IKnockData = {} as IKnockData;
 
+      // We need to loop here to get additional streams (limit of 500 - N)
       try {
-        knockResults = await node.knock("all");
+        do {
+          const start = streams.length ? streams[streams.length - 1].id : "";
+          knockResults = await node.knock("all/" + start);
+          streams = [...streams, ...knockResults.data];
+          ActiveLogger.info(
+            "[" + node.reference + "]Running Total: " + streams.length
+          );
+        } while (knockResults.data.length);
       } catch (error) {
         ActiveLogger.error(
           "An error occured in getRebuildData: node.knock('all')"
-        );
-        reject(error);
-      }
-
-      try {
-        if (hasData(knockResults)) {
-          const knockResult: IKnockData = await node.knock(
-            `all/${getId(knockResults)}`
-          );
-          streams = knockResult.data;
-        }
-      } catch (error) {
-        ActiveLogger.error(
-          `An error occured in getRebuildData: node.knock("all/${getId(
-            knockResults
-          )}")`
         );
         reject(error);
       }
@@ -416,7 +398,7 @@ export class QuickRestore {
             reference: node.reference,
             streams
           })
-        : resolve(undefined);
+        : reject("No Data");
     });
   }
 }

@@ -31,6 +31,12 @@ import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 
+/**
+ * Provides initialision functions for Restore
+ *
+ * @export
+ * @class Provider
+ */
 export class Provider {
   private static readonly configName = "config.json";
 
@@ -50,6 +56,13 @@ export class Provider {
 
   public static database: ActiveDSConnect;
 
+  /**
+   * Begin initialisation process
+   *
+   * @static
+   * @returns {Promise<void>}
+   * @memberof Provider
+   */
   public static initialise(): Promise<void> {
     return new Promise((resolve, reject) => {
       ActiveOptions.init();
@@ -73,11 +86,28 @@ export class Provider {
     });
   }
 
+  /**
+   * Set the config data
+   *
+   * @private
+   * @static
+   * @param {string} key
+   * @param {string} data
+   * @memberof Provider
+   */
   private static setConfigData(key: string, data: string) {
     Helper.output("Setting " + key);
     ActiveOptions.set(key, data);
   }
 
+  /**
+   * Get the config data
+   *
+   * @private
+   * @static
+   * @returns {Promise<void>}
+   * @memberof Provider
+   */
   private static getConfig(): Promise<void> {
     return new Promise((resolve, reject) => {
       Helper.output("Getting Config");
@@ -114,6 +144,14 @@ export class Provider {
     });
   }
 
+  /**
+   * Get the local node identity
+   *
+   * @private
+   * @static
+   * @returns {Promise<void>}
+   * @memberof Provider
+   */
   private static getIdentity(): Promise<void> {
     return new Promise((resolve) => {
       Helper.output("Getting Identity");
@@ -135,6 +173,14 @@ export class Provider {
     });
   }
 
+  /**
+   * Setup a connection to a local self hosted database
+   *
+   * @private
+   * @static
+   * @param {*} dbConfig
+   * @memberof Provider
+   */
   private static setupSelfHostDB(dbConfig: any) {
     Helper.output("Setting up self hosted database");
     this.isSelfhost = true;
@@ -147,6 +193,14 @@ export class Provider {
     ActiveOptions.set("db", dbConfig);
   }
 
+  /**
+   * Setup a connection to the error database
+   *
+   * @private
+   * @static
+   * @param {*} dbConfig
+   * @memberof Provider
+   */
   private static setupErrorDB(dbConfig: any) {
     // Get error database connection
     this.errorDatabase = new ActiveDSConnect(
@@ -157,6 +211,14 @@ export class Provider {
     this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
   }
 
+  /**
+   * Setup a database connection
+   *
+   * @private
+   * @static
+   * @returns {Promise<void>}
+   * @memberof Provider
+   */
   private static setupDatabase(): Promise<void> {
     return new Promise((resolve, reject) => {
       const dbConfig = ActiveOptions.get<any>("db", {});
@@ -184,6 +246,14 @@ export class Provider {
     });
   }
 
+  /**
+   * Get Consensus information
+   *
+   * @private
+   * @static
+   * @returns {Promise<void>}
+   * @memberof Provider
+   */
   private static getConsensusData(): Promise<void> {
     return new Promise((resolve) => {
       // Get the amount of neighbours in the network
