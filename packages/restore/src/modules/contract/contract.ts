@@ -1,6 +1,6 @@
 /*
  * MIT License (MIT)
- * Copyright (c) 2018 Activeledger
+ * Copyright (c) 2019 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -52,7 +52,8 @@ export class Contract {
       if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
       // Make sure we have namespace
-      if (!fs.existsSync(`contracts/${contract.namespace}`)) fs.mkdirSync(`contracts/${contract.namespace}`);
+      if (!fs.existsSync(`contracts/${contract.namespace}`))
+        fs.mkdirSync(`contracts/${contract.namespace}`);
 
       // Write Latest
       fs.writeFileSync(
