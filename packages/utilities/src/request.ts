@@ -25,7 +25,16 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import { ActiveGZip } from "./gzip";
-import { ActiveOptions } from "./options";
+
+/**
+ * Returned HTTP Resonse data
+ *
+ * @interface IHTTPResponse
+ */
+interface IHTTPResponse {
+  raw: string;
+  data?: unknown;
+}
 
 /**
  * Simple HTTP Request Object
@@ -42,6 +51,7 @@ export class ActiveRequest {
    * @param {string} type
    * @param {string[]} [header]
    * @param {*} [data]
+   * @param {boolean} [enableGZip=false]
    * @returns {Promise<any>}
    * @memberof ActiveRequest
    */
@@ -49,8 +59,9 @@ export class ActiveRequest {
     reqUrl: string,
     type: string,
     header?: string[],
-    data?: any
-  ): Promise<any> {
+    data?: any,
+    enableGZip: boolean = false
+  ): Promise<IHTTPResponse> {
     // return new pending promise
     return new Promise(async (resolve, reject) => {
       // Parse URL
@@ -58,9 +69,6 @@ export class ActiveRequest {
 
       // select http or https module, depending on reqested url
       const lib = reqUrl.startsWith("https") ? https : http;
-
-      // Temporary Experimental Mode
-      let enableGZip = ActiveOptions.get<any>("experimental", {}).gzip || false;
 
       // Build Base Options
       let options: https.RequestOptions = {
@@ -89,8 +97,11 @@ export class ActiveRequest {
 
       // Manage Data
       if (data && (options.method == "POST" || options.method == "PUT")) {
-        // convert data to string
-        data = JSON.stringify(data);
+        // convert data to string if object
+        if (typeof data === "object") {
+          data = JSON.stringify(data);
+          (options.headers as any)["Content-Type"] = "application/json";
+        }
 
         // Compressable?
         if (enableGZip) {
@@ -100,7 +111,6 @@ export class ActiveRequest {
         }
 
         // Additional Post headers
-        (options.headers as any)["Content-Type"] = "application/json";
         (options.headers as any)["Content-Length"] = data.length;
       }
 
@@ -119,8 +129,16 @@ export class ActiveRequest {
           // Hold response data
           const body: Buffer[] = [];
 
+          // Skipable heartbeats
+          const heartBeats = ["\0", "\n"];
+
           // On data recieved add to the array
-          response.on("data", chunk => body.push(chunk));
+          response.on("data", (chunk: Buffer) => {
+            // Skip Heartbeats
+            if (chunk.length > 1 || !heartBeats.includes(chunk.toString())) {
+              body.push(chunk);
+            }
+          });
 
           // Completed join the data array and parse as JSON
           response.on("end", async () => {
@@ -133,9 +151,21 @@ export class ActiveRequest {
                 if (response.headers["content-encoding"] == "gzip") {
                   gdata = await ActiveGZip.ungzip(bodyBuffer);
                 }
-                resolve({
-                  data: JSON.parse((gdata || bodyBuffer).toString())
-                });
+
+                // Raw Response Data
+                let raw = (gdata || bodyBuffer).toString();
+
+                // JSON response?
+                if (response.headers["content-type"] == "application/json") {
+                  resolve({
+                    raw,
+                    data: JSON.parse(raw)
+                  });
+                } else {
+                  resolve({
+                    raw
+                  });
+                }
               } catch (error) {
                 reject(new Error("Failed to parse body"));
               }

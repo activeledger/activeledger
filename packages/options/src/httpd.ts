@@ -24,7 +24,7 @@ import * as http from "http";
 import * as url from "url";
 import * as querystring from "querystring";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveGZip } from "./gzip";
+import { ActiveGZip } from "@activeledger/activeutilities";
 
 /**
  * Interface for exposing processed request data to the endpoints

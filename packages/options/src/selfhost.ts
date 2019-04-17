@@ -25,7 +25,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
-import { PouchDB, leveldown, levelup } from "./pouchdb";
+import { PouchDB, leveldown } from "./pouchdb";
 
 (function() {
   // Fauxton Path
@@ -525,7 +525,7 @@ import { PouchDB, leveldown, levelup } from "./pouchdb";
           //Long polling heartbeat
           let hBInterval = setInterval(() => {
             res.write("\n");
-          }, incoming.query.heartbeat);
+          }, incoming.query.heartbeat || 60000);
 
           // Clean up
           let cleanUp = () => {

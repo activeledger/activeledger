@@ -190,12 +190,12 @@ export class ActiveledgerDatasource {
    * @returns {*}
    * @memberof ActiveledgerDatasource
    */
-  public static getChanges(): ActiveChanges {
+  public static getChanges(lastEventId: string): ActiveChanges {
     // Make sure we have db connection
     this.getDb();
 
     // Make sure we are listening
-    this.changes.start();
+    this.changes.start(lastEventId);
 
     // Return Query Object
     return this.changes;
@@ -208,12 +208,12 @@ export class ActiveledgerDatasource {
    * @returns {*}
    * @memberof ActiveledgerDatasource
    */
-  public static getEvents(): ActiveChanges {
+  public static getEvents(lastEventId: string): ActiveChanges {
     // Make sure we have db connection
     this.getDb();
 
     // Make sure we are listening
-    this.events.start();
+    this.events.start(lastEventId);
 
     // Return Query Object
     return this.events;
