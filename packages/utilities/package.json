@@ -1,7 +1,10 @@
 {
-  "name": "@activeledger/activerestore",
+  "name": "@activeledger/activeutilities",
   "version": "2.0.0-rc.8.0.59",
-  "description": "This pakacage contains the application which handles the network healing and rebuilding from an empty Activeledger node.",
+  "description": "This package manages shared classes between Activeledger and Activetoolkits",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "blockchain",
     "dlt",
@@ -13,10 +16,7 @@
     "node"
   ],
   "homepage": "https://activeledger.io",
-  "preferGlobal": true,
-  "bin": {
-    "activerestore": "./lib/index.js"
-  },
+  "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
     "test": "cd ../../ && npm test",
@@ -35,7 +35,10 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.23"
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
+    "@types/minimist": "^1.2.0",
+    "@types/node": "^10.12.23",
+    "typescript": "^3.3.3"
   },
   "files": [
     "es",
@@ -43,12 +46,5 @@
   ],
   "types": "./lib/index.d.ts",
   "jsnext:main": "./es/index.js",
-  "module": "./es/index.js",
-  "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.55",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
-    "@activeledger/activenetwork": "^2.0.0-rc.8.0.59",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.59",
-    "typescript": "^3.3.3"
-  }
+  "module": "./es/index.js"
 }

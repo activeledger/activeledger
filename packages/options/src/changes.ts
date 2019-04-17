@@ -78,14 +78,14 @@ export class ActiveChanges extends events.EventEmitter {
   /**
    * Start Following Changes
    *
+   * @param {(string | number)} [since="now"]
    * @memberof ActiveChanges
    */
-  public start(): void {
+  public start(since: string | number = "now"): void {
     // Have we already got the object
     if (!this.dbChanges) {
       ActiveLogger.info("Starting Change Feed - " + this.name);
-      // Starting new or Resuming?
-      let since: string | number = "now";
+      // Resuming from an in memory stored sequence?
       if (this.lastSequence) {
         since = this.lastSequence;
       }
