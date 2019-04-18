@@ -152,7 +152,7 @@ export class Endpoints {
               }
             }
           })
-          .catch(error => {
+          .catch((error) => {
             // Do something with the response before returning
             return reject({
               statusCode: 500,
@@ -196,13 +196,13 @@ export class Endpoints {
         // Walk all properties
         secureTx
           .encrypt(body as any)
-          .then(results => {
+          .then((results) => {
             resolve({
               statusCode: 200,
               content: results
             });
           })
-          .catch(error => {
+          .catch((error) => {
             reject({
               statusCode: 500,
               content: error
@@ -298,12 +298,12 @@ export class Endpoints {
             // Send and wait on their response
             rebroadcast
               .knock("", tx, true)
-              .then(ledger => {
+              .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;
                 resolve(ledger);
               })
-              .catch(error => {
+              .catch((error) => {
                 reject(error);
               });
             // Safe to return
@@ -317,8 +317,8 @@ export class Endpoints {
       // Send into host pool
       host
         .pending(tx)
-        .then(ledger => resolve(ledger))
-        .catch(error => reject(error));
+        .then((ledger) => resolve(ledger))
+        .catch((error) => reject(error));
     });
   }
 
@@ -423,7 +423,7 @@ export class Endpoints {
 
           // Fetch Request (Catch error here and forward on as an object to process in .all)
           fetchStream.push(
-            db.get(body.$streams[i]).catch(error => {
+            db.get(body.$streams[i]).catch((error) => {
               return { _error: error };
             })
           );
@@ -515,7 +515,7 @@ export class Endpoints {
       let options: any = { limit: 500 };
       if (start) {
         options.startkey = start;
-        options.skip = 2;
+        options.skip = 2; // Skip meta and volatile
       }
 
       db.allDocs(options)
