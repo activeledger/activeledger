@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /*
  * MIT License (MIT)
  * Copyright (c) 2019 Activeledger
@@ -23,26 +21,31 @@
  * SOFTWARE.
  */
 
-import { Helper } from "./modules/helper/helper";
-import { Provider } from "./modules/provider/provider";
-import { Interagent } from "./modules/interagent/interagent";
-import { QuickRestore } from "./modules/quick-restore/quick-restore";
+/* 
+      Error Codes
+      950  = Stream not found 
+      960  = State not found
+      1000 = Vote failed (Similar to 1505, but has a different report time)
+      1200 = Stream position incorrect
+      1210 = Read only stream not found
+      1505 = This node voted no, possibly incorrectly (Similar to 1000, but has a different report time)
+      1510 = Failed to save, this might have been the only node to vote
+      1610 = Failed to get a response back in a rebroadcast while the transaction was in memory
+      1200 (1600??) = If votes did not, transaction was voted incorrect by majority, we can safely ignore it
+      Everything else: Might be ahead so check for incorrect stream position
+    */
 
-class ActiveRestore {
-  private verbose = false;
+// If failed to save can't rely on data in the body
+// If vote failed might not have node responses
+// If broadcast can't rely on the data
 
-  constructor() {
-    Helper.verbose = this.verbose;
-
-    Provider.initialise().then(() => {
-      if (!Provider.isQuickFullRestore) {
-        new Interagent();
-        Provider.errorFeed.start();
-      } else {
-        new QuickRestore();
-      }
-    });
-  }
+export enum ErrorCodes {
+  StreamNotFound = 950,
+  StateNotFound = 960,
+  VoteFailed = 1000,
+  StreamPositionIncorrect = 1200,
+  ReadOnlyStreamNotFound = 1210,
+  FailedToSave = 1510,
+  Unknown = 1600,
+  FailedToGetResponse = 1610
 }
-
-new ActiveRestore();
