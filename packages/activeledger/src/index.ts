@@ -27,11 +27,8 @@ import * as child from "child_process";
 import * as cluster from "cluster";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
-import {
-  ActiveOptions,
-  ActiveRequest,
-  ActiveDataStore
-} from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import { ActiveDataStore } from "@activeledger/activestorage";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { PhysicalCores } from "./cpus";

@@ -23,10 +23,8 @@
 import * as querystring from "querystring";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveRequest } from "@activeledger/activeutilities";
-import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 import { ActiveOptions } from "./options";
-import { PouchDB } from "./pouchdb";
 
 /**
  * Sends HTTP requests to the data store
@@ -184,87 +182,17 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public purge(doc: { _id: string; _rev?: string }): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(`${this.location}/${doc._id}`, "DELETE")
-        .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
-    });
-  }
-
-  /**
-   * Restore needs to happen, Proxy to selfhost or processing external
-   *
-   * @param {string} source
-   * @param {string} target
-   * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
-   */
-  public static smash(source: string, target: string): Promise<any> {
-    return new Promise((resolve, reject) => {
       if (ActiveOptions.get<any>("db", {}).selfhost) {
-        // Internal, Can use File System exposed via hosted /smash
-        // ActiveRequest.send(
-        //   `${
-        //     ActiveOptions.get<any>("db", {}).url
-        //   }/smash?s=${source}&t=${target}`,
-        //   "GET"
-        // )
-        //   .then((response: any) => resolve(response.data))
-        //   .catch(error => reject(error));
-        // Internal, We have Purge Ability
-        resolve({ status: "ok" });
+        ActiveRequest.send(`${this.location}/${doc._id}`, "DELETE")
+          .then((response: any) => resolve(response.data))
+          .catch(error => reject(error));
       } else {
-        // External, Need Double replication (Local First for filter)
-        let sourceDb = new PouchDB(source);
-        let targetDb = new PouchDB(target);
-
-        // Rewrited Document Store
-        let bulkdocs: any[] = [];
-
-        // Make sure the target database is empty
-        targetDb
-          .destroy()
-          .then(() => {
-            // Close connection and create again
-            targetDb.close();
-            targetDb = new PouchDB(target);
-
-            // Make sure db has been created
-            targetDb.info().then(() => {
-              // Replicate to target
-              sourceDb.replicate
-                .to(target, {
-                  filter: (doc: any, req: any) => {
-                    if (
-                      doc.$activeledger &&
-                      doc.$activeledger.delete &&
-                      doc.$activeledger.rewrite
-                    ) {
-                      // Get Rewrite for later
-                      bulkdocs.push(doc.$activeledger.rewrite);
-                      return false;
-                    } else {
-                      return true;
-                    }
-                  }
-                })
-                .then(() => {
-                  // Any Bulk docs to update
-                  ActiveLogger.warn(
-                    `Restoration : ${bulkdocs.length} streams being corrected`
-                  );
-                  targetDb.bulkDocs(bulkdocs, { new_edits: false }).then(() => {
-                    // Delete original source database
-                    sourceDb.destroy().then(() => {
-                      // Now replicate back to a new "source"
-                      targetDb.replicate.to(source).then(() => {
-                        resolve({ ok: true });
-                      });
-                    });
-                  });
-                });
-            });
-          })
-          .catch((e: Error) => reject(e));
+        // Couchdb 2.3 supports purge again
+        ActiveRequest.send(`${this.location}/_purge`, "POST", undefined, {
+          [doc._id]: [doc._rev]
+        })
+          .then((response: any) => resolve(response.data))
+          .catch(error => reject(error));
       }
     });
   }
