@@ -242,38 +242,6 @@ import { PouchDB, leveldown } from "./pouchdb";
       return { ok: true };
     }
   );
-
-  // Replicator
-  // May not need to replicate here, Service could be shut down
-  // and processed directly on the files
-  let replicator = async (incoming: IActiveHttpIncoming) => {
-    if (incoming.body && incoming.body.source && incoming.body.target) {
-      // Get names from URL
-      let source = incoming.body.source.url.substr(
-        incoming.body.source.url.lastIndexOf("/") + 1
-      );
-
-      let target = incoming.body.target.url.substr(
-        incoming.body.target.url.lastIndexOf("/") + 1
-      );
-
-      // Replicate
-      ActiveLogger.warn(`Replication : ${source} -> ${target}`);
-      return await getPDB(source).replicate.to(getPDB(target));
-    } else {
-      return "";
-    }
-  };
-
-  // Pouch URL
-  http.use("/_replicate", "POST", async (incoming: IActiveHttpIncoming) => {
-    return await replicator(incoming);
-  });
-
-  // Fauxton URL
-  http.use("/_replicator", "POST", async (incoming: IActiveHttpIncoming) => {
-    return await replicator(incoming);
-  });
   
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
