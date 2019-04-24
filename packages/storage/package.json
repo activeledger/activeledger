@@ -1,7 +1,7 @@
 {
-  "name": "@activeledger/activeoptions",
+  "name": "@activeledger/activestorage",
   "version": "2.0.0-rc.8.0.59",
-  "description": "This package manages the optional runtime classes used within Activeledger",
+  "description": "This package is Activeledger's built-in data storage engine",
   "keywords": [
     "blockchain",
     "dlt",
@@ -19,7 +19,7 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es",
+    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -32,10 +32,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
-    "@types/minimist": "^1.2.0",
-    "@types/node": "^10.12.23",
-    "typescript": "^3.3.3"
+    "@types/node": "^11.13.7",
+    "copyfiles": "^2.1.0",
+    "typescript": "^3.4.4"
   },
   "files": [
     "es",
@@ -46,7 +45,10 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.59",
     "@activeledger/activeutilities": "^2.0.0-rc.8.0.59",
-    "minimist": "1.2.0"
+    "pouchdb-adapter-leveldb": "^7.0.0",
+    "pouchdb-core": "^7.0.0",
+    "pouchdb-find": "^7.0.0"
   }
 }

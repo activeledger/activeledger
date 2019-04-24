@@ -51,7 +51,8 @@
     "@activeledger/activecrypto": "^2.0.0-rc.8.0.55",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
     "@activeledger/activenetwork": "^2.0.0-rc.8.0.60",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.59"
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.59",
+    "@activeledger/activestorage": "^2.0.0-rc.8.0.59"
   },
   "optionalDependencies": {
     "@_activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
