@@ -2,6 +2,9 @@
   "name": "@activeledger/activestorage",
   "version": "2.0.0-rc.8.0.61",
   "description": "This package is Activeledger's built-in data storage engine",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "blockchain",
     "dlt",
