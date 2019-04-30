@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecontracts",
-  "version": "2.0.0-rc.8.0.55",
+  "version": "2.0.0-rc.8.0.61",
   "description": "This package contains the base classes that smart contracts must inherit from for use with Activeledger",
   "keywords": [
     "blockchain",
@@ -43,9 +43,9 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.55",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.55"
+    "@activeledger/activecrypto": "^2.0.0-rc.8.0.61",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.61",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.61",
+    "@activeledger/activequery": "^2.0.0-rc.8.0.61"
   }
 }

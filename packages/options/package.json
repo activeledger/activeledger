@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.0.0-rc.8.0.59",
+  "version": "2.0.0-rc.8.0.61",
   "description": "This package manages the optional runtime classes used within Activeledger",
   "keywords": [
     "blockchain",
@@ -32,7 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
+    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.61",
     "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.23",
     "typescript": "^3.3.3"
@@ -45,8 +45,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.55",
-    "@activeledger/activeutilities": "^2.0.0-rc.8.0.59",
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.61",
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.61",
     "minimist": "1.2.0"
   }
 }
