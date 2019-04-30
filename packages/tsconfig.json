@@ -10,6 +10,7 @@
         { "path": "options" },
         { "path": "protocol" },
         { "path": "query" },
+        { "path": "storage" },
         { "path": "restore" }
     ]
 }

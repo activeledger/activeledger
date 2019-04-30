@@ -29,7 +29,6 @@ import {
   IResponse
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { Sledgehammer } from "../sledgehammer/sledgehammer";
 import { Contract } from "../contract/contract";
 import { ErrorCodes } from "./error-codes.enum";
 
@@ -435,49 +434,20 @@ export class Interagent {
       }
 
       Promise.all(promiseHolder)
-        .then((results: unknown[]) => {
-          this.setProcessed(document);
+        .then(async (results: unknown[]) => {
+          await this.setProcessed(document);
 
-          if (results.some((e: boolean) => e)) {
-            Helper.output("Fetching hammer");
-            this.hammerTime();
-          } else {
+          if (!results.some((e: boolean) => e)) {
             ActiveLogger.warn("Data Check - False Positive");
-
             if (this.attemptUmidDoc) {
-              this.insertUmid(this.umidDoc);
+              await this.insertUmid(this.umidDoc);
             }
           }
+
           resolve();
         })
         .catch((error: Error) => {
           ActiveLogger.error(error, "All Datafix processes errored");
-          reject(error);
-        });
-    });
-  }
-
-  /**
-   * Hammer the data into submission
-   *
-   * @private
-   * @returns {Promise<any>}
-   * @memberof FeedHandler
-   */
-  private hammerTime(): Promise<any> {
-    return new Promise((resolve, reject) => {
-      Sledgehammer.smash()
-        .then(() => {
-          ActiveLogger.info("Smashing complete");
-
-          if (this.attemptUmidDoc) {
-            this.insertUmid(this.umidDoc);
-          }
-
-          resolve();
-        })
-        .catch((error: Error) => {
-          ActiveLogger.error(error, "Hammer broke");
           reject(error);
         });
     });
@@ -490,17 +460,23 @@ export class Interagent {
    * @param {*} umidDoc
    * @memberof FeedHandler
    */
-  private insertUmid(umidDoc: any): void {
-    if (umidDoc) {
-      Provider.database
-        .bulkDocs([umidDoc], { new_edits: false })
-        .then(() => {
-          ActiveLogger.info("UMID Added");
-        })
-        .catch((error: Error) => {
-          ActiveLogger.info(error || umidDoc, "Adding UMID failed");
-        });
-    }
+  private insertUmid(umidDoc: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (umidDoc) {
+        Provider.database
+          .bulkDocs([umidDoc], { new_edits: false })
+          .then(() => {
+            ActiveLogger.info("UMID Added");
+            resolve();
+          })
+          .catch((error: Error) => {
+            ActiveLogger.info(error || umidDoc, "Adding UMID failed");
+            reject(error);
+          });
+      } else {
+        resolve();
+      }
+    });
   }
 
   /**
@@ -654,36 +630,8 @@ export class Interagent {
     stream: any,
     volatile: boolean
   ): Promise<any> {
-    return new Promise(async (resolve, reject) => {
-      Helper.output("Begginning data remote rebuild process");
-      Helper.output("Re-writing stream");
-      document.$activeledger = {
-        delete: true,
-        rewrite: stream
-      };
-
-      Helper.output("Attempting to add updated document to database");
-      try {
-        await Provider.database.put(document);
-      } catch (error) {
-        reject(error);
-      }
-
-      Helper.output("Checking stream data");
-      this.isRequiredStreamData(stream)
-        ? Contract.rebuild(stream)
-        : Helper.output("Stream data does not contain required data");
-
-      Helper.output("Checking for volatile");
-      this.isVolatileStreamData(volatile, document)
-        ? await Provider.database.put({
-            _id: document._id.replace(":stream", ":volatile"),
-            _rev: document._rev
-          })
-        : Helper.output("Data is not volatile");
-
-      resolve(true);
-    });
+    // With purge support in couchdb 2.3 should be able to follow same pattern
+    return this.rebuildSelf(document, stream);
   }
 
   /**
