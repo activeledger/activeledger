@@ -2,7 +2,7 @@
   "name": "activeledger-monorepo",
   "private": true,
   "scripts": {
-    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:options && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
+    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:options && npm rum build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
     "build:logger": "cd ./packages/logger/ && npm run build",
@@ -10,7 +10,8 @@
     "build:crypto": "cd ./packages/crypto/ && npm run build",
     "build:query": "cd ./packages/query/ && npm run build",
     "build:contracts": "cd ./packages/contracts/ && npm run build",
-	"build:toolkits": "cd ./packages/toolkits/ && npm run build",
+    "build:toolkits": "cd ./packages/toolkits/ && npm run build",
+    "build:storage": "cd ./packages/storage/ && npm run build",
     "build:protocol": "cd ./packages/protocol/ && npm run build",
     "build:network": "cd ./packages/network/ && npm run build",
     "build:ledger": "cd ./packages/activeledger/ && npm run build && npm link",
@@ -20,15 +21,15 @@
   },
   "devDependencies": {
     "@types/chai": "^4.1.7",
-    "@types/mocha": "^5.2.5",
+    "@types/mocha": "^5.2.6",
     "chai": "^4.2.0",
-    "lerna": "^3.11.0",
-    "mocha": "^5.2.0",
-    "nyc": "^13.2.0",
-    "ts-node": "^8.0.2",
-    "typescript": "^3.3.3"
+    "lerna": "^3.13.3",
+    "mocha": "^6.1.4",
+    "nyc": "^14.0.0",
+    "ts-node": "^8.1.0",
+    "typescript": "^3.4.5"
   },
   "dependencies": {
-    "@types/node": "^10.12.23"
+    "@types/node": "^11.13.7"
   }
 }

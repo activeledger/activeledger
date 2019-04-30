@@ -1,7 +1,10 @@
 {
-  "name": "@activeledger/activecontracts",
+  "name": "@activeledger/activestorage",
   "version": "2.0.0-rc.8.0.61",
-  "description": "This package contains the base classes that smart contracts must inherit from for use with Activeledger",
+  "description": "This package is Activeledger's built-in data storage engine",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "blockchain",
     "dlt",
@@ -19,7 +22,7 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es",
+    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -32,8 +35,9 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "^10.12.23",
-    "typescript": "^3.3.3"
+    "@types/node": "^11.13.7",
+    "copyfiles": "^2.1.0",
+    "typescript": "^3.4.4"
   },
   "files": [
     "es",
@@ -43,9 +47,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.0.0-rc.8.0.61",
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.61",
     "@activeledger/activelogger": "^2.0.0-rc.8.0.61",
-    "@activeledger/activequery": "^2.0.0-rc.8.0.61"
+    "@activeledger/activeoptions": "^2.0.0-rc.8.0.61",
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.61",
+    "pouchdb-adapter-leveldb": "^7.0.0",
+    "pouchdb-core": "^7.0.0",
+    "pouchdb-find": "^7.0.0"
   }
 }

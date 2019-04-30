@@ -23,7 +23,7 @@
 
 import * as fs from "fs";
 import * as child from "child_process";
-import { ActiveOptions } from "./options";
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 /**

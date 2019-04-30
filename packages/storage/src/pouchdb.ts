@@ -20,15 +20,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-import { ActiveGZip, ActiveRequest } from "@activeledger/activeutilities";
-import { ActiveOptions } from "./options";
-import { ActiveChanges } from "./changes";
-import { ActiveDSConnect } from "./dsconnect";
-export {
-  ActiveDSConnect,
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip
-};
+const PouchDB: any = require("pouchdb-core");
+const PouchDBLdB: any = require("pouchdb-adapter-leveldb");
+const PouchDBFind: any = require("pouchdb-find");
+// Export LevelDB Sub Modules
+const PouchRequire = require.cache[require.resolve("pouchdb-adapter-leveldb")];
+const leveldown: any = PouchRequire.require("leveldown");
+// Add Plugins
+PouchDB.plugin(PouchDBLdB).plugin(PouchDBFind);
+export { PouchDB, leveldown };
