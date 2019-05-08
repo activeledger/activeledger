@@ -137,6 +137,24 @@ export class Process extends EventEmitter {
   };
 
   /**
+   * Holds the broadcast timeout object
+   *
+   * @private
+   * @type {NodeJS.Timeout}
+   * @memberof Process
+   */
+  private broadcastTimeout: NodeJS.Timeout;
+
+  /**
+   * Current Voting Round
+   *
+   * @private
+   * @type {number}
+   * @memberof Process
+   */
+  private currentVotes: number;
+
+  /**
    * Creates an instance of Process.
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
@@ -179,6 +197,9 @@ export class Process extends EventEmitter {
         true
       );
     }
+
+    // Make sure broadcast timeout is cleared
+    clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
     (this.contractVM as any) = null;
@@ -474,7 +495,10 @@ export class Process extends EventEmitter {
           .catch(e => {
             // Contract not found / failed to start
             ActiveLogger.debug(e, "VM initialisation failed");
-            this.raiseLedgerError(1401, new Error("VM Init Failure - " + JSON.stringify(e.message || e)));
+            this.raiseLedgerError(
+              1401,
+              new Error("VM Init Failure - " + JSON.stringify(e.message || e))
+            );
           });
       })
       .catch(e => {
@@ -581,19 +605,20 @@ export class Process extends EventEmitter {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     let i = networkNodes.length;
-    let votes = 0;
+    this.currentVotes = 0;
 
     // Small performance boost if we voted no
     if (this.nodeResponse.vote) {
       while (i--) {
-        if (this.entry.$nodes[networkNodes[i]].vote) votes++;
+        if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
     }
 
     // Return if consensus has been reached
     return (
       (this.nodeResponse.vote &&
-        (votes / ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
+        (this.currentVotes /
+          ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
           100 >=
           ActiveOptions.get<any>("consensus", {}).reached) ||
       false
@@ -971,7 +996,6 @@ export class Process extends EventEmitter {
           // Because we voted no doesn't mean the network should error
           this.emit("commited", {});
         } else {
-          // Not needed for broadcast because we check on destory
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
@@ -979,6 +1003,57 @@ export class Process extends EventEmitter {
               1510,
               new Error("Failed Network Voting Round")
             );
+          } else {
+            // Are there any outstanding node responses which could mean consensus can still be reached
+            const neighbours = ActiveOptions.get<Array<any>>(
+              "neighbourhood",
+              []
+            ).length;
+            const consensusNeeded = ActiveOptions.get<any>("consensus", {})
+              .reached;
+            const outstandingVoters =
+              neighbours - Object.keys(this.entry.$nodes).length;
+
+            // Basic check, If no nodes to respond and we failed to reach consensus we will fail
+            if (!outstandingVoters) {
+              // Clear current timeout to prevent it from running
+              clearTimeout(this.broadcastTimeout);
+              // Entire Network didn't reach consensus
+              ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+              return this.raiseLedgerError(
+                1510,
+                new Error("Failed Network Voting Round")
+              );
+            } else {
+              // Clear current timeout to prevent it from running
+              clearTimeout(this.broadcastTimeout);
+              // Solution:
+              // Find how many current votes their currently is if the rest of the nodes will vote yes can we reach consensus
+              if (
+                ((this.currentVotes + outstandingVoters) / neighbours) * 100 >=
+                consensusNeeded
+              ) {
+                // It *should* be possible to still reach consensus
+                // Nodes may also be down meaning we never respond so need to manage a timeout
+                // ! This method does mean it will hold the client tx connection open which could timeout
+                // TODO: We could improve this when we have access to isHome
+                this.broadcastTimeout = setTimeout(() => {
+                  // Entire Network didn't reach consensus in time
+                  ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
+                  return this.raiseLedgerError(
+                    1510,
+                    new Error("Failed Network Voting Timeout")
+                  );
+                }, 20000);
+              } else {
+                // Even if the other nodes voted yes we will still not reach conesnsus
+                ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+                return this.raiseLedgerError(
+                  1510,
+                  new Error("Failed Network Voting Round")
+                );
+              }
+            }
           }
         }
       }
@@ -992,7 +1067,6 @@ export class Process extends EventEmitter {
 
   /**
    * Manages the permissions of revisions and signatures of each stream type
-   * TODO: Implement M of N key check
    *
    * @private
    * @param {string[]} check
@@ -1061,7 +1135,6 @@ export class Process extends EventEmitter {
                         });
                       })
                       .catch((error: any) => {
-                        // TODO : Is this a problem? Can we resolve?
                         // Add Info
                         error.code = 960;
                         error.reason = "Volatile not found";
