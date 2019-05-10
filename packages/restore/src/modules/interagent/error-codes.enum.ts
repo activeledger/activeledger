@@ -45,6 +45,7 @@ export enum ErrorCodes {
   VoteFailed = 1000,
   StreamPositionIncorrect = 1200,
   ReadOnlyStreamNotFound = 1210,
+  NodeFinalReject = 1505,
   FailedToSave = 1510,
   Unknown = 1600,
   FailedToGetResponse = 1610
