@@ -986,7 +986,7 @@ export class Process extends EventEmitter {
           );
 
           // We voted false, Need to process
-          // TODO : Research if we can remove this, As 1000 should always publish an error
+          // Still required as broadcast will skip over 1000
           this.raiseLedgerError(
             1505,
             new Error("This node voted false"),
