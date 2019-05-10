@@ -29,7 +29,6 @@ import {
   IResponse
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { Contract } from "../contract/contract";
 import { ErrorCodes } from "./error-codes.enum";
 
 /**
@@ -44,6 +43,7 @@ export class Interagent {
     ErrorCodes.StateNotFound,
     ErrorCodes.StreamPositionIncorrect,
     ErrorCodes.ReadOnlyStreamNotFound,
+    ErrorCodes.NodeFinalReject,
     ErrorCodes.FailedToSave,
     ErrorCodes.Unknown,
     ErrorCodes.FailedToGetResponse
@@ -146,6 +146,7 @@ export class Interagent {
    */
   private isCompatibleTransaction = (changeDoc: any) =>
     changeDoc.code !== ErrorCodes.FailedToSave && // 1510
+    changeDoc.code !== ErrorCodes.NodeFinalReject && // 1505
     changeDoc.code !== ErrorCodes.VoteFailed && // 1000
     !changeDoc.transaction.$broadcast
       ? true
@@ -362,7 +363,8 @@ export class Interagent {
               ? // The error could be on this node
                 // Attempt to try and add the UMID
                 (this.attemptUmidDoc = true)
-              : reject("Unable to retrieve necessary data");
+              : null;
+            //: reject("Unable to retrieve necessary data");
           }
 
           streamCache.length > 0
