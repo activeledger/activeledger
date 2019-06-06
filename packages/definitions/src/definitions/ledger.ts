@@ -42,6 +42,7 @@ export interface LedgerEntry {
   $instant: boolean;
   $nodes: INodes;
   $streams: IStreams;
+  $remoteAddr: string;
   $broadcast?: boolean;
   $territoriality?: string;
   $encrypt?: boolean;
@@ -51,6 +52,7 @@ export interface LedgerResponse {
   $umid: string;
   $summary: ISummary;
   $streams: IStreams;
+  $responses?: unknown[];
   $territoriality?: string;
   $debug?: LedgerEntry;
 }
@@ -83,6 +85,7 @@ export interface INodeResponse {
   incomms?: any;
   datetime?: Date;
   error?: string;
+  return?: unknown;
 }
 
 export interface ICommunications {

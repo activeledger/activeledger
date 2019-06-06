@@ -16,6 +16,7 @@ describe("Stream Management Test (Activecontracts)", () => {
   // Predefined Stream
   const activeledgerStream = new Stream(
     new Date(),
+    "::1",
     "umid",
     {
       $namespace: "default",
