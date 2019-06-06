@@ -208,7 +208,7 @@ export class Host extends Home {
           let body: Buffer[] = [];
 
           // Reads body data
-          req.on("data", (chunk) => {
+          req.on("data", chunk => {
             body.push(chunk);
           });
 
@@ -230,11 +230,11 @@ export class Host extends Home {
               ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
                 false
             )
-              .then((body) => {
+              .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
               })
-              .catch((error) => {
+              .catch(error => {
                 // Failed to convery respond;
                 this.writeResponse(
                   res,
@@ -264,7 +264,7 @@ export class Host extends Home {
         process.setMaxListeners(300);
 
         // Listen to master for Neighbour and Locker details
-        process.on("message", (msg) => {
+        process.on("message", msg => {
           switch (msg.type) {
             case "neighbour":
               if (
@@ -846,7 +846,11 @@ export class Host extends Home {
         // Different endpoints switched on calling path
         switch (req.url) {
           case "/": // Setup for accepting external transactions
-            response = Endpoints.ExternalInitalise(this, body);
+            response = Endpoints.ExternalInitalise(
+              this,
+              body,
+              req.connection.remoteAddress || "unknown"
+            );
             break;
           case "/a/encrypt":
             // Make sure it was encrypted here

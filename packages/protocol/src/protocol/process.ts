@@ -421,6 +421,7 @@ export class Process extends EventEmitter {
           this.selfHost,
           this.entry.$umid,
           this.entry.$datetime,
+          this.entry.$remoteAddr,
           this.entry.$tx,
           this.entry.$sigs,
           inputs,
@@ -653,6 +654,16 @@ export class Process extends EventEmitter {
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
             this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+
+            // Return Data for this nodes contract run
+            this.nodeResponse.return = this.contractVM.getReturnContractData();            
+
+            // Clearing All node comms?
+            if(this.contractVM.clearingInternodeCommsFromVM()) {
+              Object.values(this.entry.$nodes).forEach((node) => {
+                node.incomms = null;
+             });
+            }
 
             // Are we throwing to another ledger(s)?
             let throws = this.contractVM.getThrowsFromVM();
