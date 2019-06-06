@@ -346,11 +346,14 @@ export class Host extends Home {
                 protocol.on("commited", (response: any) => {
                   // Make sure we have the object still
                   if (this.processPending[msg.umid]) {
-                    // Send Response back
-                    if (response.instant) {
-                      ActiveLogger.debug(response, "TX Maybe Commited");
-                    } else {
-                      ActiveLogger.debug(response, "TX Commited");
+                    // Poissbly blank response being relayed prevent [Object] output to terminal
+                    if (response) {
+                      // Send Response back
+                      if (response.instant) {
+                        ActiveLogger.debug(response, "Transaction Currently Processing");
+                      } else {
+                        ActiveLogger.debug(response, "Transaction Processed");
+                      }
                     }
 
                     // If Transaction rebroadcast if hybrid enabled

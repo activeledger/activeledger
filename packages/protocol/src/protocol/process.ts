@@ -659,6 +659,7 @@ export class Process extends EventEmitter {
             this.nodeResponse.return = this.contractVM.getReturnContractData();            
 
             // Clearing All node comms?
+            // TODO: This will be overwritten by other calls when in broadcast mode if cleared in commit
             if(this.contractVM.clearingInternodeCommsFromVM()) {
               Object.values(this.entry.$nodes).forEach((node) => {
                 node.incomms = null;
