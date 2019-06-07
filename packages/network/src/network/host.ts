@@ -350,15 +350,18 @@ export class Host extends Home {
                     if (response) {
                       // Send Response back
                       if (response.instant) {
-                        ActiveLogger.debug(response, "Transaction Currently Processing");
+                        ActiveLogger.debug(
+                          this.processPending[msg.umid].entry,
+                          "Transaction Currently Processing"
+                        );
                       } else {
                         ActiveLogger.debug(response, "Transaction Processed");
                       }
-                    }
 
-                    // If Transaction rebroadcast if hybrid enabled
-                    if (this.sse && response.tx) {
-                      this.moan("hybrid", response.tx);
+                      // If Transaction rebroadcast if hybrid enabled
+                      if (this.sse && response.tx) {
+                        this.moan("hybrid", response.tx);
+                      }
                     }
 
                     // Process response back into entry for previous neighbours to know the results
