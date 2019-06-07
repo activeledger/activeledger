@@ -79,8 +79,6 @@ export class Endpoints {
         // Ip Address sending the transaction
         tx.$remoteAddr = ip;
 
-        ActiveLogger.error(ip, "REMOTE ADDRESS");
-
         // Not supporting mutiple transactions yet
         if (tx.$multi) {
           // Multiple
