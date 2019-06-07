@@ -208,7 +208,7 @@ export class Host extends Home {
           let body: Buffer[] = [];
 
           // Reads body data
-          req.on("data", (chunk) => {
+          req.on("data", chunk => {
             body.push(chunk);
           });
 
@@ -230,11 +230,11 @@ export class Host extends Home {
               ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
                 false
             )
-              .then((body) => {
+              .then(body => {
                 // Post Converted, Continue processing
                 this.processEndpoints(req, res, body);
               })
-              .catch((error) => {
+              .catch(error => {
                 // Failed to convery respond;
                 this.writeResponse(
                   res,
@@ -264,7 +264,7 @@ export class Host extends Home {
         process.setMaxListeners(300);
 
         // Listen to master for Neighbour and Locker details
-        process.on("message", (msg) => {
+        process.on("message", msg => {
           switch (msg.type) {
             case "neighbour":
               if (
@@ -346,16 +346,22 @@ export class Host extends Home {
                 protocol.on("commited", (response: any) => {
                   // Make sure we have the object still
                   if (this.processPending[msg.umid]) {
-                    // Send Response back
-                    if (response.instant) {
-                      ActiveLogger.debug(response, "TX Maybe Commited");
-                    } else {
-                      ActiveLogger.debug(response, "TX Commited");
-                    }
+                    // Poissbly blank response being relayed prevent [Object] output to terminal
+                    if (response) {
+                      // Send Response back
+                      if (response.instant) {
+                        ActiveLogger.debug(
+                          this.processPending[msg.umid].entry,
+                          "Transaction Currently Processing"
+                        );
+                      } else {
+                        ActiveLogger.debug(response, "Transaction Processed");
+                      }
 
-                    // If Transaction rebroadcast if hybrid enabled
-                    if (this.sse && response.tx) {
-                      this.moan("hybrid", response.tx);
+                      // If Transaction rebroadcast if hybrid enabled
+                      if (this.sse && response.tx) {
+                        this.moan("hybrid", response.tx);
+                      }
                     }
 
                     // Process response back into entry for previous neighbours to know the results
@@ -846,7 +852,11 @@ export class Host extends Home {
         // Different endpoints switched on calling path
         switch (req.url) {
           case "/": // Setup for accepting external transactions
-            response = Endpoints.ExternalInitalise(this, body);
+            response = Endpoints.ExternalInitalise(
+              this,
+              body,
+              req.connection.remoteAddress || "unknown"
+            );
             break;
           case "/a/encrypt":
             // Make sure it was encrypted here

@@ -421,6 +421,7 @@ export class Process extends EventEmitter {
           this.selfHost,
           this.entry.$umid,
           this.entry.$datetime,
+          this.entry.$remoteAddr,
           this.entry.$tx,
           this.entry.$sigs,
           inputs,
@@ -451,6 +452,12 @@ export class Process extends EventEmitter {
                     // Internode Communication picked up here, Doesn't mean every node
                     // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
                     this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+
+                    // Return Data for this nodes contract run (Useful for $instant request expected id's)
+                    this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+                    // Clearing All node comms?
+                    this.clearAllComms();
 
                     // Continue to next nodes vote
                     this.postVote();
@@ -653,6 +660,12 @@ export class Process extends EventEmitter {
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
             this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+
+            // Return Data for this nodes contract run
+            this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+            // Clearing All node comms?
+            this.clearAllComms();
 
             // Are we throwing to another ledger(s)?
             let throws = this.contractVM.getThrowsFromVM();
@@ -864,6 +877,12 @@ export class Process extends EventEmitter {
                         // Update in communication (Recommended pre commit only but can be edge use cases)
                         this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
+                        // Return Data for this nodes contract run
+                        this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+                        // Clearing All node comms?
+                        this.clearAllComms();
+
                         // Remember to let other nodes know
                         if (earlyCommit) earlyCommit();
 
@@ -940,6 +959,12 @@ export class Process extends EventEmitter {
                   // Update in communication (Recommended pre commit only but can be edge use cases)
                   this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
 
+                  // Return Data for this nodes contract run
+                  this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+                  // Clearing All node comms?
+                  this.clearAllComms();
+
                   // Remember to let other nodes know
                   if (earlyCommit) earlyCommit();
 
@@ -986,7 +1011,7 @@ export class Process extends EventEmitter {
           );
 
           // We voted false, Need to process
-          // TODO : Research if we can remove this, As 1000 should always publish an error
+          // Still required as broadcast will skip over 1000
           this.raiseLedgerError(
             1505,
             new Error("This node voted false"),
@@ -994,7 +1019,7 @@ export class Process extends EventEmitter {
           );
 
           // Because we voted no doesn't mean the network should error
-          this.emit("commited", {});
+          this.emit("commited");
         } else {
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
@@ -1061,7 +1086,7 @@ export class Process extends EventEmitter {
       // We have committed do nothing.
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();
-      this.emit("commited", {});
+      this.emit("commited");
     }
   }
 
@@ -1532,6 +1557,20 @@ export class Process extends EventEmitter {
       $revs: this.entry.$revs,
       $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false
     };
+  }
+
+  /**
+   * Clears all Internode Communication if contract requests
+   *
+   * @private
+   * @memberof Process
+   */
+  private clearAllComms() {
+    if (this.contractVM.clearingInternodeCommsFromVM()) {
+      Object.values(this.entry.$nodes).forEach(node => {
+        node.incomms = null;
+      });
+    }
   }
 
   /**
