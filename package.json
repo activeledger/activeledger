@@ -17,9 +17,10 @@
     "build:ledger": "cd ./packages/activeledger/ && npm run build && npm link",
     "build:restore": "cd ./packages/restore/ && npm run build && npm link",
     "build:core": "cd ./packages/core/ && npm run build && npm link",
-    "test": "mocha -r ts-node/register tests/**/*.ts -- --no-warnings"
+    "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
+    "@types/node": "^11.13.7",
     "@types/chai": "^4.1.7",
     "@types/mocha": "^5.2.6",
     "chai": "^4.2.0",
@@ -28,8 +29,5 @@
     "nyc": "^14.0.0",
     "ts-node": "^8.1.0",
     "typescript": "^3.4.5"
-  },
-  "dependencies": {
-    "@types/node": "^11.13.7"
   }
 }
