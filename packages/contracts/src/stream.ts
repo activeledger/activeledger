@@ -78,6 +78,24 @@ export class Stream {
    */
   private safeMode: boolean = false;
 
+  /**
+   * Reference to clear all nodes
+   *
+   * @protected
+   * @type {boolean}
+   * @memberof Stream
+   */
+  private clearINC: boolean = false;
+
+  /**
+   * Return value to be sent back to the transaction requester
+   *
+   * @private
+   * @type {unknown}
+   * @memberof Stream
+   */
+  private remoteReturn: unknown;
+
   // Backwards Compatible
   public ActiveLogger = ActiveLogger;
   public ActiveCrypto = ActiveCrypto;
@@ -86,6 +104,7 @@ export class Stream {
    * Creates an instance of a Standard Activeledger Contract.
    *
    * @param {Date} cDate
+   * @param {string} remoteAddr
    * @param {string} umid
    * @param {ActiveDefinitions.LedgerTransaction} transactions
    * @param {ActiveDefinitions.LedgerStream[]} inputs
@@ -98,6 +117,7 @@ export class Stream {
    */
   constructor(
     protected cDate: Date,
+    protected remoteAddr: string,
     protected umid: string,
     protected transactions: ActiveDefinitions.LedgerTransaction,
     private inputs: ActiveDefinitions.LedgerStream[],
@@ -295,12 +315,74 @@ export class Stream {
   /**
    * Get this nodes outbound INC
    *
-   * @param {number} secret
    * @returns {object}
    * @memberof Stream
    */
-  public getThisInterNodeComms(secret: number): object {
+  public getThisInterNodeComms(): object {
     return this.outINC;
+  }
+
+  /**
+   * Clear all inter node communications
+   *
+   * @memberof Stream
+   */
+  protected clearAllInterNodeComms(): void {
+    this.clearINC = true;
+  }
+
+  /**
+   * Expose Clear request outside VM
+   *
+   * @returns {boolean}
+   * @memberof Stream
+   */
+  public getClearInterNodeComms(): boolean {
+    return this.clearINC;
+  }
+
+  /**
+   * Return data to the response for this transactions external http request
+   *
+   * @protected
+   * @param {unknown} data
+   * @memberof Stream
+   */
+  protected returnToRemote(data: unknown) {
+    this.remoteReturn = data;
+  }
+
+  public getReturnToRemote(): unknown {
+    return this.remoteReturn;
+  }
+
+  /**
+   * Returns the remote address which sent the transaction into the network
+   *
+   * @returns {string}
+   * @memberof Stream
+   */
+  protected getRemoteAddr(): string {
+    return this.remoteAddr;
+  }
+
+  /**
+   * Finds if the remote address which sent the transaction is the same as an expected value
+   *
+   * @param {(string | string[])} matches
+   * @returns {boolean}
+   * @memberof Stream
+   */
+  public findRemoteAddr(matches: string | string[]): boolean {
+    if (typeof matches === "string") {
+      return matches === this.remoteAddr;
+    } else {
+      return Boolean(
+        matches.find(ip => {
+          return ip === this.remoteAddr;
+        })
+      );
+    }
   }
 
   /**

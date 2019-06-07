@@ -103,6 +103,7 @@ export class VirtualMachine {
     private selfHost: string,
     private umid: string,
     private cdate: Date,
+    private remoteAddr: string,
     private tx: ActiveDefinitions.LedgerTransaction,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private inputs: ActiveDefinitions.LedgerStream[],
@@ -150,6 +151,26 @@ export class VirtualMachine {
    */
   public getInternodeCommsFromVM(): any {
     return this.virtual.run("return sc.getThisInterNodeComms();", "avm.js");
+  }
+
+  /**
+   * Are we suppose to clear the node comms
+   *
+   * @returns {boolean}
+   * @memberof VirtualMachine
+   */
+  public clearingInternodeCommsFromVM(): boolean {
+    return this.virtual.run("return sc.getClearInterNodeComms()", "avm.js");
+  }
+
+  /**
+   * Data to send back to the requesting http client
+   *
+   * @returns {boolean}
+   * @memberof VirtualMachine
+   */
+  public getReturnContractData(): boolean {
+    return this.virtual.run("return sc.getReturnToRemote()", "avm.js");
   }
 
   /**
@@ -249,6 +270,7 @@ export class VirtualMachine {
             contractPath: this.contractPath,
             umid: this.umid,
             cdate: new Date(this.cdate), // + copy of date has random issues
+            remoteAddr: this.remoteAddr,
             tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
             sigs: this.sigs,
             inputs: this.inputs,
@@ -266,7 +288,7 @@ export class VirtualMachine {
 
         // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
         this.virtual.run(
-          "global.sc = new (require(contractPath)).default(cdate, umid, tx, inputs, outputs, reads, sigs, key, self);",
+          "global.sc = new (require(contractPath)).default(cdate, remoteAddr, umid, tx, inputs, outputs, reads, sigs, key, self);",
           "avm.js"
         );
 
