@@ -286,7 +286,7 @@ export class VirtualMachine {
           }
         });
 
-        // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
+        // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
         this.virtual.run(
           "global.sc = new (require(contractPath)).default(cdate, remoteAddr, umid, tx, inputs, outputs, reads, sigs, key, self);",
           "avm.js"
@@ -294,12 +294,14 @@ export class VirtualMachine {
 
         // Do they want the query engine
         this.virtual.run(
+          // TODO: This can be moved to initialisation
           `if("setQuery" in sc) { sc.setQuery(query) }`,
           "avm.js"
         );
 
         // Do they want the event engine
         this.virtual.run(
+          // TODO: This can be moved to initialisation
           `if("setEvent" in sc) { sc.setEvent(event) }`,
           "avm.js"
         );
@@ -361,7 +363,7 @@ export class VirtualMachine {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -398,7 +400,7 @@ export class VirtualMachine {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -448,7 +450,7 @@ export class VirtualMachine {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -495,7 +497,7 @@ export class VirtualMachine {
           } `,
         "avm.js"
       ) as Promise<any>)
-        .then(postProcess => {
+        .then((postProcess) => {
           // Do something with the returned value
           // Maybe resolve with the data
           this.scriptFinishedExec = true;
@@ -517,7 +519,7 @@ export class VirtualMachine {
           }
           resolve(postProcess);
         })
-        .catch(e => {
+        .catch((e) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
