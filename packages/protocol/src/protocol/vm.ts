@@ -28,7 +28,9 @@ import { QueryEngine, EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
-import { NodeVM } from "vm2";
+import { NodeVM, VMScript } from "vm2";
+import * as fs from "fs";
+import { IVMObject } from "./vmscript.interface";
 
 /**
  * Contract Virtual Machine Controller
@@ -45,6 +47,8 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   private virtual: NodeVM;
+
+  private virtualInstance: IVMObject;
 
   /**
    * Give Access to Export routine
@@ -115,6 +119,81 @@ export class VirtualMachine {
   ) {
     // Setup Event Engine
     this.event = new EventEngine(this.dbev, this.tx.$contract);
+
+    this.initialiseVirtualMachine();
+  }
+
+  private initialiseVirtualMachine(): void {
+    // Toolkit Availability Check
+    let toolkitAvailable = true;
+    try {
+      require.resolve("@_activeledger/activetoolkits");
+    } catch (error) {
+      // Toolkits not installed
+      toolkitAvailable = false;
+    }
+
+    // Manage Externals & buildit
+    let external: string[] = [
+      this.contractPath,
+      "@activeledger/activecontracts"
+    ];
+    let builtin: string[] = ["buffer"];
+
+    // With toolkit allow additional externals & builtin
+    if (toolkitAvailable) {
+      external.push(
+        "@activeledger/activeutilities",
+        "@_activeledger/activetoolkits"
+      );
+      builtin.push("events", "http", "https", "url", "zlib");
+    }
+
+    // Add additional External & builtin by namespace
+    if (this.tx.$namespace == "default") {
+      switch (this.tx.$contract) {
+        case "contract":
+          external.push("typescript");
+          builtin.push("fs", "path", "os", "crypto");
+          break;
+        case "setup":
+          builtin.push("fs", "path");
+          break;
+      }
+    } else {
+      // Now check configuration for allowed standard libs for this namespace
+      let security = ActiveOptions.get<any>("security", {});
+
+      // Check to see if this namespace exists
+      if (security.namespace && security.namespace[this.tx.$namespace]) {
+        security.namespace[this.tx.$namespace].std.forEach((item: string) => {
+          // Add to builtin VM
+          builtin.push(item);
+        });
+      }
+    }
+
+    // Create limited VM
+    this.virtual = new NodeVM({
+      wrapper: "none",
+      sandbox: {
+        logger: ActiveLogger,
+        crypto: ActiveCrypto,
+        secured: this.secured,
+        self: this.selfHost
+      },
+      require: {
+        context: "sandbox",
+        builtin,
+        external
+      }
+    });
+
+    // Initialise the virtual object using the VMScript
+    const script = new VMScript(
+      fs.readFileSync(__dirname + "/vmscript.js").toString()
+    );
+    this.virtualInstance = this.virtual.run(script, "avm.js");
   }
 
   /**
@@ -127,7 +206,7 @@ export class VirtualMachine {
     // Fetch Activities and prepare to check
     let activities: {
       [reference: string]: Activity;
-    } = this.virtual.run("return sc.getActivityStreams();", "avm.js");
+    } = this.virtualInstance.getActivityStreams();
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
@@ -150,7 +229,8 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getInternodeCommsFromVM(): any {
-    return this.virtual.run("return sc.getThisInterNodeComms();", "avm.js");
+    // return this.virtual.run("return sc.getThisInterNodeComms();", "avm.js");
+    return this.virtualInstance.getInternodeComms();
   }
 
   /**
@@ -160,7 +240,8 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public clearingInternodeCommsFromVM(): boolean {
-    return this.virtual.run("return sc.getClearInterNodeComms()", "avm.js");
+    // return this.virtual.run("return sc.getClearInterNodeComms()", "avm.js");
+    return this.virtualInstance.clearInternodeComms();
   }
 
   /**
@@ -170,7 +251,9 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getReturnContractData(): boolean {
-    return this.virtual.run("return sc.getReturnToRemote()", "avm.js");
+    // FIXME: VMScript returns unknown?
+    // return this.virtual.run("return sc.getReturnToRemote()", "avm.js");
+    return this.virtualInstance.returnContractData();
   }
 
   /**
@@ -180,7 +263,8 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getThrowsFromVM(): string[] {
-    return this.virtual.run("return sc.throwTo;", "avm.js");
+    // return this.virtual.run("return sc.throwTo;", "avm.js");
+    return this.virtualInstance.throwFrom();
   }
 
   /**
@@ -206,116 +290,27 @@ export class VirtualMachine {
         // Set Secret Key
         this.key = Math.floor(Math.random() * 100);
 
-        // Toolkit Availability Check
-        let toolkitAvailable = true;
-        try {
-          require.resolve("@_activeledger/activetoolkits");
-        } catch (error) {
-          // Toolkits not installed
-          toolkitAvailable = false;
-        }
+        this.virtualInstance.setContractPath(this.contractPath);
+        this.virtualInstance.setUMID(this.umid);
+        this.virtualInstance.setDate(new Date(this.cdate));
+        this.virtualInstance.setRemoteAddress(this.remoteAddr);
 
-        // Manage Externals & buildit
-        let external: string[] = [
-          this.contractPath,
-          "@activeledger/activecontracts"
-        ];
-        let builtin: string[] = ["buffer"];
+        ActiveLogger.info(this.tx, "Transaction being sent");
 
-        // With toolkit allow additional externals & builtin
-        if (toolkitAvailable) {
-          external.push(
-            "@activeledger/activeutilities",
-            "@_activeledger/activetoolkits"
-          );
-          builtin.push("events", "http", "https", "url", "zlib");
-        }
-
-        // Add additional External & builtin by namespace
-        if (this.tx.$namespace == "default") {
-          switch (this.tx.$contract) {
-            case "contract":
-              external.push("typescript");
-              builtin.push("fs", "path", "os", "crypto");
-              break;
-            case "setup":
-              builtin.push("fs", "path");
-              break;
-          }
-        } else {
-          // Now check configuration for allowed standard libs for this namespace
-          let security = ActiveOptions.get<any>("security", {});
-
-          // Check to see if this namespace exists
-          if (security.namespace && security.namespace[this.tx.$namespace]) {
-            security.namespace[this.tx.$namespace].std.forEach(
-              (item: string) => {
-                // Add to builtin VM
-                builtin.push(item);
-              }
-            );
-          }
-        }
-
-        // Import Contract
-        // Create limited VM
-        this.virtual = new NodeVM({
-          wrapper: "none",
-          sandbox: {
-            logger: ActiveLogger,
-            crypto: ActiveCrypto,
-            secured: this.secured,
-            query: new QueryEngine(this.db, true),
-            event: this.event,
-            contractPath: this.contractPath,
-            umid: this.umid,
-            cdate: new Date(this.cdate), // + copy of date has random issues
-            remoteAddr: this.remoteAddr,
-            tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
-            sigs: this.sigs,
-            inputs: this.inputs,
-            outputs: this.outputs,
-            reads: this.reads,
-            key: this.key,
-            self: this.selfHost
-          },
-          require: {
-            context: "sandbox",
-            builtin,
-            external
-          }
-        });
+        this.virtualInstance.setTransaction(
+          JSON.parse(JSON.stringify(this.tx))
+        );
+        this.virtualInstance.setSignatures(this.sigs);
+        this.virtualInstance.setInputs(this.inputs);
+        this.virtualInstance.setOutputs(this.outputs);
+        this.virtualInstance.setReads(this.reads);
+        this.virtualInstance.setKey(this.key);
 
         // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
-        this.virtual.run(
-          "global.sc = new (require(contractPath)).default(cdate, remoteAddr, umid, tx, inputs, outputs, reads, sigs, key, self);",
-          "avm.js"
+        this.virtualInstance.initialiseContract(
+          new QueryEngine(this.db, true),
+          this.event
         );
-
-        // Do they want the query engine
-        this.virtual.run(
-          // TODO: This can be moved to initialisation
-          `if("setQuery" in sc) { sc.setQuery(query) }`,
-          "avm.js"
-        );
-
-        // Do they want the event engine
-        this.virtual.run(
-          // TODO: This can be moved to initialisation
-          `if("setEvent" in sc) { sc.setEvent(event) }`,
-          "avm.js"
-        );
-
-        // Default Namespace can accept config, Could just read the file
-        // However when it comes to working from the ledger it will be in memory anyway
-        if (this.tx.$namespace == "default") {
-          this.virtual.run(
-            `if("sysConfig" in sc) { sc.sysConfig(${JSON.stringify(
-              ActiveOptions.fetch(false)
-            )}) }`,
-            "avm.js"
-          );
-        }
 
         // Start time initialise the date object
         this.maxTimeout = new Date();
@@ -356,14 +351,16 @@ export class VirtualMachine {
       });
 
       // Run Verify Phase
-      (this.virtual.run(`return sc.verify(${sigless})`, "avm.js") as Promise<
+      /* (this.virtual.run(`return sc.verify(${sigless})`, "avm.js") as Promise<
         boolean
-      >)
+      >) */
+      this.virtualInstance
+        .runVerify(sigless)
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch((e) => {
+        .catch((e: Error) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -395,12 +392,14 @@ export class VirtualMachine {
       });
 
       // Run Vote Phase
-      (this.virtual.run(`return sc.vote()`, "avm.js") as Promise<boolean>)
+      // (this.virtual.run(`return sc.vote()`, "avm.js") as Promise<boolean>)
+      this.virtualInstance
+        .runVote()
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch((e) => {
+        .catch((e: Error) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -440,17 +439,19 @@ export class VirtualMachine {
       });
 
       // Get Commit
-      (this.virtual.run(
+      /* (this.virtual.run(
         `return sc.commit(${possibleTerritoriality})`,
         "avm.js"
-      ) as Promise<any>)
+      ) as Promise<any>) */
+      this.virtualInstance
+        .runCommit(possibleTerritoriality)
         .then(() => {
           // Here we may update the database from the objects (commit should return)
           // Or just manipulate / check the outputs
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch((e) => {
+        .catch((e: any) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
@@ -485,7 +486,7 @@ export class VirtualMachine {
       });
 
       // Run Post Process
-      (this.virtual.run(
+      /* (this.virtual.run(
         `if("postProcess" in sc) { 
             // Run Post Process
             return sc.postProcess(${territoriality}, "${who}");
@@ -496,8 +497,10 @@ export class VirtualMachine {
             });
           } `,
         "avm.js"
-      ) as Promise<any>)
-        .then((postProcess) => {
+      ) as Promise<any>) */
+      this.virtualInstance
+        .postProcess()
+        .then((postProcess: any) => {
           // Do something with the returned value
           // Maybe resolve with the data
           this.scriptFinishedExec = true;
@@ -519,7 +522,7 @@ export class VirtualMachine {
           }
           resolve(postProcess);
         })
-        .catch((e) => {
+        .catch((e: Error) => {
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e));
