@@ -416,7 +416,7 @@ export class Process extends EventEmitter {
         // We don't need to verify the code unless we suspect server has been
         // comprimised. We will verify with the "install" routine
         // TODO: Fix temp path solution (Param? PATH? Global?)
-        this.contractVM = new VirtualMachine(
+        this.contractVM = new VirtualMachine( // TODO: Might be best to reuse this object
           this.contractLocation,
           this.selfHost,
           this.entry.$umid,
@@ -431,6 +431,9 @@ export class Process extends EventEmitter {
           this.dbev,
           this.secured
         );
+
+          ActiveLogger.info("Beginning contract execution");
+          console.log("Debug");
 
         // Initalise contract VM
         this.contractVM
