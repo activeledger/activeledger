@@ -278,7 +278,7 @@ export class Process extends EventEmitter {
               .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
                 this.process(inputStreams, outputStreams);
               })
-              .catch(error => {
+              .catch((error) => {
                 // Forward Error On
                 // We may not have the output stream, So we need to pass over the knocks
                 this.postVote({
@@ -287,7 +287,7 @@ export class Process extends EventEmitter {
                 });
               });
           })
-          .catch(error => {
+          .catch((error) => {
             // Forward Error On
             // We may not have the input stream, So we need to pass over the knocks
             this.postVote({
@@ -346,7 +346,7 @@ export class Process extends EventEmitter {
           .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
             this.process([], outputStreams);
           })
-          .catch(error => {
+          .catch((error) => {
             // Forward Error On
             this.postVote({
               code: error.code,
@@ -412,7 +412,7 @@ export class Process extends EventEmitter {
     outputs: ActiveDefinitions.LedgerStream[] = []
   ): void {
     this.getReadOnlyStreams()
-      .then(readonly => {
+      .then((readonly) => {
         // We don't need to verify the code unless we suspect server has been
         // comprimised. We will verify with the "install" routine
         // TODO: Fix temp path solution (Param? PATH? Global?)
@@ -432,8 +432,7 @@ export class Process extends EventEmitter {
           this.secured
         );
 
-          ActiveLogger.info("Beginning contract execution");
-          console.log("Debug");
+        ActiveLogger.info("Beginning contract execution");
 
         // Initalise contract VM
         this.contractVM
@@ -465,7 +464,7 @@ export class Process extends EventEmitter {
                     // Continue to next nodes vote
                     this.postVote();
                   })
-                  .catch(error => {
+                  .catch((error) => {
                     // Vote failed (Not and error continue casting vote on the network)
                     ActiveLogger.debug(error, "Vote Failure");
 
@@ -483,7 +482,7 @@ export class Process extends EventEmitter {
                         // Continue to next nodes vote
                         this.postVote();
                       })
-                      .catch(error => {
+                      .catch((error) => {
                         // Continue Execution of consensus even with this failing
                         // Just add a fatal message
                         ActiveLogger.fatal(error, "Voting Error Log Issues");
@@ -496,13 +495,13 @@ export class Process extends EventEmitter {
                       });
                   });
               })
-              .catch(error => {
+              .catch((error) => {
                 ActiveLogger.debug(error, "Verify Failure");
                 // Verification Failure
                 this.raiseLedgerError(1310, new Error(error));
               });
           })
-          .catch(e => {
+          .catch((e) => {
             // Contract not found / failed to start
             ActiveLogger.debug(e, "VM initialisation failed");
             this.raiseLedgerError(
@@ -511,7 +510,7 @@ export class Process extends EventEmitter {
             );
           });
       })
-      .catch(e => {
+      .catch((e) => {
         // error fetch read only streams
         this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
       });
@@ -874,7 +873,7 @@ export class Process extends EventEmitter {
                         this.entry.$territoriality == this.reference,
                         this.entry.$territoriality
                       )
-                      .then(post => {
+                      .then((post) => {
                         this.nodeResponse.post = post;
 
                         // Update in communication (Recommended pre commit only but can be edge use cases)
@@ -892,7 +891,7 @@ export class Process extends EventEmitter {
                         // Respond with the possible early commited
                         this.emit("commited", { tx: this.compactTxEntry() });
                       })
-                      .catch(error => {
+                      .catch((error) => {
                         // Don't let local error stop other nodes
                         if (earlyCommit) earlyCommit();
 
@@ -923,7 +922,7 @@ export class Process extends EventEmitter {
 
                 // Wait for all checks
                 Promise.all(streamColCheck)
-                  .then(streams => {
+                  .then((streams) => {
                     // Problem Streams Exist
                     ActiveLogger.debug(
                       streams,
@@ -956,7 +955,7 @@ export class Process extends EventEmitter {
                   this.entry.$territoriality == this.reference,
                   this.entry.$territoriality
                 )
-                .then(post => {
+                .then((post) => {
                   this.nodeResponse.post = post;
 
                   // Update in communication (Recommended pre commit only but can be edge use cases)
@@ -974,7 +973,7 @@ export class Process extends EventEmitter {
                   // Respond with the possible early commited
                   this.emit("commited", { tx: this.compactTxEntry() });
                 })
-                .catch(error => {
+                .catch((error) => {
                   // Don't let local error stop other nodes
                   if (earlyCommit) earlyCommit();
                   // Ignore errors for now, As commit was still a success
@@ -982,7 +981,7 @@ export class Process extends EventEmitter {
                 });
             }
           })
-          .catch(error => {
+          .catch((error) => {
             // Don't let local error stop other nodes
             if (earlyCommit) earlyCommit();
             ActiveLogger.debug(error, "VM Commit Failure");
@@ -1114,7 +1113,7 @@ export class Process extends EventEmitter {
       // Process all promises at "once"
       Promise.all(
         // Map all the objects to get their promises
-        check.map(item => {
+        check.map((item) => {
           // Create promise to manage all revisions at once
           return new Promise((resolve, reject) => {
             // Get Meta data
@@ -1400,7 +1399,7 @@ export class Process extends EventEmitter {
           // Everything is good
           resolve(stream);
         })
-        .catch(error => {
+        .catch((error) => {
           // Rethrow error
           reject(error);
         });
@@ -1427,7 +1426,7 @@ export class Process extends EventEmitter {
 
         Promise.all(
           // Map all the objects to get their promises
-          keyRefs.map(reference => {
+          keyRefs.map((reference) => {
             // Create promise to manage all revisions at once
             return new Promise((resolve, reject) => {
               // Get Meta data
@@ -1453,7 +1452,7 @@ export class Process extends EventEmitter {
             // Shoudln't need to do anything as reference object has been updated
             resolve(readonlyStreams);
           })
-          .catch(error => {
+          .catch((error) => {
             // Rethrow
             reject(error);
           });
@@ -1570,7 +1569,7 @@ export class Process extends EventEmitter {
    */
   private clearAllComms() {
     if (this.contractVM.clearingInternodeCommsFromVM()) {
-      Object.values(this.entry.$nodes).forEach(node => {
+      Object.values(this.entry.$nodes).forEach((node) => {
         node.incomms = null;
       });
     }
@@ -1603,7 +1602,7 @@ export class Process extends EventEmitter {
           });
         }
       })
-      .catch(error => {
+      .catch((error) => {
         // Problem could be serious (Database down?)
         // However if this errors we need to just emit to let the ledger continue
         ActiveLogger.fatal(error, "Database Error Log Issues");

@@ -10,14 +10,19 @@ export interface IVMObject {
   runCommit: Function;
   postProcess: Function;
   getTimeout: Function;
-  setContractPath: Function;
-  setUMID: Function;
-  setDate: Function;
-  setRemoteAddress: Function;
-  setTransaction: Function;
-  setSignatures: Function;
-  setInputs: Function;
-  setOutputs: Function;
-  setReads: Function;
-  setKey: Function;
+  dataPass: Function;
+  setSysConfig: Function;
+}
+
+export interface IVMDataPayload {
+  contractPath: string;
+  umid: string;
+  date: string;
+  remoteAddress: string;
+  transaction: string;
+  signatures: string;
+  inputs: string;
+  outputs: string;
+  reads: string;
+  key: string;
 }
