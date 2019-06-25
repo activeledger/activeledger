@@ -5,42 +5,66 @@ import {
   PostProcessQueryEvent
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { IVMObject } from "../../es/protocol/vmscript.interface";
+import { IVMDataPayload } from "./vmscript.interface";
+
+export default class ContractControl implements IVMObject {
+  private smartContract: Standard | PostProcessQueryEvent;
+
+  private contractPath: string;
+
+  private umid: string;
+
+  private cdate: Date;
+
+  private remoteAddr: string;
+
+  private tx: ActiveDefinitions.LedgerTransaction;
+
+  private sigs: ActiveDefinitions.LedgerSignatures;
+
+  private inputs: ActiveDefinitions.LedgerStream[];
+
+  private outputs: ActiveDefinitions.LedgerStream[];
+
+  private reads: ActiveDefinitions.LedgerIORputs;
+
+  private key: number;
+
+  // #region Contract controls
+  public initialiseContract(query: any, event: EventEngine) {}
+
+  public getActivityStreams() {}
+
+  public getInternodeComms() {}
+
+  public clearInternodeComms() {}
+
+  public returnContractData() {}
+
+  public throwFrom() {}
+
+  public runVerify() {}
+
+  public runVote() {}
+
+  public runCommit() {}
+
+  public postProcess() {}
+
+  public getTimeout() {}
+  // #endregion
+
+  // #region Contract setup
+
+  public dataPass(payload: IVMDataPayload) {}
+
+  public setSysConfig() {}
+
+  // #endregion
+}
 
 module.exports = (function() {
-  // Smart Contract holder
-  let smartContract: Standard | PostProcessQueryEvent;
-
-  // Path to the contract
-  let contractPath: string;
-
-  // UMID - Unique Message Identification
-  let umid: string;
-
-  // Time of execution syncronised between Activeledger nodes - Used to replace using Date inside a contract
-  let cdate: Date;
-
-  // The inbound address of the transaction
-  let remoteAddr: string;
-
-  // The transaction being run
-  let tx: ActiveDefinitions.LedgerTransaction;
-
-  // Transaction signatures
-  let sigs: ActiveDefinitions.LedgerSignatures;
-
-  // Transaction inputs
-  let inputs: ActiveDefinitions.LedgerStream[];
-
-  // Transaction outputs
-  let outputs: ActiveDefinitions.LedgerStream[];
-
-  // Transaction read only
-  let reads: ActiveDefinitions.LedgerIORputs;
-
-  // Randomly generated for accessing private data
-  let key: number;
-
   return {
     // Control functions
 
@@ -64,12 +88,6 @@ module.exports = (function() {
 
       if ("setEvent" in smartContract) {
         smartContract.setEvent(event);
-      }
-
-      if (tx.$namespace === "default" && "sysConfig" in smartContract) {
-        ((smartContract as unknown) as any).sysConfig(
-          JSON.stringify(ActiveOptions.fetch(false))
-        );
       }
     },
 
@@ -131,6 +149,11 @@ module.exports = (function() {
     // Setup functions
     setContractPath: (path: string) => {
       contractPath = path;
+    },
+    setSysConfig: (sysConfig: any) => {
+      if ("sysConfig" in smartContract) {
+        ((smartContract as unknown) as any).sysConfig(sysConfig);
+      }
     },
     setUMID: (_umid: string) => {
       umid = _umid;

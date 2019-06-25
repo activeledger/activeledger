@@ -30,7 +30,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
 import { NodeVM, VMScript } from "vm2";
 import * as fs from "fs";
-import { IVMObject } from "./vmscript.interface";
+import { IVMObject, IVMDataPayload } from "./vmscript.interface";
 
 /**
  * Contract Virtual Machine Controller
@@ -175,7 +175,7 @@ export class VirtualMachine {
 
     // Create limited VM
     this.virtual = new NodeVM({
-      wrapper: "none",
+      // wrapper: "none",
       sandbox: {
         logger: ActiveLogger,
         crypto: ActiveCrypto,
@@ -191,8 +191,9 @@ export class VirtualMachine {
 
     // Initialise the virtual object using the VMScript
     const script = new VMScript(
-      fs.readFileSync(__dirname + "/vmscript.js").toString()
+      fs.readFileSync(__dirname + "/vmscript.js", "utf-8")
     );
+
     this.virtualInstance = this.virtual.run(script, "avm.js");
   }
 
@@ -284,13 +285,31 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public initalise(): Promise<boolean> {
+    ActiveLogger.info(this.virtualInstance);
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
       try {
         // Set Secret Key
         this.key = Math.floor(Math.random() * 100);
 
-        this.virtualInstance.setContractPath(this.contractPath);
+        const payload: IVMDataPayload = {
+          contractPath: this.contractPath,
+          umid: this.contractPath,
+          date: this.contractPath,
+          remoteAddress: this.contractPath,
+          transaction: this.contractPath,
+          signatures: this.contractPath,
+          inputs: this.contractPath,
+          outputs: this.contractPath,
+          reads: this.contractPath,
+          key: this.contractPath
+        };
+
+        this.virtualInstance.setContractPath(
+          this.contractPath,
+          this.umid,
+          this.cdate
+        );
         this.virtualInstance.setUMID(this.umid);
         this.virtualInstance.setDate(new Date(this.cdate));
         this.virtualInstance.setRemoteAddress(this.remoteAddr);
@@ -311,6 +330,13 @@ export class VirtualMachine {
           new QueryEngine(this.db, true),
           this.event
         );
+
+        // Set Sys Config
+        if (this.tx.$namespace === "default") {
+          this.virtualInstance.setSysConfig(
+            JSON.stringify(ActiveOptions.fetch(false))
+          );
+        }
 
         // Start time initialise the date object
         this.maxTimeout = new Date();
