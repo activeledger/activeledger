@@ -64,4 +64,13 @@ export default abstract class Standard extends Stream {
    * @memberof Standard
    */
   public abstract commit(possibleTerritoriality?: boolean): Promise<any>;
+
+  /**
+   * When a node votes false but network consensus is reached 
+   * this function will run to allow the developer to self recover
+   *
+   * @returns {Promise<any>}
+   * @memberof Standard
+   */
+  public reconcile?(): Promise<any>
 }
