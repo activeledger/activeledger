@@ -28,6 +28,7 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { IVMDataPayload } from "./vm.interface";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -44,7 +45,7 @@ export class Process extends EventEmitter {
    * @type {VirtualMachine}
    * @memberof Process
    */
-  private contractVM: VirtualMachine;
+  private static contractVM: VirtualMachine;
 
   /**
    * Holds string reference of inputs streams
@@ -181,6 +182,20 @@ export class Process extends EventEmitter {
 
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
+
+    // We don't need to verify the code unless we suspect server has been
+    // comprimised. We will verify with the "install" routine
+    // TODO: Fix temp path solution (Param? PATH? Global?)
+    try {
+      Process.contractVM = new VirtualMachine(
+        this.selfHost,
+        this.secured,
+        this.db,
+        this.dbev
+      );
+    } catch (error) {
+      throw new Error(error);
+    }
   }
 
   /**
@@ -202,7 +217,7 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-    (this.contractVM as any) = null;
+    (Process.contractVM as any) = null;
     (this.entry as any) = null;
   }
 
@@ -413,50 +428,49 @@ export class Process extends EventEmitter {
   ): void {
     this.getReadOnlyStreams()
       .then((readonly) => {
-        // We don't need to verify the code unless we suspect server has been
-        // comprimised. We will verify with the "install" routine
-        // TODO: Fix temp path solution (Param? PATH? Global?)
-        this.contractVM = new VirtualMachine( // TODO: Might be best to reuse this object
+        ActiveLogger.info("Beginning contract execution");
+
+        const loadedContractString = fs.readFileSync(
           this.contractLocation,
-          this.selfHost,
-          this.entry.$umid,
-          this.entry.$datetime,
-          this.entry.$remoteAddr,
-          this.entry.$tx,
-          this.entry.$sigs,
+          "utf-8"
+        );
+
+        const payload: IVMDataPayload = {
+          contractString: loadedContractString,
+          umid: this.entry.$umid,
+          date: this.entry.$datetime,
+          remoteAddress: this.entry.$remoteAddr,
+          transaction: this.entry.$tx,
+          signatures: this.entry.$sigs,
           inputs,
           outputs,
           readonly,
-          this.db,
-          this.dbev,
-          this.secured
-        );
-
-        ActiveLogger.info("Beginning contract execution");
+          key: Math.floor(Math.random() * 100)
+        };
 
         // Initalise contract VM
-        this.contractVM
-          .initalise()
+        Process.contractVM
+          .initalise(payload, this.contractLocation.substr(this.contractLocation.lastIndexOf("/") + 1))
           .then(() => {
             // Verify Transaction details in the contract
             // Also allow the contract to verify it likes signatureless transactions
-            this.contractVM
-              .verify(this.entry.$selfsign)
+            Process.contractVM
+              .verify(this.entry.$selfsign, this.entry.$umid)
               .then(() => {
                 // Get Vote (May change to string as it can contain the reason)
                 // Or in the VM we can catch any thrown errors messages
-                this.contractVM
-                  .vote()
+                Process.contractVM
+                  .vote(this.entry.$umid)
                   .then(() => {
                     // Update Vote Entry
                     this.nodeResponse.vote = true;
 
                     // Internode Communication picked up here, Doesn't mean every node
                     // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-                    this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+                    this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
 
                     // Return Data for this nodes contract run (Useful for $instant request expected id's)
-                    this.nodeResponse.return = this.contractVM.getReturnContractData();
+                    this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
 
                     // Clearing All node comms?
                     this.clearAllComms();
@@ -464,7 +478,7 @@ export class Process extends EventEmitter {
                     // Continue to next nodes vote
                     this.postVote();
                   })
-                  .catch((error) => {
+                  .catch((error: Error) => {
                     // Vote failed (Not and error continue casting vote on the network)
                     ActiveLogger.debug(error, "Vote Failure");
 
@@ -477,7 +491,7 @@ export class Process extends EventEmitter {
                       .then(() => {
                         // Continue Execution of consensus
                         // Update Error
-                        this.nodeResponse.error = error;
+                        this.nodeResponse.error = error.message;
 
                         // Continue to next nodes vote
                         this.postVote();
@@ -651,26 +665,27 @@ export class Process extends EventEmitter {
         // Consensus reached commit phase
         this.commiting = true;
         // Pass Nodes for possible INC injection
-        this.contractVM
+        Process.contractVM
           .commit(
             this.entry.$nodes,
-            this.entry.$territoriality == this.reference
+            this.entry.$territoriality == this.reference,
+            this.entry.$umid
           )
           .then(() => {
             // Update Commit Entry
             this.nodeResponse.commit = true;
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+            this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
 
             // Return Data for this nodes contract run
-            this.nodeResponse.return = this.contractVM.getReturnContractData();
+            this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
 
             // Clearing All node comms?
             this.clearAllComms();
 
             // Are we throwing to another ledger(s)?
-            let throws = this.contractVM.getThrowsFromVM();
+            let throws = Process.contractVM.getThrowsFromVM(this.entry.$umid);
 
             // Emit to network handler
             if (throws && throws.length) {
@@ -678,10 +693,10 @@ export class Process extends EventEmitter {
             }
 
             // Get the changed data streams
-            let streams: ActiveDefinitions.LedgerStream[] = this.contractVM.getActivityStreamsFromVM();
+            let streams: ActiveDefinitions.LedgerStream[] = Process.contractVM.getActivityStreamsFromVM(this.entry.$umid);
 
             // Get current working inputs to compare and update if not modified above
-            let inputs: ActiveDefinitions.LedgerStream[] = this.contractVM.getInputs();
+            let inputs: ActiveDefinitions.LedgerStream[] = Process.contractVM.getInputs(this.entry.$umid);
 
             let skip: string[] = [];
 
@@ -868,19 +883,20 @@ export class Process extends EventEmitter {
                     }
 
                     // Manage Post Processing (If Exists)
-                    this.contractVM
+                    Process.contractVM
                       .postProcess(
                         this.entry.$territoriality == this.reference,
-                        this.entry.$territoriality
+                        this.entry.$territoriality,
+                        this.entry.$umid
                       )
                       .then((post) => {
                         this.nodeResponse.post = post;
 
                         // Update in communication (Recommended pre commit only but can be edge use cases)
-                        this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+                        this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
 
                         // Return Data for this nodes contract run
-                        this.nodeResponse.return = this.contractVM.getReturnContractData();
+                        this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
 
                         // Clearing All node comms?
                         this.clearAllComms();
@@ -891,7 +907,7 @@ export class Process extends EventEmitter {
                         // Respond with the possible early commited
                         this.emit("commited", { tx: this.compactTxEntry() });
                       })
-                      .catch((error) => {
+                      .catch((error: Error) => {
                         // Don't let local error stop other nodes
                         if (earlyCommit) earlyCommit();
 
@@ -950,19 +966,20 @@ export class Process extends EventEmitter {
                 this.entry.$territoriality = this.reference;
 
               // Manage Post Processing (If Exists)
-              this.contractVM
+              Process.contractVM
                 .postProcess(
                   this.entry.$territoriality == this.reference,
-                  this.entry.$territoriality
+                  this.entry.$territoriality,
+                  this.entry.$umid
                 )
                 .then((post) => {
                   this.nodeResponse.post = post;
 
                   // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+                  this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
 
                   // Return Data for this nodes contract run
-                  this.nodeResponse.return = this.contractVM.getReturnContractData();
+                  this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
 
                   // Clearing All node comms?
                   this.clearAllComms();
@@ -1568,7 +1585,7 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private clearAllComms() {
-    if (this.contractVM.clearingInternodeCommsFromVM()) {
+    if (Process.contractVM.clearingInternodeCommsFromVM(this.entry.$umid)) {
       Object.values(this.entry.$nodes).forEach((node) => {
         node.incomms = null;
       });
