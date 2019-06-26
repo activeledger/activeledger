@@ -461,6 +461,60 @@ export class VirtualMachine {
   }
 
   /**
+   * Contract given the opportunity to reconcile itself when node voted no but network confimed
+   *
+   * @param {ActiveDefinitions.INodes} nodes
+   * @returns {Promise<boolean>}
+   * @memberof VirtualMachine
+   */
+  public reconcile(nodes: ActiveDefinitions.INodes): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      // Manage INC
+      this.incMarshel(nodes);
+
+      // Script running flag
+      this.scriptFinishedExec = false;
+
+      // Upgrade Phase
+      this.event.setPhase("reconcile");
+
+      // Manage Timeout
+      this.checkTimeout("reconcile", () => {
+        reject("VM Error : Reconcile phase timeout");
+      });
+
+      // Get Commit
+      (this.virtual.run(
+        `if("reconcile" in sc) { 
+          // Run Reconcile
+          return sc.reconcile()
+        }else{
+          // Auto reject if no reconcile process
+          return new Promise((resolve, reject) => {
+            resolve(false);
+          });
+        } `,
+        "avm.js"
+      ) as Promise<any>)
+        .then(() => {
+          // Here we may update the database from the objects (commit should return)
+          // Or just manipulate / check the outputs
+          this.scriptFinishedExec = true;
+          resolve(true);
+        })
+        .catch(e => {
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
+        });
+    });
+  }
+
+  /**
    * Do something after the commit phase, Territoriality is if this is the first post commit
    * running in the entire network
    *
