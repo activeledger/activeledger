@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "2.0.0-rc.8.0.64",
+  "version": "2.0.0-rc.8.0.65",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
@@ -50,8 +50,8 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.62",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.64",
     "@activeledger/activeutilities": "^2.0.0-rc.8.0.64",
-    "pouchdb-adapter-leveldb": "^7.0.0",
-    "pouchdb-core": "^7.0.0",
-    "pouchdb-find": "^7.0.0"
+    "pouchdb-adapter-leveldb": "7.1.1",
+    "pouchdb-core": "7.1.1",
+    "pouchdb-find": "7.1.1"
   }
 }
