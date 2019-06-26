@@ -29,7 +29,7 @@ import {
   IResponse
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ErrorCodes } from "./error-codes.enum";
+import { ErrorCodes } from './error-codes.enum';
 
 /**
  * Interagent that listens for error events and attempts to fix them
@@ -41,6 +41,7 @@ export class Interagent {
   private errorCodes = [
     ErrorCodes.StreamNotFound,
     ErrorCodes.StateNotFound,
+    ErrorCodes.VoteFailedNetworkOk,
     ErrorCodes.StreamPositionIncorrect,
     ErrorCodes.ReadOnlyStreamNotFound,
     ErrorCodes.NodeFinalReject,

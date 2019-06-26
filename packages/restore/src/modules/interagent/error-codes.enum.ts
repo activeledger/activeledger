@@ -26,6 +26,7 @@
       950  = Stream not found 
       960  = State not found
       1000 = Vote failed (Similar to 1505, but has a different report time)
+      1001 = Vote failed however the network did reach consensus without us (Non broadcast method)
       1200 = Stream position incorrect
       1210 = Read only stream not found
       1505 = This node voted no, possibly incorrectly (Similar to 1000, but has a different report time)
@@ -43,6 +44,7 @@ export enum ErrorCodes {
   StreamNotFound = 950,
   StateNotFound = 960,
   VoteFailed = 1000,
+  VoteFailedNetworkOk = 1001,
   StreamPositionIncorrect = 1200,
   ReadOnlyStreamNotFound = 1210,
   NodeFinalReject = 1505,

@@ -605,25 +605,28 @@ export class Process extends EventEmitter {
    * Decides if consensus has been reached for commit phase to start
    *
    * @private
+   * @param {boolean} [skipBoost=false]
    * @returns {boolean}
    * @memberof Process
    */
-  private canCommit(): boolean {
+  private canCommit(skipBoost = false): boolean {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     let i = networkNodes.length;
     this.currentVotes = 0;
 
     // Small performance boost if we voted no
-    if (this.nodeResponse.vote) {
+    if (skipBoost || this.nodeResponse.vote) {
       while (i--) {
         if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
     }
 
+    ActiveLogger.info(this.entry.$nodes, "Current Votes " + this.currentVotes);
+
     // Return if consensus has been reached
     return (
-      (this.nodeResponse.vote &&
+      ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
           100 >=
@@ -637,11 +640,11 @@ export class Process extends EventEmitter {
    * The use of callback is because it fits better than a promise in the flow and the performance is a bonus
    *
    * @private
-   * @param {() => void} [earlyCommit]
+   * @param {Function} [earlyCommit]
    * @returns {void}
    * @memberof Process
    */
-  private commit(earlyCommit?: () => void): void {
+  private commit(earlyCommit?: Function): void {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
       // check we can commit still
@@ -675,309 +678,8 @@ export class Process extends EventEmitter {
               this.emit("throw", { locations: throws });
             }
 
-            // Get the changed data streams
-            let streams: ActiveDefinitions.LedgerStream[] = this.contractVM.getActivityStreamsFromVM();
-
-            // Get current working inputs to compare and update if not modified above
-            let inputs: ActiveDefinitions.LedgerStream[] = this.contractVM.getInputs();
-
-            let skip: string[] = [];
-
-            // Determanistic Collision Managamenent
-            let collisions: any[] = [];
-
-            // Compile streams for umid & return reference
-            let refStreams = {
-              new: [] as any[],
-              updated: [] as any[]
-            };
-
-            // Cache Harden Key Flag
-            let nhkCheck = ActiveOptions.get<any>("security", {})
-              .hardenedKeys as boolean;
-
-            // Any Changes
-            if (streams.length) {
-              // Process Changes to the database
-              // Bulk Insert Docs
-              let docs: any[] = [];
-
-              // Loop Streams
-              let i = streams.length;
-              while (i--) {
-                // New or Updating?
-                if (!streams[i].meta._rev) {
-                  // Make sure we have an id
-                  if (!streams[i].meta._id) {
-                    // New (Need to set ids)
-                    streams[i].state._id = this.entry.$umid + i;
-                    streams[i].meta._id = streams[i].state._id + ":stream";
-                    streams[i].volatile._id =
-                      streams[i].state._id + ":volatile";
-                  }
-
-                  // Need to add transaction to all meta documents
-                  streams[i].meta.txs = [this.entry.$umid];
-                  // Also set as intalisiser stream (stream constructor)
-                  streams[i].meta.$constructor = true;
-
-                  // Need to remove rev
-                  delete streams[i].state._rev;
-                  delete streams[i].meta._rev;
-                  delete streams[i].volatile._rev;
-
-                  // New Streams need to check if collision will happen
-                  if (streams[i].meta.umid !== this.entry.$umid) {
-                    collisions.push(streams[i].meta._id);
-                  }
-
-                  // Add to reference
-                  refStreams.new.push({
-                    id: streams[i].state._id,
-                    name: streams[i].meta.name
-                  });
-                } else {
-                  // Updated Streams, These could be inputs
-                  // So update the transaction and remove for inputs for later processing
-                  if (streams[i].meta.txs && streams[i].meta.txs.length) {
-                    streams[i].meta.txs.push(this.entry.$umid);
-                    skip.push(streams[i].meta._id as string);
-                  }
-
-                  // Hardened Keys?
-                  if (streams[i].state._id && nhkCheck) {
-                    // Get nhpk
-                    let nhpk = this.entry.$tx.$i[
-                      this.getLabelIOMap(true, streams[i].state._id as string)
-                    ].$nhpk;
-
-                    // Loop Signatures as they should be rewritten with authoritied nested
-                    // That way if any new auths were added they will be skipped
-                    let txSigAuthsKeys = Object.keys(
-                      this.entry.$sigs[streams[i].state._id as string]
-                    );
-
-                    // Loop all authorities to try and find a match
-                    streams[i].meta.authorities.forEach(
-                      (authority: ActiveDefinitions.ILedgerAuthority) => {
-                        // Get tx auth signature if existed
-                        const txSigAuthKey = txSigAuthsKeys.indexOf(
-                          authority.hash as string
-                        );
-                        if (txSigAuthKey !== -1) {
-                          (authority as any).public =
-                            nhpk[txSigAuthsKeys[txSigAuthKey]];
-                        }
-                      }
-                    );
-                  }
-
-                  // Add to reference
-                  refStreams.updated.push({
-                    id: streams[i].state._id,
-                    name: streams[i].meta.name
-                  });
-                }
-
-                // Data State (Developers Control)
-                if (streams[i].state._id) docs.push(streams[i].state);
-
-                // Meta (Stream Data) for internal usage
-                if (streams[i].meta._id) docs.push(streams[i].meta);
-
-                // Volatile data which cannot really be trusted
-                if (streams[i].volatile._id) docs.push(streams[i].volatile);
-              }
-
-              // Any inputs left (Means not modified, Unmodified outputs can be ignored)
-              // Now we need to append transaction to the inputs of the transaction
-              if (inputs && inputs.length) {
-                // Add to all docs
-                let i = inputs.length;
-                while (i--) {
-                  if (
-                    skip.indexOf(inputs[i].meta._id as string) === -1 &&
-                    inputs[i].meta.txs &&
-                    inputs[i].meta.txs.length
-                  ) {
-                    // Add Compact Transaction
-                    inputs[i].meta.txs.push(this.entry.$umid);
-
-                    // Hardened Keys?
-                    if (inputs[i].state._id && nhkCheck) {
-                      // Get nhpk
-                      let nhpk = this.entry.$tx.$i[
-                        this.getLabelIOMap(true, inputs[i].state._id as string)
-                      ].$nhpk;
-
-                      // Loop Signatures as they should be rewritten with authoritied nested
-                      // That way if any new auths were added they will be skipped
-                      let txSigAuthsKeys = Object.keys(
-                        this.entry.$sigs[inputs[i].state._id as string]
-                      );
-
-                      // Loop all authorities to try and find a match
-                      inputs[i].meta.authorities.forEach(
-                        (authority: ActiveDefinitions.ILedgerAuthority) => {
-                          // Get tx auth signature if existed
-                          const txSigAuthKey = txSigAuthsKeys.indexOf(
-                            authority.hash as string
-                          );
-                          if (txSigAuthKey !== -1) {
-                            (authority as any).public =
-                              nhpk[txSigAuthsKeys[txSigAuthKey]];
-                          }
-                        }
-                      );
-                    }
-
-                    // Push to docs (Only Meta)
-                    docs.push(inputs[i].meta);
-                  }
-                }
-              }
-
-              // Create umid document containing the transaction details
-              docs.push({
-                _id: this.entry.$umid + ":umid",
-                umid: this.compactTxEntry(),
-                streams: refStreams
-              });
-
-              /**
-               * Delegate Function
-               * Attempt to atomicaly save to the datastore
-               * Allow for delay execution for deterministic test
-               */
-              let append = () => {
-                this.db
-                  .bulkDocs(docs)
-                  .then(() => {
-                    // Set datetime to reflect when data is set from memory to disk
-                    this.nodeResponse.datetime = new Date();
-
-                    // Were we first?
-                    if (!this.entry.$territoriality)
-                      this.entry.$territoriality = this.reference;
-
-                    // If Origin Explain streams in output
-                    if (this.reference == this.entry.$origin) {
-                      this.entry.$streams = refStreams;
-                    }
-
-                    // Manage Post Processing (If Exists)
-                    this.contractVM
-                      .postProcess(
-                        this.entry.$territoriality == this.reference,
-                        this.entry.$territoriality
-                      )
-                      .then(post => {
-                        this.nodeResponse.post = post;
-
-                        // Update in communication (Recommended pre commit only but can be edge use cases)
-                        this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
-
-                        // Return Data for this nodes contract run
-                        this.nodeResponse.return = this.contractVM.getReturnContractData();
-
-                        // Clearing All node comms?
-                        this.clearAllComms();
-
-                        // Remember to let other nodes know
-                        if (earlyCommit) earlyCommit();
-
-                        // Respond with the possible early commited
-                        this.emit("commited", { tx: this.compactTxEntry() });
-                      })
-                      .catch(error => {
-                        // Don't let local error stop other nodes
-                        if (earlyCommit) earlyCommit();
-
-                        // Ignore errors for now, As commit was still a success
-                        this.emit("commited", { tx: this.compactTxEntry() });
-                      });
-                  })
-                  .catch((error: Error) => {
-                    // Don't let local error stop other nodes
-                    if (earlyCommit) earlyCommit();
-                    ActiveLogger.debug(error, "Datatore Failure");
-                    this.raiseLedgerError(1510, new Error("Failed to save"));
-                  });
-              };
-
-              // Detect Collisions
-              if (collisions.length) {
-                ActiveLogger.info("Deterministic streams to be checked");
-
-                // Store the promises to wait on.
-                let streamColCheck: any[] = [];
-
-                // Loop all streams
-                collisions.forEach((streamId: string) => {
-                  // Query datastore for streams
-                  streamColCheck.push(this.db.get(streamId));
-                });
-
-                // Wait for all checks
-                Promise.all(streamColCheck)
-                  .then(streams => {
-                    // Problem Streams Exist
-                    ActiveLogger.debug(
-                      streams,
-                      "Deterministic Stream Name Exists"
-                    );
-                    // Update commit
-                    this.nodeResponse.commit = false;
-                    this.raiseLedgerError(
-                      1530,
-                      new Error("Deterministic Stream Name Exists")
-                    );
-                  })
-                  .catch(() => {
-                    // Continue (Error being document not found)
-                    append();
-                  });
-              } else {
-                // Continue
-                append();
-              }
-            } else {
-              // Nothing to store which is _no longer_ strange contract may not make changes!
-              // Were we first?
-              if (!this.entry.$territoriality)
-                this.entry.$territoriality = this.reference;
-
-              // Manage Post Processing (If Exists)
-              this.contractVM
-                .postProcess(
-                  this.entry.$territoriality == this.reference,
-                  this.entry.$territoriality
-                )
-                .then(post => {
-                  this.nodeResponse.post = post;
-
-                  // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
-
-                  // Return Data for this nodes contract run
-                  this.nodeResponse.return = this.contractVM.getReturnContractData();
-
-                  // Clearing All node comms?
-                  this.clearAllComms();
-
-                  // Remember to let other nodes know
-                  if (earlyCommit) earlyCommit();
-
-                  // Respond with the possible early commited
-                  this.emit("commited", { tx: this.compactTxEntry() });
-                })
-                .catch(error => {
-                  // Don't let local error stop other nodes
-                  if (earlyCommit) earlyCommit();
-                  // Ignore errors for now, As commit was still a success
-                  this.emit("commited", { tx: this.compactTxEntry() });
-                });
-            }
+            // Update Streams
+            this.updateStreams({ tx: this.compactTxEntry() }, earlyCommit);
           })
           .catch(error => {
             // Don't let local error stop other nodes
@@ -1018,8 +720,56 @@ export class Process extends EventEmitter {
             false
           );
 
-          // Because we voted no doesn't mean the network should error
-          this.emit("commited");
+          //TODO: Consensus Vote Reconciling not available on broadcast p2p method
+          if (!this.entry.$broadcast) {
+            //? Reminder : Contract Voted False to be here not pre-flights
+            // How can we tell the network commited? I guess we should count the votes?
+            if (this.canCommit(true)) {
+              ActiveLogger.debug(
+                "Network Consensus reached without me (Reconciling)"
+              );
+
+              this.contractVM
+                .reconcile(this.entry.$nodes)
+                .then((reconciled: boolean) => {
+                  // Contract ran its own reconcile procedure
+                  if (reconciled) {
+                    ActiveLogger.info("Self Renconcile Successful");
+                    // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
+                    this.updateStreams({ tx: this.compactTxEntry() });
+                  } else {
+                    // No move onto internal attempts
+                    // Upgrade error code so restore will process it
+                    if (this.errorOut.code === 1000) {
+                      ActiveLogger.info(
+                        "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
+                      );
+                      // reset single error as 1000 is skipped anyway
+                      this.storeSingleError = false;
+                      // try/catch to finish execution
+                      this.storeError(1001, new Error(this.errorOut.reason), 11)
+                        .then(() => {
+                          this.emit("commited");
+                        })
+                        .catch(() => {
+                          this.emit("commited");
+                        });
+                    } else {
+                      // Because we voted no doesn't mean the network should error
+                      this.emit("commited");
+                    }
+                  }
+                })
+                .catch(e => {
+                  // Timed out
+                  ActiveLogger.debug(e);
+                  this.emit("commited");
+                });
+            }
+          } else {
+            // Because we voted no doesn't mean the network should error
+            this.emit("commited");
+          }
         } else {
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
@@ -1087,6 +837,310 @@ export class Process extends EventEmitter {
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();
       this.emit("commited");
+    }
+  }
+
+  private updateStreams(commitData: unknown, earlyCommit?: Function) {
+    {
+      // Get the changed data streams
+      let streams: ActiveDefinitions.LedgerStream[] = this.contractVM.getActivityStreamsFromVM();
+
+      // Get current working inputs to compare and update if not modified above
+      let inputs: ActiveDefinitions.LedgerStream[] = this.contractVM.getInputs();
+
+      let skip: string[] = [];
+
+      // Determanistic Collision Managamenent
+      let collisions: any[] = [];
+
+      // Compile streams for umid & return reference
+      let refStreams = {
+        new: [] as any[],
+        updated: [] as any[]
+      };
+
+      // Cache Harden Key Flag
+      let nhkCheck = ActiveOptions.get<any>("security", {})
+        .hardenedKeys as boolean;
+
+      // Any Changes
+      if (streams.length) {
+        // Process Changes to the database
+        // Bulk Insert Docs
+        let docs: any[] = [];
+
+        // Loop Streams
+        let i = streams.length;
+        while (i--) {
+          // New or Updating?
+          if (!streams[i].meta._rev) {
+            // Make sure we have an id
+            if (!streams[i].meta._id) {
+              // New (Need to set ids)
+              streams[i].state._id = this.entry.$umid + i;
+              streams[i].meta._id = streams[i].state._id + ":stream";
+              streams[i].volatile._id = streams[i].state._id + ":volatile";
+            }
+
+            // Need to add transaction to all meta documents
+            streams[i].meta.txs = [this.entry.$umid];
+            // Also set as intalisiser stream (stream constructor)
+            streams[i].meta.$constructor = true;
+
+            // Need to remove rev
+            delete streams[i].state._rev;
+            delete streams[i].meta._rev;
+            delete streams[i].volatile._rev;
+
+            // New Streams need to check if collision will happen
+            if (streams[i].meta.umid !== this.entry.$umid) {
+              collisions.push(streams[i].meta._id);
+            }
+
+            // Add to reference
+            refStreams.new.push({
+              id: streams[i].state._id,
+              name: streams[i].meta.name
+            });
+          } else {
+            // Updated Streams, These could be inputs
+            // So update the transaction and remove for inputs for later processing
+            if (streams[i].meta.txs && streams[i].meta.txs.length) {
+              streams[i].meta.txs.push(this.entry.$umid);
+              skip.push(streams[i].meta._id as string);
+            }
+
+            // Hardened Keys?
+            if (streams[i].state._id && nhkCheck) {
+              // Get nhpk
+              let nhpk = this.entry.$tx.$i[
+                this.getLabelIOMap(true, streams[i].state._id as string)
+              ].$nhpk;
+
+              // Loop Signatures as they should be rewritten with authoritied nested
+              // That way if any new auths were added they will be skipped
+              let txSigAuthsKeys = Object.keys(
+                this.entry.$sigs[streams[i].state._id as string]
+              );
+
+              // Loop all authorities to try and find a match
+              streams[i].meta.authorities.forEach(
+                (authority: ActiveDefinitions.ILedgerAuthority) => {
+                  // Get tx auth signature if existed
+                  const txSigAuthKey = txSigAuthsKeys.indexOf(
+                    authority.hash as string
+                  );
+                  if (txSigAuthKey !== -1) {
+                    (authority as any).public =
+                      nhpk[txSigAuthsKeys[txSigAuthKey]];
+                  }
+                }
+              );
+            }
+
+            // Add to reference
+            refStreams.updated.push({
+              id: streams[i].state._id,
+              name: streams[i].meta.name
+            });
+          }
+
+          // Data State (Developers Control)
+          if (streams[i].state._id) docs.push(streams[i].state);
+
+          // Meta (Stream Data) for internal usage
+          if (streams[i].meta._id) docs.push(streams[i].meta);
+
+          // Volatile data which cannot really be trusted
+          if (streams[i].volatile._id) docs.push(streams[i].volatile);
+        }
+
+        // Any inputs left (Means not modified, Unmodified outputs can be ignored)
+        // Now we need to append transaction to the inputs of the transaction
+        if (inputs && inputs.length) {
+          // Add to all docs
+          let i = inputs.length;
+          while (i--) {
+            if (
+              skip.indexOf(inputs[i].meta._id as string) === -1 &&
+              inputs[i].meta.txs &&
+              inputs[i].meta.txs.length
+            ) {
+              // Add Compact Transaction
+              inputs[i].meta.txs.push(this.entry.$umid);
+
+              // Hardened Keys?
+              if (inputs[i].state._id && nhkCheck) {
+                // Get nhpk
+                let nhpk = this.entry.$tx.$i[
+                  this.getLabelIOMap(true, inputs[i].state._id as string)
+                ].$nhpk;
+
+                // Loop Signatures as they should be rewritten with authoritied nested
+                // That way if any new auths were added they will be skipped
+                let txSigAuthsKeys = Object.keys(
+                  this.entry.$sigs[inputs[i].state._id as string]
+                );
+
+                // Loop all authorities to try and find a match
+                inputs[i].meta.authorities.forEach(
+                  (authority: ActiveDefinitions.ILedgerAuthority) => {
+                    // Get tx auth signature if existed
+                    const txSigAuthKey = txSigAuthsKeys.indexOf(
+                      authority.hash as string
+                    );
+                    if (txSigAuthKey !== -1) {
+                      (authority as any).public =
+                        nhpk[txSigAuthsKeys[txSigAuthKey]];
+                    }
+                  }
+                );
+              }
+
+              // Push to docs (Only Meta)
+              docs.push(inputs[i].meta);
+            }
+          }
+        }
+
+        // Create umid document containing the transaction details
+        docs.push({
+          _id: this.entry.$umid + ":umid",
+          umid: this.compactTxEntry(),
+          streams: refStreams
+        });
+
+        /**
+         * Delegate Function
+         * Attempt to atomicaly save to the datastore
+         * Allow for delay execution for deterministic test
+         */
+        let append = () => {
+          this.db
+            .bulkDocs(docs)
+            .then(() => {
+              // Set datetime to reflect when data is set from memory to disk
+              this.nodeResponse.datetime = new Date();
+
+              // Were we first?
+              if (!this.entry.$territoriality)
+                this.entry.$territoriality = this.reference;
+
+              // If Origin Explain streams in output
+              if (this.reference == this.entry.$origin) {
+                this.entry.$streams = refStreams;
+              }
+
+              // Manage Post Processing (If Exists)
+              this.contractVM
+                .postProcess(
+                  this.entry.$territoriality == this.reference,
+                  this.entry.$territoriality
+                )
+                .then(post => {
+                  this.nodeResponse.post = post;
+
+                  // Update in communication (Recommended pre commit only but can be edge use cases)
+                  this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+
+                  // Return Data for this nodes contract run
+                  this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+                  // Clearing All node comms?
+                  this.clearAllComms();
+
+                  // Remember to let other nodes know
+                  if (earlyCommit) earlyCommit();
+
+                  // Respond with the possible early commited
+                  this.emit("commited", commitData);
+                })
+                .catch(() => {
+                  // Don't let local error stop other nodes
+                  if (earlyCommit) earlyCommit();
+
+                  // Ignore errors for now, As commit was still a success
+                  this.emit("commited", commitData);
+                });
+            })
+            .catch((error: Error) => {
+              // Don't let local error stop other nodes
+              if (earlyCommit) earlyCommit();
+              ActiveLogger.debug(error, "Datatore Failure");
+              this.raiseLedgerError(1510, new Error("Failed to save"));
+            });
+        };
+
+        // Detect Collisions
+        if (collisions.length) {
+          ActiveLogger.info("Deterministic streams to be checked");
+
+          // Store the promises to wait on.
+          let streamColCheck: any[] = [];
+
+          // Loop all streams
+          collisions.forEach((streamId: string) => {
+            // Query datastore for streams
+            streamColCheck.push(this.db.get(streamId));
+          });
+
+          // Wait for all checks
+          Promise.all(streamColCheck)
+            .then(streams => {
+              // Problem Streams Exist
+              ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+              // Update commit
+              this.nodeResponse.commit = false;
+              this.raiseLedgerError(
+                1530,
+                new Error("Deterministic Stream Name Exists")
+              );
+            })
+            .catch(() => {
+              // Continue (Error being document not found)
+              append();
+            });
+        } else {
+          // Continue
+          append();
+        }
+      } else {
+        // Nothing to store which is _no longer_ strange contract may not make changes!
+        // Were we first?
+        if (!this.entry.$territoriality)
+          this.entry.$territoriality = this.reference;
+
+        // Manage Post Processing (If Exists)
+        this.contractVM
+          .postProcess(
+            this.entry.$territoriality == this.reference,
+            this.entry.$territoriality
+          )
+          .then(post => {
+            this.nodeResponse.post = post;
+
+            // Update in communication (Recommended pre commit only but can be edge use cases)
+            this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+
+            // Return Data for this nodes contract run
+            this.nodeResponse.return = this.contractVM.getReturnContractData();
+
+            // Clearing All node comms?
+            this.clearAllComms();
+
+            // Remember to let other nodes know
+            if (earlyCommit) earlyCommit();
+
+            // Respond with the possible early commited
+            this.emit("commited", commitData);
+          })
+          .catch(error => {
+            // Don't let local error stop other nodes
+            if (earlyCommit) earlyCommit();
+            // Ignore errors for now, As commit was still a success
+            this.emit("commited", commitData);
+          });
+      }
     }
   }
 
@@ -1617,6 +1671,7 @@ export class Process extends EventEmitter {
 
   /**
    * Store Error into Database
+   * TODO: Defer storing into the database until after execution or on crash
    *
    * @private
    * @param {number} code
