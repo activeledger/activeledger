@@ -121,7 +121,10 @@ export class VirtualMachine {
    * @private
    * @memberof VirtualMachine
    */
-  public initialiseVirtualMachine(): void {
+  public initialiseVirtualMachine(
+    extraBuiltins?: string[],
+    extraExternals?: string[]
+  ): void {
     // Toolkit Availability Check
     let toolkitAvailable = true;
     try {
@@ -147,28 +150,13 @@ export class VirtualMachine {
       builtin.push("events", "http", "https", "url", "zlib");
     }
 
-    // Add additional External & builtin by namespace
-    if (this.tx.$namespace == "default") {
-      switch (this.tx.$contract) {
-        case "contract":
-          external.push("typescript");
-          builtin.push("fs", "path", "os", "crypto");
-          break;
-        case "setup":
-          builtin.push("fs", "path");
-          break;
-      }
-    } else {
-      // Now check configuration for allowed standard libs for this namespace
-      let security = ActiveOptions.get<any>("security", {});
+    // Add additional External & builtin by namespace if provided
+    if (extraExternals) {
+      external = [...external, ...extraExternals];
+    }
 
-      // Check to see if this namespace exists
-      if (security.namespace && security.namespace[this.tx.$namespace]) {
-        security.namespace[this.tx.$namespace].std.forEach((item: string) => {
-          // Add to builtin VM
-          builtin.push(item);
-        });
-      }
+    if (extraBuiltins) {
+      builtin = [...builtin, ...extraBuiltins];
     }
 
     // Create limited VM
@@ -281,7 +269,7 @@ export class VirtualMachine {
    * @returns {Promise<boolean>}
    * @memberof VirtualMachine
    */
-  public initalise(
+  public initialise(
     payload: IVMDataPayload,
     contractName: string
   ): Promise<boolean> {
@@ -301,6 +289,8 @@ export class VirtualMachine {
           new QueryEngine(this.db, true),
           this.event
         );
+
+        // TODO: Finish implementing references
 
         // Set Sys Config
         if (payload.transaction.$namespace === "default") {

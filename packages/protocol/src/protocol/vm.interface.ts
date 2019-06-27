@@ -1,4 +1,5 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { VirtualMachine } from "./vm";
 
 export interface IVMObject {
   initialiseContract: Function;
@@ -38,4 +39,8 @@ interface IVMContractReferenceData {
 
 export interface IVMContractReferences {
   [umid: string]: IVMContractReferenceData;
+}
+
+export interface IVMContractHolder {
+  [name: string]: VirtualMachine;
 }

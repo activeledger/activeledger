@@ -28,7 +28,7 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { IVMDataPayload } from "./vm.interface";
+import { IVMDataPayload, IVMContractHolder } from "./vm.interface";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -45,7 +45,15 @@ export class Process extends EventEmitter {
    * @type {VirtualMachine}
    * @memberof Process
    */
-  private static contractVM: VirtualMachine;
+  private static generalContractVM: VirtualMachine;
+
+  private static defaultContractsVM: VirtualMachine;
+
+  private static singleContractVMHolder: IVMContractHolder;
+
+  private isDefault: boolean = false;
+
+  private contractRef: string;
 
   /**
    * Holds string reference of inputs streams
@@ -187,12 +195,14 @@ export class Process extends EventEmitter {
     // comprimised. We will verify with the "install" routine
     // TODO: Fix temp path solution (Param? PATH? Global?)
     try {
-      Process.contractVM = new VirtualMachine(
+      Process.generalContractVM = new VirtualMachine(
         this.selfHost,
         this.secured,
         this.db,
         this.dbev
       );
+
+      Process.generalContractVM.initialiseVirtualMachine();
     } catch (error) {
       throw new Error(error);
     }
@@ -217,7 +227,7 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-    (Process.contractVM as any) = null;
+    (Process.generalContractVM as any) = null;
     (this.entry as any) = null;
   }
 
@@ -408,6 +418,156 @@ export class Process extends EventEmitter {
     return this.commiting;
   }
 
+  private processDefaultContracts(
+    payload: IVMDataPayload,
+    contractName: string
+  ) {
+    if (!Process.defaultContractsVM) {
+      // Setup for default contracts
+      const external = [];
+      const builtin = [];
+      switch (payload.transaction.$contract) {
+        case "contract":
+          external.push("typescript");
+          builtin.push("fs", "path", "os", "crypto");
+          break;
+        case "setup":
+          builtin.push("fs", "path");
+          break;
+      }
+
+      try {
+        Process.defaultContractsVM = new VirtualMachine(
+          this.selfHost,
+          this.secured,
+          this.db,
+          this.dbev
+        );
+
+        Process.defaultContractsVM.initialiseVirtualMachine(builtin, external);
+      } catch (error) {
+        throw new Error(error);
+      }
+    }
+
+    this.handleVM(Process.defaultContractsVM, payload, contractName);
+  }
+
+  private processUnsafeContracts(
+    payload: IVMDataPayload,
+    contractName: string,
+    extraBuiltins: string[]
+  ) {
+    this.contractRef = contractName + Date.now();
+
+    try {
+      Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
+        this.selfHost,
+        this.secured,
+        this.db,
+        this.dbev
+      );
+
+      Process.singleContractVMHolder[this.contractRef].initialiseVirtualMachine(
+        extraBuiltins
+      );
+    } catch (error) {
+      throw new Error(error);
+    }
+
+    this.handleVM(
+      Process.singleContractVMHolder[this.contractRef],
+      payload,
+      contractName
+    );
+  }
+
+  private handleVM(
+    virtualMachine: VirtualMachine,
+    payload: IVMDataPayload,
+    contractName: string
+  ) {
+    // Initalise contract VM
+    virtualMachine
+      .initialise(payload, contractName)
+      .then(() => {
+        // Verify Transaction details in the contract
+        // Also allow the contract to verify it likes signatureless transactions
+        virtualMachine
+          .verify(this.entry.$selfsign, this.entry.$umid)
+          .then(() => {
+            // Get Vote (May change to string as it can contain the reason)
+            // Or in the VM we can catch any thrown errors messages
+            virtualMachine
+              .vote(this.entry.$umid)
+              .then(() => {
+                // Update Vote Entry
+                this.nodeResponse.vote = true;
+
+                // Internode Communication picked up here, Doesn't mean every node
+                // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+                this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+                  this.entry.$umid
+                );
+
+                // Return Data for this nodes contract run (Useful for $instant request expected id's)
+                this.nodeResponse.return = virtualMachine.getReturnContractData(
+                  this.entry.$umid
+                );
+
+                // Clearing All node comms?
+                this.clearAllComms();
+
+                // Continue to next nodes vote
+                this.postVote();
+              })
+              .catch((error: Error) => {
+                // Vote failed (Not and error continue casting vote on the network)
+                ActiveLogger.debug(error, "Vote Failure");
+
+                // Update errors (Dont know what the contract will reject as so string)
+                this.storeError(
+                  1000,
+                  new Error("Vote Failure - " + JSON.stringify(error)),
+                  10
+                )
+                  .then(() => {
+                    // Continue Execution of consensus
+                    // Update Error
+                    this.nodeResponse.error = error.message;
+
+                    // Continue to next nodes vote
+                    this.postVote();
+                  })
+                  .catch((error) => {
+                    // Continue Execution of consensus even with this failing
+                    // Just add a fatal message
+                    ActiveLogger.fatal(error, "Voting Error Log Issues");
+
+                    // Update Error
+                    this.nodeResponse.error = error;
+
+                    // Continue to next nodes vote
+                    this.postVote();
+                  });
+              });
+          })
+          .catch((error) => {
+            ActiveLogger.debug(error, "Verify Failure");
+            // Verification Failure
+            this.raiseLedgerError(1310, new Error(error));
+          });
+      })
+      .catch((e) => {
+        // Contract not found / failed to start
+        ActiveLogger.debug(e, "VM initialisation failed");
+        this.raiseLedgerError(
+          1401,
+          new Error("VM Init Failure - " + JSON.stringify(e.message || e))
+        );
+      });
+  }
+
   /**
    * Processes the transaction through the contract phases
    * Verify, Vote, Commit.
@@ -435,6 +595,10 @@ export class Process extends EventEmitter {
           "utf-8"
         );
 
+        const contractName = this.contractLocation.substr(
+          this.contractLocation.lastIndexOf("/") + 1
+        );
+
         const payload: IVMDataPayload = {
           contractString: loadedContractString,
           umid: this.entry.$umid,
@@ -448,81 +612,114 @@ export class Process extends EventEmitter {
           key: Math.floor(Math.random() * 100)
         };
 
-        // Initalise contract VM
-        Process.contractVM
-          .initalise(payload, this.contractLocation.substr(this.contractLocation.lastIndexOf("/") + 1))
-          .then(() => {
-            // Verify Transaction details in the contract
-            // Also allow the contract to verify it likes signatureless transactions
-            Process.contractVM
-              .verify(this.entry.$selfsign, this.entry.$umid)
-              .then(() => {
-                // Get Vote (May change to string as it can contain the reason)
-                // Or in the VM we can catch any thrown errors messages
-                Process.contractVM
-                  .vote(this.entry.$umid)
-                  .then(() => {
-                    // Update Vote Entry
-                    this.nodeResponse.vote = true;
-
-                    // Internode Communication picked up here, Doesn't mean every node
-                    // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-                    this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
-
-                    // Return Data for this nodes contract run (Useful for $instant request expected id's)
-                    this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
-
-                    // Clearing All node comms?
-                    this.clearAllComms();
-
-                    // Continue to next nodes vote
-                    this.postVote();
-                  })
-                  .catch((error: Error) => {
-                    // Vote failed (Not and error continue casting vote on the network)
-                    ActiveLogger.debug(error, "Vote Failure");
-
-                    // Update errors (Dont know what the contract will reject as so string)
-                    this.storeError(
-                      1000,
-                      new Error("Vote Failure - " + JSON.stringify(error)),
-                      10
-                    )
-                      .then(() => {
-                        // Continue Execution of consensus
-                        // Update Error
-                        this.nodeResponse.error = error.message;
-
-                        // Continue to next nodes vote
-                        this.postVote();
-                      })
-                      .catch((error) => {
-                        // Continue Execution of consensus even with this failing
-                        // Just add a fatal message
-                        ActiveLogger.fatal(error, "Voting Error Log Issues");
-
-                        // Update Error
-                        this.nodeResponse.error = error;
-
-                        // Continue to next nodes vote
-                        this.postVote();
-                      });
-                  });
-              })
-              .catch((error) => {
-                ActiveLogger.debug(error, "Verify Failure");
-                // Verification Failure
-                this.raiseLedgerError(1310, new Error(error));
-              });
-          })
-          .catch((e) => {
-            // Contract not found / failed to start
-            ActiveLogger.debug(e, "VM initialisation failed");
-            this.raiseLedgerError(
-              1401,
-              new Error("VM Init Failure - " + JSON.stringify(e.message || e))
+        if (payload.transaction.$namespace === "default") {
+          console.log("Debug 1");
+          this.processDefaultContracts(payload, contractName);
+        } else {
+          // Now check configuration for allowed standard libs for this namespace
+          const security = ActiveOptions.get<any>("security", {});
+          const builtin: string[] = [];
+          // Check to see if this namespace exists
+          if (
+            security.namespace &&
+            security.namespace[payload.transaction.$namespace]
+          ) {
+            console.log("Debug 2");
+            security.namespace[payload.transaction.$namespace].std.forEach(
+              (item: string) => {
+                // Add to builtin VM
+                builtin.push(item);
+              }
             );
-          });
+            this.processUnsafeContracts(payload, contractName, builtin);
+          } else {
+            console.log("Debug 3");
+            this.handleVM(Process.generalContractVM, payload, contractName);
+          }
+
+          /* // Initalise contract VM
+          Process.generalContractVM
+            .initialise(
+              payload,
+              contractName
+            )
+            .then(() => {
+              // Verify Transaction details in the contract
+              // Also allow the contract to verify it likes signatureless transactions
+              Process.generalContractVM
+                .verify(this.entry.$selfsign, this.entry.$umid)
+                .then(() => {
+                  // Get Vote (May change to string as it can contain the reason)
+                  // Or in the VM we can catch any thrown errors messages
+                  Process.generalContractVM
+                    .vote(this.entry.$umid)
+                    .then(() => {
+                      // Update Vote Entry
+                      this.nodeResponse.vote = true;
+
+                      // Internode Communication picked up here, Doesn't mean every node
+                      // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+                      this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+                        this.entry.$umid
+                      );
+
+                      // Return Data for this nodes contract run (Useful for $instant request expected id's)
+                      this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+                        this.entry.$umid
+                      );
+
+                      // Clearing All node comms?
+                      this.clearAllComms();
+
+                      // Continue to next nodes vote
+                      this.postVote();
+                    })
+                    .catch((error: Error) => {
+                      // Vote failed (Not and error continue casting vote on the network)
+                      ActiveLogger.debug(error, "Vote Failure");
+
+                      // Update errors (Dont know what the contract will reject as so string)
+                      this.storeError(
+                        1000,
+                        new Error("Vote Failure - " + JSON.stringify(error)),
+                        10
+                      )
+                        .then(() => {
+                          // Continue Execution of consensus
+                          // Update Error
+                          this.nodeResponse.error = error.message;
+
+                          // Continue to next nodes vote
+                          this.postVote();
+                        })
+                        .catch((error) => {
+                          // Continue Execution of consensus even with this failing
+                          // Just add a fatal message
+                          ActiveLogger.fatal(error, "Voting Error Log Issues");
+
+                          // Update Error
+                          this.nodeResponse.error = error;
+
+                          // Continue to next nodes vote
+                          this.postVote();
+                        });
+                    });
+                })
+                .catch((error) => {
+                  ActiveLogger.debug(error, "Verify Failure");
+                  // Verification Failure
+                  this.raiseLedgerError(1310, new Error(error));
+                });
+            })
+            .catch((e) => {
+              // Contract not found / failed to start
+              ActiveLogger.debug(e, "VM initialisation failed");
+              this.raiseLedgerError(
+                1401,
+                new Error("VM Init Failure - " + JSON.stringify(e.message || e))
+              );
+            }); */
+        }
       })
       .catch((e) => {
         // error fetch read only streams
@@ -665,7 +862,7 @@ export class Process extends EventEmitter {
         // Consensus reached commit phase
         this.commiting = true;
         // Pass Nodes for possible INC injection
-        Process.contractVM
+        Process.generalContractVM
           .commit(
             this.entry.$nodes,
             this.entry.$territoriality == this.reference,
@@ -676,16 +873,22 @@ export class Process extends EventEmitter {
             this.nodeResponse.commit = true;
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
+            this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+              this.entry.$umid
+            );
 
             // Return Data for this nodes contract run
-            this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
+            this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+              this.entry.$umid
+            );
 
             // Clearing All node comms?
             this.clearAllComms();
 
             // Are we throwing to another ledger(s)?
-            let throws = Process.contractVM.getThrowsFromVM(this.entry.$umid);
+            let throws = Process.generalContractVM.getThrowsFromVM(
+              this.entry.$umid
+            );
 
             // Emit to network handler
             if (throws && throws.length) {
@@ -693,10 +896,14 @@ export class Process extends EventEmitter {
             }
 
             // Get the changed data streams
-            let streams: ActiveDefinitions.LedgerStream[] = Process.contractVM.getActivityStreamsFromVM(this.entry.$umid);
+            let streams: ActiveDefinitions.LedgerStream[] = Process.generalContractVM.getActivityStreamsFromVM(
+              this.entry.$umid
+            );
 
             // Get current working inputs to compare and update if not modified above
-            let inputs: ActiveDefinitions.LedgerStream[] = Process.contractVM.getInputs(this.entry.$umid);
+            let inputs: ActiveDefinitions.LedgerStream[] = Process.generalContractVM.getInputs(
+              this.entry.$umid
+            );
 
             let skip: string[] = [];
 
@@ -883,7 +1090,7 @@ export class Process extends EventEmitter {
                     }
 
                     // Manage Post Processing (If Exists)
-                    Process.contractVM
+                    Process.generalContractVM
                       .postProcess(
                         this.entry.$territoriality == this.reference,
                         this.entry.$territoriality,
@@ -893,10 +1100,14 @@ export class Process extends EventEmitter {
                         this.nodeResponse.post = post;
 
                         // Update in communication (Recommended pre commit only but can be edge use cases)
-                        this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
+                        this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+                          this.entry.$umid
+                        );
 
                         // Return Data for this nodes contract run
-                        this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
+                        this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+                          this.entry.$umid
+                        );
 
                         // Clearing All node comms?
                         this.clearAllComms();
@@ -966,7 +1177,7 @@ export class Process extends EventEmitter {
                 this.entry.$territoriality = this.reference;
 
               // Manage Post Processing (If Exists)
-              Process.contractVM
+              Process.generalContractVM
                 .postProcess(
                   this.entry.$territoriality == this.reference,
                   this.entry.$territoriality,
@@ -976,10 +1187,14 @@ export class Process extends EventEmitter {
                   this.nodeResponse.post = post;
 
                   // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = Process.contractVM.getInternodeCommsFromVM(this.entry.$umid);
+                  this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+                    this.entry.$umid
+                  );
 
                   // Return Data for this nodes contract run
-                  this.nodeResponse.return = Process.contractVM.getReturnContractData(this.entry.$umid);
+                  this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+                    this.entry.$umid
+                  );
 
                   // Clearing All node comms?
                   this.clearAllComms();
@@ -1585,7 +1800,9 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private clearAllComms() {
-    if (Process.contractVM.clearingInternodeCommsFromVM(this.entry.$umid)) {
+    if (
+      Process.generalContractVM.clearingInternodeCommsFromVM(this.entry.$umid)
+    ) {
       Object.values(this.entry.$nodes).forEach((node) => {
         node.incomms = null;
       });
