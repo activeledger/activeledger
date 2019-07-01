@@ -28,7 +28,11 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { IVMDataPayload, IVMContractHolder } from "./vm.interface";
+import {
+  IVMDataPayload,
+  IVMContractHolder,
+  IVirtualMachine
+} from "./interfaces/vm.interface";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -446,6 +450,7 @@ export class Process extends EventEmitter {
 
         Process.defaultContractsVM.initialiseVirtualMachine(builtin, external);
       } catch (error) {
+        console.trace("Debug A");
         throw new Error(error);
       }
     }
@@ -483,24 +488,28 @@ export class Process extends EventEmitter {
   }
 
   private handleVM(
-    virtualMachine: VirtualMachine,
+    virtualMachine: IVirtualMachine,
     payload: IVMDataPayload,
     contractName: string
   ) {
+    console.log("Debug 0 - Pre Init");
     // Initalise contract VM
     virtualMachine
       .initialise(payload, contractName)
       .then(() => {
+        console.log("Debug 1 - After init");
         // Verify Transaction details in the contract
         // Also allow the contract to verify it likes signatureless transactions
         virtualMachine
           .verify(this.entry.$selfsign, this.entry.$umid)
           .then(() => {
+            console.log("Debug 2 - After Verify");
             // Get Vote (May change to string as it can contain the reason)
             // Or in the VM we can catch any thrown errors messages
             virtualMachine
               .vote(this.entry.$umid)
               .then(() => {
+                console.log("Debug 3 - After Vote");
                 // Update Vote Entry
                 this.nodeResponse.vote = true;
 
@@ -613,7 +622,7 @@ export class Process extends EventEmitter {
         };
 
         if (payload.transaction.$namespace === "default") {
-          console.log("Debug 1");
+          console.log("Debug - Is Default contract");
           this.processDefaultContracts(payload, contractName);
         } else {
           // Now check configuration for allowed standard libs for this namespace
@@ -624,7 +633,7 @@ export class Process extends EventEmitter {
             security.namespace &&
             security.namespace[payload.transaction.$namespace]
           ) {
-            console.log("Debug 2");
+            console.log("Debug - Is unsafe contract");
             security.namespace[payload.transaction.$namespace].std.forEach(
               (item: string) => {
                 // Add to builtin VM
@@ -633,95 +642,12 @@ export class Process extends EventEmitter {
             );
             this.processUnsafeContracts(payload, contractName, builtin);
           } else {
-            console.log("Debug 3");
+            console.log("Debug - Is normal contract");
             this.handleVM(Process.generalContractVM, payload, contractName);
           }
-
-          /* // Initalise contract VM
-          Process.generalContractVM
-            .initialise(
-              payload,
-              contractName
-            )
-            .then(() => {
-              // Verify Transaction details in the contract
-              // Also allow the contract to verify it likes signatureless transactions
-              Process.generalContractVM
-                .verify(this.entry.$selfsign, this.entry.$umid)
-                .then(() => {
-                  // Get Vote (May change to string as it can contain the reason)
-                  // Or in the VM we can catch any thrown errors messages
-                  Process.generalContractVM
-                    .vote(this.entry.$umid)
-                    .then(() => {
-                      // Update Vote Entry
-                      this.nodeResponse.vote = true;
-
-                      // Internode Communication picked up here, Doesn't mean every node
-                      // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-                      this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
-                        this.entry.$umid
-                      );
-
-                      // Return Data for this nodes contract run (Useful for $instant request expected id's)
-                      this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
-                        this.entry.$umid
-                      );
-
-                      // Clearing All node comms?
-                      this.clearAllComms();
-
-                      // Continue to next nodes vote
-                      this.postVote();
-                    })
-                    .catch((error: Error) => {
-                      // Vote failed (Not and error continue casting vote on the network)
-                      ActiveLogger.debug(error, "Vote Failure");
-
-                      // Update errors (Dont know what the contract will reject as so string)
-                      this.storeError(
-                        1000,
-                        new Error("Vote Failure - " + JSON.stringify(error)),
-                        10
-                      )
-                        .then(() => {
-                          // Continue Execution of consensus
-                          // Update Error
-                          this.nodeResponse.error = error.message;
-
-                          // Continue to next nodes vote
-                          this.postVote();
-                        })
-                        .catch((error) => {
-                          // Continue Execution of consensus even with this failing
-                          // Just add a fatal message
-                          ActiveLogger.fatal(error, "Voting Error Log Issues");
-
-                          // Update Error
-                          this.nodeResponse.error = error;
-
-                          // Continue to next nodes vote
-                          this.postVote();
-                        });
-                    });
-                })
-                .catch((error) => {
-                  ActiveLogger.debug(error, "Verify Failure");
-                  // Verification Failure
-                  this.raiseLedgerError(1310, new Error(error));
-                });
-            })
-            .catch((e) => {
-              // Contract not found / failed to start
-              ActiveLogger.debug(e, "VM initialisation failed");
-              this.raiseLedgerError(
-                1401,
-                new Error("VM Init Failure - " + JSON.stringify(e.message || e))
-              );
-            }); */
         }
       })
-      .catch((e) => {
+      .catch(() => {
         // error fetch read only streams
         this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
       });
