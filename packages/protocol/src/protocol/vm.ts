@@ -33,8 +33,9 @@ import * as fs from "fs";
 import {
   IVMObject,
   IVMDataPayload,
-  IVMContractReferences
-} from "./vm.interface";
+  IVMContractReferences,
+  IVirtualMachine
+} from "./interfaces/vm.interface";
 
 /**
  * Contract Virtual Machine Controller
@@ -42,7 +43,7 @@ import {
  * @export
  * @class VirtualMachine
  */
-export class VirtualMachine {
+export class VirtualMachine implements IVirtualMachine {
   /**
    * Virtual Machine Object
    *
@@ -52,7 +53,7 @@ export class VirtualMachine {
    */
   private virtual: NodeVM;
 
-  private virtualInstance: IVMObject;
+  private virtualInstance: any; // IVMObject;
 
   private contractReferences: IVMContractReferences;
 
@@ -197,7 +198,7 @@ export class VirtualMachine {
     // Fetch Activities and prepare to check
     let activities: {
       [reference: string]: Activity;
-    } = this.virtualInstance.getActivityStreams();
+    } = this.virtualInstance.getActivityStreams(umid);
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
@@ -220,7 +221,7 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getInternodeCommsFromVM(umid: string): any {
-    return this.virtualInstance.getInternodeComms();
+    return this.virtualInstance.getInternodeComms(umid);
   }
 
   /**
@@ -230,7 +231,7 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public clearingInternodeCommsFromVM(umid: string): boolean {
-    return this.virtualInstance.clearInternodeComms();
+    return this.virtualInstance.clearInternodeComms(umid);
   }
 
   /**
@@ -240,7 +241,7 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getReturnContractData(umid: string): unknown {
-    return this.virtualInstance.returnContractData();
+    return this.virtualInstance.returnContractData(umid);
   }
 
   /**
@@ -250,7 +251,7 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   public getThrowsFromVM(umid: string): string[] {
-    return this.virtualInstance.throwFrom();
+    return this.virtualInstance.throwFrom(umid);
   }
 
   /**
@@ -275,17 +276,27 @@ export class VirtualMachine {
   ): Promise<boolean> {
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
-      this.contractReferences[payload.umid].contractName = contractName;
+      if (!this.contractReferences) {
+        this.contractReferences = {};
+      }
+
+      this.contractReferences[payload.umid] = {
+        contractName,
+        inputs: payload.inputs,
+        tx: payload.transaction
+      };
 
       // Setup Event Engine
       this.event = new EventEngine(this.dbev, payload.transaction.$contract);
 
-      try {
-        // Pass the payload to the virtual instance
-        this.virtualInstance.dataPass(payload);
+      console.log("this.virtualInstance");
+      console.log(this.virtualInstance);
+      console.log(this.virtualInstance.control);
 
+      try {
         // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
         this.virtualInstance.initialiseContract(
+          payload,
           new QueryEngine(this.db, true),
           this.event
         );
@@ -295,6 +306,7 @@ export class VirtualMachine {
         // Set Sys Config
         if (payload.transaction.$namespace === "default") {
           this.virtualInstance.setSysConfig(
+            payload.umid,
             JSON.stringify(ActiveOptions.fetch(false))
           );
         }
@@ -310,6 +322,7 @@ export class VirtualMachine {
         // Continue
         resolve(true);
       } catch (e) {
+        console.trace("Debug B");
         if (e instanceof Error) {
           // Exception
           reject(this.catchException(e, payload.umid));
@@ -343,7 +356,7 @@ export class VirtualMachine {
 
       // Run Verify Phase
       this.virtualInstance
-        .runVerify(sigless)
+        .runVerify(umid, sigless)
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
@@ -385,7 +398,7 @@ export class VirtualMachine {
 
       // Run Vote Phase
       this.virtualInstance
-        .runVote()
+        .runVote(umid)
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
@@ -436,7 +449,7 @@ export class VirtualMachine {
 
       // Get Commit
       this.virtualInstance
-        .runCommit(possibleTerritoriality)
+        .runCommit(umid, possibleTerritoriality)
         .then(() => {
           // Here we may update the database from the objects (commit should return)
           // Or just manipulate / check the outputs
@@ -487,7 +500,7 @@ export class VirtualMachine {
 
       // Run Post Process
       this.virtualInstance
-        .postProcess(territoriality, who)
+        .postProcess(umid, territoriality, who)
         .then((postProcess: any) => {
           // Do something with the returned value
           // Maybe resolve with the data
@@ -495,7 +508,7 @@ export class VirtualMachine {
 
           // Reload Configuration Required?
           if (this.contractReferences[umid].tx.$namespace == "default") {
-            if (this.virtualInstance.reloadSysConfig()) {
+            if (this.virtualInstance.reloadSysConfig(umid)) {
               ActiveLogger.info("Reloading Configuration Request");
               // Can Moan in process (No need network)
               (process as any).send({
@@ -583,7 +596,7 @@ export class VirtualMachine {
    */
   private hasBeenExtended(umid: string): boolean {
     // Fetch new time out request from the contract
-    let timeoutRequestTime = this.virtualInstance.getTimeout();
+    let timeoutRequestTime = this.virtualInstance.getTimeout(umid);
 
     // Did we get a return value to work on?
     if (timeoutRequestTime) {
