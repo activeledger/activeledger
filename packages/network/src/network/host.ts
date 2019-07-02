@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-import * as cluster from "cluster";
 import * as http from "http";
 import {
   ActiveDSConnect,
@@ -38,6 +37,7 @@ import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
+import { Locker } from "./locker";
 
 /**
  * Process object used to manage an individual transaction
@@ -150,8 +150,7 @@ export class Host extends Home {
               entry.$nodes
             );
           } else {
-            // Need to target the correct worker to be updated
-            this.moan("txtarget", entry);
+            ActiveLogger.fatal("Should always be targetted");
           }
 
           return resolve({
@@ -160,6 +159,8 @@ export class Host extends Home {
           });
         }
       }
+
+      ActiveLogger.warn("Adding to pending quue");
 
       // Add to pending (Using Promises instead of http request)
       this.processPending[entry.$umid] = {
@@ -263,312 +264,47 @@ export class Host extends Home {
         // Find alternative way to capture rejections per message
         process.setMaxListeners(300);
 
-        // Listen to master for Neighbour and Locker details
-        process.on("message", msg => {
-          switch (msg.type) {
-            case "neighbour":
-              if (
-                Home.left.reference != msg.left ||
-                Home.right.reference != msg.right
-              )
-                // Update Neighbour
-                this.setNeighbours(false, msg.left, msg.right);
-              break;
-            case "isHome":
-              // Update Home
-              let neighbour = this.neighbourhood.get(msg.reference);
-              if (neighbour && !neighbour.graceStop) {
-                neighbour.isHome = msg.isHome;
-              }
-              break;
-            case "hold":
-              // Do we have a hold
-              if (msg.lock) {
-                // Yes, Continue Processing
-
-                // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
-                // While it is global we need to manage it here to keep the encapsulation
-                this.unhandledRejection[msg.umid] = (reason: any, p: any) => {
-                  // Make sure the object exists
-                  if (
-                    this.processPending[msg.umid] &&
-                    this.processPending[msg.umid].reject
-                  ) {
-                    this.processPending[msg.umid].reject(
-                      `UnhandledRejection: ${reason.toString()} @ ${p.toString()}`
-                    );
-                  }
-                  // Remove Locks
-                  this.release(msg.umid);
-                };
-
-                // Add event listener
-                process.on(
-                  "unhandledRejection",
-                  this.unhandledRejection[msg.umid]
-                );
-
-                // Make sure we have the response object
-                if (!this.processPending[msg.umid].entry.$nodes)
-                  this.processPending[msg.umid].entry.$nodes = {};
-
-                // Setup this node response
-                this.processPending[msg.umid].entry.$nodes[Home.reference] = {
-                  vote: false,
-                  commit: false
-                };
-
-                // Create new Protocol Process object for transaction
-                let protocol: ActiveProtocol.Process = new ActiveProtocol.Process(
-                  this.processPending[msg.umid].entry,
-                  Home.host,
-                  Home.reference,
-                  Home.right,
-                  this.dbConnection,
-                  this.dbErrorConnection,
-                  this.dbEventConnection,
-                  new ActiveCrypto.Secured(
-                    this.dbConnection,
-                    this.neighbourhood.get(),
-                    {
-                      reference: Home.reference,
-                      public: Home.publicPem,
-                      private: Home.identity.pem
-                    }
-                  )
-                );
-
-                // Store Protocol Object
-                this.processPending[msg.umid].protocol = protocol;
-
-                // Bind to events
-                // Manage on possible commits
-                protocol.on("commited", (response: any) => {
-                  // Make sure we have the object still
-                  if (this.processPending[msg.umid]) {
-                    // Poissbly blank response being relayed prevent [Object] output to terminal
-                    if (response) {
-                      // Send Response back
-                      if (response.instant) {
-                        ActiveLogger.debug(
-                          this.processPending[msg.umid].entry,
-                          "Transaction Currently Processing"
-                        );
-                      } else {
-                        ActiveLogger.debug(response, "Transaction Processed");
-                      }
-
-                      // If Transaction rebroadcast if hybrid enabled
-                      if (this.sse && response.tx) {
-                        this.moan("hybrid", response.tx);
-                      }
-                    }
-
-                    // Process response back into entry for previous neighbours to know the results
-                    this.processPending[msg.umid].resolve({
-                      status: 200,
-                      data: this.processPending[msg.umid].entry
-                    });
-                    // Remove Locks
-                    this.release(msg.umid);
-                  }
-                });
-
-                // Manage Failure Messaging
-                protocol.on("failed", (error: any) => {
-                  ActiveLogger.debug(error, "TX Failed");
-                  // Add this nodes error into the entry
-                  this.processPending[msg.umid].entry.$nodes[
-                    Home.reference
-                  ].error = error.error;
-
-                  // So if we send as resolve it should still work (Will it keep our error?)
-                  this.processPending[msg.umid].resolve({
-                    status: 200,
-                    data: this.processPending[msg.umid].entry
-                  });
-
-                  // Remove Locks
-                  this.release(msg.umid);
-                });
-
-                // Throw transaction to other ledgers
-                protocol.on("throw", (response: any) => {
-                  ActiveLogger.info(response, "Throwing Transaction");
-
-                  // Prepare event emitter for response management
-                  const eventEngine = new EventEngine(
-                    this.dbEventConnection,
-                    this.processPending[msg.umid].entry.$tx.$contract
-                  );
-
-                  // Unique Phase
-                  eventEngine.setPhase("throw");
-
-                  if (response.locations && response.locations.length) {
-                    // Throw transaction to those locations
-                    let i = response.locations.length;
-                    while (i--) {
-                      // Cache Location
-                      let location = response.locations[i];
-                      ActiveRequest.send(location, "POST", [], {
-                        $tx: this.processPending[msg.umid].entry.$tx,
-                        $selfsign: this.processPending[msg.umid].entry
-                          .$selfsign,
-                        $sigs: this.processPending[msg.umid].entry.$sigs
-                      })
-                        .then((resp: any) => {
-                          // Emit Event of successful connection to the ledger (May still have failed on the ledger)
-                          eventEngine.emit("throw", {
-                            success: true,
-                            sentFrom: this.host,
-                            sentTo: location,
-                            $umid: msg.umid,
-                            response: resp.data
-                          });
-                        })
-                        .catch((error: any) => {
-                          // Emit Event of error sending to the ledger
-                          eventEngine.emit("throw", {
-                            success: false,
-                            sentFrom: this.host,
-                            sentTo: location,
-                            $umid: msg.umid,
-                            response: error.toString()
-                          });
-                        });
-                    }
-                  }
-                });
-
-                // Listen to the process to see if we need to broadcast the results
-                protocol.on("broadcast", (entry: any) => {
-                  ActiveLogger.debug("Broadcasting TX : " + msg.umid);
-                  // Push entry into all worker (With threads will be shared memory)
-                  // nodes so only reflect this node (Other nodes can't trust me anyway)
-                  this.moan("txmem", {
-                    $umid: entry.$umid,
-                    $nodes: {
-                      [this.reference]: entry.$nodes[this.reference]
-                    }
-                  });
-                });
-
-                // Start the process
-                protocol.start();
-              } else {
-                // No, How to deal with it?
-                this.processPending[msg.umid].resolve({
-                  status: 100,
-                  error: "Busy Locks"
-                });
-
-                // Remove Locks
-                this.release(msg.umid);
-              }
-              break;
-            case "release":
-              // Did we release (Should always be yes)
-              break;
-            case "hybrid":
-              delete msg.type;
-
-              // Loop all connected client and send
-              let i = this.sse.length;
-              while (i--) {
-                // Check for active connection
-                if (this.sse[i] && !this.sse[i].finished) {
-                  this.sse[i].write(
-                    `event: message\ndata:${JSON.stringify(msg)}`
-                  );
-                  this.sse[i].write("\n\n");
-                }
-              }
-              break;
-            case "reload":
-              // Reload Neighbourhood
-              ActiveOptions.extendConfig()
-                .then((config: any) => {
-                  if (config.neighbourhood) {
-                    ActiveLogger.debug(config.neighbourhood, "Reset Request");
-
-                    // Reference would have changed
-                    Home.reference = this.reference = ActiveCrypto.Hash.getHash(
-                      this.host +
-                        this.port +
-                        ActiveOptions.get<string>("network", ""),
-                      "sha1"
-                    );
-
-                    // Prepare self for reset
-                    Home.left = new Neighbour(this.host, this.port);
-                    Home.right = new Neighbour(this.host, this.port);
-
-                    // Reset Network
-                    this.neighbourhood.reset(config.neighbourhood);
-
-                    // Rebuild Network Territory Map
-                    this.terriBuildMap();
-                  }
-                })
-                .catch((e: any) => {
-                  ActiveLogger.info(e, "Failed to reload Neighbourhood");
-                });
-              break;
-            case "txmem":
-              // Add tx into memory if we don't know about it in this worker
-              if (!this.processPending[msg.$umid]) {
-                // Add to pending (Using Promises instead of http request)
-                this.processPending[msg.$umid] = {
-                  entry: msg,
-                  resolve: null,
-                  reject: null
-                };
-              } else {
-                // Log once
-                ActiveLogger.debug("Adding To Memory : " + msg.$umid);
-                // Now run the request as workers should have the umid in memory
-                this.broadcast(msg.$umid);
-              }
-              break;
-            case "txtarget":
-              // Check process still exists could already be commited and VM closed
-              if (
-                this.processPending[msg.$umid] &&
-                this.processPending[msg.$umid].protocol
-              ) {
-                // Update other voting nodes response into the process handling the transaction
-                this.processPending[msg.$umid].entry.$nodes[
-                  this.reference
-                ] = this.processPending[
-                  msg.$umid
-                ].protocol!.updatedFromBroadcast(msg.$nodes);
-              }
-              break;
-            case "txmemclear":
-              // Remove from pending list
-              this.destroy(msg.umid);
-              break;
-            default:
-              ActiveLogger.debug(msg, "Worker -> Unknown IPC call");
-              break;
-          }
-        });
-
         // Listen to the Neighbourhood
         // May need to move this to outside the constructor.
         // - However you can add endpoints even after listening
         this.api.listen(ActiveInterfaces.getBindingDetails("port"), () => {
           ActiveLogger.info(
-            "Worker (" +
-              cluster.worker.id +
-              ") listening on port " +
+            "Activeledger listening on port " +
               ActiveInterfaces.getBindingDetails("port")
           );
         });
       })
       .catch(() => {
         throw new Error("Couldn't create default index");
+      });
+  }
+
+  private reload() {
+    // Reload Neighbourhood
+    ActiveOptions.extendConfig()
+      .then((config: any) => {
+        if (config.neighbourhood) {
+          ActiveLogger.debug(config.neighbourhood, "Reset Request");
+
+          // Reference would have changed
+          Home.reference = this.reference = ActiveCrypto.Hash.getHash(
+            this.host + this.port + ActiveOptions.get<string>("network", ""),
+            "sha1"
+          );
+
+          // Prepare self for reset
+          Home.left = new Neighbour(this.host, this.port);
+          Home.right = new Neighbour(this.host, this.port);
+
+          // Reset Network
+          this.neighbourhood.reset(config.neighbourhood);
+
+          // Rebuild Network Territory Map
+          this.terriBuildMap();
+        }
+      })
+      .catch((e: any) => {
+        ActiveLogger.info(e, "Failed to reload Neighbourhood");
       });
   }
 
@@ -697,7 +433,188 @@ export class Host extends Home {
     let output = Object.keys(v.$tx.$o || {});
 
     // Ask for locks
-    this.moan("hold", { umid: v.$umid, streams: Object.assign(input, output) });
+    if (Locker.hold([...input, ...output ])) {
+      // Yes, Continue Processing
+
+      // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
+      // While it is global we need to manage it here to keep the encapsulation
+      this.unhandledRejection[v.$umid] = (reason: any, p: any) => {
+        // Make sure the object exists
+        if (
+          this.processPending[v.$umid] &&
+          this.processPending[v.$umid].reject
+        ) {
+          this.processPending[v.$umid].reject(
+            `UnhandledRejection: ${reason.toString()} @ ${p.toString()}`
+          );
+        }
+        // Remove Locks
+        this.release(v.$umid);
+      };
+
+      // Add event listener
+      process.on("unhandledRejection", this.unhandledRejection[v.$umid]);
+
+      // Make sure we have the response object
+      if (!this.processPending[v.$umid].entry.$nodes)
+        this.processPending[v.$umid].entry.$nodes = {};
+
+      // Setup this node response
+      this.processPending[v.$umid].entry.$nodes[Home.reference] = {
+        vote: false,
+        commit: false
+      };
+
+      // Create new Protocol Process object for transaction
+      let protocol: ActiveProtocol.Process = new ActiveProtocol.Process(
+        this.processPending[v.$umid].entry,
+        Home.host,
+        Home.reference,
+        Home.right,
+        this.dbConnection,
+        this.dbErrorConnection,
+        this.dbEventConnection,
+        new ActiveCrypto.Secured(this.dbConnection, this.neighbourhood.get(), {
+          reference: Home.reference,
+          public: Home.publicPem,
+          private: Home.identity.pem
+        })
+      );
+
+      // Store Protocol Object
+      this.processPending[v.$umid].protocol = protocol;
+
+      // Bind to events
+      // Manage on possible commits
+      protocol.on("commited", (response: any) => {
+        // Make sure we have the object still
+        if (this.processPending[v.$umid]) {
+          // Poissbly blank response being relayed prevent [Object] output to terminal
+          if (response) {
+            // Send Response back
+            if (response.instant) {
+              ActiveLogger.debug(
+                this.processPending[v.$umid].entry,
+                "Transaction Currently Processing"
+              );
+            } else {
+              ActiveLogger.debug(response, "Transaction Processed");
+            }
+
+            // If Transaction rebroadcast if hybrid enabled
+            if (this.sse && response.tx) {
+              let i = this.sse.length;
+              while (i--) {
+                // Check for active connection
+                if (this.sse[i] && !this.sse[i].finished) {
+                  this.sse[i].write(
+                    `event: message\ndata:${JSON.stringify(response.tx)}`
+                  );
+                  this.sse[i].write("\n\n");
+                }
+              }
+            }
+          }
+
+          // Process response back into entry for previous neighbours to know the results
+          this.processPending[v.$umid].resolve({
+            status: 200,
+            data: this.processPending[v.$umid].entry
+          });
+          // Remove Locks
+          this.release(v.$umid);
+        }
+      });
+
+      // Manage Failure Messaging
+      protocol.on("failed", (error: any) => {
+        ActiveLogger.debug(error, "TX Failed");
+        // Add this nodes error into the entry
+        this.processPending[v.$umid].entry.$nodes[Home.reference].error =
+          error.error;
+
+        // So if we send as resolve it should still work (Will it keep our error?)
+        this.processPending[v.$umid].resolve({
+          status: 200,
+          data: this.processPending[v.$umid].entry
+        });
+
+        // Remove Locks
+        this.release(v.$umid);
+      });
+
+      // Throw transaction to other ledgers
+      protocol.on("throw", (response: any) => {
+        ActiveLogger.info(response, "Throwing Transaction");
+
+        // Prepare event emitter for response management
+        const eventEngine = new EventEngine(
+          this.dbEventConnection,
+          this.processPending[v.$umid].entry.$tx.$contract
+        );
+
+        // Unique Phase
+        eventEngine.setPhase("throw");
+
+        if (response.locations && response.locations.length) {
+          // Throw transaction to those locations
+          let i = response.locations.length;
+          while (i--) {
+            // Cache Location
+            let location = response.locations[i];
+            ActiveRequest.send(location, "POST", [], {
+              $tx: this.processPending[v.$umid].entry.$tx,
+              $selfsign: this.processPending[v.$umid].entry.$selfsign,
+              $sigs: this.processPending[v.$umid].entry.$sigs
+            })
+              .then((resp: any) => {
+                // Emit Event of successful connection to the ledger (May still have failed on the ledger)
+                eventEngine.emit("throw", {
+                  success: true,
+                  sentFrom: this.host,
+                  sentTo: location,
+                  $umid: v.$umid,
+                  response: resp.data
+                });
+              })
+              .catch((error: any) => {
+                // Emit Event of error sending to the ledger
+                eventEngine.emit("throw", {
+                  success: false,
+                  sentFrom: this.host,
+                  sentTo: location,
+                  $umid: v.$umid,
+                  response: error.toString()
+                });
+              });
+          }
+        }
+      });
+
+      // Listen to the process to see if we need to broadcast the results
+      protocol.on("broadcast", (entry: any) => {
+        ActiveLogger.debug("Broadcasting TX : " + v.$umid);
+        // Push entry into all worker (With threads will be shared memory)
+        // nodes so only reflect this node (Other nodes can't trust me anyway)
+        this.broadcast(entry.$umid);
+      });
+
+      // Listen for reloads
+      protocol.on("reload", () => {
+        this.reload();
+      });
+
+      // Start the process
+      protocol.start();
+    } else {
+      ActiveLogger.warn("I appear to be locked");
+
+      // No, How to deal with it?
+      this.processPending[v.$umid].resolve({
+        status: 100,
+        error: "Busy Locks"
+      });
+    }
   }
 
   /**
@@ -723,18 +640,12 @@ export class Host extends Home {
       }
 
       // Ask for releases
-      this.moan("release", {
-        umid: v.$umid,
-        streams: Object.assign(input, output)
-      });
+      Locker.release([...input, ...output]);
 
       // Keep transaction in memory for a bit (5 Minutes)
       setTimeout(() => {
         // Remove from pending list
         this.destroy(umid);
-
-        // Let other workers know they can release
-        this.moan("txmemclear", { umid: umid });
       }, 20000); //300000
     }
   }

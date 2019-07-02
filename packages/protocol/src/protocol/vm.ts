@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import * as events from "events";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity } from "@activeledger/activecontracts";
@@ -36,7 +37,7 @@ import { NodeVM } from "vm2";
  * @export
  * @class VirtualMachine
  */
-export class VirtualMachine {
+export class VirtualMachine extends events.EventEmitter {
   /**
    * Virtual Machine Object
    *
@@ -113,6 +114,7 @@ export class VirtualMachine {
     private dbev: ActiveDSConnect,
     private secured: ActiveCrypto.Secured
   ) {
+    super();
     // Setup Event Engine
     this.event = new EventEngine(this.dbev, this.tx.$contract);
   }
@@ -563,10 +565,7 @@ export class VirtualMachine {
               )
             ) {
               ActiveLogger.info("Reloading Configuration Request");
-              // Can Moan in process (No need network)
-              (process as any).send({
-                type: "reload"
-              });
+              this.emit("reload");
             }
           }
           resolve(postProcess);
