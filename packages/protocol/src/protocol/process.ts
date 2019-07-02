@@ -432,6 +432,11 @@ export class Process extends EventEmitter {
           this.secured
         );
 
+        // Proxy reload
+        this.contractVM.on("reload", () => {
+          this.emit("reload");
+        });
+
         // Initalise contract VM
         this.contractVM
           .initalise()
@@ -621,8 +626,6 @@ export class Process extends EventEmitter {
         if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
     }
-
-    ActiveLogger.info(this.entry.$nodes, "Current Votes " + this.currentVotes);
 
     // Return if consensus has been reached
     return (

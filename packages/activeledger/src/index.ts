@@ -24,14 +24,12 @@
  */
 
 import * as child from "child_process";
-import * as cluster from "cluster";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveDataStore } from "@activeledger/activestorage";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { PhysicalCores } from "./cpus";
 
 // Initalise CLI Options
 ActiveOptions.init();
@@ -46,6 +44,7 @@ if (!fs.existsSync("./.identity")) {
 
 // Quick Testnet builder
 if (ActiveOptions.get<boolean>("testnet", false)) {
+  //#region Localtestnet
   ActiveLogger.info("Creating Local Testnet");
 
   // Hold arguments for merge
@@ -141,16 +140,18 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         ActiveLogger.info("Run All Instances");
         ActiveLogger.info("----------");
         ActiveLogger.info("node testnet");
-        waitAndExit(0);
+        process.exit();
       });
     })
     .catch(e => {
       ActiveLogger.fatal(e, "Testnet Build Failure");
-      waitAndExit(0);
+      process.exit();
     });
+  //#endregion
 } else {
   // Merge Configs (Helps Build local net)
   if (ActiveOptions.get<boolean>("merge", false)) {
+    //#region Merge Configs
     if (ActiveOptions.get<Array<string>>("merge", []).length) {
       // Cache merge
       let merge = ActiveOptions.get<Array<string>>("merge", []);
@@ -173,11 +174,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             ActiveLogger.fatal(
               `${configFile} has multiple entries in neighbourhood`
             );
-            waitAndExit(0);
+            process.exit();
           }
         } else {
           ActiveLogger.fatal(`Configuration file "${configFile}" not found`);
-          waitAndExit(0);
+          process.exit();
         }
       }
 
@@ -199,10 +200,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
     } else {
       ActiveLogger.fatal("Mutiple merge arguments needed to continue.");
     }
+    //#endregion
   } else {
     // Continue Normal Boot
 
-    // Check for config
+    //#region Check & Manage Configuration File
     if (!fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))) {
       // Read default config so we can add our identity to the neighbourhood
       let defConfig: any = JSON.parse(
@@ -257,6 +259,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         "Created Config File - Please see documentation about network setup"
       );
     }
+    //#endregion
 
     // Now we can parse configuration
     ActiveOptions.parseConfig();
@@ -277,10 +280,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       ActiveOptions.get<boolean>("assert", false) ||
       ActiveOptions.get<boolean>("assert-network", false)
     ) {
+      //#region Configuration To Ledger
       // Check we are still file based
       if (ActiveOptions.get<string>("network", "")) {
         ActiveLogger.error("Network has already been asserted");
-        waitAndExit(0);
+        process.exit();
       }
 
       // Make sure this node belives everyone is online
@@ -299,7 +303,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
               ActiveLogger.fatal(
                 "All known nodes must been online for assertion"
               );
-              waitAndExit(0);
+              process.exit();
             }
           }
 
@@ -386,8 +390,9 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
             "Unable to assess network for assertion"
           );
         });
+      //#endregion
     } else {
-      // Do we have a transaction file to sign?
+      //#region Do we have a transaction file to sign?
       if (ActiveOptions.get<boolean>("sign", false)) {
         // Does file exist
         if (fs.existsSync(ActiveOptions.get<string>("sign"))) {
@@ -433,10 +438,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
         } else {
           ActiveLogger.fatal("File not found");
         }
-        waitAndExit(0);
+        process.exit();
       }
+      //#endregion
 
-      // Get Public Key
+      //#region Get Public Key
       if (ActiveOptions.get<boolean>("public", false)) {
         // Get Identity
         let identity: ActiveCrypto.KeyHandler = JSON.parse(
@@ -448,12 +454,13 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 
         // Output Public Key
         ActiveLogger.info("\n" + identity.pub.pkcs8pem);
-        waitAndExit(0);
+        process.exit();
       }
+      //#endregion
 
       // Are we only doing setups if so stopped
       if (ActiveOptions.get<boolean>("setup-only", false)) {
-        waitAndExit(0);
+        process.exit(0);
       }
 
       // Extend configuration proxy founction
@@ -465,39 +472,17 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           });
       };
 
-      // Manage Node Cluster
-      if (cluster.isMaster) {
-        // Boot Function, Used to wait on self host
-        let boot: Function = () => {
-          // Launch as many nodes as cpus
-          let cpus = PhysicalCores.count();
-          ActiveLogger.info("Server is active, Creating forks " + cpus);
+      // Lets now startup Activeledger
 
-          // Create Master Home
-          let activeHome: ActiveNetwork.Home = new ActiveNetwork.Home();
-
-          // Manage Activeledger Process Sessions
-          let activeSession: ActiveNetwork.Session = new ActiveNetwork.Session(
-            activeHome
-          );
-
+      // Boot Function, Used to wait on self host
+      let boot: Function = () => {
+        try {
+          // Set Base Path
+          ActiveOptions.set("__base", __dirname);
           // Maintain Network Neighbourhood & Let Workers know
-          new ActiveNetwork.Maintain(activeHome, activeSession);
+          ActiveNetwork.Maintain.init(new ActiveNetwork.Host());
 
-          // Loop CPUs and fork
-          while (cpus--) {
-            activeSession.add(cluster.fork());
-          }
-
-          // Watch for worker exit / crash and restart
-          cluster.on("exit", worker => {
-            ActiveLogger.debug(worker, "Worker has died, Restarting");
-            activeSession.add(cluster.fork());
-            // We can restart but we need to update the workers left & right & ishome
-            //worker.send({type:"neighbour",})
-          });
-
-          // Auto starting other activeledger services?
+          //#region Auto starting Activeledger Services
           if (ActiveOptions.get<any>("autostart", {})) {
             // Auto starting Core API?
             if (ActiveOptions.get<any>("autostart", {}).core) {
@@ -539,77 +524,41 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
                 });
             }
           }
-        };
-
-        // Self hosted data storage engine
-        if (ActiveOptions.get<any>("db", {}).selfhost) {
-          // Create Datastore instance
-          let datastore: ActiveDataStore = new ActiveDataStore();
-
-          // Rewrite config for this process
-          ActiveOptions.get<any>("db", {}).url = datastore.launch();
-
-          // Enable Extended Debugging
-          ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
-
-          if (!ActiveOptions.get<any>("db-only", false)) {
-            // Wait a bit for process to fully start
-            setTimeout(() => {
-              extendConfig(boot);
-            }, 2000);
-          }
-        } else {
-          // Check if they wanbt db-only
-          if (ActiveOptions.get<any>("db-only", false)) {
-            ActiveLogger.fatal(
-              "Cannot start embedded database. Self hosted is not configured"
-            );
-          } else {
-            // Continue
-            boot();
-          }
+          //#endregion
+        } catch (error) {
+          // Server may be down on index check
+          process.exit(1);
         }
-      } else {
-        // Set Base Path
-        ActiveOptions.set("__base", __dirname);
+      };
 
-        // Self hosted data storage engine
-        if (ActiveOptions.get<any>("db", {}).selfhost) {
-          // Rewrite config for this process
-          ActiveOptions.get<any>("db", {}).url =
-            "http://localhost:" +
-            ActiveOptions.get<any>("db", {}).selfhost.port;
-        }
+      // Self hosted data storage engine
+      if (ActiveOptions.get<any>("db", {}).selfhost) {
+        // Create Datastore instance
+        let datastore: ActiveDataStore = new ActiveDataStore();
+
+        // Rewrite config for this process
+        ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
         // Enable Extended Debugging
         ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
 
-        extendConfig(() => {
-          // Create Home Host Node
-          try {
-            new ActiveNetwork.Host();
-          } catch (error) {
-            // Server may be down on index check
-            process.exit(1);
-          }
-        });
+        if (!ActiveOptions.get<any>("db-only", false)) {
+          // Wait a bit for process to fully start
+          setTimeout(() => {
+            extendConfig(boot);
+          }, 2000);
+        }
+      } else {
+        // Check if they wanbt db-only
+        if (ActiveOptions.get<any>("db-only", false)) {
+          ActiveLogger.fatal(
+            "Cannot start embedded database. Self hosted is not configured"
+          );
+        } else {
+          // Continue
+          boot();
+        }
       }
     }
-  }
-}
-
-/**
- * Allow for logger to flush without passing final (Removes print output)
- * Global solutiuon for Pino V5 changed output
- *
- * @param {number} [delay=1500]
- */
-function waitAndExit(delay: number = 1500) {
-  if (delay) {
-    setTimeout(() => {
-      process.exit();
-    }, delay);
-  } else {
-    process.exit();
   }
 }
