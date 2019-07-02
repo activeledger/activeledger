@@ -16,6 +16,10 @@ class ContractControl implements IVMObject {
    */
   private smartContracts: IVMInternalCache;
 
+  constructor() {
+    this.smartContracts = {};
+  }
+
   // #region Contract controls
 
   /**
@@ -30,9 +34,9 @@ class ContractControl implements IVMObject {
     query: any,
     event: EventEngine
   ): void {
-    this.smartContracts[payload.umid] = new (eval(
-      payload.contractString
-    )).default(
+    this.smartContracts[
+      payload.umid
+    ] = new (require(payload.contractString)).default(
       payload.date,
       payload.remoteAddress,
       payload.umid,
@@ -165,6 +169,10 @@ class ContractControl implements IVMObject {
       // Auto resolve if no post process
       return Promise.resolve();
     }
+  }
+
+  public destroy(umid: string): void {
+    delete this.smartContracts[umid];
   }
 
   /**

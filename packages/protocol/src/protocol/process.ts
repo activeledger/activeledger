@@ -197,7 +197,6 @@ export class Process extends EventEmitter {
 
     // We don't need to verify the code unless we suspect server has been
     // comprimised. We will verify with the "install" routine
-    // TODO: Fix temp path solution (Param? PATH? Global?)
     try {
       Process.generalContractVM = new VirtualMachine(
         this.selfHost,
@@ -217,7 +216,7 @@ export class Process extends EventEmitter {
    *
    * @memberof Process
    */
-  public destroy(): void {
+  public destroy(umid: string): void {
     // Record un commited transactions as an error
     if (!this.nodeResponse.commit) {
       this.raiseLedgerError(
@@ -231,7 +230,13 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-    (Process.generalContractVM as any) = null;
+    if (this.isDefault) {
+      Process.defaultContractsVM.destroy(umid);
+    } else if (this.contractRef) {
+      Process.singleContractVMHolder[this.contractRef].destroy(umid);
+    } else {
+      Process.generalContractVM.destroy(umid);
+    }
     (this.entry as any) = null;
   }
 
@@ -241,6 +246,15 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
+    let virtualMachine: IVirtualMachine;
+    if (this.isDefault) {
+      virtualMachine = Process.defaultContractsVM;
+    } else if (this.contractRef) {
+      virtualMachine = Process.singleContractVMHolder[this.contractRef];
+    } else {
+      virtualMachine = Process.generalContractVM;
+    }
+
     ActiveLogger.info("New TX : " + this.entry.$umid);
     ActiveLogger.debug(this.entry, "Starting TX");
 
@@ -310,7 +324,7 @@ export class Process extends EventEmitter {
               .catch((error) => {
                 // Forward Error On
                 // We may not have the output stream, So we need to pass over the knocks
-                this.postVote({
+                this.postVote(virtualMachine, {
                   code: error.code,
                   reason: error.reason || error.message
                 });
@@ -319,7 +333,7 @@ export class Process extends EventEmitter {
           .catch((error) => {
             // Forward Error On
             // We may not have the input stream, So we need to pass over the knocks
-            this.postVote({
+            this.postVote(virtualMachine, {
               code: error.code,
               reason: error.reason || error.message
             });
@@ -377,7 +391,7 @@ export class Process extends EventEmitter {
           })
           .catch((error) => {
             // Forward Error On
-            this.postVote({
+            this.postVote(virtualMachine, {
               code: error.code,
               reason: error.reason || error.message
             });
@@ -385,7 +399,7 @@ export class Process extends EventEmitter {
       }
     } else {
       // Contract not found
-      this.postVote({
+      this.postVote(virtualMachine, {
         code: 1401,
         reason: "Contract Not Found"
       });
@@ -407,7 +421,14 @@ export class Process extends EventEmitter {
       // Reset Reference node response
       this.nodeResponse = this.entry.$nodes[this.reference];
       // Try run commit!
-      this.commit();
+
+      if (this.isDefault) {
+        this.commit(Process.defaultContractsVM);
+      } else if (this.contractRef) {
+        this.commit(Process.singleContractVMHolder[this.contractRef]);
+      } else {
+        this.commit(Process.generalContractVM);
+      }
     }
     return this.nodeResponse;
   }
@@ -460,24 +481,29 @@ export class Process extends EventEmitter {
 
   private processUnsafeContracts(
     payload: IVMDataPayload,
+    namespace: string,
     contractName: string,
     extraBuiltins: string[]
   ) {
-    this.contractRef = contractName + Date.now();
+    this.contractRef = namespace;
 
-    try {
-      Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
-        this.selfHost,
-        this.secured,
-        this.db,
-        this.dbev
-      );
+    // If we have initialised an instance for this namespace reuse it
+    // Otherwise we should create an instance for it
+    if (!Process.singleContractVMHolder[namespace]) {
+      try {
+        Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
+          this.selfHost,
+          this.secured,
+          this.db,
+          this.dbev
+        );
 
-      Process.singleContractVMHolder[this.contractRef].initialiseVirtualMachine(
-        extraBuiltins
-      );
-    } catch (error) {
-      throw new Error(error);
+        Process.singleContractVMHolder[
+          this.contractRef
+        ].initialiseVirtualMachine(extraBuiltins);
+      } catch (error) {
+        throw new Error(error);
+      }
     }
 
     this.handleVM(
@@ -492,24 +518,20 @@ export class Process extends EventEmitter {
     payload: IVMDataPayload,
     contractName: string
   ) {
-    console.log("Debug 0 - Pre Init");
     // Initalise contract VM
     virtualMachine
       .initialise(payload, contractName)
       .then(() => {
-        console.log("Debug 1 - After init");
         // Verify Transaction details in the contract
         // Also allow the contract to verify it likes signatureless transactions
         virtualMachine
           .verify(this.entry.$selfsign, this.entry.$umid)
           .then(() => {
-            console.log("Debug 2 - After Verify");
             // Get Vote (May change to string as it can contain the reason)
             // Or in the VM we can catch any thrown errors messages
             virtualMachine
               .vote(this.entry.$umid)
               .then(() => {
-                console.log("Debug 3 - After Vote");
                 // Update Vote Entry
                 this.nodeResponse.vote = true;
 
@@ -525,10 +547,10 @@ export class Process extends EventEmitter {
                 );
 
                 // Clearing All node comms?
-                this.clearAllComms();
+                this.clearAllComms(virtualMachine);
 
                 // Continue to next nodes vote
-                this.postVote();
+                this.postVote(virtualMachine);
               })
               .catch((error: Error) => {
                 // Vote failed (Not and error continue casting vote on the network)
@@ -546,7 +568,7 @@ export class Process extends EventEmitter {
                     this.nodeResponse.error = error.message;
 
                     // Continue to next nodes vote
-                    this.postVote();
+                    this.postVote(virtualMachine);
                   })
                   .catch((error) => {
                     // Continue Execution of consensus even with this failing
@@ -557,7 +579,7 @@ export class Process extends EventEmitter {
                     this.nodeResponse.error = error;
 
                     // Continue to next nodes vote
-                    this.postVote();
+                    this.postVote(virtualMachine);
                   });
               });
           })
@@ -609,7 +631,8 @@ export class Process extends EventEmitter {
         );
 
         const payload: IVMDataPayload = {
-          contractString: loadedContractString,
+          // contractString: loadedContractString,
+          contractString: this.contractLocation,
           umid: this.entry.$umid,
           date: this.entry.$datetime,
           remoteAddress: this.entry.$remoteAddr,
@@ -622,7 +645,6 @@ export class Process extends EventEmitter {
         };
 
         if (payload.transaction.$namespace === "default") {
-          console.log("Debug - Is Default contract");
           this.processDefaultContracts(payload, contractName);
         } else {
           // Now check configuration for allowed standard libs for this namespace
@@ -633,16 +655,19 @@ export class Process extends EventEmitter {
             security.namespace &&
             security.namespace[payload.transaction.$namespace]
           ) {
-            console.log("Debug - Is unsafe contract");
             security.namespace[payload.transaction.$namespace].std.forEach(
               (item: string) => {
                 // Add to builtin VM
                 builtin.push(item);
               }
             );
-            this.processUnsafeContracts(payload, contractName, builtin);
+            this.processUnsafeContracts(
+              payload,
+              payload.transaction.$namespace,
+              contractName,
+              builtin
+            );
           } else {
-            console.log("Debug - Is normal contract");
             this.handleVM(Process.generalContractVM, payload, contractName);
           }
         }
@@ -659,7 +684,7 @@ export class Process extends EventEmitter {
    * @private
    * @memberof Process
    */
-  private postVote(error: any = false): void {
+  private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
     this.voting = false;
 
@@ -682,14 +707,14 @@ export class Process extends EventEmitter {
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {
         // Try run commit! (May have reach consensus here)
-        this.commit();
+        this.commit(virtualMachine);
       }
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
-        this.commit(() => {
+        this.commit(virtualMachine, () => {
           this.right
             .knock("init", this.entry)
             .then((response: any) => {
@@ -707,7 +732,7 @@ export class Process extends EventEmitter {
               }
 
               // Run the Commit Phase
-              this.commit();
+              this.commit(virtualMachine);
             })
             .catch((error: any) => {
               // Need to manage errors this would mean the node is unreachable
@@ -734,7 +759,7 @@ export class Process extends EventEmitter {
           this.raiseLedgerError(error.code, error.reason);
         } else {
           // Run the Commit Phase
-          this.commit();
+          this.commit(virtualMachine);
         }
       }
     }
@@ -780,7 +805,10 @@ export class Process extends EventEmitter {
    * @returns {void}
    * @memberof Process
    */
-  private commit(earlyCommit?: () => void): void {
+  private commit(
+    virtualMachine: IVirtualMachine,
+    earlyCommit?: () => void
+  ): void {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
       // check we can commit still
@@ -788,7 +816,7 @@ export class Process extends EventEmitter {
         // Consensus reached commit phase
         this.commiting = true;
         // Pass Nodes for possible INC injection
-        Process.generalContractVM
+        virtualMachine
           .commit(
             this.entry.$nodes,
             this.entry.$territoriality == this.reference,
@@ -799,22 +827,20 @@ export class Process extends EventEmitter {
             this.nodeResponse.commit = true;
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+            this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
               this.entry.$umid
             );
 
             // Return Data for this nodes contract run
-            this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+            this.nodeResponse.return = virtualMachine.getReturnContractData(
               this.entry.$umid
             );
 
             // Clearing All node comms?
-            this.clearAllComms();
+            this.clearAllComms(virtualMachine);
 
             // Are we throwing to another ledger(s)?
-            let throws = Process.generalContractVM.getThrowsFromVM(
-              this.entry.$umid
-            );
+            let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
 
             // Emit to network handler
             if (throws && throws.length) {
@@ -822,12 +848,12 @@ export class Process extends EventEmitter {
             }
 
             // Get the changed data streams
-            let streams: ActiveDefinitions.LedgerStream[] = Process.generalContractVM.getActivityStreamsFromVM(
+            let streams: ActiveDefinitions.LedgerStream[] = virtualMachine.getActivityStreamsFromVM(
               this.entry.$umid
             );
 
             // Get current working inputs to compare and update if not modified above
-            let inputs: ActiveDefinitions.LedgerStream[] = Process.generalContractVM.getInputs(
+            let inputs: ActiveDefinitions.LedgerStream[] = virtualMachine.getInputs(
               this.entry.$umid
             );
 
@@ -1016,7 +1042,7 @@ export class Process extends EventEmitter {
                     }
 
                     // Manage Post Processing (If Exists)
-                    Process.generalContractVM
+                    virtualMachine
                       .postProcess(
                         this.entry.$territoriality == this.reference,
                         this.entry.$territoriality,
@@ -1026,17 +1052,17 @@ export class Process extends EventEmitter {
                         this.nodeResponse.post = post;
 
                         // Update in communication (Recommended pre commit only but can be edge use cases)
-                        this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+                        this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
                           this.entry.$umid
                         );
 
                         // Return Data for this nodes contract run
-                        this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+                        this.nodeResponse.return = virtualMachine.getReturnContractData(
                           this.entry.$umid
                         );
 
                         // Clearing All node comms?
-                        this.clearAllComms();
+                        this.clearAllComms(virtualMachine);
 
                         // Remember to let other nodes know
                         if (earlyCommit) earlyCommit();
@@ -1103,7 +1129,7 @@ export class Process extends EventEmitter {
                 this.entry.$territoriality = this.reference;
 
               // Manage Post Processing (If Exists)
-              Process.generalContractVM
+              virtualMachine
                 .postProcess(
                   this.entry.$territoriality == this.reference,
                   this.entry.$territoriality,
@@ -1113,17 +1139,17 @@ export class Process extends EventEmitter {
                   this.nodeResponse.post = post;
 
                   // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = Process.generalContractVM.getInternodeCommsFromVM(
+                  this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
                     this.entry.$umid
                   );
 
                   // Return Data for this nodes contract run
-                  this.nodeResponse.return = Process.generalContractVM.getReturnContractData(
+                  this.nodeResponse.return = virtualMachine.getReturnContractData(
                     this.entry.$umid
                   );
 
                   // Clearing All node comms?
-                  this.clearAllComms();
+                  this.clearAllComms(virtualMachine);
 
                   // Remember to let other nodes know
                   if (earlyCommit) earlyCommit();
@@ -1725,10 +1751,8 @@ export class Process extends EventEmitter {
    * @private
    * @memberof Process
    */
-  private clearAllComms() {
-    if (
-      Process.generalContractVM.clearingInternodeCommsFromVM(this.entry.$umid)
-    ) {
+  private clearAllComms(virtualMachine: IVirtualMachine) {
+    if (virtualMachine.clearingInternodeCommsFromVM(this.entry.$umid)) {
       Object.values(this.entry.$nodes).forEach((node) => {
         node.incomms = null;
       });
