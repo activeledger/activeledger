@@ -21,6 +21,7 @@ export interface IVMObject {
   runVote(umid: string): Promise<boolean>;
   runCommit(umid: string, possibleTerritoriality: boolean): Promise<boolean>;
   postProcess(umid: string, territoriality: boolean, who: string): Promise<any>;
+  destroy(umid: string): void;
   getTimeout(umid: string): Date;
   setSysConfig(umid: string, sysConfig: any): void;
   reloadSysConfig(umid: string): boolean;
@@ -43,10 +44,15 @@ export interface IVMInternalCache {
   [umid: string]: PostProcessQueryEvent | Standard;
 }
 
+export interface IContractKeyHolder {
+  [umid: string]: number;
+}
+
 interface IVMContractReferenceData {
   contractName: string;
   inputs: ActiveDefinitions.LedgerStream[];
   tx: ActiveDefinitions.LedgerTransaction;
+  key: number;
 }
 
 export interface IVMContractReferences {
@@ -54,7 +60,7 @@ export interface IVMContractReferences {
 }
 
 export interface IVMContractHolder {
-  [name: string]: IVirtualMachine;
+  [namespace: string]: IVirtualMachine;
 }
 
 export interface IVirtualMachine {
@@ -72,6 +78,8 @@ export interface IVirtualMachine {
   getReturnContractData(umid: string): unknown;
 
   getThrowsFromVM(umid: string): string[];
+
+  destroy(umid: string): void;
 
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
 

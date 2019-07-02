@@ -31,7 +31,6 @@ import { setTimeout } from "timers";
 import { NodeVM, VMScript } from "vm2";
 import * as fs from "fs";
 import {
-  IVMObject,
   IVMDataPayload,
   IVMContractReferences,
   IVirtualMachine
@@ -56,15 +55,6 @@ export class VirtualMachine implements IVirtualMachine {
   private virtualInstance: any; // IVMObject;
 
   private contractReferences: IVMContractReferences;
-
-  /**
-   * Give Access to Export routine
-   *
-   * @private
-   * @type {number}
-   * @memberof VirtualMachine
-   */
-  private key: number;
 
   /**
    * Holds the event engine
@@ -208,10 +198,18 @@ export class VirtualMachine implements IVirtualMachine {
     // Loop each stream and find the marked ones
     while (i--) {
       if (activities[streams[i]].updated) {
-        exported.push(activities[streams[i]].export2Ledger(this.key));
+        exported.push(
+          activities[streams[i]].export2Ledger(
+            this.contractReferences[umid].key
+          )
+        );
       }
     }
     return exported;
+  }
+
+  public destroy(umid: string): void {
+    this.virtualInstance.destroy(umid);
   }
 
   /**
@@ -283,15 +281,12 @@ export class VirtualMachine implements IVirtualMachine {
       this.contractReferences[payload.umid] = {
         contractName,
         inputs: payload.inputs,
-        tx: payload.transaction
+        tx: payload.transaction,
+        key: payload.key
       };
 
       // Setup Event Engine
       this.event = new EventEngine(this.dbev, payload.transaction.$contract);
-
-      console.log("this.virtualInstance");
-      console.log(this.virtualInstance);
-      console.log(this.virtualInstance.control);
 
       try {
         // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
@@ -322,7 +317,6 @@ export class VirtualMachine implements IVirtualMachine {
         // Continue
         resolve(true);
       } catch (e) {
-        console.trace("Debug B");
         if (e instanceof Error) {
           // Exception
           reject(this.catchException(e, payload.umid));
