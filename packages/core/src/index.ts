@@ -27,6 +27,7 @@ import { ActivecoreApplication } from "./application";
 import { ApplicationConfig } from "@loopback/core";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveOptions } from "@activeledger/activeoptions";
+import { RestBindings } from "@loopback/rest";
 
 /**
  * Loopback Main Launcher
@@ -39,8 +40,12 @@ async function main(options: ApplicationConfig = {}) {
   await app.boot();
   await app.start();
 
-  const url = app.restServer.url;
-  ActiveLogger.info(`Server is running at ${url}`);
+  // Control how large post body can be
+  app
+    .bind(RestBindings.REQUEST_BODY_PARSER_OPTIONS)
+    .to({ limit: ActiveOptions.get<any>("api", {}).limit || "2mb" });
+
+  ActiveLogger.info(`Activecore API is running at ${app.restServer.url}`);
 
   return app;
 }
