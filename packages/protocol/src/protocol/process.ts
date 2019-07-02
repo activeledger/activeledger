@@ -227,6 +227,7 @@ export class Process extends EventEmitter {
         this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`;
     }
+    ActiveLogger.fatal(this.contractLocation, "Contract Locations");
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -415,7 +416,7 @@ export class Process extends EventEmitter {
       .then(readonly => {
         // We don't need to verify the code unless we suspect server has been
         // comprimised. We will verify with the "install" routine
-        // TODO: Fix temp path solution (Param? PATH? Global?)
+        // TODO: Fix temp path solution (Param? PATH? Global?)        
         this.contractVM = new VirtualMachine(
           this.contractLocation,
           this.selfHost,

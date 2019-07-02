@@ -22,6 +22,7 @@
  */
 
 import * as http from "http";
+import { fork, ChildProcess } from "child_process";
 import {
   ActiveDSConnect,
   ActiveOptions,
@@ -38,6 +39,7 @@ import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
 import { Locker } from "./locker";
+import { PhysicalCores } from "./cpus";
 
 /**
  * Process object used to manage an individual transaction
@@ -129,6 +131,10 @@ export class Host extends Home {
     [reference: string]: any;
   } = {};
 
+  private processors: ChildProcess[] = [];
+
+  private processorIterator: IterableIterator<ChildProcess>;
+
   /**
    * Add process into pending
    *
@@ -159,8 +165,6 @@ export class Host extends Home {
           });
         }
       }
-
-      ActiveLogger.warn("Adding to pending quue");
 
       // Add to pending (Using Promises instead of http request)
       this.processPending[entry.$umid] = {
@@ -264,6 +268,39 @@ export class Host extends Home {
         // Find alternative way to capture rejections per message
         process.setMaxListeners(300);
 
+        // Setup Processors
+        for (let i = 0; i < PhysicalCores.count(); i++) {
+          // Create Process
+          const pFork = fork(`${__dirname}\\process.js`, [], {
+            cwd: process.cwd(),
+            stdio: "inherit"
+          });
+
+          // Listen for message to respond to waiting http
+          pFork.on("message", msg => {});
+
+          // Send Setup
+          pFork.send({
+            type: "setup",
+            data: {
+              self: Home.host,
+              reference: Home.reference,
+              right: Home.right,
+              neighbourhood: this.neighbourhood.get(),
+              public: Home.publicPem,
+              private: Home.identity.pem,
+              db: ActiveOptions.get<any>("db", {}),
+              __base: ActiveOptions.get("__base", __dirname)
+            }
+          });
+
+          // Add process into array
+          this.processors.push(pFork);
+        }
+
+        // Setup Iterator
+        this.processorIterator = this.processors[Symbol.iterator]();
+
         // Listen to the Neighbourhood
         // May need to move this to outside the constructor.
         // - However you can add endpoints even after listening
@@ -274,7 +311,7 @@ export class Host extends Home {
           );
         });
       })
-      .catch(() => {
+      .catch(e => {
         throw new Error("Couldn't create default index");
       });
   }
@@ -433,8 +470,28 @@ export class Host extends Home {
     let output = Object.keys(v.$tx.$o || {});
 
     // Ask for locks
-    if (Locker.hold([...input, ...output ])) {
+    if (Locker.hold([...input, ...output])) {
       // Yes, Continue Processing
+
+      // Get next process from the array
+      const robin = this.getRobin();
+
+      // Make sure we have the response object
+      if (!this.processPending[v.$umid].entry.$nodes)
+        this.processPending[v.$umid].entry.$nodes = {};
+
+      // Setup this node response
+      this.processPending[v.$umid].entry.$nodes[Home.reference] = {
+        vote: false,
+        commit: false
+      };
+
+      // Pass transaction to sub processor
+      robin.send({
+        type: "tx",
+        entry: this.processPending[v.$umid].entry
+      });
+      return;
 
       // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
       // While it is global we need to manage it here to keep the encapsulation
@@ -607,14 +664,31 @@ export class Host extends Home {
       // Start the process
       protocol.start();
     } else {
-      ActiveLogger.warn("I appear to be locked");
-
       // No, How to deal with it?
       this.processPending[v.$umid].resolve({
         status: 100,
         error: "Busy Locks"
       });
     }
+  }
+
+  /**
+   * Gets next processor in the list (Doesn't account for load)
+   *
+   * @private
+   * @returns {ChildProcess}
+   * @memberof Host
+   */
+  private getRobin(): ChildProcess {
+    // Get next processes in queue
+    let robin = this.processorIterator.next().value;
+
+    // Do we need to reset?
+    if (!robin) {
+      this.processorIterator = this.processors[Symbol.iterator]();
+      return this.processorIterator.next().value;
+    }
+    return robin;
   }
 
   /**
