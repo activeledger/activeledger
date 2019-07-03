@@ -22,6 +22,7 @@
  */
 
 import * as fs from "fs";
+import { ChildProcess } from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Neighbour } from "./neighbour";
@@ -108,6 +109,10 @@ export class Home extends Neighbour {
    * @memberof Home
    */
   private tMap: string[];
+
+  protected processors: ChildProcess[] = [];
+
+  protected processorIterator: IterableIterator<ChildProcess>;
 
   /**
    * Creates an instance of Home.
@@ -325,6 +330,16 @@ export class Home extends Neighbour {
       } else {
         Home.right = new Neighbour(this.host, this.port);
       }
+
+      // Update Sub Processes
+      this.processors.forEach(processor => {
+        processor.send({
+          type: "hk",
+          data: {
+            right: Home.right
+          }
+        });
+      });
     }
   }
 

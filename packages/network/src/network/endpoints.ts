@@ -28,7 +28,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
-import { Maintain } from './maintain';
+import { Maintain } from "./maintain";
 
 /**
  * Endpoints used to manage Network Neighbourhood
@@ -372,7 +372,8 @@ export class Endpoints {
 
         // When should we rebase
         if (
-          Endpoints.rebaseThrottle > ActiveOptions.get<number>("rebaseThrottle", 8)
+          Endpoints.rebaseThrottle >
+          ActiveOptions.get<number>("rebaseThrottle", 8)
         ) {
           // However we can trigger a "rebase" of the ordering if this comes from a node we think is offline
           Maintain.rebaseNeighbourhood();

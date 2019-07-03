@@ -131,10 +131,6 @@ export class Host extends Home {
     [reference: string]: any;
   } = {};
 
-  private processors: ChildProcess[] = [];
-
-  private processorIterator: IterableIterator<ChildProcess>;
-
   /**
    * Add process into pending
    *
@@ -277,7 +273,42 @@ export class Host extends Home {
           });
 
           // Listen for message to respond to waiting http
-          pFork.on("message", msg => {});
+          pFork.on("message", m => {
+            switch (m.type) {
+              case "failed":
+                // Add this nodes error into the entry
+                // this.processPending[m.entry.$umid].entry.$nodes[
+                //   Home.reference
+                // ].error = error.error;
+
+                // So if we send as resolve it should still work (Will it keep our error?)
+                this.processPending[m.data.$umid].resolve({
+                  status: 200,
+                  data: m.data
+                });
+                // Remove Locks
+                this.release(m.data.$umid);
+                break;
+              case "commited":
+                // Process response back into entry for previous neighbours to know the results
+                this.processPending[m.data.$umid].resolve({
+                  status: 200,
+                  data: m.data
+                });
+                // Remove Locks
+                this.release(m.data.$umid);
+                break;
+              case "broadcast":
+                ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
+                this.broadcast(m.data.$umid);
+                break;
+              case "reload":
+                break;
+              default:
+                ActiveLogger.fatal("Unknown IPC Call");
+                break;
+            }
+          });
 
           // Send Setup
           pFork.send({
@@ -487,6 +518,7 @@ export class Host extends Home {
       };
 
       // Pass transaction to sub processor
+      ActiveLogger.debug("Processor Selected ==> " + robin.pid);
       robin.send({
         type: "tx",
         entry: this.processPending[v.$umid].entry
