@@ -56,48 +56,67 @@ class Processor {
     Processor.dbev = new ActiveDSConnect(db.url + "/" + db.event);
 
     Processor.housekeeping(right, neighbours);
-
     ActiveLogger.info("Processor Setup Complete");
   }
 
   public static housekeeping(
     right: any,
-    neighbours: { [reference: string]: Neighbour }
+    neighbours?: { [reference: string]: Neighbour }
   ) {
     Home.right = new Neighbour(right.host, right.port);
-    Processor.neighbourhood = neighbours;
 
-    Processor.secured = new ActiveCrypto.Secured(
-      Processor.db,
-      Processor.neighbourhood,
-      {
-        reference: Home.reference,
-        public: Home.publicPem,
-        private: Home.identity.pem
-      }
-    );
+    if (neighbours) {
+      Processor.neighbourhood = neighbours;
+
+      Processor.secured = new ActiveCrypto.Secured(
+        Processor.db,
+        Processor.neighbourhood,
+        {
+          reference: Home.reference,
+          public: Home.publicPem,
+          private: Home.identity.pem
+        }
+      );
+    }
   }
 }
+
+// Initalise CLI Options
+ActiveOptions.init();
+
+// Now we can parse configuration
+ActiveOptions.parseConfig();
+
+// Enable Extended Debugging
+ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
 
 // Listen for IPC (Interprocess Communication)
 process.on("message", (m: any) => {
   switch (m.type) {
     case "setup":
-      // Setup Static Home
-      Home.reference = m.data.reference;
-      Home.host = m.data.self;
-      Home.publicPem = m.data.public;
-      Home.identity = new ActiveCrypto.KeyPair("rsa", m.data.private);
+      // Set Database (Do we need to?)
+      ActiveOptions.set("db", m.data.db);
 
       //? How oftern do we access Options do we need to sync again?
       ActiveOptions.set("__base", m.data.__base);
 
-    ActiveLogger.info(m.data.__base , "all your base belong to us");
+      ActiveOptions.extendConfig()
+        .then(() => {
+          // Setup Static Home
+          Home.reference = m.data.reference;
+          Home.host = m.data.self;
+          Home.publicPem = m.data.public;
+          Home.identity = new ActiveCrypto.KeyPair("rsa", m.data.private);
 
-      // Setup Static Processor
-      Processor.setup(m.data.right, m.data.neighbourhood, m.data.db);
+          // Setup Static Processor
+          Processor.setup(m.data.right, m.data.neighbourhood, m.data.db);
+        })
+        .catch(e => {
+          ActiveLogger.fatal(e, "Config Extension Issues");
+        });
       break;
     case "hk":
+      ActiveLogger.debug("House Keeping!");
       Processor.housekeeping(m.data.right, m.data.neighbourhood);
       break;
     case "tx":
@@ -116,20 +135,44 @@ process.on("message", (m: any) => {
       );
 
       protocol.on("commited", (response: any) => {
-        ActiveLogger.fatal("COMMITED");
+        // Pass back to host to respond.
+        (process as any).send({
+          type: "commited",
+          data: m.entry
+        });
       });
 
       protocol.on("failed", (error: any) => {
-        ActiveLogger.fatal(error, "TX Failed");
+        // Pass back to host to respond
+        (process as any).send({
+          type: "failed",
+          data: m.entry
+        });
       });
 
       protocol.on("broadcast", (response: any) => {
-        ActiveLogger.fatal("broadcast");
+        // TODO: Either broadcast from this prcoessor.
+        // TODO: although from there is better as it can respond quicker
+        // Pass back to host to respond
+        (process as any).send({
+          type: "broadcast",
+          data: m.entry
+        });
+      });
+
+      protocol.on("reload", (response: any) => {
+        // Pass back to host to respond
+        (process as any).send({
+          type: "reload"
+        });
       });
 
       // Start the process
       protocol.start();
       break;
+    case "destory":
+      // Remove protocol from memory. 
+      break
     default:
       ActiveLogger.fatal(m, "Unknown Processor Call");
   }
