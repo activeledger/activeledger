@@ -21,159 +21,475 @@
  * SOFTWARE.
  */
 
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveDSConnect, ActiveOptions } from "@activeledger/activeoptions";
+import {
+  ActiveDSConnect,
+  ActiveOptions,
+  ActiveRequest
+} from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
+import { EventEngine } from "@activeledger/activequery";
 
+/**
+ * Bare minimum data needed to make a home
+ *
+ * @interface IMakeHome
+ */
+interface IMakeHome {
+  reference: string;
+  self: string;
+  pubPem: string;
+  privPem: string;
+}
+
+/**
+ * Initial setup for the Processor
+ *
+ * @interface ISetup
+ * @extends {IMakeHome}
+ */
+interface ISetup extends IMakeHome {
+  right: any;
+  neighbours: { [reference: string]: Neighbour };
+  db: any;
+}
+
+/**
+ * Main entry for running Activeledger sub processors.
+ *
+ * @class Processor
+ */
 class Processor {
-  //private static right: ActiveDefinitions.INeighbourBase;
-  public static db: ActiveDSConnect;
-  public static dbe: ActiveDSConnect;
-  public static dbev: ActiveDSConnect;
-  public static secured: ActiveCrypto.Secured;
-  private static neighbourhood: { [reference: string]: Neighbour };
-  private static pubKey: string;
-  private static prvKey: string;
+  /**
+   *
+   *
+   * @private
+   * @type {ActiveDSConnect}
+   * @memberof Processor
+   */
+  private db: ActiveDSConnect;
 
-  public static setup(
-    right: any,
-    neighbours: { [reference: string]: Neighbour },
-    db: any
-  ) {
-    Processor.neighbourhood = neighbours;
+  /**
+   *
+   *
+   * @private
+   * @type {ActiveDSConnect}
+   * @memberof Processor
+   */
+  private dbe: ActiveDSConnect;
+
+  /**
+   *
+   *
+   * @private
+   * @type {ActiveDSConnect}
+   * @memberof Processor
+   */
+  private dbev: ActiveDSConnect;
+
+  /**
+   *
+   *
+   * @private
+   * @type {ActiveCrypto.Secured}
+   * @memberof Processor
+   */
+  private secured: ActiveCrypto.Secured;
+
+  /**
+   *
+   *
+   * @private
+   * @type {{ [reference: string]: Neighbour }}
+   * @memberof Processor
+   */
+  private neighbourhood: { [reference: string]: Neighbour };
+
+  /**
+   *
+   *
+   * @private
+   * @type {{
+   *     [umid: string]: any;
+   *   }}
+   * @memberof Processor
+   */
+  private unhandledRejection: {
+    [umid: string]: any;
+  } = {};
+
+  /**
+   *
+   *
+   * @private
+   * @type {{
+   *     [umid: string]: ActiveProtocol.Process;
+   *   }}
+   * @memberof Processor
+   */
+  private protocols: {
+    [umid: string]: ActiveProtocol.Process;
+  } = {};
+
+  constructor() {
+    // Initalise CLI Options
+    ActiveOptions.init();
+
+    // Now we can parse configuration
+    ActiveOptions.parseConfig();
+
+    // Enable Extended Debugging
+    ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+
+    // Listen for IPC (Interprocess Communication)
+    process.on("message", (m: any) => {
+      switch (m.type) {
+        case "setup":
+          // Set Database (Do we need to?)
+          ActiveOptions.set("db", m.data.db);
+          // Setup Paths
+          ActiveOptions.set("__base", m.data.__base);
+          // Extend from Database
+          ActiveOptions.extendConfig()
+            .then(() => {
+              // Setup Processor
+              this.setup(m.data);
+            })
+            .catch(e => {
+              ActiveLogger.fatal(e, "Config Extension Issues");
+            });
+          break;
+        case "hk":
+          this.housekeeping(m.data.right, m.data.neighbourhood);
+          break;
+        case "tx":
+          // Create new Protocol Process object for transaction
+          this.protocols[m.entry.$umid] = new ActiveProtocol.Process(
+            m.entry,
+            Home.host,
+            Home.reference,
+            Home.right,
+            this.db,
+            this.dbe,
+            this.dbev,
+            this.secured
+          );
+
+          // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
+          // While it is global we need to manage it here to keep the encapsulation
+          this.unhandledRejection[m.entry.$umid] = (reason: any, p: any) => {
+            // Make sure the object exists
+            if (this.protocols[m.entry.$umid]) {
+              (process as any).send({
+                type: "UnhandledRejection",
+                data: {
+                  reason,
+                  p
+                }
+              });
+            }
+          };
+
+          // Event: Manage Unhandled Rejections from VM
+          process.on(
+            "unhandledRejection",
+            this.unhandledRejection[m.entry.$umid]
+          );
+
+          // Event: Manage Commits
+          this.protocols[m.entry.$umid].on("commited", (response: any) => {
+            this.committed(m.entry, response);
+          });
+
+          // Event: Manage Failed
+          this.protocols[m.entry.$umid].on("failed", (error: any) => {
+            this.failed(m.entry, error.error);
+          });
+
+          // Event: Manage broadcast
+          this.protocols[m.entry.$umid].on("broadcast", () => {
+            this.broadcast(m.entry);
+          });
+
+          // Event: Manage Reload Requests
+          this.protocols[m.entry.$umid].on("reload", () => {
+            this.reloadUp(m.entry.$umid);
+          });
+
+          // Event: Manage Throw Transactions
+          this.protocols[m.entry.$umid].on("throw", (response: any) => {
+            this.throw(m.entry, response);
+          });
+
+          // Start the process
+          this.protocols[m.entry.$umid].start();
+          break;
+        case "destory":
+          // Remove protocol from memory.
+          this.clear(m.umid);
+          break;
+        case "reload":
+          this.reloadDown(m.data);
+          break;
+        default:
+          ActiveLogger.fatal(m, "Unknown Processor Call");
+      }
+    });
+  }
+
+  /**
+   * Process Commit Responses back to main thread
+   *
+   * @private
+   * @param {*} entry
+   * @param {*} response
+   * @memberof Processor
+   */
+  private committed(entry: any, response: any): void {
+    if (response.instant) {
+      ActiveLogger.debug(entry, "Transaction Currently Processing");
+    } else {
+      ActiveLogger.debug(entry, "Transaction Processed");
+    }
+
+    // Pass back to host to respond.
+    this.send("commited", {
+      umid: entry.$umid,
+      nodes: entry.$nodes
+    });
+    this.clear(entry.$umid);
+  }
+
+  /**
+   * Process failed transactions back to main thread
+   *
+   * @private
+   * @param {*} entry
+   * @param {Error} error
+   * @memberof Processor
+   */
+  private failed(entry: any, error: Error): void {
+    ActiveLogger.debug(error, "TX Failed");
+    // Store error
+    entry.$nodes[Home.reference].error = error;
+
+    // Pass back to host to respond
+    this.send("commited", {
+      umid: entry.$umid,
+      nodes: entry.$nodes
+    });
+    this.clear(entry.$umid);
+  }
+
+  /**
+   * Process broadcast request back to main thread
+   *
+   * @private
+   * @param {*} entry
+   * @memberof Processor
+   */
+  private broadcast(entry: any): void {
+    // Pass back to host to respond
+    this.send("commited", {
+      umid: entry.$umid,
+      nodes: entry.$nodes
+    });
+  }
+
+  /**
+   * Process reload requests back to main thread
+   *
+   * @private
+   * @param {string} umid
+   * @memberof Processor
+   */
+  private reloadUp(umid: string): void {
+    this.send("reload", {
+      umid
+    });
+  }
+
+  /**
+   * Reload the configuration
+   *
+   * @private
+   * @memberof Host
+   */
+  private reloadDown(data: any) {
+    // Reload Neighbourhood
+    ActiveOptions.extendConfig()
+      .then((config: any) => {
+        if (config.neighbourhood) {
+          ActiveLogger.debug(config.neighbourhood, "Reset Request");
+          Home.reference = data.reference;
+          this.housekeeping(data.right, data.neighbourhood);
+        }
+      })
+      .catch((e: any) => {
+        ActiveLogger.info(e, "Failed to reload Neighbourhood");
+      });
+  }
+
+  /**
+   * Process throwing transactions to other ledgers with event tracking
+   *
+   * @private
+   * @param {*} entry
+   * @param {*} response
+   * @memberof Processor
+   */
+  private throw(entry: any, response: any): void {
+    // We can throw from here
+    ActiveLogger.info(response, "Throwing Transaction");
+
+    // Prepare event emitter for response management
+    const eventEngine = new EventEngine(this.dbev, entry.$tx.$contract);
+
+    // Unique Phase
+    eventEngine.setPhase("throw");
+
+    if (response.locations && response.locations.length) {
+      // Throw transaction to those locations
+      let i = response.locations.length;
+      while (i--) {
+        // Cache Location
+        let location = response.locations[i];
+        ActiveRequest.send(location, "POST", [], {
+          $tx: entry.$tx,
+          $selfsign: entry.$selfsign,
+          $sigs: entry.$sigs
+        })
+          .then((resp: any) => {
+            // Emit Event of successful connection to the ledger (May still have failed on the ledger)
+            eventEngine.emit("throw", {
+              success: true,
+              sentFrom: Home.host,
+              sentTo: location,
+              $umid: entry.$umid,
+              response: resp.data
+            });
+          })
+          .catch((error: any) => {
+            // Emit Event of error sending to the ledger
+            eventEngine.emit("throw", {
+              success: false,
+              sentFrom: Home.host,
+              sentTo: location,
+              $umid: entry.$umid,
+              response: error.toString()
+            });
+          });
+      }
+    }
+  }
+
+  /**
+   * Handle communications back to the main thread
+   *
+   * @private
+   * @param {string} type
+   * @param {unknown} data
+   * @memberof Processor
+   */
+  private send(type: string, data: unknown): void {
+    (process as any).send({
+      type,
+      data
+    });
+  }
+
+  /**
+   * Memory Management
+   *
+   * @private
+   * @param {string} umid
+   * @memberof Processor
+   */
+  private clear(umid: string) {
+    // Clear Listners & Destory Early
+    if (this.protocols[umid]) {
+      this.protocols[umid].removeAllListeners();
+      this.protocols[umid].destroy();
+      // Clear
+      (this.protocols[umid] as unknown) = null;
+    }
+
+    // No longer need to handle unhandled rejections
+    if (this.unhandledRejection[umid]) {
+      process.off("unhandledRejection", this.unhandledRejection[umid]);
+      this.unhandledRejection[umid] = null;
+    }
+  }
+
+  /**
+   * Process setup of the processor from main thread
+   *
+   * @private
+   * @param {ISetup} setup
+   * @memberof Processor
+   */
+  private setup(setup: ISetup) {
+    // Create connection string
+    this.db = new ActiveDSConnect(setup.db.url + "/" + setup.db.database);
 
     // Create connection string
-    Processor.db = new ActiveDSConnect(db.url + "/" + db.database);
+    this.dbe = new ActiveDSConnect(setup.db.url + "/" + setup.db.error);
 
     // Create connection string
-    Processor.dbe = new ActiveDSConnect(db.url + "/" + db.error);
+    this.dbev = new ActiveDSConnect(setup.db.url + "/" + setup.db.event);
 
-    // Create connection string
-    Processor.dbev = new ActiveDSConnect(db.url + "/" + db.event);
+    // Setup Home
+    this.makeHome(setup);
 
-    Processor.housekeeping(right, neighbours);
+    // Create default house keeping
+    this.housekeeping(setup.right, setup.neighbours);
+
     ActiveLogger.info("Processor Setup Complete");
   }
 
-  public static housekeeping(
+  /**
+   * Setup minimum home
+   *
+   * @private
+   * @param {IMakeHome} { reference, self, pubPem, privPem }
+   * @memberof Processor
+   */
+  private makeHome({ reference, self, pubPem, privPem }: IMakeHome) {
+    Home.reference = reference;
+    Home.host = self;
+    Home.publicPem = pubPem;
+    Home.identity = new ActiveCrypto.KeyPair("rsa", privPem);
+  }
+
+  /**
+   * Keep home tidy with communication path
+   *
+   * @private
+   * @param {*} right
+   * @param {{ [reference: string]: Neighbour }} [neighbours]
+   * @memberof Processor
+   */
+  private housekeeping(
     right: any,
     neighbours?: { [reference: string]: Neighbour }
   ) {
     Home.right = new Neighbour(right.host, right.port);
 
+    // Are we updating the neighbourhood?
     if (neighbours) {
-      Processor.neighbourhood = neighbours;
+      this.neighbourhood = neighbours;
 
-      Processor.secured = new ActiveCrypto.Secured(
-        Processor.db,
-        Processor.neighbourhood,
-        {
-          reference: Home.reference,
-          public: Home.publicPem,
-          private: Home.identity.pem
-        }
-      );
+      this.secured = new ActiveCrypto.Secured(this.db, this.neighbourhood, {
+        reference: Home.reference,
+        public: Home.publicPem,
+        private: Home.identity.pem
+      });
     }
   }
 }
 
-// Initalise CLI Options
-ActiveOptions.init();
-
-// Now we can parse configuration
-ActiveOptions.parseConfig();
-
-// Enable Extended Debugging
-ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
-
-// Listen for IPC (Interprocess Communication)
-process.on("message", (m: any) => {
-  switch (m.type) {
-    case "setup":
-      // Set Database (Do we need to?)
-      ActiveOptions.set("db", m.data.db);
-
-      //? How oftern do we access Options do we need to sync again?
-      ActiveOptions.set("__base", m.data.__base);
-
-      ActiveOptions.extendConfig()
-        .then(() => {
-          // Setup Static Home
-          Home.reference = m.data.reference;
-          Home.host = m.data.self;
-          Home.publicPem = m.data.public;
-          Home.identity = new ActiveCrypto.KeyPair("rsa", m.data.private);
-
-          // Setup Static Processor
-          Processor.setup(m.data.right, m.data.neighbourhood, m.data.db);
-        })
-        .catch(e => {
-          ActiveLogger.fatal(e, "Config Extension Issues");
-        });
-      break;
-    case "hk":
-      ActiveLogger.debug("House Keeping!");
-      Processor.housekeeping(m.data.right, m.data.neighbourhood);
-      break;
-    case "tx":
-      //! Manage unhandledRejections
-
-      // Create new Protocol Process object for transaction
-      let protocol: ActiveProtocol.Process = new ActiveProtocol.Process(
-        m.entry,
-        Home.host,
-        Home.reference,
-        Home.right,
-        Processor.db,
-        Processor.dbe,
-        Processor.dbev,
-        Processor.secured
-      );
-
-      protocol.on("commited", (response: any) => {
-        // Pass back to host to respond.
-        (process as any).send({
-          type: "commited",
-          data: m.entry
-        });
-      });
-
-      protocol.on("failed", (error: any) => {
-        // Pass back to host to respond
-        (process as any).send({
-          type: "failed",
-          data: m.entry
-        });
-      });
-
-      protocol.on("broadcast", (response: any) => {
-        // TODO: Either broadcast from this prcoessor.
-        // TODO: although from there is better as it can respond quicker
-        // Pass back to host to respond
-        (process as any).send({
-          type: "broadcast",
-          data: m.entry
-        });
-      });
-
-      protocol.on("reload", (response: any) => {
-        // Pass back to host to respond
-        (process as any).send({
-          type: "reload"
-        });
-      });
-
-      // Start the process
-      protocol.start();
-      break;
-    case "destory":
-      // Remove protocol from memory. 
-      break
-    default:
-      ActiveLogger.fatal(m, "Unknown Processor Call");
-  }
-});
+// Start Processor
+new Processor();

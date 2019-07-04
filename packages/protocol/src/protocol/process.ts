@@ -416,7 +416,7 @@ export class Process extends EventEmitter {
       .then(readonly => {
         // We don't need to verify the code unless we suspect server has been
         // comprimised. We will verify with the "install" routine
-        // TODO: Fix temp path solution (Param? PATH? Global?)        
+        // TODO: Fix temp path solution (Param? PATH? Global?)
         this.contractVM = new VirtualMachine(
           this.contractLocation,
           this.selfHost,
@@ -544,7 +544,8 @@ export class Process extends EventEmitter {
         this.entry.$nodes[this.reference].error = error.reason;
       }
       // Let all other nodes know about this transaction and our opinion
-      this.emit("broadcast", this.entry);
+      //this.emit("broadcast", this.entry);
+      this.emit("broadcast");
 
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {
@@ -560,21 +561,24 @@ export class Process extends EventEmitter {
           this.right
             .knock("init", this.entry)
             .then((response: any) => {
-              // Territoriality set?
-              this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
-              // Append new $nodes
-              this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
+              // Check entry hasn't been destroyed
+              if (this.entry) {
+                // Territoriality set?
+                this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
+                // Append new $nodes
+                this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
 
-              // Reset Reference node response
-              this.nodeResponse = this.entry.$nodes[this.reference];
+                // Reset Reference node response
+                this.nodeResponse = this.entry.$nodes[this.reference];
 
-              // Normal, Or getting other node opinions?
-              if (error) {
-                this.raiseLedgerError(error.code, error.reason, true, 10);
+                // Normal, Or getting other node opinions?
+                if (error) {
+                  this.raiseLedgerError(error.code, error.reason, true, 10);
+                }
+
+                // Run the Commit Phase
+                this.commit();
               }
-
-              // Run the Commit Phase
-              this.commit();
             })
             .catch((error: any) => {
               // Need to manage errors this would mean the node is unreachable
@@ -840,7 +844,7 @@ export class Process extends EventEmitter {
       // We have committed do nothing.
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();
-      this.emit("commited");
+      //? this.emit("commited");
     }
   }
 
@@ -1699,7 +1703,7 @@ export class Process extends EventEmitter {
       this.errorOut.priority = priority;
     }
 
-    if (!this.storeSingleError) {
+    if (!this.storeSingleError && this.entry) {
       // Build Document for couch
       let doc = {
         code: code,
