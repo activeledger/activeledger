@@ -227,9 +227,15 @@ class Processor {
           // Start the process
           this.protocols[m.entry.$umid].start();
           break;
+        case "broadcast":
+          if (this.protocols[m.data.umid]) {
+            // Update Protocol with network values
+            this.protocols[m.data.umid].updatedFromBroadcast(m.data.nodes);
+          }
+          break;
         case "destory":
           // Remove protocol from memory.
-          this.clear(m.umid);
+          this.clear(m.data.umid);
           break;
         case "reload":
           this.reloadDown(m.data);
@@ -260,7 +266,11 @@ class Processor {
       umid: entry.$umid,
       nodes: entry.$nodes
     });
-    this.clear(entry.$umid);
+
+    // Clear Early?
+    if (!entry.$broadcast) {
+      this.clear(entry.$umid);
+    }
   }
 
   /**
@@ -281,7 +291,10 @@ class Processor {
       umid: entry.$umid,
       nodes: entry.$nodes
     });
-    this.clear(entry.$umid);
+
+    if (!entry.$broadcast) {
+      this.clear(entry.$umid);
+    }
   }
 
   /**
@@ -293,7 +306,7 @@ class Processor {
    */
   private broadcast(entry: any): void {
     // Pass back to host to respond
-    this.send("commited", {
+    this.send("broadcast", {
       umid: entry.$umid,
       nodes: entry.$nodes
     });
@@ -409,6 +422,7 @@ class Processor {
    * @memberof Processor
    */
   private clear(umid: string) {
+    ActiveLogger.debug("Removing from memory : " + umid);
     // Clear Listners & Destory Early
     if (this.protocols[umid]) {
       this.protocols[umid].removeAllListeners();
@@ -432,6 +446,10 @@ class Processor {
    * @memberof Processor
    */
   private setup(setup: ISetup) {
+    // Manage False postive warnings.
+    // Find alternative way to capture rejections per message
+    process.setMaxListeners(300);
+
     // Create connection string
     this.db = new ActiveDSConnect(setup.db.url + "/" + setup.db.database);
 
@@ -446,8 +464,12 @@ class Processor {
 
     // Create default house keeping
     this.housekeeping(setup.right, setup.neighbours);
-
     ActiveLogger.info("Processor Setup Complete");
+
+    // Let main thread know we are ready
+    this.send("ready", {
+      pid: process.pid
+    });
   }
 
   /**

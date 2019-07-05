@@ -227,7 +227,6 @@ export class Process extends EventEmitter {
         this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`;
     }
-    ActiveLogger.fatal(this.contractLocation, "Contract Locations");
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -848,6 +847,14 @@ export class Process extends EventEmitter {
     }
   }
 
+  /**
+   * Update any changed stream as an atomic write to the datastore
+   *
+   * @private
+   * @param {unknown} commitData
+   * @param {Function} [earlyCommit]
+   * @memberof Process
+   */
   private updateStreams(commitData: unknown, earlyCommit?: Function) {
     {
       // Get the changed data streams

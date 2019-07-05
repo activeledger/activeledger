@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import * as http from "http";
+import { Server, IncomingMessage, ServerResponse, createServer } from "http";
 import { fork, ChildProcess } from "child_process";
 import {
   ActiveDSConnect,
@@ -31,7 +31,6 @@ import {
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
@@ -48,7 +47,7 @@ interface process {
   entry: ActiveDefinitions.LedgerEntry;
   resolve: any;
   reject: any;
-  protocol?: ActiveProtocol.Process;
+  pid: number;
 }
 
 /**
@@ -63,19 +62,19 @@ export class Host extends Home {
    * All communications done via a single REST server
    * we will need to manage permissions and security to seperate the calls
    *
-   * @type {http.Server}
+   * @type {Server}
    * @memberof Home
    */
-  public readonly api: http.Server;
+  public readonly api: Server;
 
   /**
    * Server Sent events
    *
    * @private
-   * @type {http.ServerResponse[]}
+   * @type {ServerResponse[]}
    * @memberof Host
    */
-  private sse: http.ServerResponse[] = [];
+  private sse: ServerResponse[] = [];
 
   /**
    * Server connection to the couchdb instance for this node
@@ -127,18 +126,17 @@ export class Host extends Home {
         // We may already have the $umid in memory
         if (this.processPending[entry.$umid]) {
           ActiveLogger.warn("Broadcast Recieved : " + entry.$umid);
-          // Do we still have the transaction in memory?
-          if (this.processPending[entry.$umid].protocol) {
-            // Update other voting nodes response into the process handling the transaction
-            this.processPending[entry.$umid].entry.$nodes[
-              this.reference
-            ] = this.processPending[entry.$umid].protocol!.updatedFromBroadcast(
-              entry.$nodes
-            );
-          } else {
-            ActiveLogger.fatal("Should always be targetted");
+          // Process Assigned?
+          if (this.processPending[entry.$umid].pid) {
+            // Find Processor to send in the broadcast message
+            this.findProcessor(this.processPending[entry.$umid].pid)!.send({
+              type: "broadcast",
+              data: {
+                umid: entry.$umid,
+                nodes: entry.$nodes
+              }
+            });
           }
-
           return resolve({
             status: 200,
             data: this.processPending[entry.$umid].entry
@@ -150,7 +148,8 @@ export class Host extends Home {
       this.processPending[entry.$umid] = {
         entry: entry,
         resolve: resolve,
-        reject: reject
+        reject: reject,
+        pid: 0
       };
       // Ask for hold
       this.hold(entry);
@@ -180,61 +179,59 @@ export class Host extends Home {
     this.dbEventConnection.info();
 
     // Create HTTP server for managing transaction requests
-    this.api = http.createServer(
-      (req: http.IncomingMessage, res: http.ServerResponse) => {
-        // Log Request
-        ActiveLogger.debug(
-          `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
-        );
+    this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
+      // Log Request
+      ActiveLogger.debug(
+        `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
+      );
 
-        // Capture POST data
-        if (req.method == "POST") {
-          // Holds the body
-          let body: Buffer[] = [];
+      // Capture POST data
+      if (req.method == "POST") {
+        // Holds the body
+        let body: Buffer[] = [];
 
-          // Reads body data
-          req.on("data", chunk => {
-            body.push(chunk);
-          });
+        // Reads body data
+        req.on("data", chunk => {
+          body.push(chunk);
+        });
 
-          // When read has compeleted continue
-          req.on("end", async () => {
-            // Join the buffer storing the data
-            let data = Buffer.concat(body);
+        // When read has compeleted continue
+        req.on("end", async () => {
+          // Join the buffer storing the data
+          let data = Buffer.concat(body);
 
-            // gzipped?
-            if (req.headers["content-encoding"] == "gzip") {
-              data = await ActiveGZip.ungzip(data);
-            }
+          // gzipped?
+          if (req.headers["content-encoding"] == "gzip") {
+            data = await ActiveGZip.ungzip(data);
+          }
 
-            // All posted data should be JSON
-            // Convert data for potential encryption
-            Endpoints.postConvertor(
-              this,
-              data.toString(),
-              ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-                false
-            )
-              .then(body => {
-                // Post Converted, Continue processing
-                this.processEndpoints(req, res, body);
-              })
-              .catch(error => {
-                // Failed to convery respond;
-                this.writeResponse(
-                  res,
-                  error.statusCode || 500,
-                  JSON.stringify(error.content || {}),
-                  req.headers["accept-encoding"] as string
-                );
-              });
-          });
-        } else {
-          // Simple get, Continue Processing
-          this.processEndpoints(req, res);
-        }
+          // All posted data should be JSON
+          // Convert data for potential encryption
+          Endpoints.postConvertor(
+            this,
+            data.toString(),
+            ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
+              false
+          )
+            .then(body => {
+              // Post Converted, Continue processing
+              this.processEndpoints(req, res, body);
+            })
+            .catch(error => {
+              // Failed to convery respond;
+              this.writeResponse(
+                res,
+                error.statusCode || 500,
+                JSON.stringify(error.content || {}),
+                req.headers["accept-encoding"] as string
+              );
+            });
+        });
+      } else {
+        // Simple get, Continue Processing
+        this.processEndpoints(req, res);
       }
-    );
+    });
 
     // Create Index
     this.dbConnection
@@ -244,12 +241,28 @@ export class Host extends Home {
         }
       })
       .then(() => {
-        // Manage False postive warnings.
-        // Find alternative way to capture rejections per message
-        process.setMaxListeners(300);
+        // How many threads (Cache so we can check on ready)
+        const cpuTotal = PhysicalCores.count();
+        // Ready counter
+        let cpuReady = 0;
+
+        // Processor Setup Values
+        const setup = {
+          type: "setup",
+          data: {
+            self: Home.host,
+            reference: Home.reference,
+            right: Home.right,
+            neighbourhood: this.neighbourhood.get(),
+            pubPem: Home.publicPem,
+            privPem: Home.identity.pem,
+            db: ActiveOptions.get<any>("db", {}),
+            __base: ActiveOptions.get("__base", __dirname)
+          }
+        };
 
         // Setup Processors
-        for (let i = 0; i < PhysicalCores.count(); i++) {
+        for (let i = 0; i < cpuTotal; i++) {
           // Create Process
           const pFork = fork(`${__dirname}\\process.js`, [], {
             cwd: process.cwd(),
@@ -309,10 +322,27 @@ export class Host extends Home {
                 break;
               case "broadcast":
                 ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
-                this.broadcast(m.data.$umid);
+                this.broadcast(m.data.umid);
                 break;
               case "reload":
                 this.reload();
+                break;
+              case "ready":
+                // Increase Ready Counter
+                cpuReady++;
+                // If not listening and have enough cpu returns (Covers crashes)
+                if (!this.api.listening && cpuReady >= cpuTotal) {
+                  // Listen to the Neighbourhood
+                  this.api.listen(
+                    ActiveInterfaces.getBindingDetails("port"),
+                    () => {
+                      ActiveLogger.info(
+                        "Activeledger listening on port " +
+                          ActiveInterfaces.getBindingDetails("port")
+                      );
+                    }
+                  );
+                }
                 break;
               default:
                 ActiveLogger.fatal("Unknown IPC Call");
@@ -320,35 +350,21 @@ export class Host extends Home {
             }
           });
 
-          // Send Setup
-          pFork.send({
-            type: "setup",
-            data: {
-              self: Home.host,
-              reference: Home.reference,
-              right: Home.right,
-              neighbourhood: this.neighbourhood.get(),
-              pubPem: Home.publicPem,
-              privPem: Home.identity.pem,
-              db: ActiveOptions.get<any>("db", {}),
-              __base: ActiveOptions.get("__base", __dirname)
-            }
-          });
-
           // Add process into array
-          this.processors.push(pFork);
+          const pos = this.processors.push(pFork);
+
+          // Send Setup
+          pFork.send(setup);
+
+          // Recreate a new subprocessor
+          // TODO: Is there a pending transaction(s) which may now be lost or needing to resolve
+          pFork.on("error", () => {
+            // We now need to somehow recursivly build a new one replace pos and attach error again
+          });
         }
 
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
-
-        // Listen to the Neighbourhood
-        this.api.listen(ActiveInterfaces.getBindingDetails("port"), () => {
-          ActiveLogger.info(
-            "Activeledger listening on port " +
-              ActiveInterfaces.getBindingDetails("port")
-          );
-        });
       })
       .catch(e => {
         throw new Error("Couldn't create default index");
@@ -411,7 +427,13 @@ export class Host extends Home {
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
     if (this.processPending[umid]) {
-      // Check Protocol still exists
+      // Pass destory message to processor
+      this.findProcessor(this.processPending[umid].pid)!.send({
+        type: "destory",
+        data: {
+          umid
+        }
+      });
       (this.processPending[umid] as any).entry = null;
       (this.processPending[umid] as any) = null;
     }
@@ -521,8 +543,6 @@ export class Host extends Home {
 
     // Ask for locks
     if (Locker.hold([...input, ...output])) {
-      // Yes, Continue Processing
-
       // Get next process from the array
       const robin = this.getRobin();
 
@@ -535,6 +555,9 @@ export class Host extends Home {
         vote: false,
         commit: false
       };
+
+      // Remember who got selected
+      this.processPending[v.$umid].pid = robin.pid;
 
       // Pass transaction to sub processor
       ActiveLogger.debug("Processor Selected ==> " + robin.pid);
@@ -593,21 +616,21 @@ export class Host extends Home {
       if (pending.entry) {
         this.destroy(pending.entry.$umid);
       }
-    }, 20000); //300000
+    }, 300000); //20000
   }
 
   /**
    * Process Activeledger request endpoints
    *
    * @private
-   * @param {http.IncomingMessage} req
-   * @param {http.ServerResponse} res
+   * @param {IncomingMessage} req
+   * @param {ServerResponse} res
    * @param {*} [body]
    * @memberof Host
    */
   private processEndpoints(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
+    req: IncomingMessage,
+    res: ServerResponse,
     body?: any
   ) {
     // Internal or External Request
@@ -787,14 +810,14 @@ export class Host extends Home {
    * Write the response to the brwoser
    *
    * @private
-   * @param {http.ServerResponse} res
+   * @param {ServerResponse} res
    * @param {number} statusCode
    * @param {(string | Buffer)} content
    * @param {string} encoding
    * @memberof Host
    */
   private async writeResponse(
-    res: http.ServerResponse,
+    res: ServerResponse,
     statusCode: number,
     content: string | Buffer,
     encoding: string
@@ -824,11 +847,11 @@ export class Host extends Home {
    *
    * @private
    * @param {string} requester
-   * @param {http.IncomingMessage} req
+   * @param {IncomingMessage} req
    * @returns {boolean}
    * @memberof Host
    */
-  private firewallCheck(requester: string, req: http.IncomingMessage): boolean {
+  private firewallCheck(requester: string, req: IncomingMessage): boolean {
     return (
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
