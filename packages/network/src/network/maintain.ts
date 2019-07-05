@@ -77,7 +77,7 @@ export class Maintain {
   private static readonly interval: number =
     (20 + Math.floor(Math.random() * 15) + -10) * 1000;
 
-  private static home:Home;
+  private static home: Home;
 
   /**
    * Creates an instance of Maintain
@@ -94,11 +94,6 @@ export class Maintain {
 
     // Start the timer
     Maintain.healthTimer(true);
-
-    // // Subscribe to network resets
-    // this.session.on("reorder", () => {
-    //   this.createNetworkOrder();
-    // });
   }
 
   /**
@@ -162,7 +157,8 @@ export class Maintain {
     // Only Rebase if recognised
     ActiveLogger.debug("Rebase Request");
     if (
-      (!Maintain.rebasing && Maintain.home.getStatus() == NeighbourStatus.Recognised) ||
+      (!Maintain.rebasing &&
+        Maintain.home.getStatus() == NeighbourStatus.Recognised) ||
       Maintain.home.getStatus() == NeighbourStatus.Unrecognised
     ) {
       Maintain.rebasing = true;
@@ -188,7 +184,9 @@ export class Maintain {
    * @returns {*}
    * @memberof Maintain
    */
-  private static async checkNeighbourhood(force: boolean = false): Promise<void> {
+  private static async checkNeighbourhood(
+    force: boolean = false
+  ): Promise<void> {
     if (Maintain.checking && !force) return;
 
     // Store current processing reference
@@ -271,7 +269,7 @@ export class Maintain {
       // No longer checking
       Maintain.checking = false;
       Maintain.rebasing = false;
-      return; // TODO:Maintain.session.reload();
+      return;
     }
 
     // Loop starting position relative to home

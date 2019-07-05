@@ -530,6 +530,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
           process.exit(1);
         }
       };
+      // Let them know!
+      ActiveLogger.info("Activeledger Boot Process Started");
 
       // Self hosted data storage engine
       if (ActiveOptions.get<any>("db", {}).selfhost) {
