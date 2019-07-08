@@ -38,6 +38,8 @@ import { Endpoints } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 
+// TODO: Check .send doesn't error if it does rebuild processor
+
 /**
  * Process object used to manage an individual transaction
  *
@@ -48,6 +50,27 @@ interface process {
   resolve: any;
   reject: any;
   pid: number;
+}
+
+/**
+ * Setup object for a processor process
+ *
+ * @interface setup
+ */
+interface setup {
+  type: string;
+  data: {
+    self: string;
+    reference: string;
+    right: Neighbour;
+    neighbourhood: {
+      [reference: string]: Neighbour;
+    };
+    pubPem: string;
+    privPem: any;
+    db: any;
+    __base: unknown;
+  };
 }
 
 /**
@@ -113,6 +136,14 @@ export class Host extends Home {
   private processPending: {
     [reference: string]: process;
   } = {};
+
+  /**
+   * How many cpu processors have said they're ready
+   *
+   * @private
+   * @memberof Host
+   */
+  private cpuReady = 0;
 
   /**
    * Add process into pending
@@ -243,11 +274,9 @@ export class Host extends Home {
       .then(() => {
         // How many threads (Cache so we can check on ready)
         const cpuTotal = PhysicalCores.count();
-        // Ready counter
-        let cpuReady = 0;
 
         // Processor Setup Values
-        const setup = {
+        const setup: setup = {
           type: "setup",
           data: {
             self: Home.host,
@@ -263,104 +292,12 @@ export class Host extends Home {
 
         // Setup Processors
         for (let i = 0; i < cpuTotal; i++) {
-          // Create Process
-          const pFork = fork(`${__dirname}\\process.js`, [], {
-            cwd: process.cwd(),
-            stdio: "inherit"
-          });
-
-          // Listen for message to respond to waiting http
-          pFork.on("message", m => {
-            // Cache Pending Reference
-            const pending = this.processPending[m.data.umid];
-
-            // Check data for self to update
-            if (m.data.nodes) {
-              //pending.entry.$nodes[this.reference] = m.data.self;
-              pending.entry.$nodes = {
-                ...pending.entry.$nodes,
-                ...m.data.nodes
-              };
-            }
-
-            // Switch on type of messages from processors
-            switch (m.type) {
-              case "failed":
-                // So if we send as resolve it should still work (Will it keep our error?)
-                pending.resolve({
-                  status: 200,
-                  data: pending.entry
-                });
-                // Remove Locks
-                this.release(pending);
-                break;
-              case "commited":
-                // Process response back into entry for previous neighbours to know the results
-                pending.resolve({
-                  status: 200,
-                  data: pending.entry
-                });
-                // Remove Locks
-                this.release(pending);
-
-                // Post Reply Processing
-                if (m.data) {
-                  // If Transaction rebroadcast if hybrid enabled
-                  if (this.sse && m.data.tx) {
-                    let i = this.sse.length;
-                    while (i--) {
-                      // Check for active connection
-                      if (this.sse[i] && !this.sse[i].finished) {
-                        this.sse[i].write(
-                          `event: message\ndata:${JSON.stringify(m.data.tx)}`
-                        );
-                        this.sse[i].write("\n\n");
-                      }
-                    }
-                  }
-                }
-                break;
-              case "broadcast":
-                ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
-                this.broadcast(m.data.umid);
-                break;
-              case "reload":
-                this.reload();
-                break;
-              case "ready":
-                // Increase Ready Counter
-                cpuReady++;
-                // If not listening and have enough cpu returns (Covers crashes)
-                if (!this.api.listening && cpuReady >= cpuTotal) {
-                  // Listen to the Neighbourhood
-                  this.api.listen(
-                    ActiveInterfaces.getBindingDetails("port"),
-                    () => {
-                      ActiveLogger.info(
-                        "Activeledger listening on port " +
-                          ActiveInterfaces.getBindingDetails("port")
-                      );
-                    }
-                  );
-                }
-                break;
-              default:
-                ActiveLogger.fatal("Unknown IPC Call");
-                break;
-            }
-          });
-
           // Add process into array
-          const pos = this.processors.push(pFork);
-
-          // Send Setup
-          pFork.send(setup);
-
-          // Recreate a new subprocessor
-          // TODO: Is there a pending transaction(s) which may now be lost or needing to resolve
-          pFork.on("error", () => {
-            // We now need to somehow recursivly build a new one replace pos and attach error again
-          });
+          const processor = this.createProcessor(setup, cpuTotal);
+          // Add to list
+          this.processors.push(processor);
+          // Setup
+          processor.send(setup);
         }
 
         // Setup Iterator
@@ -369,6 +306,144 @@ export class Host extends Home {
       .catch(e => {
         throw new Error("Couldn't create default index");
       });
+  }
+
+  /**
+   * Creator a processor thread (by process)
+   *
+   * @private
+   * @returns {ChildProcess}
+   * @memberof Host
+   */
+  private createProcessor(setup: setup, cpuTotal?: number): ChildProcess {
+    // Create Process
+    const pFork = fork(`${__dirname}\\process.js`, [], {
+      cwd: process.cwd(),
+      stdio: "inherit"
+    });
+
+    // Listen for message to respond to waiting http
+    pFork.on("message", m => {
+      // Cache Pending Reference
+      const pending = this.processPending[m.data.umid];
+
+      // Check data for self to update
+      if (m.data.nodes) {
+        //pending.entry.$nodes[this.reference] = m.data.self;
+        pending.entry.$nodes = {
+          ...pending.entry.$nodes,
+          ...m.data.nodes
+        };
+      }
+
+      // Switch on type of messages from processors
+      switch (m.type) {
+        case "failed":
+          // So if we send as resolve it should still work (Will it keep our error?)
+          pending.resolve({
+            status: 200,
+            data: pending.entry
+          });
+          // Remove Locks
+          this.release(pending);
+          break;
+        case "commited":
+          // Process response back into entry for previous neighbours to know the results
+          pending.resolve({
+            status: 200,
+            data: pending.entry
+          });
+          // Remove Locks
+          this.release(pending);
+
+          // Post Reply Processing
+          if (m.data) {
+            // If Transaction rebroadcast if hybrid enabled
+            if (this.sse && m.data.tx) {
+              let i = this.sse.length;
+              while (i--) {
+                // Check for active connection
+                if (this.sse[i] && !this.sse[i].finished) {
+                  this.sse[i].write(
+                    `event: message\ndata:${JSON.stringify(m.data.tx)}`
+                  );
+                  this.sse[i].write("\n\n");
+                }
+              }
+            }
+          }
+          break;
+        case "broadcast":
+          ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
+          this.broadcast(m.data.umid);
+          break;
+        case "reload":
+          this.reload();
+          break;
+        case "ready":
+          // Check that we should be counting
+          if (cpuTotal) {
+            // Increase Ready Counter
+            this.cpuReady++;
+            // If not listening and have enough cpu returns (Covers crashes)
+            if (!this.api.listening && this.cpuReady >= cpuTotal) {
+              // Listen to the Neighbourhood
+              this.api.listen(
+                ActiveInterfaces.getBindingDetails("port"),
+                () => {
+                  ActiveLogger.info(
+                    "Activeledger listening on port " +
+                      ActiveInterfaces.getBindingDetails("port")
+                  );
+                }
+              );
+            }
+          }
+          break;
+        default:
+          ActiveLogger.fatal("Unknown IPC Call");
+          break;
+      }
+    });
+
+    // Recreate a new subprocessor
+    pFork.on("error", error => {
+      ActiveLogger.fatal(error, "Processor Crashed");
+      // Look for any transactions which are in this processor
+      const pendings = Object.keys(this.processPending);
+      pendings.forEach(key => {
+        // Get Transaction
+        const pending = this.processPending[key];
+        // Was this transaction in the broken processor
+        if (pending.pid === pFork.pid) {
+          // Resolve to return oprhened transactions
+          pending.resolve({
+            status: 200,
+            data: pending.entry
+          });
+
+          // Clear Internal
+          (pending as any).entry = null;
+          (pending as any) = null;
+        }
+      });
+      // find from processors list
+      const pos = this.processors.findIndex(processor => {
+        return processor.pid === pFork.pid;
+      });
+      // Remove from processors list
+      if (pos) {
+        this.processors.splice(pos, 1);
+      }
+      // We should now create a new processor
+      const processor = this.createProcessor(setup);
+      // Add to list
+      this.processors.push(processor);
+      // Setup
+      processor.send(setup);
+    });
+
+    return pFork;
   }
 
   /**
