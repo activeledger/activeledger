@@ -351,7 +351,7 @@ export class Host extends Home {
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
-            data: pending.entry
+            data: { ...pending.entry, ...m.data.entry }
           });
           // Remove Locks
           this.release(pending);
@@ -359,6 +359,7 @@ export class Host extends Home {
           // Post Reply Processing
           if (m.data) {
             // If Transaction rebroadcast if hybrid enabled
+            // todo : Use pending.tx as it wouldn't have changed!
             if (this.sse && m.data.tx) {
               let i = this.sse.length;
               while (i--) {
@@ -400,8 +401,17 @@ export class Host extends Home {
             }
           }
           break;
+        case "unhandledrejection":
+            // So if we send as resolve it should still work
+            pending.resolve({
+              status: 200,
+              data: "UnhandledRejection Error"
+            });
+            // Remove Locks
+            this.release(pending);
+          break;
         default:
-          ActiveLogger.fatal("Unknown IPC Call");
+          ActiveLogger.fatal(m, "Unknown IPC Call");
           break;
       }
     });
