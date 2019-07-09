@@ -364,7 +364,7 @@ export class ActiveLogger {
    */
   private static process(): string {
     return ` ${ActiveLogger.colour(
-      `(Activeledger/${process.pid.toString().padStart(5, "x")})`,
+      `(Activeledger/${process.pid.toString().padStart(5, "0")})`,
       90
     )} `;
   }
