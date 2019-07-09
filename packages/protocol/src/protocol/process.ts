@@ -686,7 +686,7 @@ export class Process extends EventEmitter {
             }
 
             // Update Streams
-            this.updateStreams({ tx: this.compactTxEntry() }, earlyCommit);
+            this.updateStreams(earlyCommit);
           })
           .catch(error => {
             // Don't let local error stop other nodes
@@ -743,7 +743,7 @@ export class Process extends EventEmitter {
                   if (reconciled) {
                     ActiveLogger.info("Self Renconcile Successful");
                     // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
-                    this.updateStreams({ tx: this.compactTxEntry() });
+                    this.updateStreams();
                   } else {
                     // No move onto internal attempts
                     // Upgrade error code so restore will process it
@@ -855,7 +855,7 @@ export class Process extends EventEmitter {
    * @param {Function} [earlyCommit]
    * @memberof Process
    */
-  private updateStreams(commitData: unknown, earlyCommit?: Function) {
+  private updateStreams(earlyCommit?: Function) {
     {
       // Get the changed data streams
       let streams: ActiveDefinitions.LedgerStream[] = this.contractVM.getActivityStreamsFromVM();
@@ -1068,14 +1068,14 @@ export class Process extends EventEmitter {
                   if (earlyCommit) earlyCommit();
 
                   // Respond with the possible early commited
-                  this.emit("commited", commitData);
+                  this.emit("commited");
                 })
                 .catch(() => {
                   // Don't let local error stop other nodes
                   if (earlyCommit) earlyCommit();
 
                   // Ignore errors for now, As commit was still a success
-                  this.emit("commited", commitData);
+                  this.emit("commited");
                 });
             })
             .catch((error: Error) => {
@@ -1147,13 +1147,13 @@ export class Process extends EventEmitter {
             if (earlyCommit) earlyCommit();
 
             // Respond with the possible early commited
-            this.emit("commited", commitData);
+            this.emit("commited");
           })
           .catch(error => {
             // Don't let local error stop other nodes
             if (earlyCommit) earlyCommit();
             // Ignore errors for now, As commit was still a success
-            this.emit("commited", commitData);
+            this.emit("commited");
           });
       }
     }

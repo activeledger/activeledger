@@ -180,16 +180,10 @@ class Processor {
 
           // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
           // While it is global we need to manage it here to keep the encapsulation
-          this.unhandledRejection[m.entry.$umid] = (reason: any, p: any) => {
+          this.unhandledRejection[m.entry.$umid] = (reason: Error) => {
             // Make sure the object exists
             if (this.protocols[m.entry.$umid]) {
-              (process as any).send({
-                type: "UnhandledRejection",
-                data: {
-                  reason,
-                  p
-                }
-              });
+              this.unhandled(m.entry, reason);
             }
           };
 
@@ -255,7 +249,7 @@ class Processor {
    * @memberof Processor
    */
   private committed(entry: any, response: any): void {
-    if (response.instant) {
+    if (response && response.instant) {
       ActiveLogger.debug(entry, "Transaction Currently Processing");
     } else {
       ActiveLogger.debug(entry, "Transaction Processed");
@@ -264,7 +258,12 @@ class Processor {
     // Pass back to host to respond.
     this.send("commited", {
       umid: entry.$umid,
-      nodes: entry.$nodes
+      nodes: entry.$nodes,
+      entry: {
+        $streams: entry.$streams,
+        $territoriality: entry.$territoriality,
+        response: entry.response
+      }
     });
 
     // Clear Early?
@@ -396,6 +395,31 @@ class Processor {
             });
           });
       }
+    }
+  }
+
+  /**
+   * Process unhandledrejections back to main thread
+   *
+   * @private
+   * @param {*} entry
+   * @param {Error} error
+   * @memberof Processor
+   */
+  private unhandled(entry: any, error: Error): void {
+    ActiveLogger.warn(error, "UnhandledRejection");
+    // Store error (if we can)
+    if (entry.$nodes) {
+      entry.$nodes[Home.reference].error = error;
+    }
+
+    // Pass back to host to respond
+    this.send("unhandledrejection", {
+      umid: entry.$umid
+    });
+
+    if (!entry.$broadcast) {
+      this.clear(entry.$umid);
     }
   }
 
