@@ -450,7 +450,7 @@ class Processor {
     // Clear Listners & Destory Early
     if (this.protocols[umid]) {
       this.protocols[umid].removeAllListeners();
-      this.protocols[umid].destroy();
+      this.protocols[umid].destroy(umid);
       // Clear
       (this.protocols[umid] as unknown) = null;
     }
