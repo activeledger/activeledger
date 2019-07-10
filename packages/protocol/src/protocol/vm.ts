@@ -212,8 +212,19 @@ export class VirtualMachine extends events.EventEmitter
     return exported;
   }
 
+  /**
+   * Clear transaction from memory by umid
+   *
+   * @param {string} umid
+   * @memberof VirtualMachine
+   */
   public destroy(umid: string): void {
+    // Clear inside VM
     this.virtualInstance.destroy(umid);
+    // Clear references here
+    if (this.contractReferences && this.contractReferences[umid]) {
+      delete this.contractReferences[umid];
+    }
   }
 
   /**
@@ -428,7 +439,7 @@ export class VirtualMachine extends events.EventEmitter
   ): Promise<boolean> {
     return new Promise((resolve, reject) => {
       // Manage INC
-      this.incMarshel(nodes);
+      this.incMarshel(nodes, umid);
 
       // Script running flag
       this.scriptFinishedExec = false;
@@ -473,54 +484,48 @@ export class VirtualMachine extends events.EventEmitter
    * @returns {Promise<boolean>}
    * @memberof VirtualMachine
    */
-  public reconcile(nodes: ActiveDefinitions.INodes): Promise<boolean> {
+  public reconcile(
+    nodes: ActiveDefinitions.INodes,
+    umid: string
+  ): Promise<boolean> {
     return new Promise((resolve, reject) => {
-        resolve(true);
+      // Manage INC
+      this.incMarshel(nodes, umid);
+
+      // Script running flag
+      this.scriptFinishedExec = false;
+
+      // Upgrade Phase
+      this.event.setPhase("reconcile");
+
+      // Manage Timeout
+      this.checkTimeout(
+        "reconcile",
+        () => {
+          reject("VM Error : Reconcile phase timeout");
+        },
+        umid
+      );
+
+      // Get Commit
+      this.virtualInstance
+        .reconcile(umid)
+        .then(() => {
+          // Here we may update the database from the objects (commit should return)
+          // Or just manipulate / check the outputs
+          this.scriptFinishedExec = true;
+          resolve(true);
+        })
+        .catch((e: any) => {
+          if (e instanceof Error) {
+            // Exception
+            reject(this.catchException(e, umid));
+          } else {
+            // Rejected by contract
+            reject(e);
+          }
+        });
     });
-    // return new Promise((resolve, reject) => {
-    //   // Manage INC
-    //   this.incMarshel(nodes);
-
-    //   // Script running flag
-    //   this.scriptFinishedExec = false;
-
-    //   // Upgrade Phase
-    //   this.event.setPhase("reconcile");
-
-    //   // Manage Timeout
-    //   this.checkTimeout("reconcile", () => {
-    //     reject("VM Error : Reconcile phase timeout");
-    //   });
-
-    //   // Get Commit
-    //   (this.virtual.run(
-    //     `if("reconcile" in sc) { 
-    //       // Run Reconcile
-    //       return sc.reconcile()
-    //     }else{
-    //       // Auto reject if no reconcile process
-    //       return new Promise((resolve, reject) => {
-    //         resolve(false);
-    //       });
-    //     } `,
-    //     "avm.js"
-    //   ) as Promise<any>)
-    //     .then(() => {
-    //       // Here we may update the database from the objects (commit should return)
-    //       // Or just manipulate / check the outputs
-    //       this.scriptFinishedExec = true;
-    //       resolve(true);
-    //     })
-    //     .catch(e => {
-    //       if (e instanceof Error) {
-    //         // Exception
-    //         reject(this.catchException(e));
-    //       } else {
-    //         // Rejected by contract
-    //         reject(e);
-    //       }
-    //     });
-    // });
   }
 
   /**
@@ -589,7 +594,7 @@ export class VirtualMachine extends events.EventEmitter
    * @param {ActiveDefinitions.INodes} nodes
    * @memberof VirtualMachine
    */
-  private incMarshel(nodes: ActiveDefinitions.INodes): void {
+  private incMarshel(nodes: ActiveDefinitions.INodes, umid: string): void {
     // Get Node Keys (Or get from Neighbourhood?)
     let keys = Object.keys(nodes);
     let i = keys.length;
@@ -608,8 +613,11 @@ export class VirtualMachine extends events.EventEmitter
 
       // Any Comms to send into VM (Alternative parse directly as JSON)
       if (sendComms) {
-        // FIXME: How should this be handled with VM Reuse
-        this.virtual.freeze(comms, "INC");
+        return this.virtualInstance.setINC(
+          umid,
+          comms,
+          this.contractReferences[umid].key
+        );
       }
     }
   }

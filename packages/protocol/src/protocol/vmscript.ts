@@ -5,6 +5,7 @@ import {
   IVMObject,
   IVMInternalCache
 } from "./interfaces/vm.interface";
+import { ActiveDefinitions } from "@activeledger/activedefinitions";
 
 class ContractControl implements IVMObject {
   /**
@@ -69,6 +70,22 @@ class ContractControl implements IVMObject {
    */
   public getActivityStreams(umid: string): { [reference: string]: Activity } {
     return this.smartContracts[umid].getActivityStreams();
+  }
+
+  /**
+   * Set the internode communications
+   *
+   * @param {string} umid
+   * @param {ActiveDefinitions.ICommunications} comms
+   * @param {number} key
+   * @memberof ContractControl
+   */
+  public setInternodeComms(
+    umid: string,
+    comms: ActiveDefinitions.ICommunications,
+    key: number
+  ): void {
+    this.smartContracts[umid].setInterNodeComms(key, comms);
   }
 
   /**
@@ -171,6 +188,31 @@ class ContractControl implements IVMObject {
     }
   }
 
+  /**
+   * Run the reconcile process of the contract
+   *
+   * @param {string} umid
+   * @returns {Promise<any>}
+   * @memberof ContractControl
+   */
+  public reconcile(
+    umid: string,
+  ): Promise<any> {
+    if ("reconcile" in this.smartContracts[umid]) {
+      // Run reconcile process
+        return this.smartContracts[umid].reconcile!();
+    } else {
+      // Auto resolve if no reconcile process
+      return Promise.resolve();
+    }
+  }
+
+  /**
+   * Clear smart contract transaction from memory
+   *
+   * @param {string} umid
+   * @memberof ContractControl
+   */
   public destroy(umid: string): void {
     delete this.smartContracts[umid];
   }

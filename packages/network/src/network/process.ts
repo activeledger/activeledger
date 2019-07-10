@@ -452,7 +452,7 @@ class Processor {
       this.protocols[umid].removeAllListeners();
       this.protocols[umid].destroy(umid);
       // Clear
-      (this.protocols[umid] as unknown) = null;
+      delete this.protocols[umid]
     }
 
     // No longer need to handle unhandled rejections
