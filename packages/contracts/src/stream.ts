@@ -41,6 +41,16 @@ export class Stream {
    */
   private activities: { [reference: string]: Activity } = {};
 
+
+  /**
+   *  Storage of inbounc INC data
+   *
+   * @private
+   * @type {Object}
+   * @memberof Stream
+   */
+  private inINC: ActiveDefinitions.ICommunications
+
   /**
    * Storage of outbound INC data
    *
@@ -292,6 +302,20 @@ export class Stream {
   }
 
   /**
+   * Sets the InterNodeComms from the network
+   *
+   * @param {number} secret
+   * @param {ActiveDefinitions.ICommunications} data
+   * @memberof Stream
+   */
+  public setInterNodeComms(secret: number, data: ActiveDefinitions.ICommunications): void {
+    if (this.key == secret) {
+      this.inINC = data;
+    }
+    throw new Error("Secret Key Needed");
+  }
+
+  /**
    * Return the inbound INC messages
    *
    * @param {number} secret
@@ -299,7 +323,7 @@ export class Stream {
    * @memberof Stream
    */
   protected getInterNodeComms(): ActiveDefinitions.ICommunications {
-    return (global as any).INC as ActiveDefinitions.ICommunications;
+    return this.inINC;
   }
 
   /**
