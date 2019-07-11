@@ -267,7 +267,7 @@ class Processor {
     });
 
     // Clear Early?
-    if (!entry.$broadcast) {
+    if (!entry.$broadcast && !response) {
       this.clear(entry.$umid);
     }
   }
@@ -452,7 +452,7 @@ class Processor {
       this.protocols[umid].removeAllListeners();
       this.protocols[umid].destroy(umid);
       // Clear
-      delete this.protocols[umid]
+      delete this.protocols[umid];
     }
 
     // No longer need to handle unhandled rejections
