@@ -359,14 +359,13 @@ export class Host extends Home {
           // Post Reply Processing
           if (m.data) {
             // If Transaction rebroadcast if hybrid enabled
-            // todo : Use pending.tx as it wouldn't have changed!
             if (this.sse && m.data.tx) {
               let i = this.sse.length;
               while (i--) {
                 // Check for active connection
                 if (this.sse[i] && !this.sse[i].finished) {
                   this.sse[i].write(
-                    `event: message\ndata:${JSON.stringify(m.data.tx)}`
+                    `event: message\ndata:${JSON.stringify(pending.entry)}`
                   );
                   this.sse[i].write("\n\n");
                 }
@@ -402,13 +401,13 @@ export class Host extends Home {
           }
           break;
         case "unhandledrejection":
-            // So if we send as resolve it should still work
-            pending.resolve({
-              status: 200,
-              data: "UnhandledRejection Error"
-            });
-            // Remove Locks
-            this.release(pending);
+          // So if we send as resolve it should still work
+          pending.resolve({
+            status: 200,
+            data: "UnhandledRejection Error"
+          });
+          // Remove Locks
+          this.release(pending);
           break;
         default:
           ActiveLogger.fatal(m, "Unknown IPC Call");

@@ -311,8 +311,6 @@ export class VirtualMachine extends events.EventEmitter
           this.event
         );
 
-        // TODO: Finish implementing references
-
         // Set Sys Config
         if (payload.transaction.$namespace === "default") {
           this.virtualInstance.setSysConfig(
