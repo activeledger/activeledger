@@ -22,7 +22,7 @@ export interface IVMObject {
   runCommit(umid: string, possibleTerritoriality: boolean): Promise<boolean>;
   postProcess(umid: string, territoriality: boolean, who: string): Promise<any>;
   destroy(umid: string): void;
-  getTimeout(umid: string): Date;
+  getTimeout(umid: string): Date | null;
   setSysConfig(umid: string, sysConfig: any): void;
   reloadSysConfig(umid: string): boolean;
 }

@@ -195,12 +195,10 @@ class ContractControl implements IVMObject {
    * @returns {Promise<any>}
    * @memberof ContractControl
    */
-  public reconcile(
-    umid: string,
-  ): Promise<any> {
+  public reconcile(umid: string): Promise<any> {
     if ("reconcile" in this.smartContracts[umid]) {
       // Run reconcile process
-        return this.smartContracts[umid].reconcile!();
+      return this.smartContracts[umid].reconcile!();
     } else {
       // Auto resolve if no reconcile process
       return Promise.resolve();
@@ -223,8 +221,10 @@ class ContractControl implements IVMObject {
    * @returns {Date}
    * @memberof ContractControl
    */
-  public getTimeout(umid: string): Date {
-    return this.smartContracts[umid].getTimeout();
+  public getTimeout(umid: string): Date | null {
+    return this.smartContracts[umid]
+      ? this.smartContracts[umid].getTimeout()
+      : null;
   }
 
   // #endregion
