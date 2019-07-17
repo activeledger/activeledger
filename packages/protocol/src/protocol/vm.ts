@@ -369,6 +369,7 @@ export class VirtualMachine extends events.EventEmitter
           resolve(true);
         })
         .catch((e: Error) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e, umid));
@@ -377,6 +378,10 @@ export class VirtualMachine extends events.EventEmitter
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
@@ -411,6 +416,7 @@ export class VirtualMachine extends events.EventEmitter
           resolve(true);
         })
         .catch((e: Error) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e, umid));
@@ -419,6 +425,10 @@ export class VirtualMachine extends events.EventEmitter
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
@@ -464,6 +474,7 @@ export class VirtualMachine extends events.EventEmitter
           resolve(true);
         })
         .catch((e: any) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
             reject(this.catchException(e, umid));
@@ -472,6 +483,10 @@ export class VirtualMachine extends events.EventEmitter
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
