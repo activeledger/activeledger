@@ -23,7 +23,6 @@
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
-import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
 import { PouchDB, leveldown } from "./pouchdb";
 

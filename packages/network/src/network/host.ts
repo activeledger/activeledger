@@ -644,7 +644,6 @@ export class Host extends Home {
       this.processPending[v.$umid].pid = robin.pid;
 
       // Pass transaction to sub processor
-      ActiveLogger.debug("Processor Selected ==> " + robin.pid);
       robin.send({
         type: "tx",
         entry: this.processPending[v.$umid].entry
