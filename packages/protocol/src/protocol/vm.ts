@@ -31,6 +31,8 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
 import { NodeVM, VMScript } from "vm2";
 import * as fs from "fs";
+import { IVolatile } from "../../../definitions/src/definitions/document";
+import { EventEmitter } from "events";
 import {
   IVMDataPayload,
   IVMContractReferences,
@@ -633,6 +635,21 @@ export class VirtualMachine extends events.EventEmitter
         );
       }
     }
+  }
+
+  public getVolatile() {
+    const emitter = new EventEmitter();
+
+    emitter.on("getVolatile", (umid: string, streamId: string) => {
+      this.db
+        .get(`${streamId}:volatile`)
+        .then((volatile: IVolatile) => {
+          emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
+        })
+        .catch((error: Error) => {
+          emitter.emit(`volatileFetched-${umid}${streamId}`, error);
+        });
+    });
   }
 
   /**
