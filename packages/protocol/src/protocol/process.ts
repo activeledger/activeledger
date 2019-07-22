@@ -1351,71 +1351,59 @@ export class Process extends EventEmitter {
         check.map(item => {
           // Create promise to manage all revisions at once
           return new Promise((resolve, reject) => {
-            // Get Meta data
             this.db
-              .get(item + ":stream")
-              .then((meta: any) => {
-                // Check Script Lock
-                let iMeta: ActiveDefinitions.IMeta = meta as ActiveDefinitions.IMeta;
-                if (
-                  iMeta.contractlock &&
-                  iMeta.contractlock.length &&
-                  iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
-                ) {
-                  // We have a lock but not for the current contract request
-                  return reject({
-                    code: 1700,
-                    reason: "Stream contract locked"
-                  });
-                }
-                // Check Namespace Lock
-                if (
-                  iMeta.namespaceLock &&
-                  iMeta.namespaceLock.length &&
-                  iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
-                ) {
-                  // We have a lock but not for the current contract request
-                  return reject({
-                    code: 1710,
-                    reason: "Stream namespace locked"
-                  });
-                }
+              .allDocs({
+                keys: [item + ":stream", item, item + ":volatile"],
+                include_docs: true
+              })
+              .then((docs: any) => {
+                // Check Documents
+                if (docs.rows.length === 3) {
+                  // Get Documents
+                  const [meta, state, volatile]: any = docs.rows as string[];
 
-                // Got the meta, Now for real stream
-                this.db
-                  .get(item)
-                  .then((state: any) => {
-                    // Got the state now for volatile
-                    this.db
-                      .get(item + ":volatile")
-                      .then((volatile: any) => {
-                        // Resolve the whole stream
-                        resolve({
-                          meta: meta,
-                          state: state,
-                          volatile: volatile
-                        });
-                      })
-                      .catch((error: any) => {
-                        // Add Info
-                        error.code = 960;
-                        error.reason = "Volatile not found";
-                        // Rethrow
-                        reject(error);
-                      });
-                  })
-                  .catch((error: any) => {
-                    // Add Info
-                    error.code = 960;
-                    error.reason = "State not found";
-                    // Rethrow
-                    reject(error);
+                  // Check meta
+                  // Check Script Lock
+                  let iMeta: ActiveDefinitions.IMeta = meta.doc as ActiveDefinitions.IMeta;
+                  if (
+                    iMeta.contractlock &&
+                    iMeta.contractlock.length &&
+                    iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
+                  ) {
+                    // We have a lock but not for the current contract request
+                    return reject({
+                      code: 1700,
+                      reason: "Stream contract locked"
+                    });
+                  }
+                  // Check Namespace Lock
+                  if (
+                    iMeta.namespaceLock &&
+                    iMeta.namespaceLock.length &&
+                    iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) ===
+                      -1
+                  ) {
+                    // We have a lock but not for the current contract request
+                    return reject({
+                      code: 1710,
+                      reason: "Stream namespace locked"
+                    });
+                  }
+
+                  // Resolve the whole stream
+                  resolve({
+                    meta: meta.doc,
+                    state: state.doc,
+                    volatile: volatile.doc
                   });
+                } else {
+                  reject({ code: 995, reason: "Stream(s) not found" });
+                }
               })
               .catch((error: any) => {
                 // Add Info
-                error.code = 950;
-                error.reason = "Stream not found";
+                error.code = 990;
+                error.reason = "Stream(s) not found";
                 // Rethrow
                 reject(error);
               });
@@ -1428,10 +1416,7 @@ export class Process extends EventEmitter {
           let i = stream.length;
           while (i--) {
             // Quick Reference
-            let streamId: string = (stream[i].meta as any)._id as string;
-
-            // Remove :stream
-            streamId = streamId.substring(0, streamId.length - 7);
+            let streamId: string = (stream[i].state as any)._id as string;
 
             // Get Revision type
             let revType = this.entry.$revs.$i;
@@ -1466,9 +1451,6 @@ export class Process extends EventEmitter {
               // Authorities need to be check flag
               let nhpkCheck = false;
               // Label or Key support
-              // let nhpkCheckIOMap = inputs
-              //   ? this.ioLabelMap.i
-              //   : this.ioLabelMap.o;
               let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
               // Check to see if key hardening is enabled and done
               if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
