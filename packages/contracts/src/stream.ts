@@ -24,6 +24,7 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveLogger as DefaultActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto as DefaultActiveCrypto } from "@activeledger/activecrypto";
+import { EventEmitter } from "events";
 
 /**
  * Stream management class. This will control ACL and permissions for activeledger
@@ -41,7 +42,6 @@ export class Stream {
    */
   private activities: { [reference: string]: Activity } = {};
 
-
   /**
    *  Storage of inbounc INC data
    *
@@ -49,7 +49,7 @@ export class Stream {
    * @type {Object}
    * @memberof Stream
    */
-  private inINC: ActiveDefinitions.ICommunications
+  private inINC: ActiveDefinitions.ICommunications;
 
   /**
    * Storage of outbound INC data
@@ -274,8 +274,8 @@ export class Stream {
     let total = 0;
     // Get Authority signatures as array
     let authSigs = Object.keys(this.sigs[activity.getId()]);
-    activity.getAuthorities().map(authority => {
-      authSigs.some(authHash => {
+    activity.getAuthorities().map((authority) => {
+      authSigs.some((authHash) => {
         // Signature already verified in procss.ts (Reject Code 1228)
         if (authHash == authority.hash) {
           total += authority.stake;
@@ -308,7 +308,10 @@ export class Stream {
    * @param {ActiveDefinitions.ICommunications} data
    * @memberof Stream
    */
-  public setInterNodeComms(secret: number, data: ActiveDefinitions.ICommunications): void {
+  public setInterNodeComms(
+    secret: number,
+    data: ActiveDefinitions.ICommunications
+  ): void {
     if (this.key == secret) {
       this.inINC = data;
     }
@@ -402,7 +405,7 @@ export class Stream {
       return matches === this.remoteAddr;
     } else {
       return Boolean(
-        matches.find(ip => {
+        matches.find((ip) => {
           return ip === this.remoteAddr;
         })
       );
@@ -661,7 +664,7 @@ export class Activity {
         }
 
         // Check we have a hash
-        authority.forEach(auth => {
+        authority.forEach((auth) => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
@@ -680,7 +683,7 @@ export class Activity {
             value: ActiveDefinitions.ILedgerAuthority,
             i: number,
             self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map(x => x.hash).indexOf(value.hash) == i
+          ) => self.map((x) => x.hash).indexOf(value.hash) == i
         );
 
         // Set Update Flag
@@ -899,19 +902,30 @@ export class Activity {
    * @returns {ActiveDefinitions.IVolatile}
    * @memberof Activity
    */
-  public getVolatile(): ActiveDefinitions.IVolatile {
-    // Deep copy
-    let volatile: ActiveDefinitions.IVolatile = JSON.parse(
-      JSON.stringify(this.volatile)
-    );
+  public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
+    return new Promise((resolve, reject) => {
+      const emitter = new EventEmitter(),
+        umid = this.umid,
+        streamid = this.getId();
+      emitter.emit("getVolatile", umid, streamid);
 
-    // Remove _id & _rev
-    if ((volatile as ActiveDefinitions.IFullState)._id)
-      delete (volatile as ActiveDefinitions.IFullState)._id;
-    if ((volatile as ActiveDefinitions.IFullState)._rev)
-      delete (volatile as ActiveDefinitions.IFullState)._rev;
+      emitter.on(
+        `volatileFetched-${umid}${streamid}`,
+        (err: Error, volatile: ActiveDefinitions.IVolatile) => {
+          if (err) {
+            reject(err);
+          }
 
-    return volatile;
+          // Remove _id & _rev
+          if ((volatile as ActiveDefinitions.IFullState)._id)
+            delete (volatile as ActiveDefinitions.IFullState)._id;
+          if ((volatile as ActiveDefinitions.IFullState)._rev)
+            delete (volatile as ActiveDefinitions.IFullState)._rev;
+
+          resolve(volatile);
+        }
+      );
+    });
   }
 
   /**
