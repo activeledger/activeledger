@@ -31,7 +31,6 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
 import { NodeVM, VMScript } from "vm2";
 import * as fs from "fs";
-import { IVolatile } from "../../../definitions/src/definitions/document";
 import { EventEmitter } from "events";
 import {
   IVMDataPayload,
@@ -56,8 +55,22 @@ export class VirtualMachine extends events.EventEmitter
    */
   private virtual: NodeVM;
 
+  /**
+   * Holds the VM instance
+   *
+   * @private
+   * @type {*}
+   * @memberof VirtualMachine
+   */
   private virtualInstance: any; // IVMObject;
 
+  /**
+   * References to the contracts
+   *
+   * @private
+   * @type {IVMContractReferences}
+   * @memberof VirtualMachine
+   */
   private contractReferences: IVMContractReferences;
 
   /**
@@ -68,6 +81,15 @@ export class VirtualMachine extends events.EventEmitter
    * @memberof VirtualMachine
    */
   private event: EventEngine;
+
+  /**
+   * Holds the event emitter
+   *
+   * @private
+   * @type {EventEmitter}
+   * @memberof VirtualMachine
+   */
+  private emitter: EventEmitter;
 
   /**
    * When this VM timeout can not be extended past.
@@ -110,6 +132,11 @@ export class VirtualMachine extends events.EventEmitter
     private dbev: ActiveDSConnect
   ) {
     super();
+
+    // Initialise the emitter for listening and pass through to the contract
+    this.emitter = new EventEmitter();
+    // Start volatile event listener
+    this.listenForVolatile();
   }
 
   /**
@@ -310,7 +337,8 @@ export class VirtualMachine extends events.EventEmitter
         this.virtualInstance.initialiseContract(
           payload,
           new QueryEngine(this.db, true),
-          this.event
+          this.event,
+          this.emitter
         );
 
         // Set Sys Config
@@ -637,18 +665,32 @@ export class VirtualMachine extends events.EventEmitter
     }
   }
 
-  public getVolatile() {
-    const emitter = new EventEmitter();
+  public getVolatile() {}
 
-    emitter.on("getVolatile", (umid: string, streamId: string) => {
+  private listenForVolatile(): void {
+    this.emitter.on("getVolatile", (umid: string, streamId: string) => {
+      // Check that the UMID matches the transactions Stream ID
+      ActiveLogger.debug(this.contractReferences[umid], "TX");
+
+      // if (Object.keys(this.contractReferences[umid].tx.$i)[0] === streamId) {
       this.db
         .get(`${streamId}:volatile`)
-        .then((volatile: IVolatile) => {
-          emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
+        .then((volatile: ActiveDefinitions.IVolatile) => {
+          this.emitter.emit(
+            `volatileFetched-${umid}${streamId}`,
+            null,
+            volatile
+          );
         })
         .catch((error: Error) => {
-          emitter.emit(`volatileFetched-${umid}${streamId}`, error);
+          this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
         });
+      /* } else {
+        this.emitter.emit(
+          `volatileFetched-${umid}${streamId}`,
+          new Error("Access Denied")
+        );
+      } */
     });
   }
 

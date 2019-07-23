@@ -5,12 +5,14 @@ import {
   Activity
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
+import { EventEmitter } from "events";
 
 export interface IVMObject {
   initialiseContract(
     payload: IVMDataPayload,
     query: any,
-    event: EventEngine
+    event: EventEngine,
+    emitter: EventEmitter
   ): void;
   getActivityStreams(umid: string): { [reference: string]: Activity };
   getInternodeComms(umid: string): any;
