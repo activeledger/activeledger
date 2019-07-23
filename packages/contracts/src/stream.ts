@@ -135,15 +135,17 @@ export class Stream {
     private reads: ActiveDefinitions.LedgerIORputs,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private key: number,
+    private eventEmitter: EventEmitter,
     private selfHost: string
   ) {
     // Input Steam Activities
     let i: number = this.inputs.length;
     while (i--) {
       this.activities[this.inputs[i].state._id as string] = new Activity(
-        null,
+        umid,
         null,
         (this.inputs[i].state._id as string) in this.sigs,
+        this.eventEmitter,
         this.inputs[i].meta,
         this.inputs[i].state,
         this.inputs[i].volatile
@@ -157,9 +159,10 @@ export class Stream {
     i = this.outputs.length;
     while (i--) {
       this.activities[this.outputs[i].state._id as string] = new Activity(
-        null,
+        umid,
         null,
         false,
+        this.eventEmitter,
         this.outputs[i].meta,
         this.outputs[i].state,
         this.outputs[i].volatile
@@ -221,8 +224,12 @@ export class Stream {
       let activity = new Activity(
         deterministic ? deterministic : this.umid,
         name,
-        false
+        false,
+        this.eventEmitter
       );
+
+      // Set volatile as blank to prevent unecessary fetch as we know right now it is blank
+      activity.setVolatile({});
       // Set Secret Key
       activity.setKey(this.key);
       // TODO: Convert name into a umid string and alert dev
@@ -506,9 +513,10 @@ export class Activity {
    * @memberof Activity
    */
   constructor(
-    private umid: string | null,
+    private umid: string,
     private name: string | null,
     private signature: boolean,
+    private eventEmitter: EventEmitter,
     private meta: ActiveDefinitions.IMeta = { _id: null, _rev: null },
     private state: ActiveDefinitions.IState = { _id: null, _rev: null },
     public volatile: ActiveDefinitions.IVolatile = { _id: null, _rev: null }
@@ -904,27 +912,33 @@ export class Activity {
    */
   public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
     return new Promise((resolve, reject) => {
-      const emitter = new EventEmitter(),
-        umid = this.umid,
-        streamid = this.getId();
-      emitter.emit("getVolatile", umid, streamid);
+      if (this.volatile) {
+        resolve(this.volatile);
+      } else {
+        const umid = this.umid,
+          streamid = this.getId();
+        this.eventEmitter.emit("getVolatile", umid, streamid);
 
-      emitter.on(
-        `volatileFetched-${umid}${streamid}`,
-        (err: Error, volatile: ActiveDefinitions.IVolatile) => {
-          if (err) {
-            reject(err);
+        this.eventEmitter.on(
+          `volatileFetched-${umid}${streamid}`,
+          (err: Error, volatile: ActiveDefinitions.IVolatile) => {
+            if (err) {
+              ActiveLogger.debug(err, "Event error");
+              reject(err);
+            }
+
+            // Remove _id & _rev
+            if ((volatile as ActiveDefinitions.IFullState)._id)
+              delete (volatile as ActiveDefinitions.IFullState)._id;
+            if ((volatile as ActiveDefinitions.IFullState)._rev)
+              delete (volatile as ActiveDefinitions.IFullState)._rev;
+
+            this.volatile = volatile;
+
+            resolve(volatile);
           }
-
-          // Remove _id & _rev
-          if ((volatile as ActiveDefinitions.IFullState)._id)
-            delete (volatile as ActiveDefinitions.IFullState)._id;
-          if ((volatile as ActiveDefinitions.IFullState)._rev)
-            delete (volatile as ActiveDefinitions.IFullState)._rev;
-
-          resolve(volatile);
-        }
-      );
+        );
+      }
     });
   }
 
