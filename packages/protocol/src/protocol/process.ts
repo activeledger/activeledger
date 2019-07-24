@@ -42,8 +42,10 @@ import {
  * @extends {EventEmitter}
  */
 export class Process extends EventEmitter {
+  // #region Class variables
+
   /**
-   * Hosts the VM instance
+   * Holds the instance that controls general contracts
    *
    * @private
    * @type {VirtualMachine}
@@ -51,12 +53,43 @@ export class Process extends EventEmitter {
    */
   private static generalContractVM: VirtualMachine;
 
+  /**
+   * Holds the instance that controls the default contracts (anything in the default namespace)
+   *
+   * @private
+   * @static
+   * @type {VirtualMachine}
+   * @memberof Process
+   */
   private static defaultContractsVM: VirtualMachine;
 
+  /**
+   * Holds an object of individual VM controller instances for unsafe contracts
+   * Unsafe contracts are separated by namespace, so these instances will still run multiple contracts
+   *
+   * @private
+   * @static
+   * @type {IVMContractHolder}
+   * @memberof Process
+   */
   private static singleContractVMHolder: IVMContractHolder;
 
+  /**
+   * Is this instance of Process dealing with a default contract
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Process
+   */
   private isDefault: boolean = false;
 
+  /**
+   * A reference to a contract in singleContractVMHolder, via namespace
+   *
+   * @private
+   * @type {string}
+   * @memberof Process
+   */
   private contractRef: string;
 
   /**
@@ -167,6 +200,8 @@ export class Process extends EventEmitter {
    */
   private currentVotes: number;
 
+  // #endregion
+
   /**
    * Creates an instance of Process.
    *
@@ -247,19 +282,12 @@ export class Process extends EventEmitter {
    */
   public async start() {
     let virtualMachine: IVirtualMachine;
-    if (this.isDefault) {
-      virtualMachine = Process.defaultContractsVM;
-    } else if (this.contractRef) {
-      virtualMachine = Process.singleContractVMHolder[this.contractRef];
-    } else {
-      virtualMachine = Process.generalContractVM;
-    }
-
-    ActiveLogger.info("New TX : " + this.entry.$umid);
-    ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
     if (this.entry.$tx.$namespace == "default") {
+      // Set isDefault flag to true
+      this.isDefault = true;
+
       // Default Contract Location
       this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
         this.entry.$tx.$namespace
@@ -269,6 +297,14 @@ export class Process extends EventEmitter {
       this.contractLocation = `${process.cwd()}/contracts/${
         this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`;
+    }
+
+    if (this.isDefault) {
+      virtualMachine = Process.defaultContractsVM;
+    } else if (this.contractRef) {
+      virtualMachine = Process.singleContractVMHolder[this.contractRef];
+    } else {
+      virtualMachine = Process.generalContractVM;
     }
 
     // Get contract file (Or From Database)
@@ -1393,7 +1429,7 @@ export class Process extends EventEmitter {
                   // Resolve the whole stream
                   resolve({
                     meta: meta.doc,
-                    state: state.doc,
+                    state: state.doc
                   });
                 } else {
                   reject({ code: 995, reason: "Stream(s) not found" });
