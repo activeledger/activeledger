@@ -37,6 +37,8 @@ class ContractControl implements IVMObject {
     event: EventEngine,
     emitter: EventEmitter
   ): void {
+    // We don't need to verify the code unless we suspect server has been
+    // comprimised. We will verify with the "install" routine
     this.smartContracts[
       payload.umid
     ] = new (require(payload.contractString)).default(

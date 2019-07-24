@@ -230,8 +230,6 @@ export class Process extends EventEmitter {
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
 
-    // We don't need to verify the code unless we suspect server has been
-    // comprimised. We will verify with the "install" routine
     try {
       Process.generalContractVM = new VirtualMachine(
         this.selfHost,
@@ -265,13 +263,12 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-    if (this.isDefault) {
-      Process.defaultContractsVM.destroy(umid);
-    } else if (this.contractRef) {
-      Process.singleContractVMHolder[this.contractRef].destroy(umid);
-    } else {
-      Process.generalContractVM.destroy(umid);
-    }
+    this.isDefault
+      ? Process.defaultContractsVM.destroy(umid)
+      : this.contractRef
+      ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+      : Process.generalContractVM.destroy(umid);
+
     delete this.entry;
   }
 
@@ -281,10 +278,8 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    let virtualMachine: IVirtualMachine;
-
     // Compiled Contracts sit in another location
-    if (this.entry.$tx.$namespace == "default") {
+    const setupDefaultLocation = () => {
       // Set isDefault flag to true
       this.isDefault = true;
 
@@ -292,20 +287,25 @@ export class Process extends EventEmitter {
       this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
         this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`;
-    } else {
-      // Ledger Transpiled Contract Location
-      this.contractLocation = `${process.cwd()}/contracts/${
-        this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`;
-    }
+    };
 
-    if (this.isDefault) {
-      virtualMachine = Process.defaultContractsVM;
-    } else if (this.contractRef) {
-      virtualMachine = Process.singleContractVMHolder[this.contractRef];
-    } else {
-      virtualMachine = Process.generalContractVM;
-    }
+    // Ledger Transpiled Contract Location
+    const setupLocation = () =>
+      (this.contractLocation = `${process.cwd()}/contracts/${
+        this.entry.$tx.$namespace
+      }/${this.entry.$tx.$contract}.js`);
+
+    // Is this a default contract
+    this.entry.$tx.$namespace === "default"
+      ? setupDefaultLocation()
+      : setupLocation();
+
+    // Setup the virtual machine for this process
+    const virtualMachine: IVirtualMachine = this.isDefault
+      ? Process.defaultContractsVM
+      : this.contractRef
+      ? Process.singleContractVMHolder[this.contractRef]
+      : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -316,8 +316,9 @@ export class Process extends EventEmitter {
       this.inputs = Object.keys(this.entry.$tx.$i || {});
 
       // We must have inputs (New Inputs can create brand new unknown outputs)
-      if (!this.inputs.length)
+      if (!this.inputs.length) {
         this.raiseLedgerError(1101, new Error("Inputs cannot be null"));
+      }
 
       // Which $i lookup are we using. Are they labelled or stream names
       this.labelOrKey();
@@ -349,31 +350,24 @@ export class Process extends EventEmitter {
         // [umid]:stream : Activeledger Meta Data
         // [umid]:volatile : Data that can be lost
 
-        // Check the input revisions
-        this.permissionsCheck()
-          .then((inputStreams: ActiveDefinitions.LedgerStream[]) => {
-            // Check the output revisions
-            this.permissionsCheck(false)
-              .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
-                this.process(inputStreams, outputStreams);
-              })
-              .catch(error => {
-                // Forward Error On
-                // We may not have the output stream, So we need to pass over the knocks
-                this.postVote(virtualMachine, {
-                  code: error.code,
-                  reason: error.reason || error.message
-                });
-              });
-          })
-          .catch(error => {
-            // Forward Error On
-            // We may not have the input stream, So we need to pass over the knocks
-            this.postVote(virtualMachine, {
-              code: error.code,
-              reason: error.reason || error.message
-            });
+        try {
+          // Check the input revisions
+          const inputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck();
+
+          // Check the output revisions
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck(
+            false
+          );
+
+          this.process(inputStreams, outputStreams);
+        } catch (error) {
+          // Forward Error On
+          // We may not have the output stream, So we need to pass over the knocks
+          this.postVote(virtualMachine, {
+            code: error.code,
+            reason: error.reason || error.message
           });
+        }
       } else {
         ActiveLogger.debug("Self signed Transaction");
 
@@ -386,52 +380,49 @@ export class Process extends EventEmitter {
             let signature = this.entry.$sigs[sigs[i]];
             let input = this.entry.$tx.$i[sigs[i]];
 
-            // Make sure we have an input (Can Skip otherwise maybe onboarded)
-            if (input) {
-              // Check the input has a public key
-              if (input.publicKey) {
-                if (
-                  !this.signatureCheck(
-                    input.publicKey,
-                    signature as string,
-                    input.type ? input.type : "rsa"
-                  )
-                ) {
-                  return this.raiseLedgerError(
-                    1250,
-                    new Error("Self signed signature not matching")
-                  );
-                }
-              } else {
-                // We don't have the public key to check
-                return this.raiseLedgerError(
-                  1255,
-                  new Error(
-                    "Self signed publicKey property not found in $i " + sigs[i]
-                  )
-                );
-              }
-            } else {
-              return this.raiseLedgerError(
-                1245,
-                new Error("Self signed signature missing input pairing")
+            const validSignature = () =>
+              this.signatureCheck(
+                input.publicKey,
+                signature as string,
+                input.type ? input.type : "rsa"
               );
-            }
+
+            return input
+              ? input.publicKey
+                ? !validSignature
+                  ? this.raiseLedgerError(
+                      1250,
+                      new Error("Self signed signature not matching")
+                    )
+                  : "Do nothing"
+                : // We don't have the public key to check
+                  this.raiseLedgerError(
+                    1255,
+                    new Error(
+                      "Self signed publicKey property not found in $i " +
+                        sigs[i]
+                    )
+                  )
+              : this.raiseLedgerError(
+                  1245,
+                  new Error("Self signed signature missing input pairing")
+                );
           }
         }
 
-        // No input streams, Maybe Output
-        this.permissionsCheck(false)
-          .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
-            this.process([], outputStreams);
-          })
-          .catch(error => {
-            // Forward Error On
-            this.postVote(virtualMachine, {
-              code: error.code,
-              reason: error.reason || error.message
-            });
+        try {
+          // No input streams, Maybe Output
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck(
+            false
+          );
+          this.process([], outputStreams);
+        } catch (error) {
+          // Forward Error On
+          this.postVote(virtualMachine, {
+            code: error.code,
+            reason: error.reason || error.message
           });
+        }
       }
     } else {
       // Contract not found
@@ -606,7 +597,7 @@ export class Process extends EventEmitter {
                     // Continue to next nodes vote
                     this.postVote(virtualMachine);
                   })
-                  .catch(error => {
+                  .catch((error) => {
                     // Continue Execution of consensus even with this failing
                     // Just add a fatal message
                     ActiveLogger.fatal(error, "Voting Error Log Issues");
@@ -619,13 +610,13 @@ export class Process extends EventEmitter {
                   });
               });
           })
-          .catch(error => {
+          .catch((error) => {
             ActiveLogger.debug(error, "Verify Failure");
             // Verification Failure
             this.raiseLedgerError(1310, new Error(error));
           });
       })
-      .catch(e => {
+      .catch((e) => {
         // Contract not found / failed to start
         ActiveLogger.debug(e, "VM initialisation failed");
         this.raiseLedgerError(
@@ -654,7 +645,7 @@ export class Process extends EventEmitter {
     outputs: ActiveDefinitions.LedgerStream[] = []
   ): void {
     this.getReadOnlyStreams()
-      .then(readonly => {
+      .then((readonly) => {
         const contractName = this.contractLocation.substr(
           this.contractLocation.lastIndexOf("/") + 1
         );
@@ -884,7 +875,7 @@ export class Process extends EventEmitter {
             // Update Streams
             this.updateStreams(virtualMachine, earlyCommit);
           })
-          .catch(error => {
+          .catch((error) => {
             // Don't let local error stop other nodes
             if (earlyCommit) earlyCommit();
             ActiveLogger.debug(error, "VM Commit Failure");
@@ -1249,7 +1240,7 @@ export class Process extends EventEmitter {
                   this.entry.$territoriality,
                   this.entry.$umid
                 )
-                .then(post => {
+                .then((post) => {
                   this.nodeResponse.post = post;
 
                   // Update in communication (Recommended pre commit only but can be edge use cases)
@@ -1302,7 +1293,7 @@ export class Process extends EventEmitter {
 
           // Wait for all checks
           Promise.all(streamColCheck)
-            .then(streams => {
+            .then((streams) => {
               // Problem Streams Exist
               ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
               // Update commit
@@ -1333,7 +1324,7 @@ export class Process extends EventEmitter {
             this.entry.$territoriality,
             this.entry.$umid
           )
-          .then(post => {
+          .then((post) => {
             this.nodeResponse.post = post;
 
             // Update in communication (Recommended pre commit only but can be edge use cases)
@@ -1386,7 +1377,7 @@ export class Process extends EventEmitter {
       // Process all promises at "once"
       Promise.all(
         // Map all the objects to get their promises
-        check.map(item => {
+        check.map((item) => {
           // Create promise to manage all revisions at once
           return new Promise((resolve, reject) => {
             this.db
@@ -1653,7 +1644,7 @@ export class Process extends EventEmitter {
           // Everything is good
           resolve(stream);
         })
-        .catch(error => {
+        .catch((error) => {
           // Rethrow error
           reject(error);
         });
@@ -1680,7 +1671,7 @@ export class Process extends EventEmitter {
 
         Promise.all(
           // Map all the objects to get their promises
-          keyRefs.map(reference => {
+          keyRefs.map((reference) => {
             // Create promise to manage all revisions at once
             return new Promise((resolve, reject) => {
               // Get Meta data
@@ -1706,7 +1697,7 @@ export class Process extends EventEmitter {
             // Shoudln't need to do anything as reference object has been updated
             resolve(readonlyStreams);
           })
-          .catch(error => {
+          .catch((error) => {
             // Rethrow
             reject(error);
           });
@@ -1752,23 +1743,15 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private labelOrKey(outputs: boolean = false): void {
-    // Get Reference for inputs
-    let streams = this.inputs;
-    let txIO = this.entry.$tx.$i;
-    let map = this.ioLabelMap.i;
-
-    // Override for outputs
-    if (outputs) {
-      streams = this.outputs;
-      txIO = this.entry.$tx.$o;
-      map = this.ioLabelMap.o;
-    }
+    // Get reference for input or output
+    const streams = outputs ? this.outputs : this.inputs;
+    const txIO = outputs ? this.entry.$tx.$o : this.entry.$tx.$i;
+    const map = outputs ? this.ioLabelMap.o : this.ioLabelMap.i;
 
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      let i = streams.length;
-      while (i--) {
+      for (let i = 0; i < streams.length; i++) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
@@ -1856,7 +1839,7 @@ export class Process extends EventEmitter {
           });
         }
       })
-      .catch(error => {
+      .catch((error) => {
         // Problem could be serious (Database down?)
         // However if this errors we need to just emit to let the ledger continue
         ActiveLogger.fatal(error, "Database Error Log Issues");
