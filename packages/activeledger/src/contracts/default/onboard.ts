@@ -92,9 +92,15 @@ export default class Onboard extends Standard {
           activity.setState(state);
 
           // Volatile Fun
-          let volatile = activity.getVolatile();
-          volatile.now = new Date();
-          activity.setVolatile(volatile);
+          activity
+            .getVolatile()
+            .then((volatile: any) => {
+              volatile.now = new Date();
+              activity.setVolatile(volatile);
+            })
+            .catch((error: Error) => {
+              reject(error);
+            });
         }
       }
 

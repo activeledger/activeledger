@@ -28,6 +28,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
+import { Maintain } from "./maintain";
 
 /**
  * Endpoints used to manage Network Neighbourhood
@@ -44,7 +45,7 @@ export class Endpoints {
    * @type {number}
    * @memberof Endpoints
    */
-  public static ipcThrottle: number = 0;
+  public static rebaseThrottle: number = 0;
 
   /**
    * Handles all external requests being submitted into the network
@@ -356,7 +357,7 @@ export class Endpoints {
       let neighbour = host.neighbourhood.get(requester);
       if (requester != "NA") {
         // Increase Count
-        Endpoints.ipcThrottle++;
+        Endpoints.rebaseThrottle++;
 
         // Is this a live request
         if (neighbour && !neighbour.graceStop) {
@@ -371,11 +372,12 @@ export class Endpoints {
 
         // When should we rebase
         if (
-          Endpoints.ipcThrottle > ActiveOptions.get<number>("ipcThrottle", 8)
+          Endpoints.rebaseThrottle >
+          ActiveOptions.get<number>("rebaseThrottle", 8)
         ) {
           // However we can trigger a "rebase" of the ordering if this comes from a node we think is offline
-          host.moan("rebase");
-          Endpoints.ipcThrottle = 0;
+          Maintain.rebaseNeighbourhood();
+          Endpoints.rebaseThrottle = 0;
         }
       } else {
         // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
