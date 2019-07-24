@@ -147,8 +147,7 @@ export class Stream {
         (this.inputs[i].state._id as string) in this.sigs,
         this.eventEmitter,
         this.inputs[i].meta,
-        this.inputs[i].state,
-        this.inputs[i].volatile
+        this.inputs[i].state
       );
 
       // Set Secret Key
@@ -164,8 +163,7 @@ export class Stream {
         false,
         this.eventEmitter,
         this.outputs[i].meta,
-        this.outputs[i].state,
-        this.outputs[i].volatile
+        this.outputs[i].state
       );
 
       // Set Secret Key
@@ -281,8 +279,8 @@ export class Stream {
     let total = 0;
     // Get Authority signatures as array
     let authSigs = Object.keys(this.sigs[activity.getId()]);
-    activity.getAuthorities().map((authority) => {
-      authSigs.some((authHash) => {
+    activity.getAuthorities().map(authority => {
+      authSigs.some(authHash => {
         // Signature already verified in procss.ts (Reject Code 1228)
         if (authHash == authority.hash) {
           total += authority.stake;
@@ -412,7 +410,7 @@ export class Stream {
       return matches === this.remoteAddr;
     } else {
       return Boolean(
-        matches.find((ip) => {
+        matches.find(ip => {
           return ip === this.remoteAddr;
         })
       );
@@ -504,12 +502,20 @@ export class Activity {
   private safeMode: boolean = false;
 
   /**
+   * Holds volatile data if it exists
+   *
+   * @private
+   * @type {ActiveDefinitions.IVolatile}
+   * @memberof Activity
+   */
+  private volatile: ActiveDefinitions.IVolatile;
+
+  /**
    * Creates an instance of Activity.
    *
    * @param {string} name
    * @param {ActiveDefinitions.IMeta} meta
    * @param {ActiveDefinitions.IState} state
-   * @param {ActiveDefinitions.IVolatile} volatile
    * @memberof Activity
    */
   constructor(
@@ -518,8 +524,7 @@ export class Activity {
     private signature: boolean,
     private eventEmitter: EventEmitter,
     private meta: ActiveDefinitions.IMeta = { _id: null, _rev: null },
-    private state: ActiveDefinitions.IState = { _id: null, _rev: null },
-    public volatile: ActiveDefinitions.IVolatile = { _id: null, _rev: null }
+    private state: ActiveDefinitions.IState = { _id: null, _rev: null }
   ) {
     // Only if name is defined (Quick solution)
     if (umid && name) {
@@ -528,7 +533,6 @@ export class Activity {
 
       this.state._id = stream;
       this.meta._id = stream + ":stream";
-      this.volatile._id = stream + ":volatile";
 
       // Flag for search filtering
       // $ notation should be treated like a reservation for Activelegder
@@ -672,7 +676,7 @@ export class Activity {
         }
 
         // Check we have a hash
-        authority.forEach((auth) => {
+        authority.forEach(auth => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
@@ -691,7 +695,7 @@ export class Activity {
             value: ActiveDefinitions.ILedgerAuthority,
             i: number,
             self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map((x) => x.hash).indexOf(value.hash) == i
+          ) => self.map(x => x.hash).indexOf(value.hash) == i
         );
 
         // Set Update Flag
