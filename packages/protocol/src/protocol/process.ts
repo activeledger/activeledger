@@ -1353,14 +1353,14 @@ export class Process extends EventEmitter {
           return new Promise((resolve, reject) => {
             this.db
               .allDocs({
-                keys: [item + ":stream", item, item + ":volatile"],
+                keys: [item + ":stream", item],
                 include_docs: true
               })
               .then((docs: any) => {
                 // Check Documents
                 if (docs.rows.length === 3) {
                   // Get Documents
-                  const [meta, state, volatile]: any = docs.rows as string[];
+                  const [meta, state]: any = docs.rows as string[];
 
                   // Check meta
                   // Check Script Lock
@@ -1394,7 +1394,6 @@ export class Process extends EventEmitter {
                   resolve({
                     meta: meta.doc,
                     state: state.doc,
-                    volatile: volatile.doc
                   });
                 } else {
                   reject({ code: 995, reason: "Stream(s) not found" });
