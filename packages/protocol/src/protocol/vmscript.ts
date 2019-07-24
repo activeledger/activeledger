@@ -6,6 +6,7 @@ import {
   IVMInternalCache
 } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { EventEmitter } from "events";
 
 class ContractControl implements IVMObject {
   /**
@@ -33,7 +34,8 @@ class ContractControl implements IVMObject {
   public initialiseContract(
     payload: IVMDataPayload,
     query: any,
-    event: EventEngine
+    event: EventEngine,
+    emitter: EventEmitter
   ): void {
     this.smartContracts[
       payload.umid
@@ -46,7 +48,8 @@ class ContractControl implements IVMObject {
       payload.outputs,
       payload.readonly,
       payload.signatures,
-      payload.key
+      payload.key,
+      emitter
     );
 
     if ("setQuery" in this.smartContracts[payload.umid]) {
