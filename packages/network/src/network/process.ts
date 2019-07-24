@@ -158,7 +158,7 @@ class Processor {
               // Setup Processor
               this.setup(m.data);
             })
-            .catch(e => {
+            .catch((e) => {
               ActiveLogger.fatal(e, "Config Extension Issues");
             });
           break;
