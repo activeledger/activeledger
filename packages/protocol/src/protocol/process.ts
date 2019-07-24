@@ -387,26 +387,28 @@ export class Process extends EventEmitter {
                 input.type ? input.type : "rsa"
               );
 
-            return input
-              ? input.publicKey
-                ? !validSignature
-                  ? this.raiseLedgerError(
-                      1250,
-                      new Error("Self signed signature not matching")
-                    )
-                  : "Do nothing"
-                : // We don't have the public key to check
-                  this.raiseLedgerError(
-                    1255,
-                    new Error(
-                      "Self signed publicKey property not found in $i " +
-                        sigs[i]
-                    )
+            // Make sure we have an input (Can Skip otherwise maybe onboarded)
+            if (input) {
+              // Check the input has a public key
+              if (input.publicKey) {
+                if (!validSignature()) {
+                  return this.raiseLedgerError(
+                    1250,
+                    new Error("Self signed signature not matching")
+                  );
+                }
+              } else {
+                // We don't have the public key to check
+                return this.raiseLedgerError(
+                  1255,
+                  new Error(
+                    "Self signed publicKey property not found in $i " + sigs[i]
                   )
-              : this.raiseLedgerError(
-                  1245,
-                  new Error("Self signed signature missing input pairing")
                 );
+              }
+            } else {
+              return;
+            }
           }
         }
 
