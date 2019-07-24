@@ -962,7 +962,7 @@ export class Activity {
 
     // Merge Objects
     this.volatile = Object.assign(
-      this.volatile,
+      this.volatile || {},
       fVolatile
     ) as ActiveDefinitions.IFullState;
 
