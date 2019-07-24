@@ -22,12 +22,12 @@
  */
 
 import * as fs from "fs";
+import { ChildProcess } from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
-
 /**
  * Represents this Activeledger node's home within the network neighbourhood
  *
@@ -109,6 +109,10 @@ export class Home extends Neighbour {
    * @memberof Home
    */
   private tMap: string[];
+
+  protected processors: ChildProcess[] = [];
+
+  protected processorIterator: IterableIterator<ChildProcess>;
 
   /**
    * Creates an instance of Home.
@@ -297,25 +301,15 @@ export class Home extends Neighbour {
   /**
    * Sets up this homes immediate neighbours
    *
-   * @param {boolean} moan
    * @param {string | null} left
    * @param {string | null} right
    * @returns {void}
    * @memberof Home
    */
-  public setNeighbours(
-    moan: boolean,
-    left: string | null,
-    right: string | null
-  ): void {
-    // IPC Call
-    if (moan) {
-      this.moan("neighbour", { left: left, right: right });
-    } else {
-      // Check to make sure this is a new neighbour
-      if (right) this.setRight(right);
-      if (left) this.setLeft(left);
-    }
+  public setNeighbours(left: string | null, right: string | null): void {
+    // Check to make sure this is a new neighbour
+    if (right) this.setRight(right);
+    if (left) this.setLeft(left);
   }
 
   /**
@@ -336,6 +330,16 @@ export class Home extends Neighbour {
       } else {
         Home.right = new Neighbour(this.host, this.port);
       }
+
+      // Update Sub Processes
+      this.processors.forEach(processor => {
+        processor.send({
+          type: "hk",
+          data: {
+            right: Home.right
+          }
+        });
+      });
     }
   }
 
@@ -361,18 +365,17 @@ export class Home extends Neighbour {
   }
 
   /**
-   * Send a message back to the master process
-   * Workers Moan, Master Shouts
+   * Find Process by pid
    *
-   * @param {string} type
-   * @param {*} data
-   * @memberof Host
+   * @param {number} pid
+   * @returns {ChildProcess}
+   * @memberof Home
    */
-  public moan(type: string, data: any = {}): void {
-    // Add type to data
-    data.type = type;
-
-    // Call IPC for moan
-    (process as any).send(data);
+  public findProcessor(pid: number): ChildProcess | undefined {
+    return this.processors.find(processor => {
+      if (processor.pid === pid) {
+        return true;
+      }
+    }) as ChildProcess;
   }
 }

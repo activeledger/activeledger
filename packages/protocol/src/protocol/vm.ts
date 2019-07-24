@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import * as events from "events";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity } from "@activeledger/activecontracts";
@@ -28,7 +29,14 @@ import { QueryEngine, EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
-import { NodeVM } from "vm2";
+import { NodeVM, VMScript } from "vm2";
+import * as fs from "fs";
+import { EventEmitter } from "events";
+import {
+  IVMDataPayload,
+  IVMContractReferences,
+  IVirtualMachine
+} from "./interfaces/vm.interface";
 
 /**
  * Contract Virtual Machine Controller
@@ -36,7 +44,8 @@ import { NodeVM } from "vm2";
  * @export
  * @class VirtualMachine
  */
-export class VirtualMachine {
+export class VirtualMachine extends events.EventEmitter
+  implements IVirtualMachine {
   /**
    * Virtual Machine Object
    *
@@ -47,13 +56,22 @@ export class VirtualMachine {
   private virtual: NodeVM;
 
   /**
-   * Give Access to Export routine
+   * Holds the VM instance
    *
    * @private
-   * @type {number}
+   * @type {*}
    * @memberof VirtualMachine
    */
-  private key: number;
+  private virtualInstance: any; // IVMObject;
+
+  /**
+   * References to the contracts
+   *
+   * @private
+   * @type {IVMContractReferences}
+   * @memberof VirtualMachine
+   */
+  private contractReferences: IVMContractReferences;
 
   /**
    * Holds the event engine
@@ -63,6 +81,15 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   private event: EventEngine;
+
+  /**
+   * Holds the event emitter
+   *
+   * @private
+   * @type {EventEmitter}
+   * @memberof VirtualMachine
+   */
+  private emitter: EventEmitter;
 
   /**
    * When this VM timeout can not be extended past.
@@ -99,22 +126,87 @@ export class VirtualMachine {
    * @memberof VirtualMachine
    */
   constructor(
-    private contractPath: string,
     private selfHost: string,
-    private umid: string,
-    private cdate: Date,
-    private remoteAddr: string,
-    private tx: ActiveDefinitions.LedgerTransaction,
-    private sigs: ActiveDefinitions.LedgerSignatures,
-    private inputs: ActiveDefinitions.LedgerStream[],
-    private outputs: ActiveDefinitions.LedgerStream[],
-    private reads: ActiveDefinitions.LedgerIORputs,
+    private secured: ActiveCrypto.Secured,
     private db: ActiveDSConnect,
-    private dbev: ActiveDSConnect,
-    private secured: ActiveCrypto.Secured
+    private dbev: ActiveDSConnect
   ) {
-    // Setup Event Engine
-    this.event = new EventEngine(this.dbev, this.tx.$contract);
+    super();
+
+    // Initialise the emitter for listening and pass through to the contract
+    this.emitter = new EventEmitter();
+    // Start volatile event listener
+    this.listenForVolatile();
+  }
+
+  /**
+   * Initialise the Virtual machine instance
+   *
+   * @private
+   * @memberof VirtualMachine
+   */
+  public initialiseVirtualMachine(
+    extraBuiltins?: string[],
+    extraExternals?: string[]
+  ): void {
+    // Toolkit Availability Check
+    let toolkitAvailable = true;
+    try {
+      require.resolve("@_activeledger/activetoolkits");
+    } catch (error) {
+      // Toolkits not installed
+      toolkitAvailable = false;
+    }
+
+    // Manage Externals & buildit
+    let external: string[] = [
+      // this.contractPath,
+      "@activeledger/activecontracts"
+    ];
+    let builtin: string[] = ["buffer"];
+
+    // With toolkit allow additional externals & builtin
+    if (toolkitAvailable) {
+      external.push(
+        "@activeledger/activeutilities",
+        "@_activeledger/activetoolkits"
+      );
+      builtin.push("events", "http", "https", "url", "zlib");
+    }
+
+    // Add additional External & builtin by namespace if provided
+    if (extraExternals) {
+      external = [...external, ...extraExternals];
+    }
+
+    if (extraBuiltins) {
+      builtin = [...builtin, ...extraBuiltins];
+    }
+
+    // Create limited VM
+    this.virtual = new NodeVM({
+      // This prevents data return using the new code, but might turn out to be needed after some testing
+      // wrapper: "none",
+      sandbox: {
+        logger: ActiveLogger,
+        crypto: ActiveCrypto,
+        secured: this.secured,
+        self: this.selfHost
+      },
+      require: {
+        context: "sandbox",
+        builtin,
+        external
+      }
+    });
+
+    // Pull in the code to use for the VMScript
+    const script = new VMScript(
+      fs.readFileSync(__dirname + "/vmscript.js", "utf-8")
+    );
+
+    // Initialise the virtual object using the VMScript
+    this.virtualInstance = this.virtual.run(script, "avm.js");
   }
 
   /**
@@ -123,11 +215,13 @@ export class VirtualMachine {
    * @returns {{ [reference: string]: Activity }}
    * @memberof VirtualMachine
    */
-  public getActivityStreamsFromVM(): ActiveDefinitions.LedgerStream[] {
+  public getActivityStreamsFromVM(
+    umid: string
+  ): ActiveDefinitions.LedgerStream[] {
     // Fetch Activities and prepare to check
     let activities: {
       [reference: string]: Activity;
-    } = this.virtual.run("return sc.getActivityStreams();", "avm.js");
+    } = this.virtualInstance.getActivityStreams(umid);
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
@@ -137,10 +231,29 @@ export class VirtualMachine {
     // Loop each stream and find the marked ones
     while (i--) {
       if (activities[streams[i]].updated) {
-        exported.push(activities[streams[i]].export2Ledger(this.key));
+        exported.push(
+          activities[streams[i]].export2Ledger(
+            this.contractReferences[umid].key
+          )
+        );
       }
     }
     return exported;
+  }
+
+  /**
+   * Clear transaction from memory by umid
+   *
+   * @param {string} umid
+   * @memberof VirtualMachine
+   */
+  public destroy(umid: string): void {
+    // Clear inside VM
+    this.virtualInstance.destroy(umid);
+    // Clear references here
+    if (this.contractReferences && this.contractReferences[umid]) {
+      delete this.contractReferences[umid];
+    }
   }
 
   /**
@@ -149,8 +262,8 @@ export class VirtualMachine {
    * @returns {any}
    * @memberof VirtualMachine
    */
-  public getInternodeCommsFromVM(): any {
-    return this.virtual.run("return sc.getThisInterNodeComms();", "avm.js");
+  public getInternodeCommsFromVM(umid: string): any {
+    return this.virtualInstance.getInternodeComms(umid);
   }
 
   /**
@@ -159,8 +272,8 @@ export class VirtualMachine {
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  public clearingInternodeCommsFromVM(): boolean {
-    return this.virtual.run("return sc.getClearInterNodeComms()", "avm.js");
+  public clearingInternodeCommsFromVM(umid: string): boolean {
+    return this.virtualInstance.clearInternodeComms(umid);
   }
 
   /**
@@ -169,8 +282,8 @@ export class VirtualMachine {
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  public getReturnContractData(): boolean {
-    return this.virtual.run("return sc.getReturnToRemote()", "avm.js");
+  public getReturnContractData(umid: string): unknown {
+    return this.virtualInstance.returnContractData(umid);
   }
 
   /**
@@ -179,8 +292,8 @@ export class VirtualMachine {
    * @returns {any}
    * @memberof VirtualMachine
    */
-  public getThrowsFromVM(): string[] {
-    return this.virtual.run("return sc.throwTo;", "avm.js");
+  public getThrowsFromVM(umid: string): string[] {
+    return this.virtualInstance.throwFrom(umid);
   }
 
   /**
@@ -189,8 +302,8 @@ export class VirtualMachine {
    * @returns {ActiveDefinitions.LedgerStream[]}
    * @memberof VirtualMachine
    */
-  public getInputs(): ActiveDefinitions.LedgerStream[] {
-    return this.inputs;
+  public getInputs(umid: string): ActiveDefinitions.LedgerStream[] {
+    return this.contractReferences[umid].inputs;
   }
 
   /**
@@ -199,119 +312,40 @@ export class VirtualMachine {
    * @returns {Promise<boolean>}
    * @memberof VirtualMachine
    */
-  public initalise(): Promise<boolean> {
+  public initialise(
+    payload: IVMDataPayload,
+    contractName: string
+  ): Promise<boolean> {
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
+      if (!this.contractReferences) {
+        this.contractReferences = {};
+      }
+
+      this.contractReferences[payload.umid] = {
+        contractName,
+        inputs: payload.inputs,
+        tx: payload.transaction,
+        key: payload.key
+      };
+
+      // Setup Event Engine
+      this.event = new EventEngine(this.dbev, payload.transaction.$contract);
+
       try {
-        // Set Secret Key
-        this.key = Math.floor(Math.random() * 100);
-
-        // Toolkit Availability Check
-        let toolkitAvailable = true;
-        try {
-          require.resolve("@_activeledger/activetoolkits");
-        } catch (error) {
-          // Toolkits not installed
-          toolkitAvailable = false;
-        }
-
-        // Manage Externals & buildit
-        let external: string[] = [
-          this.contractPath,
-          "@activeledger/activecontracts"
-        ];
-        let builtin: string[] = ["buffer"];
-
-        // With toolkit allow additional externals & builtin
-        if (toolkitAvailable) {
-          external.push(
-            "@activeledger/activeutilities",
-            "@_activeledger/activetoolkits"
-          );
-          builtin.push("events", "http", "https", "url", "zlib");
-        }
-
-        // Add additional External & builtin by namespace
-        if (this.tx.$namespace == "default") {
-          switch (this.tx.$contract) {
-            case "contract":
-              external.push("typescript");
-              builtin.push("fs", "path", "os", "crypto");
-              break;
-            case "setup":
-              builtin.push("fs", "path");
-              break;
-          }
-        } else {
-          // Now check configuration for allowed standard libs for this namespace
-          let security = ActiveOptions.get<any>("security", {});
-
-          // Check to see if this namespace exists
-          if (security.namespace && security.namespace[this.tx.$namespace]) {
-            security.namespace[this.tx.$namespace].std.forEach(
-              (item: string) => {
-                // Add to builtin VM
-                builtin.push(item);
-              }
-            );
-          }
-        }
-
-        // Import Contract
-        // Create limited VM
-        this.virtual = new NodeVM({
-          wrapper: "none",
-          sandbox: {
-            logger: ActiveLogger,
-            crypto: ActiveCrypto,
-            secured: this.secured,
-            query: new QueryEngine(this.db, true),
-            event: this.event,
-            contractPath: this.contractPath,
-            umid: this.umid,
-            cdate: new Date(this.cdate), // + copy of date has random issues
-            remoteAddr: this.remoteAddr,
-            tx: JSON.parse(JSON.stringify(this.tx)), // Deep Copy (Isolated, But We can still access if needed)
-            sigs: this.sigs,
-            inputs: this.inputs,
-            outputs: this.outputs,
-            reads: this.reads,
-            key: this.key,
-            self: this.selfHost
-          },
-          require: {
-            context: "sandbox",
-            builtin,
-            external
-          }
-        });
-
-        // Intalise Contract into VM (Will need to make sure require is not used and has been fully locked down)
-        this.virtual.run(
-          "global.sc = new (require(contractPath)).default(cdate, remoteAddr, umid, tx, inputs, outputs, reads, sigs, key, self);",
-          "avm.js"
+        // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
+        this.virtualInstance.initialiseContract(
+          payload,
+          new QueryEngine(this.db, true),
+          this.event,
+          this.emitter
         );
 
-        // Do they want the query engine
-        this.virtual.run(
-          `if("setQuery" in sc) { sc.setQuery(query) }`,
-          "avm.js"
-        );
-
-        // Do they want the event engine
-        this.virtual.run(
-          `if("setEvent" in sc) { sc.setEvent(event) }`,
-          "avm.js"
-        );
-
-        // Default Namespace can accept config, Could just read the file
-        // However when it comes to working from the ledger it will be in memory anyway
-        if (this.tx.$namespace == "default") {
-          this.virtual.run(
-            `if("sysConfig" in sc) { sc.sysConfig(${JSON.stringify(
-              ActiveOptions.fetch(false)
-            )}) }`,
-            "avm.js"
+        // Set Sys Config
+        if (payload.transaction.$namespace === "default") {
+          this.virtualInstance.setSysConfig(
+            payload.umid,
+            JSON.stringify(ActiveOptions.fetch(false))
           );
         }
 
@@ -328,7 +362,7 @@ export class VirtualMachine {
       } catch (e) {
         if (e instanceof Error) {
           // Exception
-          reject(this.catchException(e));
+          reject(this.catchException(e, payload.umid));
         }
       }
     });
@@ -340,7 +374,7 @@ export class VirtualMachine {
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  public verify(sigless: boolean): Promise<boolean> {
+  public verify(sigless: boolean, umid: string): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
@@ -349,27 +383,35 @@ export class VirtualMachine {
       this.event.setPhase("verify");
 
       // Manage Timeout
-      this.checkTimeout("verify", () => {
-        reject("VM Error : Verify phase timeout");
-      });
+      this.checkTimeout(
+        "verify",
+        () => {
+          reject("VM Error : Verify phase timeout");
+        },
+        umid
+      );
 
       // Run Verify Phase
-      (this.virtual.run(`return sc.verify(${sigless})`, "avm.js") as Promise<
-        boolean
-      >)
+      this.virtualInstance
+        .runVerify(umid, sigless)
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e: Error) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
-            reject(this.catchException(e));
+            reject(this.catchException(e, umid));
           } else {
             // Rejected by contract
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
@@ -379,7 +421,7 @@ export class VirtualMachine {
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  public vote(): Promise<boolean> {
+  public vote(umid: string): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
@@ -388,25 +430,35 @@ export class VirtualMachine {
       this.event.setPhase("vote");
 
       // Manage Timeout
-      this.checkTimeout("vote", () => {
-        reject("VM Error : Vote phase timeout");
-      });
+      this.checkTimeout(
+        "vote",
+        () => {
+          reject("VM Error : Vote phase timeout");
+        },
+        umid
+      );
 
       // Run Vote Phase
-      (this.virtual.run(`return sc.vote()`, "avm.js") as Promise<boolean>)
+      this.virtualInstance
+        .runVote(umid)
         .then(() => {
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e: Error) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
-            reject(this.catchException(e));
+            reject(this.catchException(e, umid));
           } else {
             // Rejected by contract
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
@@ -420,11 +472,12 @@ export class VirtualMachine {
    */
   public commit(
     nodes: ActiveDefinitions.INodes,
-    possibleTerritoriality: boolean = false
+    possibleTerritoriality: boolean = false,
+    umid: string
   ): Promise<boolean> {
     return new Promise((resolve, reject) => {
       // Manage INC
-      this.incMarshel(nodes);
+      this.incMarshel(nodes, umid);
 
       // Script running flag
       this.scriptFinishedExec = false;
@@ -433,30 +486,37 @@ export class VirtualMachine {
       this.event.setPhase("commit");
 
       // Manage Timeout
-      this.checkTimeout("commit", () => {
-        reject("VM Error : Commit phase timeout");
-      });
+      this.checkTimeout(
+        "commit",
+        () => {
+          reject("VM Error : Commit phase timeout");
+        },
+        umid
+      );
 
       // Get Commit
-      (this.virtual.run(
-        `return sc.commit(${possibleTerritoriality})`,
-        "avm.js"
-      ) as Promise<any>)
+      this.virtualInstance
+        .runCommit(umid, possibleTerritoriality)
         .then(() => {
           // Here we may update the database from the objects (commit should return)
           // Or just manipulate / check the outputs
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e: any) => {
+          this.scriptFinishedExec = true;
           if (e instanceof Error) {
             // Exception
-            reject(this.catchException(e));
+            reject(this.catchException(e, umid));
           } else {
             // Rejected by contract
             reject(e);
           }
         });
+      // TODO: Check what version finally is available in
+      /* .finally(() => {
+          this.scriptFinishedExec = true;
+        }); */
     });
   }
 
@@ -467,10 +527,13 @@ export class VirtualMachine {
    * @returns {Promise<boolean>}
    * @memberof VirtualMachine
    */
-  public reconcile(nodes: ActiveDefinitions.INodes): Promise<boolean> {
+  public reconcile(
+    nodes: ActiveDefinitions.INodes,
+    umid: string
+  ): Promise<boolean> {
     return new Promise((resolve, reject) => {
       // Manage INC
-      this.incMarshel(nodes);
+      this.incMarshel(nodes, umid);
 
       // Script running flag
       this.scriptFinishedExec = false;
@@ -479,33 +542,27 @@ export class VirtualMachine {
       this.event.setPhase("reconcile");
 
       // Manage Timeout
-      this.checkTimeout("reconcile", () => {
-        reject("VM Error : Reconcile phase timeout");
-      });
+      this.checkTimeout(
+        "reconcile",
+        () => {
+          reject("VM Error : Reconcile phase timeout");
+        },
+        umid
+      );
 
       // Get Commit
-      (this.virtual.run(
-        `if("reconcile" in sc) { 
-          // Run Reconcile
-          return sc.reconcile()
-        }else{
-          // Auto reject if no reconcile process
-          return new Promise((resolve, reject) => {
-            resolve(false);
-          });
-        } `,
-        "avm.js"
-      ) as Promise<any>)
+      this.virtualInstance
+        .reconcile(umid)
         .then(() => {
           // Here we may update the database from the objects (commit should return)
           // Or just manipulate / check the outputs
           this.scriptFinishedExec = true;
           resolve(true);
         })
-        .catch(e => {
+        .catch((e: any) => {
           if (e instanceof Error) {
             // Exception
-            reject(this.catchException(e));
+            reject(this.catchException(e, umid));
           } else {
             // Rejected by contract
             reject(e);
@@ -523,7 +580,11 @@ export class VirtualMachine {
    * @returns {Promise<any>}
    * @memberof VirtualMachine
    */
-  public postProcess(territoriality: boolean, who: string): Promise<any> {
+  public postProcess(
+    territoriality: boolean,
+    who: string,
+    umid: string
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
@@ -532,49 +593,35 @@ export class VirtualMachine {
       this.event.setPhase("post");
 
       // Manage Timeout
-      this.checkTimeout("post", () => {
-        reject("VM Error : Post phase timeout");
-      });
+      this.checkTimeout(
+        "post",
+        () => {
+          reject("VM Error : Post phase timeout");
+        },
+        umid
+      );
 
       // Run Post Process
-      (this.virtual.run(
-        `if("postProcess" in sc) { 
-            // Run Post Process
-            return sc.postProcess(${territoriality}, "${who}");
-          }else{
-            // Auto Resolve if no post process
-            return new Promise((resolve, reject) => {
-              resolve(true);
-            });
-          } `,
-        "avm.js"
-      ) as Promise<any>)
-        .then(postProcess => {
+      this.virtualInstance
+        .postProcess(umid, territoriality, who)
+        .then((postProcess: any) => {
           // Do something with the returned value
           // Maybe resolve with the data
           this.scriptFinishedExec = true;
 
           // Reload Configuration Required?
-          if (this.tx.$namespace == "default") {
-            if (
-              this.virtual.run(
-                `if("sysConfig" in sc) { return sc.configReload() }else{ return false; }`,
-                "avm.js"
-              )
-            ) {
+          if (this.contractReferences[umid].tx.$namespace == "default") {
+            if (this.virtualInstance.reloadSysConfig(umid)) {
               ActiveLogger.info("Reloading Configuration Request");
-              // Can Moan in process (No need network)
-              (process as any).send({
-                type: "reload"
-              });
+              this.emit("reload");
             }
           }
           resolve(postProcess);
         })
-        .catch(e => {
+        .catch((e: Error) => {
           if (e instanceof Error) {
             // Exception
-            reject(this.catchException(e));
+            reject(this.catchException(e, umid));
           } else {
             // Rejected by contract
             reject(e);
@@ -590,7 +637,7 @@ export class VirtualMachine {
    * @param {ActiveDefinitions.INodes} nodes
    * @memberof VirtualMachine
    */
-  private incMarshel(nodes: ActiveDefinitions.INodes): void {
+  private incMarshel(nodes: ActiveDefinitions.INodes, umid: string): void {
     // Get Node Keys (Or get from Neighbourhood?)
     let keys = Object.keys(nodes);
     let i = keys.length;
@@ -609,9 +656,42 @@ export class VirtualMachine {
 
       // Any Comms to send into VM (Alternative parse directly as JSON)
       if (sendComms) {
-        this.virtual.freeze(comms, "INC");
+        return this.virtualInstance.setINC(
+          umid,
+          comms,
+          this.contractReferences[umid].key
+        );
       }
     }
+  }
+
+  public getVolatile() {}
+
+  private listenForVolatile(): void {
+    this.emitter.on("getVolatile", (umid: string, streamId: string) => {
+      // Check that the UMID matches the transactions Stream ID
+      ActiveLogger.debug(this.contractReferences[umid], "TX");
+
+      // if (Object.keys(this.contractReferences[umid].tx.$i)[0] === streamId) {
+      this.db
+        .get(`${streamId}:volatile`)
+        .then((volatile: ActiveDefinitions.IVolatile) => {
+          this.emitter.emit(
+            `volatileFetched-${umid}${streamId}`,
+            null,
+            volatile
+          );
+        })
+        .catch((error: Error) => {
+          this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
+        });
+      /* } else {
+        this.emitter.emit(
+          `volatileFetched-${umid}${streamId}`,
+          new Error("Access Denied")
+        );
+      } */
+    });
   }
 
   /**
@@ -622,18 +702,18 @@ export class VirtualMachine {
    * @param {Function} timedout
    * @memberof VirtualMachine
    */
-  private checkTimeout(type: string, timedout: Function): void {
+  private checkTimeout(type: string, timedout: Function, umid: string): void {
     // Setup Timeout Ticket
     setTimeout(() => {
       // Has the script not finished
       if (!this.scriptFinishedExec) {
         // Has it extended its timeout
-        if (!this.hasBeenExtended()) {
+        if (!this.hasBeenExtended(umid)) {
           // Hasn't been extended so call function
           timedout();
         } else {
           // Check again later
-          this.checkTimeout(type, timedout);
+          this.checkTimeout(type, timedout, umid);
         }
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
@@ -646,12 +726,9 @@ export class VirtualMachine {
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  private hasBeenExtended(): boolean {
+  private hasBeenExtended(umid: string): boolean {
     // Fetch new time out request from the contract
-    let timeoutRequestTime = this.virtual.run(
-      `return sc.getTimeout()`,
-      "avm.js"
-    );
+    let timeoutRequestTime = this.virtualInstance.getTimeout(umid);
 
     // Did we get a return value to work on?
     if (timeoutRequestTime) {
@@ -678,13 +755,11 @@ export class VirtualMachine {
    * @returns {*}
    * @memberof VirtualMachine
    */
-  private catchException(e: Error): any {
+  private catchException(e: Error, umid: string): any {
     // Exception
     if (e.stack) {
       // Get Current Contract Filename only
-      const contract = this.contractPath.substr(
-        this.contractPath.lastIndexOf("/") + 1
-      );
+      const contract = this.contractReferences[umid].contractName;
 
       // Find Contract Code in Stacktrace
       const contractErrorLine = e.stack.match(
@@ -719,10 +794,7 @@ export class VirtualMachine {
 
         // Extract Line numbers
         // Add Contract Name
-        msg =
-          this.contractPath.substr(this.contractPath.lastIndexOf("/") + 1) +
-          ":" +
-          msg.substr(msg.indexOf(".js") + 4);
+        msg = contract + ":" + msg.substr(msg.indexOf(".js") + 4);
 
         //return reject(e.message + "@" + msg);
         return {
