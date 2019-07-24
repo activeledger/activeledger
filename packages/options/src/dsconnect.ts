@@ -53,7 +53,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}`, "GET")
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -68,7 +68,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/_index`, "POST", undefined, options)
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -89,7 +89,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         options
       )
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -105,10 +105,10 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
-
+  
   /**
    * Query the data store
    *
@@ -120,7 +120,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/_find`, "POST", undefined, options)
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -139,7 +139,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         options
       })
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -154,7 +154,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(this.location, "POST", undefined, doc)
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -169,7 +169,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
         .then((response: any) => resolve(response.data))
-        .catch(error => reject(error));
+        .catch(reject);
     });
   }
 
@@ -185,14 +185,14 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       if (ActiveOptions.get<any>("db", {}).selfhost) {
         ActiveRequest.send(`${this.location}/${doc._id}`, "DELETE")
           .then((response: any) => resolve(response.data))
-          .catch(error => reject(error));
+          .catch(reject);
       } else {
         // Couchdb 2.3 supports purge again
         ActiveRequest.send(`${this.location}/_purge`, "POST", undefined, {
           [doc._id]: [doc._rev]
         })
           .then((response: any) => resolve(response.data))
-          .catch(error => reject(error));
+          .catch(reject);
       }
     });
   }
@@ -217,7 +217,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           "GET"
         )
           .then((response: any) => resolve(response.data))
-          .catch(error => reject(error));
+          .catch(reject);
       });
     }
   }
