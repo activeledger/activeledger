@@ -20,11 +20,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import module from "module";
+
+// Copy default require
+let _require = module.prototype.require;
+
+// Overwrite require for correct local paths
+module.prototype.require = function() {
+  if (arguments[0].indexOf("pouchdb") !== -1) {
+    arguments[0] = __dirname + "/pouchdb/" + arguments[0];
+  }
+  return _require.apply(this, arguments);
+};
+
+// Import Local PouchDB
 const PouchDB: any = require("pouchdb-core");
 const PouchDBLdB: any = require("pouchdb-adapter-leveldb");
 const PouchDBFind: any = require("pouchdb-find");
+
+// Restore Require
+module.prototype.require = _require;
+
 // Export LevelDB Sub Modules
-const PouchRequire = require.cache[require.resolve("pouchdb-adapter-leveldb")];
+const PouchRequire = require.cache[require.resolve(__dirname + "/pouchdb/" + "pouchdb-adapter-leveldb")];
 const leveldown: any = PouchRequire.require("leveldown");
 // Add Plugins
 PouchDB.plugin(PouchDBLdB).plugin(PouchDBFind);
