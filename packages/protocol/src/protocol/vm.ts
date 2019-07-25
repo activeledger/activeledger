@@ -309,13 +309,13 @@ export class VirtualMachine extends events.EventEmitter
   /**
    * Dynamically import the contract. Currently object is created outside VM and set as a global
    *
-   * @returns {Promise<boolean>}
+   * @returns {Promise<void>}
    * @memberof VirtualMachine
    */
   public initialise(
     payload: IVMDataPayload,
     contractName: string
-  ): Promise<boolean> {
+  ): Promise<void> {
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
       if (!this.contractReferences) {
@@ -358,7 +358,7 @@ export class VirtualMachine extends events.EventEmitter
         );
 
         // Continue
-        resolve(true);
+        resolve();
       } catch (e) {
         if (e instanceof Error) {
           // Exception
