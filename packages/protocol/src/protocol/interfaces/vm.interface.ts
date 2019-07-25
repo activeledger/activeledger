@@ -30,7 +30,7 @@ export interface IVMObject {
 }
 
 export interface IVMDataPayload {
-  contractString: string;
+  contractLocation: string;
   umid: string;
   date: Date;
   remoteAddress: string;
@@ -85,7 +85,7 @@ export interface IVirtualMachine {
 
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
 
-  initialise(payload: IVMDataPayload, contractName: string): Promise<boolean>;
+  initialise(payload: IVMDataPayload, contractName: string): Promise<void>;
 
   verify(sigless: boolean, umid: string): Promise<boolean>;
 

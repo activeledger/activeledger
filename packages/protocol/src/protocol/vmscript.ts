@@ -41,7 +41,7 @@ class ContractControl implements IVMObject {
     // comprimised. We will verify with the "install" routine
     this.smartContracts[
       payload.umid
-    ] = new (require(payload.contractString)).default(
+    ] = new (require(payload.contractLocation)).default(
       payload.date,
       payload.remoteAddress,
       payload.umid,

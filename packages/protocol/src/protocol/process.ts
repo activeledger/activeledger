@@ -33,6 +33,11 @@ import {
   IVMContractHolder,
   IVirtualMachine
 } from "./interfaces/vm.interface";
+import {
+  ISecurityCache,
+  IReferenceStreams
+} from "./interfaces/process.interface";
+import { Shared } from "./shared";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -109,14 +114,6 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private outputs: string[];
-
-  /**
-   * Maps streamId to their labels
-   *
-   * @private
-   * @memberof Process
-   */
-  private ioLabelMap: any = { i: {}, o: {} };
 
   /**
    * Flag for checking or setting revisions
@@ -200,6 +197,17 @@ export class Process extends EventEmitter {
    */
   private currentVotes: number;
 
+  /**
+   * A cache of the secure namespaces
+   *
+   * @private
+   * @type {string[]}
+   * @memberof Process
+   */
+  private securityCache: ISecurityCache | null;
+
+  private shared: Shared;
+
   // #endregion
 
   /**
@@ -226,6 +234,8 @@ export class Process extends EventEmitter {
     private secured: ActiveCrypto.Secured
   ) {
     super();
+
+    this.shared = new Shared();
 
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
@@ -451,14 +461,14 @@ export class Process extends EventEmitter {
       this.nodeResponse = this.entry.$nodes[this.reference];
       // Try run commit!
 
-      if (this.isDefault) {
-        this.commit(Process.defaultContractsVM);
-      } else if (this.contractRef) {
-        this.commit(Process.singleContractVMHolder[this.contractRef]);
-      } else {
-        this.commit(Process.generalContractVM);
-      }
+      // Get the correct VM instance reference
+      this.isDefault
+        ? this.commit(Process.defaultContractsVM)
+        : this.contractRef
+        ? this.commit(Process.singleContractVMHolder[this.contractRef])
+        : this.commit(Process.generalContractVM);
     }
+
     return this.nodeResponse;
   }
 
@@ -472,10 +482,19 @@ export class Process extends EventEmitter {
     return this.commiting;
   }
 
+  /**
+   * Initialise the default contracts VM instance if needed and/or pass through the data
+   *
+   * @private
+   * @param {IVMDataPayload} payload
+   * @param {string} contractName
+   * @memberof Process
+   */
   private processDefaultContracts(
     payload: IVMDataPayload,
     contractName: string
   ) {
+    // Check if the holder needs to be initialised
     if (!Process.defaultContractsVM) {
       // Setup for default contracts
       const external = [];
@@ -500,14 +519,24 @@ export class Process extends EventEmitter {
 
         Process.defaultContractsVM.initialiseVirtualMachine(builtin, external);
       } catch (error) {
-        console.trace("Debug A");
         throw new Error(error);
       }
     }
 
+    // Pass through the VM holder and data to the VM Handler
     this.handleVM(Process.defaultContractsVM, payload, contractName);
   }
 
+  /**
+   * Handle the initialisation and pass through of data for unsafe contracts
+   *
+   * @private
+   * @param {IVMDataPayload} payload
+   * @param {string} namespace
+   * @param {string} contractName
+   * @param {string[]} extraBuiltins
+   * @memberof Process
+   */
   private processUnsafeContracts(
     payload: IVMDataPayload,
     namespace: string,
@@ -518,7 +547,7 @@ export class Process extends EventEmitter {
 
     // If we have initialised an instance for this namespace reuse it
     // Otherwise we should create an instance for it
-    if (!Process.singleContractVMHolder[namespace]) {
+    if (!Process.singleContractVMHolder[this.contractRef]) {
       try {
         Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
           this.selfHost,
@@ -535,6 +564,7 @@ export class Process extends EventEmitter {
       }
     }
 
+    // Pass VM instance and data to the VM Handler
     this.handleVM(
       Process.singleContractVMHolder[this.contractRef],
       payload,
@@ -542,90 +572,108 @@ export class Process extends EventEmitter {
     );
   }
 
-  private handleVM(
+  /**
+   * Handler processing of a transaction using a specified pre-initialised VM instance
+   *
+   * @private
+   * @param {IVirtualMachine} virtualMachine
+   * @param {IVMDataPayload} payload
+   * @param {string} contractName
+   * @memberof Process
+   */
+  private async handleVM(
     virtualMachine: IVirtualMachine,
     payload: IVMDataPayload,
     contractName: string
   ) {
-    // Initalise contract VM
-    virtualMachine
-      .initialise(payload, contractName)
-      .then(() => {
-        // Verify Transaction details in the contract
-        // Also allow the contract to verify it likes signatureless transactions
-        virtualMachine
-          .verify(this.entry.$selfsign, this.entry.$umid)
-          .then(() => {
-            // Get Vote (May change to string as it can contain the reason)
-            // Or in the VM we can catch any thrown errors messages
-            virtualMachine
-              .vote(this.entry.$umid)
-              .then(() => {
-                // Update Vote Entry
-                this.nodeResponse.vote = true;
+    // Internal micro functions
 
-                // Internode Communication picked up here, Doesn't mean every node
-                // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-                this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-                  this.entry.$umid
-                );
-
-                // Return Data for this nodes contract run (Useful for $instant request expected id's)
-                this.nodeResponse.return = virtualMachine.getReturnContractData(
-                  this.entry.$umid
-                );
-
-                // Clearing All node comms?
-                this.clearAllComms(virtualMachine);
-
-                // Continue to next nodes vote
-                this.postVote(virtualMachine);
-              })
-              .catch((error: Error) => {
-                // Vote failed (Not and error continue casting vote on the network)
-                ActiveLogger.debug(error, "Vote Failure");
-
-                // Update errors (Dont know what the contract will reject as so string)
-                this.storeError(
-                  1000,
-                  new Error("Vote Failure - " + JSON.stringify(error)),
-                  10
-                )
-                  .then(() => {
-                    // Continue Execution of consensus
-                    // Update Error
-                    this.nodeResponse.error = error.message;
-
-                    // Continue to next nodes vote
-                    this.postVote(virtualMachine);
-                  })
-                  .catch((error) => {
-                    // Continue Execution of consensus even with this failing
-                    // Just add a fatal message
-                    ActiveLogger.fatal(error, "Voting Error Log Issues");
-
-                    // Update Error
-                    this.nodeResponse.error = error;
-
-                    // Continue to next nodes vote
-                    this.postVote(virtualMachine);
-                  });
-              });
-          })
-          .catch((error) => {
-            ActiveLogger.debug(error, "Verify Failure");
-            // Verification Failure
-            this.raiseLedgerError(1310, new Error(error));
-          });
-      })
-      .catch((e) => {
-        // Contract not found / failed to start
-        ActiveLogger.debug(e, "VM initialisation failed");
-        this.raiseLedgerError(
-          1401,
-          new Error("VM Init Failure - " + JSON.stringify(e.message || e))
+    // Handle a vote error
+    const handleVoteError = async (error: Error) => {
+      try {
+        await this.storeError(
+          1000,
+          new Error("Vote Failure - " + JSON.stringify(error)),
+          10
         );
-      });
+      } catch (storeError) {
+        // Continue Execution of consensus even with this failing
+        // Just add a fatal message
+        ActiveLogger.fatal(error, "Voting Error Log Issues");
+      } finally {
+        // Continue Execution of consensus
+        // Update Error
+        this.nodeResponse.error = error.message;
+
+        // Continue to next nodes vote
+        this.postVote(virtualMachine);
+      }
+    };
+
+    // If there is an error processing should stop
+    let continueProcessing = true;
+
+    // Initialise the contract in the VM
+    try {
+      await virtualMachine.initialise(payload, contractName);
+    } catch (error) {
+      // Contract not found / failed to start
+      ActiveLogger.debug(error, "VM initialisation failed");
+      this.raiseLedgerError(
+        1401,
+        new Error("VM Init Failure - " + JSON.stringify(error.message || error))
+      );
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // Run the verification round
+    try {
+      if (continueProcessing)
+        await virtualMachine.verify(this.entry.$selfsign, this.entry.$umid);
+    } catch (error) {
+      ActiveLogger.debug(error, "Verify Failure");
+      // Verification Failure
+      this.raiseLedgerError(1310, new Error(error));
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // Run the vote round
+    try {
+      if (continueProcessing) await virtualMachine.vote(this.entry.$umid);
+    } catch (error) {
+      // Do something with the error
+      handleVoteError(error);
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // All previous rounds successful continue processing
+    if (continueProcessing) {
+      // Update Vote Entry
+      this.nodeResponse.vote = true;
+
+      // Internode Communication picked up here, Doesn't mean every node
+      // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+      this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+        this.entry.$umid
+      );
+
+      // Return Data for this nodes contract run (Useful for $instant request expected id's)
+      this.nodeResponse.return = virtualMachine.getReturnContractData(
+        this.entry.$umid
+      );
+
+      // Clearing All node comms?
+      this.clearAllComms(virtualMachine);
+
+      // Continue to next nodes vote
+      this.postVote(virtualMachine);
+    }
   }
 
   /**
@@ -637,67 +685,80 @@ export class Process extends EventEmitter {
    * @param {LedgerStream[]} inputs
    * @memberof Process
    */
-  private process(inputs: ActiveDefinitions.LedgerStream[]): void;
-  private process(
+  private async process(
+    inputs: ActiveDefinitions.LedgerStream[]
+  ): Promise<void>;
+  private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[]
-  ): void;
-  private process(
+  ): Promise<void>;
+  private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[] = []
-  ): void {
-    this.getReadOnlyStreams()
-      .then((readonly) => {
-        const contractName = this.contractLocation.substr(
-          this.contractLocation.lastIndexOf("/") + 1
+  ): Promise<void> {
+    try {
+      // Get readonly data
+      const readonly = await this.getReadOnlyStreams();
+
+      const contractName = this.contractLocation.substr(
+        this.contractLocation.lastIndexOf("/") + 1
+      );
+
+      // Build the contract payload
+      const payload: IVMDataPayload = {
+        contractLocation: this.contractLocation,
+        umid: this.entry.$umid,
+        date: this.entry.$datetime,
+        remoteAddress: this.entry.$remoteAddr,
+        transaction: this.entry.$tx,
+        signatures: this.entry.$sigs,
+        inputs,
+        outputs,
+        readonly,
+        key: Math.floor(Math.random() * 100)
+      };
+
+      // Check if the security data has been cached
+      if (!this.securityCache) {
+        this.securityCache = ActiveOptions.get<any>("security", null);
+      }
+
+      if (
+        !this.securityCache &&
+        !this.securityCache!.namespace &&
+        !this.securityCache!.namespace[payload.transaction.$namespace] &&
+        payload.transaction.$namespace !== "default"
+      ) {
+        // Use the General contract VM
+        this.handleVM(Process.generalContractVM, payload, contractName);
+      } else if (
+        this.securityCache &&
+        this.securityCache.namespace &&
+        this.securityCache.namespace[payload.transaction.$namespace]
+      ) {
+        const builtin: string[] = [];
+        // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
+        this.securityCache.namespace[
+          payload.transaction.$namespace
+        ].std.forEach((item: string) => {
+          builtin.push(item);
+        });
+
+        // Initialise the unsafe contract VM
+        this.processUnsafeContracts(
+          payload,
+          payload.transaction.$namespace,
+          contractName,
+          builtin
         );
-
-        const payload: IVMDataPayload = {
-          // contractString: loadedContractString,
-          contractString: this.contractLocation,
-          umid: this.entry.$umid,
-          date: this.entry.$datetime,
-          remoteAddress: this.entry.$remoteAddr,
-          transaction: this.entry.$tx,
-          signatures: this.entry.$sigs,
-          inputs,
-          outputs,
-          readonly,
-          key: Math.floor(Math.random() * 100)
-        };
-
-        if (payload.transaction.$namespace === "default") {
-          this.processDefaultContracts(payload, contractName);
-        } else {
-          // Now check configuration for allowed standard libs for this namespace
-          const security = ActiveOptions.get<any>("security", {});
-          const builtin: string[] = [];
-          // Check to see if this namespace exists
-          if (
-            security.namespace &&
-            security.namespace[payload.transaction.$namespace]
-          ) {
-            security.namespace[payload.transaction.$namespace].std.forEach(
-              (item: string) => {
-                // Add to builtin VM
-                builtin.push(item);
-              }
-            );
-            this.processUnsafeContracts(
-              payload,
-              payload.transaction.$namespace,
-              contractName,
-              builtin
-            );
-          } else {
-            this.handleVM(Process.generalContractVM, payload, contractName);
-          }
-        }
-      })
-      .catch(() => {
-        // error fetch read only streams
-        this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
-      });
+      } else {
+        // Use the Default contract VM (for contracts that are built into Activeledger)
+        this.processDefaultContracts(payload, contractName);
+      }
+    } catch (error) {
+      // error fetch read only streams
+      this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
+    }
   }
 
   /**
@@ -736,57 +797,49 @@ export class Process extends EventEmitter {
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
-        this.commit(virtualMachine, () => {
-          this.right
-            .knock("init", this.entry)
-            .then((response: any) => {
-              // Check we didn't commit early
-              if (!this.nodeResponse.commit) {
-                // Territoriality set?
-                this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
+        this.commit(virtualMachine, async () => {
+          try {
+            const response = await this.right.knock("init", this.entry);
 
-                // Append new $nodes
-                this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
+            // Check we didn't commit early
+            if (!this.nodeResponse.commit) {
+              // Territoriality set?
+              this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
 
-                // Reset Reference node response
-                this.nodeResponse = this.entry.$nodes[this.reference];
+              // Append new $nodes
+              this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
 
-                // Normal, Or getting other node opinions?
-                if (error) {
-                  this.raiseLedgerError(error.code, error.reason, true, 10);
-                }
+              // Reset Reference node response
+              this.nodeResponse = this.entry.$nodes[this.reference];
 
-                // Run the Commit Phase
-                this.commit(virtualMachine);
+              // Normal, Or getting other node opinions?
+              if (error) {
+                this.raiseLedgerError(error.code, error.reason, true, 10);
               }
-            })
-            .catch((error: any) => {
-              // Need to manage errors this would mean the node is unreachable
-              ActiveLogger.debug(error, "Knock Failure");
 
-              // if debug mode forward
-              // IF error has status and error this came from another node which has erroed (not unreachable)
-              if (ActiveOptions.get<boolean>("debug", false)) {
-                // rethrow same error
-                this.raiseLedgerError(
+              // Run the Commit Phase
+              this.commit(virtualMachine);
+            }
+          } catch (error) {
+            // Need to manage errors this would mean the node is unreachable
+            ActiveLogger.debug(error, "Knock Failure");
+
+            // if debug mode forward
+            // IF error has status and error this came from another node which has erroed (not unreachable)
+            ActiveOptions.get<boolean>("debug", false)
+              ? this.raiseLedgerError(
                   error.status || 1502,
                   new Error(error.error)
-                );
-              } else {
-                // Generic error 404/ 500
-                this.raiseLedgerError(1501, new Error("Bad Knock Transaction"));
-              }
-            });
+                ) // rethrow same error
+              : this.raiseLedgerError(1501, new Error("Bad Knock Transaction")); // Generic error 404/ 500
+          }
         });
       } else {
         ActiveLogger.debug("Origin is next (Sending Back)");
-        if (error) {
-          // Ofcourse if next is origin we need to send back for the promises!
-          this.raiseLedgerError(error.code, error.reason);
-        } else {
-          // Run the Commit Phase
-          this.commit(virtualMachine);
-        }
+
+        error
+          ? this.raiseLedgerError(error.code, error.reason) // Of course if next is origin we need to send back for the promises!
+          : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
   }
@@ -802,11 +855,11 @@ export class Process extends EventEmitter {
   private canCommit(skipBoost = false): boolean {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
-    let i = networkNodes.length;
     this.currentVotes = 0;
 
     // Small performance boost if we voted no
     if (skipBoost || this.nodeResponse.vote) {
+      let i = networkNodes.length;
       while (i--) {
         if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
@@ -832,74 +885,74 @@ export class Process extends EventEmitter {
    * @returns {void}
    * @memberof Process
    */
-  private commit(
+  private async commit(
     virtualMachine: IVirtualMachine,
     earlyCommit?: () => void
-  ): void {
+  ): Promise<void> {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
       // check we can commit still
       if (this.canCommit()) {
         // Consensus reached commit phase
         this.commiting = true;
+
         // Pass Nodes for possible INC injection
-        virtualMachine
-          .commit(
+        try {
+          await virtualMachine.commit(
             this.entry.$nodes,
-            this.entry.$territoriality == this.reference,
+            this.entry.$territoriality === this.reference,
             this.entry.$umid
-          )
-          .then(() => {
-            // Update Commit Entry
-            this.nodeResponse.commit = true;
+          );
 
-            // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-              this.entry.$umid
-            );
+          // Update Commit Entry
+          this.nodeResponse.commit = true;
 
-            // Return Data for this nodes contract run
-            this.nodeResponse.return = virtualMachine.getReturnContractData(
-              this.entry.$umid
-            );
+          // Update in communication (Recommended pre commit only but can be edge use cases)
+          this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+            this.entry.$umid
+          );
 
-            // Clearing All node comms?
-            this.clearAllComms(virtualMachine);
+          // Return Data for this nodes contract run
+          this.nodeResponse.return = virtualMachine.getReturnContractData(
+            this.entry.$umid
+          );
 
-            // Are we throwing to another ledger(s)?
-            let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
+          // Clearing All node comms?
+          this.clearAllComms(virtualMachine);
 
-            // Emit to network handler
-            if (throws && throws.length) {
-              this.emit("throw", { locations: throws });
-            }
+          // Are we throwing to another ledger(s)?
+          let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
 
-            // Update Streams
-            this.updateStreams(virtualMachine, earlyCommit);
-          })
-          .catch((error) => {
-            // Don't let local error stop other nodes
-            if (earlyCommit) earlyCommit();
-            ActiveLogger.debug(error, "VM Commit Failure");
+          // Emit to network handler
+          if (throws && throws.length) {
+            this.emit("throw", { locations: throws });
+          }
 
-            // If debug mode forward full error
-            if (ActiveOptions.get<boolean>("debug", false)) {
-              this.raiseLedgerError(
+          // Update Streams
+          this.updateStreams(virtualMachine, earlyCommit);
+        } catch (error) {
+          // Don't let local error stop other nodes
+          if (earlyCommit) earlyCommit();
+
+          ActiveLogger.debug(error, "VM Commit Failure");
+
+          // If debug mode forward full error
+          ActiveOptions.get<boolean>("debug", false)
+            ? this.raiseLedgerError(
                 1302,
                 new Error(
                   "Commit Failure - " + JSON.stringify(error.message || error)
                 )
-              );
-            } else {
-              this.raiseLedgerError(
+              )
+            : this.raiseLedgerError(
                 1301,
                 new Error("Failed Commit Transaction")
               );
-            }
-          });
+        }
       } else {
         // If Early commit we don't need to manage these errors
         if (earlyCommit) return earlyCommit();
+
         // Consensus not reached
         if (!this.nodeResponse.vote) {
           // We didn't vote right
@@ -924,42 +977,44 @@ export class Process extends EventEmitter {
               ActiveLogger.debug(
                 "Network Consensus reached without me (Reconciling)"
               );
-              virtualMachine
-                .reconcile(this.entry.$nodes, this.entry.$umid)
-                .then((reconciled: boolean) => {
-                  // Contract ran its own reconcile procedure
-                  if (reconciled) {
-                    ActiveLogger.info("Self Renconcile Successful");
-                    // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
-                    this.updateStreams(virtualMachine);
+
+              try {
+                const reconciled: boolean = await virtualMachine.reconcile(
+                  this.entry.$nodes,
+                  this.entry.$umid
+                );
+                // Contract ran its own reconcile procedure
+                if (reconciled) {
+                  ActiveLogger.info("Self Renconcile Successful");
+                  // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
+                  this.updateStreams(virtualMachine);
+                } else {
+                  // No move onto internal attempts
+                  // Upgrade error code so restore will process it
+                  if (this.errorOut.code === 1000) {
+                    ActiveLogger.info(
+                      "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
+                    );
+                    // reset single error as 1000 is skipped anyway
+                    this.storeSingleError = false;
+                    // try/catch to finish execution
+                    this.storeError(1001, new Error(this.errorOut.reason), 11)
+                      .then(() => {
+                        this.emit("commited");
+                      })
+                      .catch(() => {
+                        this.emit("commited");
+                      });
                   } else {
-                    // No move onto internal attempts
-                    // Upgrade error code so restore will process it
-                    if (this.errorOut.code === 1000) {
-                      ActiveLogger.info(
-                        "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
-                      );
-                      // reset single error as 1000 is skipped anyway
-                      this.storeSingleError = false;
-                      // try/catch to finish execution
-                      this.storeError(1001, new Error(this.errorOut.reason), 11)
-                        .then(() => {
-                          this.emit("commited");
-                        })
-                        .catch(() => {
-                          this.emit("commited");
-                        });
-                    } else {
-                      // Because we voted no doesn't mean the network should error
-                      this.emit("commited");
-                    }
+                    // Because we voted no doesn't mean the network should error
+                    this.emit("commited");
                   }
-                })
-                .catch((e: Error) => {
-                  // Timed out
-                  ActiveLogger.debug(e);
-                  this.emit("commited");
-                });
+                }
+              } catch (error) {
+                // Timed out
+                ActiveLogger.debug(error);
+                this.emit("commited");
+              }
             }
           } else {
             // Because we voted no doesn't mean the network should error
@@ -1039,322 +1094,114 @@ export class Process extends EventEmitter {
     virtualMachine: IVirtualMachine,
     earlyCommit?: Function
   ) {
-    {
-      // Get the changed data streams
-      let streams: ActiveDefinitions.LedgerStream[] = virtualMachine.getActivityStreamsFromVM(
-        this.entry.$umid
-      );
+    // Any Changes
+    if (streams.length) {
+      // Process Changes to the database
+      // Bulk Insert Docs
+      let docs: any[] = [];
 
-      // Get current working inputs to compare and update if not modified above
-      let inputs: ActiveDefinitions.LedgerStream[] = virtualMachine.getInputs(
-        this.entry.$umid
-      );
+      /**
+       * Delegate Function
+       * Attempt to atomicaly save to the datastore
+       * Allow for delay execution for deterministic test
+       */
+      // ! Working from here
+      let append = () => {
+        this.db
+          .bulkDocs(docs)
+          .then(() => {
+            // Set datetime to reflect when data is set from memory to disk
+            this.nodeResponse.datetime = new Date();
 
-      let skip: string[] = [];
+            // Were we first?
+            if (!this.entry.$territoriality)
+              this.entry.$territoriality = this.reference;
 
-      // Determanistic Collision Managamenent
-      let collisions: any[] = [];
-
-      // Compile streams for umid & return reference
-      let refStreams = {
-        new: [] as any[],
-        updated: [] as any[]
-      };
-
-      // Cache Harden Key Flag
-      let nhkCheck = ActiveOptions.get<any>("security", {})
-        .hardenedKeys as boolean;
-
-      // Any Changes
-      if (streams.length) {
-        // Process Changes to the database
-        // Bulk Insert Docs
-        let docs: any[] = [];
-
-        // Loop Streams
-        let i = streams.length;
-        while (i--) {
-          // New or Updating?
-          // New streams will have a volatile set as {}
-          if (!streams[i].meta._rev) {
-            // Make sure we have an id
-            if (!streams[i].meta._id) {
-              // New (Need to set ids)
-              streams[i].state._id = this.entry.$umid + i;
-              streams[i].meta._id = streams[i].state._id + ":stream";
-              streams[i].volatile!._id = streams[i].state._id + ":volatile";
+            // If Origin Explain streams in output
+            if (this.reference == this.entry.$origin) {
+              this.entry.$streams = refStreams;
             }
 
-            // Need to add transaction to all meta documents
-            streams[i].meta.txs = [this.entry.$umid];
-            // Also set as intalisiser stream (stream constructor)
-            streams[i].meta.$constructor = true;
+            // Manage Post Processing (If Exists)
+            virtualMachine
+              .postProcess(
+                this.entry.$territoriality == this.reference,
+                this.entry.$territoriality,
+                this.entry.$umid
+              )
+              .then((post) => {
+                this.nodeResponse.post = post;
 
-            // Need to remove rev
-            delete streams[i].state._rev;
-            delete streams[i].meta._rev;
-            delete streams[i].volatile!._rev;
-
-            // New Streams need to check if collision will happen
-            if (streams[i].meta.umid !== this.entry.$umid) {
-              collisions.push(streams[i].meta._id);
-            }
-
-            // Add to reference
-            refStreams.new.push({
-              id: streams[i].state._id,
-              name: streams[i].meta.name
-            });
-          } else {
-            // Updated Streams, These could be inputs
-            // So update the transaction and remove for inputs for later processing
-            if (streams[i].meta.txs && streams[i].meta.txs.length) {
-              streams[i].meta.txs.push(this.entry.$umid);
-              skip.push(streams[i].meta._id as string);
-            }
-
-            // Hardened Keys?
-            if (streams[i].state._id && nhkCheck) {
-              // Get nhpk
-              let nhpk = this.entry.$tx.$i[
-                this.getLabelIOMap(true, streams[i].state._id as string)
-              ].$nhpk;
-
-              // Loop Signatures as they should be rewritten with authoritied nested
-              // That way if any new auths were added they will be skipped
-              let txSigAuthsKeys = Object.keys(
-                this.entry.$sigs[streams[i].state._id as string]
-              );
-
-              // Loop all authorities to try and find a match
-              streams[i].meta.authorities.forEach(
-                (authority: ActiveDefinitions.ILedgerAuthority) => {
-                  // Get tx auth signature if existed
-                  const txSigAuthKey = txSigAuthsKeys.indexOf(
-                    authority.hash as string
-                  );
-                  if (txSigAuthKey !== -1) {
-                    (authority as any).public =
-                      nhpk[txSigAuthsKeys[txSigAuthKey]];
-                  }
-                }
-              );
-            }
-
-            // Add to reference
-            refStreams.updated.push({
-              id: streams[i].state._id,
-              name: streams[i].meta.name
-            });
-          }
-
-          // Data State (Developers Control)
-          if (streams[i].state._id) docs.push(streams[i].state);
-
-          // Meta (Stream Data) for internal usage
-          if (streams[i].meta._id) docs.push(streams[i].meta);
-
-          // Volatile data which cannot really be trusted
-          if (streams[i].volatile && streams[i].volatile!._id)
-            docs.push(streams[i].volatile);
-        }
-
-        // Any inputs left (Means not modified, Unmodified outputs can be ignored)
-        // Now we need to append transaction to the inputs of the transaction
-        if (inputs && inputs.length) {
-          // Add to all docs
-          let i = inputs.length;
-          while (i--) {
-            if (
-              skip.indexOf(inputs[i].meta._id as string) === -1 &&
-              inputs[i].meta.txs &&
-              inputs[i].meta.txs.length
-            ) {
-              // Add Compact Transaction
-              inputs[i].meta.txs.push(this.entry.$umid);
-
-              // Hardened Keys?
-              if (inputs[i].state._id && nhkCheck) {
-                // Get nhpk
-                let nhpk = this.entry.$tx.$i[
-                  this.getLabelIOMap(true, inputs[i].state._id as string)
-                ].$nhpk;
-
-                // Loop Signatures as they should be rewritten with authoritied nested
-                // That way if any new auths were added they will be skipped
-                let txSigAuthsKeys = Object.keys(
-                  this.entry.$sigs[inputs[i].state._id as string]
-                );
-
-                // Loop all authorities to try and find a match
-                inputs[i].meta.authorities.forEach(
-                  (authority: ActiveDefinitions.ILedgerAuthority) => {
-                    // Get tx auth signature if existed
-                    const txSigAuthKey = txSigAuthsKeys.indexOf(
-                      authority.hash as string
-                    );
-                    if (txSigAuthKey !== -1) {
-                      (authority as any).public =
-                        nhpk[txSigAuthsKeys[txSigAuthKey]];
-                    }
-                  }
-                );
-              }
-
-              // Push to docs (Only Meta)
-              docs.push(inputs[i].meta);
-            }
-          }
-        }
-
-        // Create umid document containing the transaction details
-        docs.push({
-          _id: this.entry.$umid + ":umid",
-          umid: this.compactTxEntry(),
-          streams: refStreams
-        });
-
-        /**
-         * Delegate Function
-         * Attempt to atomicaly save to the datastore
-         * Allow for delay execution for deterministic test
-         */
-        let append = () => {
-          this.db
-            .bulkDocs(docs)
-            .then(() => {
-              // Set datetime to reflect when data is set from memory to disk
-              this.nodeResponse.datetime = new Date();
-
-              // Were we first?
-              if (!this.entry.$territoriality)
-                this.entry.$territoriality = this.reference;
-
-              // If Origin Explain streams in output
-              if (this.reference == this.entry.$origin) {
-                this.entry.$streams = refStreams;
-              }
-
-              // Manage Post Processing (If Exists)
-              virtualMachine
-                .postProcess(
-                  this.entry.$territoriality == this.reference,
-                  this.entry.$territoriality,
+                // Update in communication (Recommended pre commit only but can be edge use cases)
+                this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
                   this.entry.$umid
-                )
-                .then((post) => {
-                  this.nodeResponse.post = post;
+                );
 
-                  // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-                    this.entry.$umid
-                  );
+                // Return Data for this nodes contract run
+                this.nodeResponse.return = virtualMachine.getReturnContractData(
+                  this.entry.$umid
+                );
 
-                  // Return Data for this nodes contract run
-                  this.nodeResponse.return = virtualMachine.getReturnContractData(
-                    this.entry.$umid
-                  );
+                // Clearing All node comms?
+                this.clearAllComms(virtualMachine);
 
-                  // Clearing All node comms?
-                  this.clearAllComms(virtualMachine);
+                // Remember to let other nodes know
+                if (earlyCommit) earlyCommit();
 
-                  // Remember to let other nodes know
-                  if (earlyCommit) earlyCommit();
+                // Respond with the possible early commited
+                this.emit("commited");
+              })
+              .catch(() => {
+                // Don't let local error stop other nodes
+                if (earlyCommit) earlyCommit();
 
-                  // Respond with the possible early commited
-                  this.emit("commited");
-                })
-                .catch(() => {
-                  // Don't let local error stop other nodes
-                  if (earlyCommit) earlyCommit();
-
-                  // Ignore errors for now, As commit was still a success
-                  this.emit("commited");
-                });
-            })
-            .catch((error: Error) => {
-              // Don't let local error stop other nodes
-              if (earlyCommit) earlyCommit();
-              ActiveLogger.debug(error, "Datatore Failure");
-              this.raiseLedgerError(1510, new Error("Failed to save"));
-            });
-        };
-
-        // Detect Collisions
-        if (collisions.length) {
-          ActiveLogger.info("Deterministic streams to be checked");
-
-          // Store the promises to wait on.
-          let streamColCheck: any[] = [];
-
-          // Loop all streams
-          collisions.forEach((streamId: string) => {
-            // Query datastore for streams
-            streamColCheck.push(this.db.get(streamId));
-          });
-
-          // Wait for all checks
-          Promise.all(streamColCheck)
-            .then((streams) => {
-              // Problem Streams Exist
-              ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
-              // Update commit
-              this.nodeResponse.commit = false;
-              this.raiseLedgerError(
-                1530,
-                new Error("Deterministic Stream Name Exists")
-              );
-            })
-            .catch(() => {
-              // Continue (Error being document not found)
-              append();
-            });
-        } else {
-          // Continue
-          append();
-        }
-      } else {
-        // Nothing to store which is _no longer_ strange contract may not make changes!
-        // Were we first?
-        if (!this.entry.$territoriality)
-          this.entry.$territoriality = this.reference;
-
-        // Manage Post Processing (If Exists)
-        virtualMachine
-          .postProcess(
-            this.entry.$territoriality == this.reference,
-            this.entry.$territoriality,
-            this.entry.$umid
-          )
-          .then((post) => {
-            this.nodeResponse.post = post;
-
-            // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-              this.entry.$umid
-            );
-
-            // Return Data for this nodes contract run
-            this.nodeResponse.return = virtualMachine.getReturnContractData(
-              this.entry.$umid
-            );
-
-            // Clearing All node comms?
-            this.clearAllComms(virtualMachine);
-
-            // Remember to let other nodes know
-            if (earlyCommit) earlyCommit();
-
-            // Respond with the possible early commited
-            this.emit("commited");
+                // Ignore errors for now, As commit was still a success
+                this.emit("commited");
+              });
           })
-          .catch(() => {
+          .catch((error: Error) => {
             // Don't let local error stop other nodes
             if (earlyCommit) earlyCommit();
-            // Ignore errors for now, As commit was still a success
-            this.emit("commited");
+            ActiveLogger.debug(error, "Datatore Failure");
+            this.raiseLedgerError(1510, new Error("Failed to save"));
           });
+      };
+
+      // Detect Collisions
+      if (collisions.length) {
+        ActiveLogger.info("Deterministic streams to be checked");
+
+        // Store the promises to wait on.
+        let streamColCheck: any[] = [];
+
+        // Loop all streams
+        collisions.forEach((streamId: string) => {
+          // Query datastore for streams
+          streamColCheck.push(this.db.get(streamId));
+        });
+
+        // Wait for all checks
+        Promise.all(streamColCheck)
+          .then((streams) => {
+            // Problem Streams Exist
+            ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+            // Update commit
+            this.nodeResponse.commit = false;
+            this.raiseLedgerError(
+              1530,
+              new Error("Deterministic Stream Name Exists")
+            );
+          })
+          .catch(() => {
+            // Continue (Error being document not found)
+            append();
+          });
+      } else {
+        // Continue
+        append();
       }
+    } else {
+      // processNoStreams()
     }
   }
 
@@ -1486,7 +1333,10 @@ export class Process extends EventEmitter {
               if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
                 // Maybe specific authority of the stream now, $nhpk could be string or object of strings
                 // Need to map over because it may not be stream id!
-                if (!nhpkCheckIO[this.getLabelIOMap(inputs, streamId)].$nhpk) {
+                if (
+                  !nhpkCheckIO[this.shared.getLabelIOMap(inputs, streamId)]
+                    .$nhpk
+                ) {
                   return reject({
                     code: 1230,
                     reason:
@@ -1537,8 +1387,9 @@ export class Process extends EventEmitter {
                       // Have all the supplied keys given new public keys
                       if (nhpkCheck) {
                         if (
-                          !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
-                            .$nhpk[sigStream]
+                          !nhpkCheckIO[
+                            this.shared.getLabelIOMap(inputs, streamId)
+                          ].$nhpk[sigStream]
                         ) {
                           return reject({
                             code: 1230,
@@ -1590,8 +1441,9 @@ export class Process extends EventEmitter {
                           // Check for new keys for this authority
                           if (nhpkCheck) {
                             if (
-                              !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
-                                .$nhpk
+                              !nhpkCheckIO[
+                                this.shared.getLabelIOMap(inputs, streamId)
+                              ].$nhpk
                             ) {
                               return reject({
                                 code: 1230,
@@ -1748,7 +1600,7 @@ export class Process extends EventEmitter {
     // Get reference for input or output
     const streams = outputs ? this.outputs : this.inputs;
     const txIO = outputs ? this.entry.$tx.$o : this.entry.$tx.$i;
-    const map = outputs ? this.ioLabelMap.o : this.ioLabelMap.i;
+    const map = outputs ? this.shared.ioLabelMap.o : this.shared.ioLabelMap.i;
 
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
@@ -1760,26 +1612,6 @@ export class Process extends EventEmitter {
         streams[i] = streamId;
       }
     }
-  }
-
-  /**
-   * Get the correct input for Label or key
-   *
-   * @private
-   * @param {boolean} inputs
-   * @param {string} streamId
-   * @returns {string}
-   * @memberof Process
-   */
-  private getLabelIOMap(inputs: boolean, streamId: string): string {
-    // Get Correct Map
-    let checkIOMap = inputs ? this.ioLabelMap.i : this.ioLabelMap.o;
-
-    // If map empty default to key stream
-    if (!Object.keys(checkIOMap).length) {
-      return streamId;
-    }
-    return checkIOMap[streamId];
   }
 
   /**
