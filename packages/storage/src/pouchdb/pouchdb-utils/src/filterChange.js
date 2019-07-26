@@ -33,13 +33,6 @@ function filterChange(opts) {
 
     if (!opts.include_docs) {
       delete change.doc;
-    } else if (!opts.attachments) {
-      for (var att in change.doc._attachments) {
-        /* istanbul ignore else */
-        if (change.doc._attachments.hasOwnProperty(att)) {
-          change.doc._attachments[att].stub = true;
-        }
-      }
     }
     return true;
   };
