@@ -42,8 +42,7 @@ const PouchDBFind: any = require("pouchdb-find");
 module.prototype.require = _require;
 
 // Export LevelDB Sub Modules
-const PouchRequire = require.cache[require.resolve(__dirname + "/pouchdb/" + "pouchdb-adapter-leveldb")];
-const leveldown: any = PouchRequire.require("leveldown");
+const leveldown: any = require("leveldown");
 // Add Plugins
 PouchDB.plugin(PouchDBLdB).plugin(PouchDBFind);
 export { PouchDB, leveldown };
