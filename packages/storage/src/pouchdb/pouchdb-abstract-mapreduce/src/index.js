@@ -86,7 +86,7 @@ function emitError(db, e) {
  *   Throws an error if the ddoc or viewName is not valid.
  *   This could be a way to communicate to the user that the configuration for the
  *   indexer is invalid.
- */
+*/
 function createAbstractMapReduce(localDocName, mapper, reducer, ddocValidator) {
 
   function tryMap(db, fun, doc) {
@@ -133,39 +133,6 @@ function createAbstractMapReduce(localDocName, mapper, reducer, ddocValidator) {
     // defaults to the doc _id that emitted the key/value.
     var docId = (val && typeof val === 'object' && val._id) || row.id;
     return docId;
-  }
-
-  function readAttachmentsAsBlobOrBuffer(res) {
-    res.rows.forEach(function (row) {
-      var atts = row.doc && row.doc._attachments;
-      if (!atts) {
-        return;
-      }
-      Object.keys(atts).forEach(function (filename) {
-        var att = atts[filename];
-        atts[filename].data = b64ToBluffer(att.data, att.content_type);
-      });
-    });
-  }
-
-  function postprocessAttachments(opts) {
-    return function (res) {
-      if (opts.include_docs && opts.attachments && opts.binary) {
-        readAttachmentsAsBlobOrBuffer(res);
-      }
-      return res;
-    };
-  }
-
-  function addHttpParam(paramName, opts, params, asJson) {
-    // add an http param from opts to params, optionally json-encoded
-    var val = opts[paramName];
-    if (typeof val !== 'undefined') {
-      if (asJson) {
-        val = encodeURIComponent(JSON.stringify(val));
-      }
-      params.push(paramName + '=' + val);
-    }
   }
 
   function coerceInteger(integerCandidate) {
@@ -225,116 +192,6 @@ function createAbstractMapReduce(localDocName, mapper, reducer, ddocValidator) {
       }
     });
   }
-
-  // function httpQuery(db, fun, opts) {
-  //   // List of parameters to add to the PUT request
-  //   var params = [];
-  //   var body;
-  //   var method = 'GET';
-  //   var ok, status;
-
-  //   // If opts.reduce exists and is defined, then add it to the list
-  //   // of parameters.
-  //   // If reduce=false then the results are that of only the map function
-  //   // not the final result of map and reduce.
-  //   addHttpParam('reduce', opts, params);
-  //   addHttpParam('include_docs', opts, params);
-  //   addHttpParam('attachments', opts, params);
-  //   addHttpParam('limit', opts, params);
-  //   addHttpParam('descending', opts, params);
-  //   addHttpParam('group', opts, params);
-  //   addHttpParam('group_level', opts, params);
-  //   addHttpParam('skip', opts, params);
-  //   addHttpParam('stale', opts, params);
-  //   addHttpParam('conflicts', opts, params);
-  //   addHttpParam('startkey', opts, params, true);
-  //   addHttpParam('start_key', opts, params, true);
-  //   addHttpParam('endkey', opts, params, true);
-  //   addHttpParam('end_key', opts, params, true);
-  //   addHttpParam('inclusive_end', opts, params);
-  //   addHttpParam('key', opts, params, true);
-  //   addHttpParam('update_seq', opts, params);
-
-  //   // Format the list of parameters into a valid URI query string
-  //   params = params.join('&');
-  //   params = params === '' ? '' : '?' + params;
-
-  //   // If keys are supplied, issue a POST to circumvent GET query string limits
-  //   // see http://wiki.apache.org/couchdb/HTTP_view_API#Querying_Options
-  //   if (typeof opts.keys !== 'undefined') {
-  //     var MAX_URL_LENGTH = 2000;
-  //     // according to http://stackoverflow.com/a/417184/680742,
-  //     // the de facto URL length limit is 2000 characters
-
-  //     var keysAsString =
-  //       'keys=' + encodeURIComponent(JSON.stringify(opts.keys));
-  //     if (keysAsString.length + params.length + 1 <= MAX_URL_LENGTH) {
-  //       // If the keys are short enough, do a GET. we do this to work around
-  //       // Safari not understanding 304s on POSTs (see pouchdb/pouchdb#1239)
-  //       params += (params[0] === '?' ? '&' : '?') + keysAsString;
-  //     } else {
-  //       method = 'POST';
-  //       if (typeof fun === 'string') {
-  //         body = {keys: opts.keys};
-  //       } else { // fun is {map : mapfun}, so append to this
-  //         fun.keys = opts.keys;
-  //       }
-  //     }
-  //   }
-
-  //   // We are referencing a query defined in the design doc
-  //   if (typeof fun === 'string') {
-  //     var parts = parseViewName(fun);
-  //     return db.fetch('_design/' + parts[0] + '/_view/' + parts[1] + params, {
-  //       headers: new Headers({'Content-Type': 'application/json'}),
-  //       method: method,
-  //       body: JSON.stringify(body)
-  //     }).then(function (response) {
-  //       ok = response.ok;
-  //       status = response.status;
-  //       return response.json();
-  //     }).then(function (result) {
-  //       if (!ok) {
-  //         result.status = status;
-  //         throw generateErrorFromResponse(result);
-  //       }
-  //       // fail the entire request if the result contains an error
-  //       result.rows.forEach(function (row) {
-  //         /* istanbul ignore if */
-  //         if (row.value && row.value.error && row.value.error === "builtin_reduce_error") {
-  //           throw new Error(row.reason);
-  //         }
-  //       });
-  //       return result;
-  //     }).then(postprocessAttachments(opts));
-  //   }
-
-  //   // We are using a temporary view, terrible for performance, good for testing
-  //   body = body || {};
-  //   Object.keys(fun).forEach(function (key) {
-  //     if (Array.isArray(fun[key])) {
-  //       body[key] = fun[key];
-  //     } else {
-  //       body[key] = fun[key].toString();
-  //     }
-  //   });
-
-  //   return db.fetch('_temp_view' + params, {
-  //     headers: new Headers({'Content-Type': 'application/json'}),
-  //     method: 'POST',
-  //     body: JSON.stringify(body)
-  //   }).then(function (response) {
-  //       ok = response.ok;
-  //       status = response.status;
-  //     return response.json();
-  //   }).then(function (result) {
-  //     if (!ok) {
-  //       result.status = status;
-  //       throw generateErrorFromResponse(result);
-  //     }
-  //     return result;
-  //   }).then(postprocessAttachments(opts));
-  // }
 
   // custom adapters can define their own api._query
   // and override the default behavior
@@ -703,7 +560,6 @@ function createAbstractMapReduce(localDocName, mapper, reducer, ddocValidator) {
           keys: docIds,
           include_docs: true,
           conflicts: opts.conflicts,
-          attachments: opts.attachments,
           binary: opts.binary
         }).then(function (allDocsRes) {
           var docIdsToDocs = new Map();

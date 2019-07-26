@@ -39,7 +39,7 @@ Changes.prototype.addListener = function (dbName, id, db, opts) {
     }
     inprogress = true;
     var changesOpts = pick(opts, [
-      'style', 'include_docs', 'attachments', 'conflicts', 'filter',
+      'style', 'include_docs', 'conflicts', 'filter',
       'doc_ids', 'view', 'since', 'query_params', 'binary', 'return_docs'
     ]);
 

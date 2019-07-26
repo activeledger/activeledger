@@ -6,7 +6,7 @@ import {
   parseDdocFunctionName
 } from 'pouchdb-utils';
 import { isDeleted , isLocalId } from 'pouchdb-merge';
-import preprocessAttachments from './preprocessAttachments';
+// import preprocessAttachments from './preprocessAttachments';
 import processDocs from './processDocs';
 import updateDoc from './updateDoc';
 
@@ -18,7 +18,7 @@ export {
   normalizeDdocFunctionName,
   parseDdocFunctionName,
   parseDoc,
-  preprocessAttachments,
+  // preprocessAttachments,
   processDocs,
   updateDoc
 };

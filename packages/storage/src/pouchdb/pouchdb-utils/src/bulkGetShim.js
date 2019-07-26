@@ -87,7 +87,7 @@ function bulkGet(db, opts, callback) {
       // "atts_since" or "attachments" in the same request, since it's just
       // replicate.js that is using this for the moment.
       // Also, atts_since is aspirational, since we don't support it yet.
-      var docOpts = pick(docRequests[0], ['atts_since', 'attachments']);
+      var docOpts = pick(docRequests[0], ['atts_since']);
       docOpts.open_revs = docRequests.map(function (request) {
         // rev is optional, open_revs disallowed
         return request.rev;
@@ -108,7 +108,7 @@ function bulkGet(db, opts, callback) {
       }
 
       // globally-supplied options
-      ['revs', 'attachments', 'binary', 'ajax', 'latest'].forEach(function (param) {
+      ['revs', 'binary', 'ajax', 'latest'].forEach(function (param) {
         if (param in opts) {
           docOpts[param] = opts[param];
         }
