@@ -1,9 +1,10 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
-import { Process } from "./process";
 import { Shared } from "./shared";
 import { IVirtualMachine } from "./interfaces/vm.interface";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveLogger } from "../../../logger/src/index";
+import { EventEmitter } from "events";
 export class StreamUpdater {
   private docs: any;
 
@@ -13,23 +14,22 @@ export class StreamUpdater {
 
   private skip: string[];
 
-  private collisions: any[];
+  private collisions: string[];
 
   private nhkCheck: boolean;
 
   private refStreams: IReferenceStreams;
 
-  private shared: Shared;
-
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
     private virtualMachine: IVirtualMachine,
-    private reference: any,
+    private reference: string,
     private nodeResponse: any,
-    private earlyCommit: any
+    private earlyCommit: any,
+    private db: ActiveDSConnect,
+    private emitter: EventEmitter,
+    private shared: Shared
   ) {
-    this.shared = new Shared();
-
     // Get the changed data streams
     this.streams = this.virtualMachine.getActivityStreamsFromVM(
       this.entry.$umid
@@ -57,8 +57,9 @@ export class StreamUpdater {
   private async processNoStreams() {
     // Nothing to store which is _no longer_ strange contract may not make changes!
     // Were we first?
-    if (!this.entry.$territoriality)
+    if (!this.entry.$territoriality) {
       this.entry.$territoriality = this.reference;
+    }
 
     // Manage Post Processing (If Exists)
     try {
@@ -80,18 +81,18 @@ export class StreamUpdater {
 
       // Clearing All node comms?
       // Todo: move to shared
-      this.clearAllComms(this.virtualMachine);
+      this.entry = this.shared.clearAllComms(this.virtualMachine);
 
       // Remember to let other nodes know
-      if (this.earlyCommit) earlyCommit();
+      if (this.earlyCommit) this.shared.earlyCommit();
 
       // Respond with the possible early commited
-      this.emit("commited");
+      this.emitter.emit("commited");
     } catch (error) {
       // Don't let local error stop other nodes
-      if (this.earlyCommit) earlyCommit();
+      if (this.earlyCommit) this.shared.earlyCommit();
       // Ignore errors for now, As commit was still a success
-      this.emit("commited");
+      this.emitter.emit("commited");
     }
   }
 
@@ -110,6 +111,8 @@ export class StreamUpdater {
       umid: this.compactTxEntry(),
       streams: this.refStreams
     });
+
+    this.detectCollisions();
   }
 
   /**
@@ -218,7 +221,7 @@ export class StreamUpdater {
 
         // New Streams need to check if collision will happen
         if (this.streams[i].meta.umid !== this.entry.$umid) {
-          this.collisions.push(this.streams[i].meta._id);
+          this.collisions.push(this.streams[i].meta._id as string);
         }
 
         // Add to reference
@@ -280,12 +283,107 @@ export class StreamUpdater {
     }
   }
 
-  private appendToInputs() {}
-
   private async append() {
-    // ! Working from here
-    await this.db.bulkDocs(this.docs);
+    let continueProcessing = true,
+      emit = true;
+
+    try {
+      await this.db.bulkDocs(this.docs);
+    } catch (error) {
+      continueProcessing = emit = false;
+
+      ActiveLogger.debug(error, "Datatore Failure");
+      // TODO: Put in shared
+      this.shared.raiseLedgerError(1510, new Error("Failed to save"));
+    }
+
+    if (continueProcessing) {
+      // Set datetime to reflect when data is set from memory to disk
+      this.nodeResponse.datetime = new Date();
+
+      // Were we first?
+      if (!this.entry.$territoriality) {
+        this.entry.$territoriality = this.reference;
+      }
+
+      // If Origin Explain streams in output
+      if (this.reference === this.entry.$origin) {
+        this.entry.$streams = this.refStreams;
+      }
+
+      try {
+        // Handle post processing if it exists
+        const post = await this.virtualMachine.postProcess(
+          this.entry.$territoriality === this.reference,
+          this.entry.$territoriality,
+          this.entry.$umid
+        );
+
+        this.nodeResponse.post = post;
+
+        // Update in communication (Recommended pre commit only but can be edge use cases)
+        this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
+          this.entry.$umid
+        );
+
+        // Return Data for this nodes contract run
+        this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+          this.entry.$umid
+        );
+
+        // Clearing All node comms?
+        this.entry = this.shared.clearAllComms(this.virtualMachine);
+      } catch (error) {
+        continueProcessing = false;
+      }
+    }
+
+    // Remember to let other nodes know
+    if (this.earlyCommit) {
+      this.shared.earlyCommit();
+    }
+
+    if (emit) {
+      // Respond with the possible early commited
+      this.emitter.emit("commited");
+    }
   }
 
-  private detectCollisions() {}
+  private detectCollisions() {
+    if (this.collisions.length) {
+      ActiveLogger.info("Deterministic streams to be checked");
+
+      // Store the promises to wait on.
+      let streamColCheck: any[] = [];
+
+      let i = this.collisions.length;
+      while (i--) {
+        const streamId: string = this.collisions[i];
+
+        // Query datastore for streams
+        streamColCheck.push(this.db.get(streamId));
+      }
+
+      // Wait for all the checks
+      try {
+        const streams = Promise.all(streamColCheck);
+
+        // Problem streams exist
+        ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+
+        // Update commit
+        this.nodeResponse.commit = false;
+        this.shared.raiseLedgerError(
+          1530,
+          new Error("Deterministic Stream Name Exists")
+        );
+      } catch (error) {
+        // ? Continue (Error being document not found)
+        this.append();
+      }
+    } else {
+      // Continue
+      this.append();
+    }
+  }
 }

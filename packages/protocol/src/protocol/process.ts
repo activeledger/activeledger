@@ -38,6 +38,7 @@ import {
   IReferenceStreams
 } from "./interfaces/process.interface";
 import { Shared } from "./shared";
+import { StreamUpdater } from "./streamUpdater";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -235,7 +236,7 @@ export class Process extends EventEmitter {
   ) {
     super();
 
-    this.shared = new Shared();
+    this.shared = new Shared(this.storeSingleError, this.entry, this.dbe, this);
 
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
@@ -262,7 +263,7 @@ export class Process extends EventEmitter {
   public destroy(umid: string): void {
     // Record un commited transactions as an error
     if (!this.nodeResponse.commit) {
-      this.raiseLedgerError(
+      this.shared.raiseLedgerError(
         1600,
         new Error("Failed to commit before timeout"),
         true
@@ -327,7 +328,7 @@ export class Process extends EventEmitter {
 
       // We must have inputs (New Inputs can create brand new unknown outputs)
       if (!this.inputs.length) {
-        this.raiseLedgerError(1101, new Error("Inputs cannot be null"));
+        this.shared.raiseLedgerError(1101, new Error("Inputs cannot be null"));
       }
 
       // Which $i lookup are we using. Are they labelled or stream names
@@ -391,7 +392,7 @@ export class Process extends EventEmitter {
             let input = this.entry.$tx.$i[sigs[i]];
 
             const validSignature = () =>
-              this.signatureCheck(
+              this.shared.signatureCheck(
                 input.publicKey,
                 signature as string,
                 input.type ? input.type : "rsa"
@@ -402,14 +403,14 @@ export class Process extends EventEmitter {
               // Check the input has a public key
               if (input.publicKey) {
                 if (!validSignature()) {
-                  return this.raiseLedgerError(
+                  return this.shared.raiseLedgerError(
                     1250,
                     new Error("Self signed signature not matching")
                   );
                 }
               } else {
                 // We don't have the public key to check
-                return this.raiseLedgerError(
+                return this.shared.raiseLedgerError(
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " + sigs[i]
@@ -591,7 +592,7 @@ export class Process extends EventEmitter {
     // Handle a vote error
     const handleVoteError = async (error: Error) => {
       try {
-        await this.storeError(
+        await this.shared.storeError(
           1000,
           new Error("Vote Failure - " + JSON.stringify(error)),
           10
@@ -619,7 +620,7 @@ export class Process extends EventEmitter {
     } catch (error) {
       // Contract not found / failed to start
       ActiveLogger.debug(error, "VM initialisation failed");
-      this.raiseLedgerError(
+      this.shared.raiseLedgerError(
         1401,
         new Error("VM Init Failure - " + JSON.stringify(error.message || error))
       );
@@ -635,7 +636,7 @@ export class Process extends EventEmitter {
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
-      this.raiseLedgerError(1310, new Error(error));
+      this.shared.raiseLedgerError(1310, new Error(error));
 
       // Stop processing
       continueProcessing = false;
@@ -669,7 +670,7 @@ export class Process extends EventEmitter {
       );
 
       // Clearing All node comms?
-      this.clearAllComms(virtualMachine);
+      this.entry = this.shared.clearAllComms(virtualMachine);
 
       // Continue to next nodes vote
       this.postVote(virtualMachine);
@@ -757,7 +758,7 @@ export class Process extends EventEmitter {
       }
     } catch (error) {
       // error fetch read only streams
-      this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
+      this.shared.raiseLedgerError(1210, new Error("Read Only Stream Error"));
     }
   }
 
@@ -814,7 +815,12 @@ export class Process extends EventEmitter {
 
               // Normal, Or getting other node opinions?
               if (error) {
-                this.raiseLedgerError(error.code, error.reason, true, 10);
+                this.shared.raiseLedgerError(
+                  error.code,
+                  error.reason,
+                  true,
+                  10
+                );
               }
 
               // Run the Commit Phase
@@ -827,18 +833,21 @@ export class Process extends EventEmitter {
             // if debug mode forward
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
-              ? this.raiseLedgerError(
+              ? this.shared.raiseLedgerError(
                   error.status || 1502,
                   new Error(error.error)
                 ) // rethrow same error
-              : this.raiseLedgerError(1501, new Error("Bad Knock Transaction")); // Generic error 404/ 500
+              : this.shared.raiseLedgerError(
+                  1501,
+                  new Error("Bad Knock Transaction")
+                ); // Generic error 404/ 500
           }
         });
       } else {
         ActiveLogger.debug("Origin is next (Sending Back)");
 
         error
-          ? this.raiseLedgerError(error.code, error.reason) // Of course if next is origin we need to send back for the promises!
+          ? this.shared.raiseLedgerError(error.code, error.reason) // Of course if next is origin we need to send back for the promises!
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
@@ -918,7 +927,7 @@ export class Process extends EventEmitter {
           );
 
           // Clearing All node comms?
-          this.clearAllComms(virtualMachine);
+          this.entry = this.shared.clearAllComms(virtualMachine);
 
           // Are we throwing to another ledger(s)?
           let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
@@ -929,7 +938,17 @@ export class Process extends EventEmitter {
           }
 
           // Update Streams
-          this.updateStreams(virtualMachine, earlyCommit);
+          const streamUpdater = new StreamUpdater(
+            this.entry,
+            virtualMachine,
+            this.reference,
+            this.nodeResponse,
+            earlyCommit,
+            this.db,
+            this,
+            this.shared
+          );
+          streamUpdater.updateStreams();
         } catch (error) {
           // Don't let local error stop other nodes
           if (earlyCommit) earlyCommit();
@@ -938,13 +957,13 @@ export class Process extends EventEmitter {
 
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
-            ? this.raiseLedgerError(
+            ? this.shared.raiseLedgerError(
                 1302,
                 new Error(
                   "Commit Failure - " + JSON.stringify(error.message || error)
                 )
               )
-            : this.raiseLedgerError(
+            : this.shared.raiseLedgerError(
                 1301,
                 new Error("Failed Commit Transaction")
               );
@@ -963,7 +982,7 @@ export class Process extends EventEmitter {
 
           // We voted false, Need to process
           // Still required as broadcast will skip over 1000
-          this.raiseLedgerError(
+          this.shared.raiseLedgerError(
             1505,
             new Error("This node voted false"),
             false
@@ -987,7 +1006,17 @@ export class Process extends EventEmitter {
                 if (reconciled) {
                   ActiveLogger.info("Self Renconcile Successful");
                   // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
-                  this.updateStreams(virtualMachine);
+                  const streamUpdater = new StreamUpdater(
+                    this.entry,
+                    virtualMachine,
+                    this.reference,
+                    this.nodeResponse,
+                    null,
+                    this.db,
+                    this,
+                    this.shared
+                  );
+                  streamUpdater.updateStreams();
                 } else {
                   // No move onto internal attempts
                   // Upgrade error code so restore will process it
@@ -996,9 +1025,10 @@ export class Process extends EventEmitter {
                       "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
                     );
                     // reset single error as 1000 is skipped anyway
-                    this.storeSingleError = false;
+                    this.shared.storeSingleError = false;
                     // try/catch to finish execution
-                    this.storeError(1001, new Error(this.errorOut.reason), 11)
+                    this.shared
+                      .storeError(1001, new Error(this.errorOut.reason), 11)
                       .then(() => {
                         this.emit("commited");
                       })
@@ -1024,7 +1054,7 @@ export class Process extends EventEmitter {
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-            this.raiseLedgerError(
+            this.shared.raiseLedgerError(
               1510,
               new Error("Failed Network Voting Round")
             );
@@ -1045,7 +1075,7 @@ export class Process extends EventEmitter {
               clearTimeout(this.broadcastTimeout);
               // Entire Network didn't reach consensus
               ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-              return this.raiseLedgerError(
+              return this.shared.raiseLedgerError(
                 1510,
                 new Error("Failed Network Voting Round")
               );
@@ -1065,7 +1095,7 @@ export class Process extends EventEmitter {
                 this.broadcastTimeout = setTimeout(() => {
                   // Entire Network didn't reach consensus in time
                   ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
-                  return this.raiseLedgerError(
+                  return this.shared.raiseLedgerError(
                     1510,
                     new Error("Failed Network Voting Timeout")
                   );
@@ -1073,7 +1103,7 @@ export class Process extends EventEmitter {
               } else {
                 // Even if the other nodes voted yes we will still not reach conesnsus
                 ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-                return this.raiseLedgerError(
+                return this.shared.raiseLedgerError(
                   1510,
                   new Error("Failed Network Voting Round")
                 );
@@ -1087,121 +1117,6 @@ export class Process extends EventEmitter {
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();
       //? this.emit("commited");
-    }
-  }
-
-  private updateStreams(
-    virtualMachine: IVirtualMachine,
-    earlyCommit?: Function
-  ) {
-    // Any Changes
-    if (streams.length) {
-      // Process Changes to the database
-      // Bulk Insert Docs
-      let docs: any[] = [];
-
-      /**
-       * Delegate Function
-       * Attempt to atomicaly save to the datastore
-       * Allow for delay execution for deterministic test
-       */
-      // ! Working from here
-      let append = () => {
-        this.db
-          .bulkDocs(docs)
-          .then(() => {
-            // Set datetime to reflect when data is set from memory to disk
-            this.nodeResponse.datetime = new Date();
-
-            // Were we first?
-            if (!this.entry.$territoriality)
-              this.entry.$territoriality = this.reference;
-
-            // If Origin Explain streams in output
-            if (this.reference == this.entry.$origin) {
-              this.entry.$streams = refStreams;
-            }
-
-            // Manage Post Processing (If Exists)
-            virtualMachine
-              .postProcess(
-                this.entry.$territoriality == this.reference,
-                this.entry.$territoriality,
-                this.entry.$umid
-              )
-              .then((post) => {
-                this.nodeResponse.post = post;
-
-                // Update in communication (Recommended pre commit only but can be edge use cases)
-                this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-                  this.entry.$umid
-                );
-
-                // Return Data for this nodes contract run
-                this.nodeResponse.return = virtualMachine.getReturnContractData(
-                  this.entry.$umid
-                );
-
-                // Clearing All node comms?
-                this.clearAllComms(virtualMachine);
-
-                // Remember to let other nodes know
-                if (earlyCommit) earlyCommit();
-
-                // Respond with the possible early commited
-                this.emit("commited");
-              })
-              .catch(() => {
-                // Don't let local error stop other nodes
-                if (earlyCommit) earlyCommit();
-
-                // Ignore errors for now, As commit was still a success
-                this.emit("commited");
-              });
-          })
-          .catch((error: Error) => {
-            // Don't let local error stop other nodes
-            if (earlyCommit) earlyCommit();
-            ActiveLogger.debug(error, "Datatore Failure");
-            this.raiseLedgerError(1510, new Error("Failed to save"));
-          });
-      };
-
-      // Detect Collisions
-      if (collisions.length) {
-        ActiveLogger.info("Deterministic streams to be checked");
-
-        // Store the promises to wait on.
-        let streamColCheck: any[] = [];
-
-        // Loop all streams
-        collisions.forEach((streamId: string) => {
-          // Query datastore for streams
-          streamColCheck.push(this.db.get(streamId));
-        });
-
-        // Wait for all checks
-        Promise.all(streamColCheck)
-          .then((streams) => {
-            // Problem Streams Exist
-            ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
-            // Update commit
-            this.nodeResponse.commit = false;
-            this.raiseLedgerError(
-              1530,
-              new Error("Deterministic Stream Name Exists")
-            );
-          })
-          .catch(() => {
-            // Continue (Error being document not found)
-            append();
-          });
-      } else {
-        // Continue
-        append();
-      }
-    } else {
-      // processNoStreams()
     }
   }
 
@@ -1400,12 +1315,13 @@ export class Process extends EventEmitter {
                         }
                       }
 
+                      // ! From here
                       // Loop authorities and find a match
                       return (stream[i].meta as any).authorities.some(
                         (authority: ActiveDefinitions.ILedgerAuthority) => {
                           // If matching hash do sig check
                           if (authority.hash == sigStream) {
-                            return this.signatureCheck(
+                            return this.shared.signatureCheck(
                               authority.public,
                               signature,
                               authority.type
@@ -1432,7 +1348,7 @@ export class Process extends EventEmitter {
                       (authority: ActiveDefinitions.ILedgerAuthority) => {
                         if (
                           authority.hash &&
-                          this.signatureCheck(
+                          this.shared.signatureCheck(
                             authority.public,
                             this.entry.$sigs[streamId] as string,
                             authority.type
@@ -1477,7 +1393,7 @@ export class Process extends EventEmitter {
               } else {
                 // Backwards Compatible Check
                 if (
-                  !this.signatureCheck(
+                  !this.shared.signatureCheck(
                     (stream[i].meta as any).public,
                     this.entry.$sigs[streamId] as string,
                     (stream[i].meta as any).type
@@ -1505,6 +1421,7 @@ export class Process extends EventEmitter {
     });
   }
 
+  // ! From here (Replace above function with permissionChecked class calls)
   /**
    * Fetches streams for read only consumption
    *
@@ -1630,107 +1547,5 @@ export class Process extends EventEmitter {
       $revs: this.entry.$revs,
       $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false
     };
-  }
-
-  /**
-   * Clears all Internode Communication if contract requests
-   *
-   * @private
-   * @memberof Process
-   */
-  private clearAllComms(virtualMachine: IVirtualMachine) {
-    if (virtualMachine.clearingInternodeCommsFromVM(this.entry.$umid)) {
-      Object.values(this.entry.$nodes).forEach((node: any) => {
-        node.incomms = null;
-      });
-    }
-  }
-
-  /**
-   * Manage all errors from the Process & VM to put into the activerestore. So activerestore
-   * can verify if it failed due to local coniditions or just a bad entry
-   *
-   * @private
-   * @param {number} code
-   * @param {Error} reason
-   * @param {Boolean} [stop]
-   * @memberof Process
-   */
-  private raiseLedgerError(
-    code: number,
-    reason: Error,
-    stop: Boolean = false,
-    priority: number = 0
-  ): void {
-    // Store in database for activesrestore to review
-    this.storeError(code, reason, priority)
-      .then(() => {
-        // Emit failed event for execution
-        if (!stop) {
-          this.emit("failed", {
-            status: this.errorOut.code,
-            error: this.errorOut.reason
-          });
-        }
-      })
-      .catch((error) => {
-        // Problem could be serious (Database down?)
-        // However if this errors we need to just emit to let the ledger continue
-        ActiveLogger.fatal(error, "Database Error Log Issues");
-
-        // Emit failed event for execution
-        if (!stop) {
-          this.emit("failed", {
-            status: code,
-            error: error
-          });
-        }
-      });
-  }
-
-  /**
-   * Store Error into Database
-   * TODO: Defer storing into the database until after execution or on crash
-   *
-   * @private
-   * @param {number} code
-   * @param {Error} reason
-   * @param {number} priority
-   * @returns {Promise<any>}
-   * @memberof Process
-   */
-  private storeError(
-    code: number,
-    reason: Error,
-    priority: number = 0
-  ): Promise<any> {
-    // Only want to send 1 error to the browser as well.
-    // As we may only need to store one we may need to manage Contract errors
-    if (priority >= this.errorOut.priority) {
-      this.errorOut.code = code;
-      this.errorOut.reason = (reason && reason.message
-        ? reason.message
-        : reason) as string;
-      this.errorOut.priority = priority;
-    }
-
-    if (!this.storeSingleError && this.entry) {
-      // Build Document for couch
-      let doc = {
-        code: code,
-        processed: this.storeSingleError,
-        umid: this.entry.$umid, // Easier umid lookup
-        transaction: this.entry,
-        reason: reason && reason.message ? reason.message : reason
-      };
-
-      // Now if we store another error it wont be prossed
-      this.storeSingleError = true;
-
-      // Return
-      return this.dbe.post(doc);
-    } else {
-      return Promise.resolve();
-    }
   }
 }
