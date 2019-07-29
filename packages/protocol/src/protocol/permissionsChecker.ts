@@ -3,7 +3,10 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { rejects } from "assert";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
-import { LedgerStream, LedgerIORputs } from "../../../definitions/src/definitions/ledger";
+import {
+  LedgerStream,
+  LedgerIORputs
+} from "../../../definitions/src/definitions/ledger";
 
 export class PermissionsChecker {
   constructor(
@@ -153,13 +156,18 @@ export class PermissionsChecker {
           // Check signature
           if (stream[i].meta.authorities) {
             /*
-            * Some will return true early, at this stage we only need 1.
-            * The Smart contract developer can use the other signatures
-            * to create a mini consensus within their own application (such as ownership)
-            */ 
+             * Some will return true early, at this stage we only need 1.
+             * The Smart contract developer can use the other signatures
+             * to create a mini consensus within their own application (such as ownership)
+             */
 
-            this.signatureCheck(streamId, stream[i], nhpkCheck, nhpkCheckIO, reject);
-
+            this.signatureCheck(
+              streamId,
+              stream[i],
+              nhpkCheck,
+              nhpkCheckIO,
+              reject
+            );
           } else {
             // Backwards compatible check
             const type = stream[i].meta.type ? stream[i].meta.type : "rsa";
@@ -208,19 +216,22 @@ export class PermissionsChecker {
   }
 
   private signatureCheck(
-    streamId: string, 
-    stream: ActiveDefinitions.LedgerStream, 
-    nhpkCheck: boolean, 
+    streamId: string,
+    stream: ActiveDefinitions.LedgerStream,
+    nhpkCheck: boolean,
     nhpkCheckIO: ActiveDefinitions.LedgerIORputs,
     reject: (value?: any) => void
   ): void {
-    const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean => this.shared.signatureCheck(
-      authority.public,
-      this.entry.$sigs[streamId] as string,
-      authority.type
-    );
+    const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
+      this.shared.signatureCheck(
+        authority.public,
+        this.entry.$sigs[streamId] as string,
+        authority.type
+      );
 
-    const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(this.entry.$sigs[streamId]);
+    const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
+      this.entry.$sigs[streamId]
+    );
 
     if (isLedgerAuthSignatures) {
       // Multiple signatures passed
@@ -231,29 +242,41 @@ export class PermissionsChecker {
       if (sigStreamKeys.length > authorities) {
         return reject({
           code: 1225,
-          reason: (this.inputs ? "Input" : "Output") + " Incorrect Signature List Length";
+          reason:
+            (this.inputs ? "Input" : "Output") +
+            " Incorrect Signature List Length"
         });
       }
 
       // Loop over signatures
       // Every supplied signature should exist and pass
       const sigCheck = sigStreamKeys.every((sigStream: string) => {
-
-        const nhpk = nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk[sigStream];
+        const nhpk =
+          nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk[
+            sigStream
+          ];
 
         if (nhpkCheck && !nhpk) {
           return reject({
             code: 1230,
-            reason: (this.inputs ? "Input" : "Output") + " Security Hardened Key Transactions Only"
+            reason:
+              (this.inputs ? "Input" : "Output") +
+              " Security Hardened Key Transactions Only"
           });
         } else {
           // Get signature from tx object
-          const signature = (this.entry.$sigs[streamId] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
+          const signature = (this.entry.$sigs[
+            streamId
+          ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
           const authCheck = stream.meta.authorities.some(
             (authority: ActiveDefinitions.ILedgerAuthority) => {
               // If matching hash do sig check
               if (authority.hash === sigStream) {
-                return this.shared.signatureCheck(authority.public, signature, authority.type);
+                return this.shared.signatureCheck(
+                  authority.public,
+                  signature,
+                  authority.type
+                );
               } else {
                 return false;
               }
@@ -262,18 +285,15 @@ export class PermissionsChecker {
 
           return authCheck;
         }
-
       });
 
       if (!sigCheck) {
-
       }
-
     } else {
-      
       const authorityCheck = stream.meta.authorities.some(
         (authority: ActiveDefinitions.ILedgerAuthority) => {
-          const nhpk = nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk;
+          const nhpk =
+            nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk;
 
           // Check if this authority has new keys
           if (nhpkCheck && !nhpk) {
@@ -283,8 +303,8 @@ export class PermissionsChecker {
                 (this.inputs ? "Input" : "Output") +
                 " Security Hardened Key Transactions Only"
             });
-          } 
-          
+          }
+
           if (authority.hash && sigCheck(authority)) {
             // Remap $sigs for later consumption
 
@@ -295,7 +315,6 @@ export class PermissionsChecker {
           } else {
             return false;
           }
-
         }
       );
 
@@ -303,10 +322,9 @@ export class PermissionsChecker {
         // Break loop and reject
         return reject({
           code: 1220,
-          reason:
-            (this.inputs ? "Input" : "Output") + " Signature Incorrect"
+          reason: (this.inputs ? "Input" : "Output") + " Signature Incorrect"
         });
-      } 
+      }
     }
   }
 }
