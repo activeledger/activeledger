@@ -8,6 +8,8 @@ interface ISecurityNamespaces {
 
 export interface ISecurityCache {
   namespace: ISecurityNamespaces;
+  signedOutputs: boolean;
+  hardenedKeys: boolean;
 }
 
 export interface IReferenceStreams {
