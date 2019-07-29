@@ -2,6 +2,7 @@
   "name": "activeledger-monorepo",
   "private": true,
   "scripts": {
+    "setup":"lerna clean --yes && lerna bootstrap && npm rum build && lerna bootstrap",
     "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:options && npm rum build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
@@ -19,14 +20,14 @@
     "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
-    "@types/node": "^11.13.7",
+    "@types/node": "^12.6.8",
     "@types/chai": "^4.1.7",
-    "@types/mocha": "^5.2.6",
+    "@types/mocha": "^5.2.7",
     "chai": "^4.2.0",
-    "lerna": "^3.13.3",
-    "mocha": "^6.1.4",
-    "nyc": "^14.0.0",
-    "ts-node": "^8.1.0",
-    "typescript": "^3.4.5"
+    "lerna": "^3.16.4",
+    "mocha": "^6.2.0",
+    "nyc": "^14.1.1",
+    "ts-node": "^8.3.0",
+    "typescript": "^3.5.3"
   }
 }
