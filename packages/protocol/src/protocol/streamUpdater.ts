@@ -1,10 +1,40 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
-import { ActiveLogger } from "../../../logger/src/index";
 import { EventEmitter } from "events";
+import { ActiveLogger } from "@activeledger/activelogger";
+
+/**
+ * Handles updating the streams
+ *
+ * @export
+ * @class StreamUpdater
+ */
 export class StreamUpdater {
   private docs: any;
 
@@ -20,12 +50,13 @@ export class StreamUpdater {
 
   private refStreams: IReferenceStreams;
 
+  private earlyCommit: Function;
+
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
     private virtualMachine: IVirtualMachine,
     private reference: string,
     private nodeResponse: any,
-    private earlyCommit: any,
     private db: ActiveDSConnect,
     private emitter: EventEmitter,
     private shared: Shared
@@ -48,8 +79,10 @@ export class StreamUpdater {
       .hardenedKeys as boolean;
   }
 
-  public updateStreams(): Promise<any> {
+  public updateStreams(earlyCommit?: Function): Promise<any> {
     return new Promise((resolve, reject) => {
+      if (earlyCommit) this.earlyCommit = earlyCommit();
+
       this.streams.length ? this.processStreams() : this.processNoStreams();
     });
   }
@@ -84,13 +117,13 @@ export class StreamUpdater {
       this.entry = this.shared.clearAllComms(this.virtualMachine);
 
       // Remember to let other nodes know
-      if (this.earlyCommit) this.shared.earlyCommit();
+      if (this.earlyCommit) this.earlyCommit();
 
       // Respond with the possible early commited
       this.emitter.emit("commited");
     } catch (error) {
       // Don't let local error stop other nodes
-      if (this.earlyCommit) this.shared.earlyCommit();
+      if (this.earlyCommit) this.earlyCommit();
       // Ignore errors for now, As commit was still a success
       this.emitter.emit("commited");
     }
@@ -340,7 +373,7 @@ export class StreamUpdater {
 
     // Remember to let other nodes know
     if (this.earlyCommit) {
-      this.shared.earlyCommit();
+      this.earlyCommit();
     }
 
     if (emit) {

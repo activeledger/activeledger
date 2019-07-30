@@ -1,9 +1,39 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activecontracts";
 import { EventEmitter } from "events";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+
+/**
+ * Holds methods shared between process, permissionsChecker, and streamUpdater
+ *
+ * @export
+ * @class Shared
+ */
 export class Shared {
   /**
    * Maps streamId to their labels
@@ -36,6 +66,11 @@ export class Shared {
     private emitter: EventEmitter
   ) {}
 
+  /**
+   * Set the value of errorOut
+   *
+   * @memberof Shared
+   */
   set errorOut(errorOut: {
     code: number;
     reason: string | Error;
@@ -44,6 +79,11 @@ export class Shared {
     this._errorOut = errorOut;
   }
 
+  /**
+   * Set the store single error state
+   *
+   * @memberof Shared
+   */
   set storeSingleError(state: boolean) {
     this._storeSingleError = state;
   }
@@ -88,8 +128,6 @@ export class Shared {
 
     return this.entry;
   }
-
-  public earlyCommit() {}
 
   /**
    * Manage all errors from the Process & VM to put into the activerestore. So activerestore
