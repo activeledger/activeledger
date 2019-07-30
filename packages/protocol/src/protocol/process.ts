@@ -33,12 +33,10 @@ import {
   IVMContractHolder,
   IVirtualMachine
 } from "./interfaces/vm.interface";
-import {
-  ISecurityCache,
-  IReferenceStreams
-} from "./interfaces/process.interface";
+import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
+import { PermissionsChecker } from "./permissionsChecker";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -207,7 +205,23 @@ export class Process extends EventEmitter {
    */
   private securityCache: ISecurityCache | null;
 
+  /**
+   * Initialised shared class
+   *
+   * @private
+   * @type {Shared}
+   * @memberof Process
+   */
   private shared: Shared;
+
+  /**
+   * Permission checking class
+   *
+   * @private
+   * @type {PermissionsChecker}
+   * @memberof Process
+   */
+  private permissionChecker: PermissionsChecker;
 
   // #endregion
 
@@ -242,6 +256,7 @@ export class Process extends EventEmitter {
     this.nodeResponse = entry.$nodes[reference];
 
     try {
+      // Initialise the general contract VM
       Process.generalContractVM = new VirtualMachine(
         this.selfHost,
         this.secured,
@@ -253,6 +268,20 @@ export class Process extends EventEmitter {
     } catch (error) {
       throw new Error(error);
     }
+
+    // Check if the security data has been cached
+    if (!this.securityCache) {
+      this.securityCache = ActiveOptions.get<any>("security", null);
+    }
+
+    // Initialise the permission checker
+    this.permissionChecker = new PermissionsChecker(
+      this.entry,
+      this.db,
+      this.checkRevs,
+      this.securityCache as ISecurityCache,
+      this.shared
+    );
   }
 
   /**
@@ -363,10 +392,13 @@ export class Process extends EventEmitter {
 
         try {
           // Check the input revisions
-          const inputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck();
+          const inputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.inputs
+          );
 
           // Check the output revisions
-          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck(
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.outputs,
             false
           );
 
@@ -425,9 +457,11 @@ export class Process extends EventEmitter {
 
         try {
           // No input streams, Maybe Output
-          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionsCheck(
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.outputs,
             false
           );
+
           this.process([], outputStreams);
         } catch (error) {
           // Forward Error On
@@ -943,12 +977,13 @@ export class Process extends EventEmitter {
             virtualMachine,
             this.reference,
             this.nodeResponse,
-            earlyCommit,
             this.db,
             this,
             this.shared
           );
-          streamUpdater.updateStreams();
+          earlyCommit
+            ? streamUpdater.updateStreams(earlyCommit)
+            : streamUpdater.updateStreams();
         } catch (error) {
           // Don't let local error stop other nodes
           if (earlyCommit) earlyCommit();
@@ -1011,7 +1046,6 @@ export class Process extends EventEmitter {
                     virtualMachine,
                     this.reference,
                     this.nodeResponse,
-                    null,
                     this.db,
                     this,
                     this.shared
@@ -1121,308 +1155,6 @@ export class Process extends EventEmitter {
   }
 
   /**
-   * Manages the permissions of revisions and signatures of each stream type
-   *
-   * @private
-   * @param {string[]} check
-   * @returns {Promise<any>}
-   * @memberof Process
-   */
-  private permissionsCheck(inputs: boolean = true): Promise<any> {
-    // Backwards compatibile will need to be managed here as stream wont exist
-    // Then on "commit" phase we can create the stream file for this to work
-
-    // Test the right object
-    let check = this.inputs;
-    if (!inputs) check = this.outputs;
-
-    // Return as promise for execution
-    return new Promise((resolve, reject) => {
-      // Process all promises at "once"
-      Promise.all(
-        // Map all the objects to get their promises
-        check.map((item) => {
-          // Create promise to manage all revisions at once
-          return new Promise((resolve, reject) => {
-            this.db
-              .allDocs({
-                keys: [item + ":stream", item],
-                include_docs: true
-              })
-              .then((docs: any) => {
-                // Check Documents
-                if (docs.rows.length === 3) {
-                  // Get Documents
-                  const [meta, state]: any = docs.rows as string[];
-
-                  // Check meta
-                  // Check Script Lock
-                  let iMeta: ActiveDefinitions.IMeta = meta.doc as ActiveDefinitions.IMeta;
-                  if (
-                    iMeta.contractlock &&
-                    iMeta.contractlock.length &&
-                    iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
-                  ) {
-                    // We have a lock but not for the current contract request
-                    return reject({
-                      code: 1700,
-                      reason: "Stream contract locked"
-                    });
-                  }
-                  // Check Namespace Lock
-                  if (
-                    iMeta.namespaceLock &&
-                    iMeta.namespaceLock.length &&
-                    iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) ===
-                      -1
-                  ) {
-                    // We have a lock but not for the current contract request
-                    return reject({
-                      code: 1710,
-                      reason: "Stream namespace locked"
-                    });
-                  }
-
-                  // Resolve the whole stream
-                  resolve({
-                    meta: meta.doc,
-                    state: state.doc
-                  });
-                } else {
-                  reject({ code: 995, reason: "Stream(s) not found" });
-                }
-              })
-              .catch((error: any) => {
-                // Add Info
-                error.code = 990;
-                error.reason = "Stream(s) not found";
-                // Rethrow
-                reject(error);
-              });
-          });
-        })
-      )
-        // Now have all the streams to process from the database
-        .then((stream: ActiveDefinitions.LedgerStream[]) => {
-          // All streams documents, May need to convert to promises but all this code is sync
-          let i = stream.length;
-          while (i--) {
-            // Quick Reference
-            let streamId: string = (stream[i].state as any)._id as string;
-
-            // Get Revision type
-            let revType = this.entry.$revs.$i;
-            if (!inputs) revType = this.entry.$revs.$o;
-
-            // Check or set Revisions
-            if (this.checkRevs) {
-              if (
-                revType[streamId] !==
-                (stream[i].meta._rev as any) +
-                  ":" +
-                  (stream[i].state._rev as any)
-              )
-                // Break loop and reject
-                return reject({
-                  code: 1200,
-                  reason:
-                    (inputs ? "Input" : "Output") + " Stream Position Incorrect"
-                });
-            } else {
-              revType[streamId] =
-                (stream[i].meta._rev as any) +
-                ":" +
-                (stream[i].state._rev as any);
-            }
-
-            // Signature Check & Hardened Keys (Inputs and maybe Outputs based on configuration)
-            if (
-              inputs ||
-              ActiveOptions.get<any>("security", {}).signedOutputs
-            ) {
-              // Authorities need to be check flag
-              let nhpkCheck = false;
-              // Label or Key support
-              let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
-              // Check to see if key hardening is enabled and done
-              if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
-                // Maybe specific authority of the stream now, $nhpk could be string or object of strings
-                // Need to map over because it may not be stream id!
-                if (
-                  !nhpkCheckIO[this.shared.getLabelIOMap(inputs, streamId)]
-                    .$nhpk
-                ) {
-                  return reject({
-                    code: 1230,
-                    reason:
-                      (inputs ? "Input" : "Output") +
-                      " Security Hardened Key Transactions Only"
-                  });
-                } else {
-                  // Now need to check if $nhpk is nested with authorities
-                  nhpkCheck = true;
-                }
-              }
-
-              // Now can check signature
-              if ((stream[i].meta as any).authorities) {
-                // Some will return true early. At this stage we only need 1
-                // The Smart contract developer can use the other signatures to create
-                // a mini consensus within their own application (Such as ownership)
-
-                if (
-                  ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
-                    this.entry.$sigs[streamId]
-                  )
-                ) {
-                  // Multiple signatures passed
-                  // Check that they haven't sent more signatures than we have authorities
-                  let sigStreamKeys = Object.keys(this.entry.$sigs[streamId]);
-                  if (
-                    sigStreamKeys.length >
-                    (stream[i].meta as any).authorities.length
-                  ) {
-                    return reject({
-                      code: 1225,
-                      reason:
-                        (inputs ? "Input" : "Output") +
-                        " Incorrect Signature List Length"
-                    });
-                  }
-
-                  // Loop over signatures
-                  // Every supplied signature should exist and pass
-                  if (
-                    !sigStreamKeys.every((sigStream: string) => {
-                      // Get Signature form tx object
-                      const signature = (this.entry.$sigs[
-                        streamId
-                      ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
-
-                      // Have all the supplied keys given new public keys
-                      if (nhpkCheck) {
-                        if (
-                          !nhpkCheckIO[
-                            this.shared.getLabelIOMap(inputs, streamId)
-                          ].$nhpk[sigStream]
-                        ) {
-                          return reject({
-                            code: 1230,
-                            reason:
-                              (inputs ? "Input" : "Output") +
-                              " Security Hardened Key Transactions Only"
-                          });
-                        }
-                      }
-
-                      // ! From here
-                      // Loop authorities and find a match
-                      return (stream[i].meta as any).authorities.some(
-                        (authority: ActiveDefinitions.ILedgerAuthority) => {
-                          // If matching hash do sig check
-                          if (authority.hash == sigStream) {
-                            return this.shared.signatureCheck(
-                              authority.public,
-                              signature,
-                              authority.type
-                            );
-                          } else {
-                            return false;
-                          }
-                        }
-                      );
-                    })
-                  ) {
-                    // Break loop and reject
-                    return reject({
-                      code: 1228,
-                      reason:
-                        (inputs ? "Input" : "Output") +
-                        " Signature List Incorrect"
-                    });
-                  }
-                } else {
-                  // Only one signature passed (Do not need to check for nhpk as its done above with 1:1)
-                  if (
-                    !(stream[i].meta as any).authorities.some(
-                      (authority: ActiveDefinitions.ILedgerAuthority) => {
-                        if (
-                          authority.hash &&
-                          this.shared.signatureCheck(
-                            authority.public,
-                            this.entry.$sigs[streamId] as string,
-                            authority.type
-                          )
-                        ) {
-                          // Check for new keys for this authority
-                          if (nhpkCheck) {
-                            if (
-                              !nhpkCheckIO[
-                                this.shared.getLabelIOMap(inputs, streamId)
-                              ].$nhpk
-                            ) {
-                              return reject({
-                                code: 1230,
-                                reason:
-                                  (inputs ? "Input" : "Output") +
-                                  " Security Hardened Key Transactions Only"
-                              });
-                            }
-                          }
-
-                          // Remap $sigs for later consumption
-                          this.entry.$sigs[streamId] = {
-                            [authority.hash]: this.entry.$sigs[
-                              streamId
-                            ] as string
-                          };
-                          return true;
-                        }
-                        return false;
-                      }
-                    )
-                  ) {
-                    // Break loop and reject
-                    return reject({
-                      code: 1220,
-                      reason:
-                        (inputs ? "Input" : "Output") + " Signature Incorrect"
-                    });
-                  }
-                }
-              } else {
-                // Backwards Compatible Check
-                if (
-                  !this.shared.signatureCheck(
-                    (stream[i].meta as any).public,
-                    this.entry.$sigs[streamId] as string,
-                    (stream[i].meta as any).type
-                      ? (stream[i].meta as any).type
-                      : "rsa"
-                  )
-                ) {
-                  // Break loop and reject
-                  return reject({
-                    code: 1220,
-                    reason:
-                      (inputs ? "Input" : "Output") + " Signature Incorrect"
-                  });
-                }
-              }
-            }
-          }
-          // Everything is good
-          resolve(stream);
-        })
-        .catch((error) => {
-          // Rethrow error
-          reject(error);
-        });
-    });
-  }
-
-  // ! From here (Replace above function with permissionChecked class calls)
-  /**
    * Fetches streams for read only consumption
    *
    * @private
@@ -1430,7 +1162,30 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private getReadOnlyStreams(): Promise<ActiveDefinitions.LedgerIORputs> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      // Promise builder
+      const manageRevisions = (
+        readOnly: ActiveDefinitions.LedgerIORputs,
+        reference: string
+      ) => {
+        return new Promise(async (resolve, reject) => {
+          // Get Meta data
+          try {
+            const read: any = await this.db.get(readOnly[reference]);
+            // Remove _id and _rev
+            delete read._id;
+            delete read._rev;
+
+            // Overwrite reference with state
+            readonlyStreams[reference] = read;
+            resolve(read);
+          } catch (error) {
+            // Rethrow
+            reject(error);
+          }
+        });
+      };
+
       // Holds the read only stream data
       let readonlyStreams: ActiveDefinitions.LedgerIORputs = {};
 
@@ -1440,69 +1195,24 @@ export class Process extends EventEmitter {
         // Get Index
         let keyRefs = Object.keys(readOnly);
 
-        Promise.all(
-          // Map all the objects to get their promises
-          keyRefs.map((reference) => {
-            // Create promise to manage all revisions at once
-            return new Promise((resolve, reject) => {
-              // Get Meta data
-              this.db
-                .get(readOnly[reference])
-                .then((read: any) => {
-                  // Remove _id and _rev
-                  delete read._id;
-                  delete read._rev;
+        // Map all the objects to get their promises
+        const promiseCache = keyRefs.map((reference) => {
+          // Create promise to manage all revisions at once
+          manageRevisions(readOnly, reference);
+        });
 
-                  // Overwrite reference with state
-                  readonlyStreams[reference] = read;
-                  resolve(read);
-                })
-                .catch((error: Error) => {
-                  // Rethrow
-                  reject(error);
-                });
-            });
-          })
-        )
-          .then(() => {
-            // Shoudln't need to do anything as reference object has been updated
-            resolve(readonlyStreams);
-          })
-          .catch((error) => {
-            // Rethrow
-            reject(error);
-          });
+        try {
+          await Promise.all(promiseCache);
+          // Shoudln't need to do anything as reference object has been updated
+          resolve(readonlyStreams);
+        } catch (error) {
+          // Rethrow
+          reject(error);
+        }
       } else {
         resolve(readonlyStreams);
       }
     });
-  }
-
-  /**
-   * Validate signature for the transaction
-   *
-   * @private
-   * @param {string} publicKey
-   * @param {string} signature
-   * @param {string} rsa
-   * @returns {boolean}
-   * @memberof Process
-   */
-  private signatureCheck(
-    publicKey: string,
-    signature: string,
-    type: string = "rsa"
-  ): boolean {
-    try {
-      // Get Key Object
-      let key: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(type, publicKey);
-
-      // Return Valid or not
-      return key.verify(this.entry.$tx, signature);
-    } catch (error) {
-      ActiveLogger.error(error, "Signature Check Error");
-      return false;
-    }
   }
 
   /**
@@ -1522,30 +1232,12 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = 0; i < streams.length; i++) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
         streams[i] = streamId;
       }
     }
-  }
-
-  /**
-   * Creates a smaler trasnaction entry for ledger walking. This will also
-   * keep the value deterministic (not including nodes)
-   *
-   * @private
-   * @returns
-   * @memberof Process
-   */
-  private compactTxEntry() {
-    return {
-      $umid: this.entry.$umid,
-      $tx: this.entry.$tx,
-      $sigs: this.entry.$sigs,
-      $revs: this.entry.$revs,
-      $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false
-    };
   }
 }

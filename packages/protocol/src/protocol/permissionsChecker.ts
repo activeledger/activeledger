@@ -1,25 +1,78 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { rejects } from "assert";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
-import {
-  LedgerStream,
-  LedgerIORputs
-} from "../../../definitions/src/definitions/ledger";
 
+/**
+ * Manages the permissions of revisions and signatures of each stream type
+ *
+ * @export
+ * @class PermissionsChecker
+ */
 export class PermissionsChecker {
+  /**
+   * Input flag, true if we are processing inputs
+   *
+   * @private
+   * @type {boolean}
+   * @memberof PermissionsChecker
+   */
+  private inputs: boolean;
+
+  /**
+   * The inputs or outputs to be processed
+   *
+   * @private
+   * @type {*}
+   * @memberof PermissionsChecker
+   */
+  private data: string[];
+
   constructor(
-    private data: any,
     private entry: ActiveDefinitions.LedgerEntry,
     private db: ActiveDSConnect,
     private checkRevs: boolean,
-    private inputs: boolean = false,
     private securityCache: ISecurityCache,
     private shared: Shared
   ) {}
 
-  public async process(): Promise<any> {
+  /**
+   * Entry point for processing stream data
+   *
+   * @param {*} data
+   * @param {boolean} [inputs=true]
+   * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
+   * @memberof PermissionsChecker
+   */
+  public async process(
+    data: string[],
+    inputs: boolean = true
+  ): Promise<ActiveDefinitions.LedgerStream[]> {
+    this.inputs = inputs;
+    this.data = data;
     try {
       const promiseHolder = this.buildPromises();
 
@@ -30,10 +83,17 @@ export class PermissionsChecker {
 
       return this.processStreams(streams);
     } catch (error) {
-      rejects(error);
+      return Promise.reject(error);
     }
   }
 
+  /**
+   * Build an array of promises that are used to generate and check streams
+   *
+   * @private
+   * @returns {Promise<any>[]}
+   * @memberof PermissionsChecker
+   */
   private buildPromises(): Promise<any>[] {
     const holder: Promise<any>[] = [];
 
@@ -101,9 +161,17 @@ export class PermissionsChecker {
     return holder;
   }
 
+  /**
+   * Process the passed streams
+   *
+   * @private
+   * @param {ActiveDefinitions.LedgerStream[]} stream
+   * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
+   * @memberof PermissionsChecker
+   */
   private processStreams(
     stream: ActiveDefinitions.LedgerStream[]
-  ): Promise<any> {
+  ): Promise<ActiveDefinitions.LedgerStream[]> {
     return new Promise((resolve, reject) => {
       let i = stream.length;
       while (i--) {
@@ -194,6 +262,16 @@ export class PermissionsChecker {
     });
   }
 
+  /**
+   * Check or set the revisions of a stream
+   *
+   * @private
+   * @param {string} streamId
+   * @param {ActiveDefinitions.LedgerRevIO} revType
+   * @param {string} metadataId
+   * @returns {({ code: number; reason: string } | null)}
+   * @memberof PermissionsChecker
+   */
   private checkOrSetRevisions(
     streamId: string,
     revType: ActiveDefinitions.LedgerRevIO,
@@ -215,6 +293,18 @@ export class PermissionsChecker {
     }
   }
 
+  /**
+   * Check the signature of a stream
+   *
+   * @private
+   * @param {string} streamId
+   * @param {ActiveDefinitions.LedgerStream} stream
+   * @param {boolean} nhpkCheck
+   * @param {ActiveDefinitions.LedgerIORputs} nhpkCheckIO
+   * @param {(value?: any) => void} reject
+   * @returns {void}
+   * @memberof PermissionsChecker
+   */
   private signatureCheck(
     streamId: string,
     stream: ActiveDefinitions.LedgerStream,
