@@ -226,8 +226,6 @@ export class Stream {
         this.eventEmitter
       );
 
-      // Set volatile as blank to prevent unecessary fetch as we know right now it is blank
-      activity.setVolatile({});
       // Set Secret Key
       activity.setKey(this.key);
       // TODO: Convert name into a umid string and alert dev
@@ -534,6 +532,9 @@ export class Activity {
       this.state._id = stream;
       this.meta._id = stream + ":stream";
 
+      // Create default Volatile
+      this.volatile = { _id: stream + ":volatile", _rev: null };
+
       // Flag for search filtering
       // $ notation should be treated like a reservation for Activelegder
       this.meta.$stream = true;
@@ -563,11 +564,17 @@ export class Activity {
    */
   public export2Ledger(secret: number): ActiveDefinitions.LedgerStream {
     if (this.key == secret) {
-      return {
+      const stream: ActiveDefinitions.LedgerStream = {
         meta: this.meta,
-        volatile: this.volatile,
         state: this.state as ActiveDefinitions.IFullState
       };
+
+      // Have we loaded in a volatile to return
+      if (this.volatile) {
+        stream.volatile = this.volatile;
+      }
+
+      return stream;
     }
     throw new Error("Secret Key Needed");
   }
@@ -917,7 +924,7 @@ export class Activity {
   public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
     return new Promise((resolve, reject) => {
       if (this.volatile) {
-        resolve(this.volatile);
+        resolve(this.makeVolatileSafe());
       } else {
         const umid = this.umid,
           streamid = this.getId();
@@ -930,20 +937,35 @@ export class Activity {
               ActiveLogger.debug(err, "Event error");
               reject(err);
             }
-
-            // Remove _id & _rev
-            if ((volatile as ActiveDefinitions.IFullState)._id)
-              delete (volatile as ActiveDefinitions.IFullState)._id;
-            if ((volatile as ActiveDefinitions.IFullState)._rev)
-              delete (volatile as ActiveDefinitions.IFullState)._rev;
-
+            // Set all data as volatile
             this.volatile = volatile;
-
-            resolve(volatile);
+            resolve(this.makeVolatileSafe());
           }
         );
       }
     });
+  }
+
+  /**
+   * Returns volatile data in a safe way for contract to modify
+   *
+   * @private
+   * @returns {ActiveDefinitions.IVolatile}
+   * @memberof Activity
+   */
+  private makeVolatileSafe(): ActiveDefinitions.IVolatile {
+    // Deep copy
+    const volatile: ActiveDefinitions.IVolatile = JSON.parse(
+      JSON.stringify(this.volatile)
+    );
+
+    // Remove _id & _rev
+    if ((volatile as ActiveDefinitions.IFullState)._id)
+      delete (volatile as ActiveDefinitions.IFullState)._id;
+    if ((volatile as ActiveDefinitions.IFullState)._rev)
+      delete (volatile as ActiveDefinitions.IFullState)._rev;
+
+    return volatile;
   }
 
   /**
@@ -961,10 +983,10 @@ export class Activity {
     if (fVolatile._rev) delete fVolatile._rev;
 
     // Merge Objects
-    this.volatile = Object.assign(
-      this.volatile || {},
-      fVolatile
-    ) as ActiveDefinitions.IFullState;
+    this.volatile = {
+      ...this.volatile,
+      ...fVolatile
+    } as ActiveDefinitions.IFullState;
 
     // Set Update Flag
     this.updated = true;
