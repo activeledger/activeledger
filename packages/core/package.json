@@ -18,7 +18,7 @@
     "activecore": "./lib/index.js"
   },
   "scripts": {
-    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/openapi.json ./lib",
     "build": "npm run build:commonjs",
     "start": "node lib/index.js",
     "prepublishOnly": "npm run build"
@@ -43,9 +43,11 @@
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.64",
     "@activeledger/activequery": "^2.0.0-rc.8.0.64",
     "@activeledger/activestorage": "^2.0.0-rc.8.0.65",
+    "@activeledger/httpd": "^2.0.0-rc.8.0.60",
     "@activeledger/activeutilities": "^2.0.0-rc.8.0.64"
   },
   "devDependencies": {
-    "@types/node": "^10.12.23"
+    "@types/node": "^12.6.9",
+    "copyfiles": "^2.1.1"
   }
 }
