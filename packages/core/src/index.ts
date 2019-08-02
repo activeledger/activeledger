@@ -98,7 +98,7 @@ if (ActiveOptions.get("db", false)) {
 
   // Listen!
   const port = ActiveOptions.get<any>("api", {}).port || 5261;
-  http.listen(port, true);
+  http.listen(port);
   ActiveLogger.info("Activecore API is running at 0.0.0.0:" + port);
 } else {
   ActiveLogger.fatal("Configuration file incomplete");
