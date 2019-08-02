@@ -50,6 +50,7 @@
     "@activeledger/activelogger": "^2.0.0-rc.8.0.62",
     "@activeledger/activeoptions": "^2.0.0-rc.8.0.64",
     "@activeledger/activeutilities": "^2.0.0-rc.8.0.64",
+    "@activeledger/httpd": "^2.0.0-rc.8.0.60",
     "double-ended-queue": "2.1.0-0",
     "level": "5.0.1",
     "level-codec": "9.0.1",
