@@ -1,15 +1,377 @@
 {
-  "openapi": "3.0.0",
+  "openapi": "3.0.1",
   "info": {
-    "title": "LoopBack Application",
-    "version": "1.0.0"
+    "title": "Activeledger Core API",
+    "description": "API Server allows you to view the data states of Activeledger and subscribe to data state changes. There is no authentication provided by the API so it is not recommened to allow public access.",
+    "version": "2.0.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://github.com/activeledger/activeledger/blob/master/LICENSE"
+    },
+    "contact": {
+      "email": "info@activeledger.io"
+    }
+  },
+  "externalDocs": {
+    "description": "Learn more about Activeledger",
+    "url": "http://developers.activeledger.io"
   },
   "paths": {
+    "/api/stream": {
+      "post": {
+        "tags": ["Activity Streams"],
+        "responses": {
+          "200": {
+            "description": "Activity Stream Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "_id": {
+                            "type": "string"
+                          },
+                          "_rev": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Stream Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stream/{id}": {
+      "get": {
+        "tags": ["Activity Streams"],
+        "responses": {
+          "200": {
+            "description": "Activity Stream Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stream": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "_id": {
+                          "type": "string"
+                        },
+                        "_rev": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Stream Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/api/stream/{id}/volatile": {
+      "post": {
+        "tags": ["Activity Streams"],
+        "responses": {
+          "200": {
+            "description": "Activity Stream Volatile Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Stream Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "x-parameter-index": 1
+        }
+      },
+      "get": {
+        "tags": ["Activity Streams"],
+        "responses": {
+          "200": {
+            "description": "Activity Stream Volatile Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stream": {
+                      "type": "object",
+                      "properties": {
+                        "_id": {
+                          "type": "string"
+                        },
+                        "_rev": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Stream Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ]
+      }
+    },
+    "/api/stream/changes": {
+      "get": {
+        "tags": ["Activity Streams"],
+        "responses": {
+          "200": {
+            "description": "Activity Stream Volatile Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "changes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "rev": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "doc": {
+                            "type": "object",
+                            "properties": {
+                              "_id": {
+                                "type": "string"
+                              },
+                              "_rev": {
+                                "type": "string"
+                              }
+                            },
+                            "additionalProperties": true
+                          },
+                          "seq": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Stream Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "include_docs",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ]
+      }
+    },
     "/api/activity/subscribe/{stream}": {
       "get": {
-        "x-controller-name": "ActivityController",
-        "x-operation-name": "subscribeFilter",
-        "tags": ["ActivityController"],
+        "tags": ["Activity Subscriptions"],
         "responses": {
           "200": {
             "description": "Subscribe to a specific Activity Stream changes",
@@ -31,15 +393,12 @@
             },
             "required": true
           }
-        ],
-        "operationId": "ActivityController.subscribeFilter"
+        ]
       }
     },
     "/api/activity/subscribe": {
       "post": {
-        "x-controller-name": "ActivityController",
-        "x-operation-name": "subscribeMultipleFilter",
-        "tags": ["ActivityController"],
+        "tags": ["Activity Subscriptions"],
         "responses": {
           "200": {
             "description": "Subscribe to a specific Activity Streams changes",
@@ -60,13 +419,10 @@
               }
             }
           }
-        },
-        "operationId": "ActivityController.subscribeMultipleFilter"
+        }
       },
       "get": {
-        "x-controller-name": "ActivityController",
-        "x-operation-name": "subscribe",
-        "tags": ["ActivityController"],
+        "tags": ["Activity Subscriptions"],
         "responses": {
           "200": {
             "description": "Subscribe to all Activity Stream changes",
@@ -78,15 +434,56 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "tags": ["Event Notifications"],
+        "responses": {
+          "200": {
+            "description": "Subscribe to smart contract events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/{contract}": {
+      "get": {
+        "tags": ["Event Notifications"],
+        "responses": {
+          "200": {
+            "description": "Subscribe to a specific smart contract events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         },
-        "operationId": "ActivityController.subscribe"
+        "parameters": [
+          {
+            "name": "contract",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ]
       }
     },
     "/api/events/{contract}/{event}": {
       "get": {
-        "x-controller-name": "EventController",
-        "x-operation-name": "contractEventsFiltered",
-        "tags": ["EventController"],
+        "tags": ["Event Notifications"],
         "responses": {
           "200": {
             "description": "Subscribe to a specific smart contract specific event",
@@ -116,80 +513,53 @@
             },
             "required": true
           }
-        ],
-        "operationId": "EventController.contractEventsFiltered"
+        ]
       }
     },
-    "/api/events/{contract}": {
-      "get": {
-        "x-controller-name": "EventController",
-        "x-operation-name": "contractEvents",
-        "tags": ["EventController"],
-        "responses": {
-          "200": {
-            "description": "Subscribe to a specific smart contract events",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "contract",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "operationId": "EventController.contractEvents"
-      }
-    },
-    "/api/events": {
-      "get": {
-        "x-controller-name": "EventController",
-        "x-operation-name": "events",
-        "tags": ["EventController"],
-        "responses": {
-          "200": {
-            "description": "Subscribe to smart contract events",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "EventController.events"
-      }
-    },
-    "/api/secured/decrypt": {
+    "/api/stream/search": {
       "post": {
-        "x-controller-name": "SecuredController",
-        "x-operation-name": "decrypt",
-        "tags": ["SecuredController"],
-        "description": "Warning Core doesn't natively support HTTPS so any data you receive is clear text. Localhost or testing usage only recommended.",
+        "tags": ["Query Activeledger"],
         "responses": {
           "200": {
-            "description": "Nested Permissioned Decrypted Data",
+            "description": "Activity Streams Data",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "additionalProperties": true
+                  "properties": {
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "_id": {
+                            "type": "string"
+                          },
+                          "_rev": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "warning": {
+                      "type": "object",
+                      "properties": {
+                        "query": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
           },
-          "500": {
-            "description": "Failed to Decrypt",
+          "404": {
+            "description": "Activity Streams Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -217,40 +587,170 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "$ADAC": {
-                    "type": "array",
-                    "items": {
+                  "sql": {
+                    "type": "string"
+                  },
+                  "mango": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": ["Query Activeledger"],
+        "responses": {
+          "200": {
+            "description": "Activity Streams Data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "streams": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "_id": {
+                            "type": "string"
+                          },
+                          "_rev": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "warning": {
                       "type": "object",
                       "properties": {
-                        "ref": {
+                        "query": {
                           "type": "string"
                         },
-                        "type": {
-                          "type": "string"
-                        },
-                        "roles": {
+                        "message": {
                           "type": "string"
                         }
                       }
                     }
-                  },
-                  "data": {
-                    "type": "object",
-                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Activity Streams Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
                   }
                 }
               }
             }
           }
         },
-        "operationId": "SecuredController.decrypt"
+        "parameters": [
+          {
+            "name": "sql",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/tx/{umid}": {
+      "get": {
+        "tags": ["Transaction Messages"],
+        "responses": {
+          "200": {
+            "description": "Transaction Message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "umid": {
+                      "type": "object",
+                      "properties": {
+                        "$umid": {
+                          "type": "object"
+                        },
+                        "$tx": {
+                          "type": "object"
+                        },
+                        "$sigs": {
+                          "type": "object"
+                        },
+                        "$revs": {
+                          "type": "object"
+                        },
+                        "$selfsign": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction Message Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "umid",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ]
       }
     },
     "/api/secured/encrypt": {
       "post": {
-        "x-controller-name": "SecuredController",
-        "x-operation-name": "encrypt",
-        "tags": ["SecuredController"],
+        "tags": ["Encryption Handlers"],
         "description": "Warning Core doesn't natively support HTTPS so any data you send is clear text. Localhost or testing usage only recommended.",
         "responses": {
           "200": {
@@ -343,152 +843,27 @@
               }
             }
           }
-        },
-        "operationId": "SecuredController.encrypt"
+        }
       }
     },
-    "/api/stream/changes": {
-      "get": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "changes",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Stream Volatile Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "changes": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "changes": {
-                            "type": "array",
-                            "items": {
-                              "type": "object",
-                              "properties": {
-                                "rev": {
-                                  "type": "string"
-                                }
-                              }
-                            }
-                          },
-                          "doc": {
-                            "type": "object",
-                            "properties": {
-                              "_id": {
-                                "type": "string"
-                              },
-                              "_rev": {
-                                "type": "string"
-                              }
-                            },
-                            "additionalProperties": true
-                          },
-                          "seq": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Stream Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "include_docs",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "operationId": "StreamController.changes"
-      }
-    },
-    "/api/stream/search": {
+    "/api/secured/decrypt": {
       "post": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "searchPost",
-        "tags": ["StreamController"],
+        "tags": ["Encryption Handlers"],
+        "description": "Warning Core doesn't natively support HTTPS so any data you receive is clear text. Localhost or testing usage only recommended.",
         "responses": {
           "200": {
-            "description": "Activity Streams Data",
+            "description": "Nested Permissioned Decrypted Data",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {
-                    "streams": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "_id": {
-                            "type": "string"
-                          },
-                          "_rev": {
-                            "type": "string"
-                          }
-                        },
-                        "additionalProperties": true
-                      }
-                    },
-                    "warning": {
-                      "type": "object",
-                      "properties": {
-                        "query": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
+                  "additionalProperties": true
                 }
               }
             }
           },
-          "404": {
-            "description": "Activity Streams Not Found",
+          "500": {
+            "description": "Failed to Decrypt",
             "content": {
               "application/json": {
                 "schema": {
@@ -516,449 +891,64 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "sql": {
-                    "type": "string"
-                  },
-                  "mango": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "operationId": "StreamController.searchPost"
-      },
-      "get": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "search",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Streams Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "streams": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "_id": {
-                            "type": "string"
-                          },
-                          "_rev": {
-                            "type": "string"
-                          }
-                        },
-                        "additionalProperties": true
-                      }
-                    },
-                    "warning": {
+                  "$ADAC": {
+                    "type": "array",
+                    "items": {
                       "type": "object",
                       "properties": {
-                        "query": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Streams Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "sql",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "operationId": "StreamController.search"
-      }
-    },
-    "/api/stream/{id}/volatile": {
-      "post": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "postVolatile",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Stream Volatile Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Stream Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object"
-              }
-            }
-          },
-          "x-parameter-index": 1
-        },
-        "operationId": "StreamController.postVolatile"
-      },
-      "get": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "getVolatile",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Stream Volatile Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "stream": {
-                      "type": "object",
-                      "properties": {
-                        "_id": {
-                          "type": "string"
-                        },
-                        "_rev": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Stream Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "operationId": "StreamController.getVolatile"
-      }
-    },
-    "/api/stream/{id}": {
-      "get": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "stream",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Stream Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "stream": {
-                      "type": "object",
-                      "properties": {
-                        "name": {
+                        "ref": {
                           "type": "string"
                         },
                         "type": {
                           "type": "string"
                         },
-                        "_id": {
-                          "type": "string"
-                        },
-                        "_rev": {
-                          "type": "string"
-                        }
-                      },
-                      "additionalProperties": true
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Stream Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "operationId": "StreamController.stream"
-      }
-    },
-    "/api/stream": {
-      "post": {
-        "x-controller-name": "StreamController",
-        "x-operation-name": "streams",
-        "tags": ["StreamController"],
-        "responses": {
-          "200": {
-            "description": "Activity Stream Data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "streams": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "_id": {
-                            "type": "string"
-                          },
-                          "_rev": {
-                            "type": "string"
-                          }
-                        },
-                        "additionalProperties": true
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Activity Stream Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "operationId": "StreamController.streams"
-      }
-    },
-    "/api/tx/{umid}": {
-      "get": {
-        "x-controller-name": "TransactionController",
-        "x-operation-name": "tx",
-        "tags": ["TransactionController"],
-        "responses": {
-          "200": {
-            "description": "Transaction Message",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "umid": {
-                      "type": "object",
-                      "properties": {
-                        "$umid": {
-                          "type": "object"
-                        },
-                        "$tx": {
-                          "type": "object"
-                        },
-                        "$sigs": {
-                          "type": "object"
-                        },
-                        "$revs": {
-                          "type": "object"
-                        },
-                        "$selfsign": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Transaction Message Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "statusCode": {
-                          "type": "number"
-                        },
-                        "name": {
-                          "type": "string"
-                        },
-                        "message": {
+                        "roles": {
                           "type": "string"
                         }
                       }
                     }
+                  },
+                  "data": {
+                    "type": "object",
+                    "additionalProperties": true
                   }
                 }
               }
             }
           }
-        },
-        "parameters": [
-          {
-            "name": "umid",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          }
-        ],
-        "operationId": "TransactionController.tx"
+        }
       }
     }
   },
   "servers": [
     {
       "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Activity Streams",
+      "description": "View Current Data States"
+    },
+    {
+      "name": "Activity Subscriptions",
+      "description": "SSE Notifications about Activity stream state changes"
+    },
+    {
+      "name": "Event Notifications",
+      "description": "SSE Notifications emitted by Smart Contracts"
+    },
+    {
+      "name": "Query Activeledger",
+      "description": "Search Activity stream data states"
+    },
+    {
+      "name": "Transaction Messages",
+      "description": "Find transaction messages"
+    },
+    {
+      "name": "Encryption Handlers",
+      "description": "Encrypt / Decrypt Helpers by ADAC rules"
     }
   ]
 }
