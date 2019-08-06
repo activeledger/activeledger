@@ -73,6 +73,7 @@ export class PermissionsChecker {
   ): Promise<ActiveDefinitions.LedgerStream[]> {
     this.inputs = inputs;
     this.data = data;
+
     try {
       const promiseHolder = this.buildPromises();
 
@@ -105,7 +106,7 @@ export class PermissionsChecker {
             include_docs: true
           });
 
-          if (docs.rows.length === 3) {
+          if (docs.rows.length === 2) {
             // Get Documents
             const [meta, state]: any = docs.rows as string[];
 
@@ -181,15 +182,21 @@ export class PermissionsChecker {
         // Get revision type
         const revType = this.inputs ? this.entry.$revs.$i : this.entry.$revs.$o;
         // Build comparison ID from metadata
-        const metadataId = stream[i].meta._rev + ":" + stream[i].state._rev;
+        const currentRevision =
+          stream[i].meta._rev + ":" + stream[i].state._rev;
 
-        const checkSetResponse = this.checkOrSetRevisions(
-          streamId,
-          revType,
-          metadataId
-        );
-        if (checkSetResponse) {
-          reject(checkSetResponse);
+        // Check that the revisions match between nodes
+        if (revType && revType[streamId]) {
+          if (revType[streamId] !== currentRevision) {
+            return reject({
+              code: 1200,
+              reason:
+                (this.inputs ? "Input" : "Output") +
+                " Stream Position Incorrect"
+            });
+          }
+        } else {
+          revType[streamId] = currentRevision;
         }
 
         // Signature Check & Hardened Keys (Inputs and maybe Outputs based on configuration)
@@ -263,37 +270,6 @@ export class PermissionsChecker {
   }
 
   /**
-   * Check or set the revisions of a stream
-   *
-   * @private
-   * @param {string} streamId
-   * @param {ActiveDefinitions.LedgerRevIO} revType
-   * @param {string} metadataId
-   * @returns {({ code: number; reason: string } | null)}
-   * @memberof PermissionsChecker
-   */
-  private checkOrSetRevisions(
-    streamId: string,
-    revType: ActiveDefinitions.LedgerRevIO,
-    metadataId: string
-  ): { code: number; reason: string } | null {
-    if (this.checkRevs) {
-      if (revType[streamId] !== metadataId) {
-        return {
-          code: 1200,
-          reason:
-            (this.inputs ? "Input" : "Output") + " Stream Position Incorrect"
-        };
-      } else {
-        revType[streamId] = metadataId;
-        return null;
-      }
-    } else {
-      return null;
-    }
-  }
-
-  /**
    * Check the signature of a stream
    *
    * @private
@@ -341,18 +317,25 @@ export class PermissionsChecker {
       // Loop over signatures
       // Every supplied signature should exist and pass
       const sigCheck = sigStreamKeys.every((sigStream: string) => {
-        const nhpk =
-          nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk[
-            sigStream
-          ];
+        if (nhpkCheck) {
+          const nhpk = false;
+          /* let nhpk, nhpkIO; // Undefined if other data not found
 
-        if (nhpkCheck && !nhpk) {
-          return reject({
-            code: 1230,
-            reason:
-              (this.inputs ? "Input" : "Output") +
-              " Security Hardened Key Transactions Only"
-          });
+          // Build up with checks to prevenr undefined errors
+          const ioLabelMap = this.shared.getLabelIOMap(this.inputs, streamId);
+
+          if (ioLabelMap) nhpkIO = nhpkCheckIO[ioLabelMap];
+
+          if (nhpkIO) nhpk = nhpkIO.$nhpk[sigStream]; */
+
+          if (!nhpk) {
+            return reject({
+              code: 1230,
+              reason:
+                (this.inputs ? "Input" : "Output") +
+                " Security Hardened Key Transactions Only"
+            });
+          }
         } else {
           // Get signature from tx object
           const signature = (this.entry.$sigs[

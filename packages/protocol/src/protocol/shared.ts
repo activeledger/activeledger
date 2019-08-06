@@ -24,9 +24,9 @@
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveDSConnect } from "@activeledger/activeoptions";
-import { ActiveLogger } from "@activeledger/activecontracts";
 import { EventEmitter } from "events";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Holds methods shared between process, permissionsChecker, and streamUpdater

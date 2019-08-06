@@ -36,20 +36,76 @@ import { ActiveLogger } from "@activeledger/activelogger";
  * @class StreamUpdater
  */
 export class StreamUpdater {
+  /**
+   * Holds the docs
+   *
+   * @private
+   * @type {*}
+   * @memberof StreamUpdater
+   */
   private docs: any;
 
+  /**
+   * Holds the streams being updated
+   *
+   * @private
+   * @type {ActiveDefinitions.LedgerStream[]}
+   * @memberof StreamUpdater
+   */
   private streams: ActiveDefinitions.LedgerStream[];
 
+  /**
+   * Holds the inputs
+   *
+   * @private
+   * @type {ActiveDefinitions.LedgerStream[]}
+   * @memberof StreamUpdater
+   */
   private inputs: ActiveDefinitions.LedgerStream[];
 
+  /**
+   * Should this be skipped
+   *
+   * @private
+   * @type {string[]}
+   * @memberof StreamUpdater
+   */
   private skip: string[];
 
+  /**
+   * Holds collisions
+   *
+   * @private
+   * @type {string[]}
+   * @memberof StreamUpdater
+   */
   private collisions: string[];
 
-  private nhkCheck: boolean;
+  /**
+   * Non Hardened Key Pair check flag
+   *
+   * @private
+   * @type {boolean}
+   * @memberof StreamUpdater
+   */
+  private nhkpCheck: boolean;
 
+  /**
+   * Holds reference streams
+   *
+   * @private
+   * @type {IReferenceStreams}
+   * @memberof StreamUpdater
+   */
   private refStreams: IReferenceStreams;
 
+  /**
+   * Holds the earlyCommit callback function
+   *
+   * @private
+   * @type {Function}
+   * @memberof StreamUpdater
+   */
   private earlyCommit: Function;
 
   constructor(
@@ -61,6 +117,20 @@ export class StreamUpdater {
     private emitter: EventEmitter,
     private shared: Shared
   ) {
+    // Determanistic Collision Managamenent
+    this.collisions = [];
+
+    this.skip = [];
+
+    // Cache Harden Key Flag
+    this.nhkpCheck = ActiveOptions.get<any>("security", {})
+      .hardenedKeys as boolean;
+
+    // Setup refStreams
+    this.refStreams = {
+      new: [] as any[],
+      updated: [] as any[]
+    };
     // Get the changed data streams
     this.streams = this.virtualMachine.getActivityStreamsFromVM(
       this.entry.$umid
@@ -68,23 +138,12 @@ export class StreamUpdater {
 
     // Get current working inputs to compare and update if not modified above
     this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
-
-    // Determanistic Collision Managamenent
-    this.collisions = [];
-
-    this.skip = [];
-
-    // Cache Harden Key Flag
-    this.nhkCheck = ActiveOptions.get<any>("security", {})
-      .hardenedKeys as boolean;
   }
 
-  public updateStreams(earlyCommit?: Function): Promise<any> {
-    return new Promise((resolve, reject) => {
-      if (earlyCommit) this.earlyCommit = earlyCommit();
+  public updateStreams(earlyCommit?: Function): void {
+    if (earlyCommit) this.earlyCommit = earlyCommit;
 
-      this.streams.length ? this.processStreams() : this.processNoStreams();
-    });
+    this.streams.length ? this.processStreams() : this.processNoStreams();
   }
 
   private async processNoStreams() {
@@ -113,7 +172,6 @@ export class StreamUpdater {
       );
 
       // Clearing All node comms?
-      // Todo: move to shared
       this.entry = this.shared.clearAllComms(this.virtualMachine);
 
       // Remember to let other nodes know
@@ -168,7 +226,7 @@ export class StreamUpdater {
 
   private handleInputs() {
     const notInSkip = (index: number) =>
-      this.skip.indexOf(this.inputs[i].meta._id as string) === -1;
+      this.skip.indexOf(this.inputs[index].meta._id as string) === -1;
 
     let i = this.inputs.length;
     while (i--) {
@@ -181,7 +239,7 @@ export class StreamUpdater {
         this.inputs[i].meta.txs.push(this.entry.$umid);
 
         // Hardened keys?
-        if (this.inputs[i].state._id && this.nhkCheck) {
+        if (this.inputs[i].state._id && this.nhkpCheck) {
           this.handleNHPK(this.inputs[i]);
         }
 
@@ -271,7 +329,7 @@ export class StreamUpdater {
         }
 
         // Hardened Keys?
-        if (this.streams[i].state._id && this.nhkCheck) {
+        if (this.streams[i].state._id && this.nhkpCheck) {
           // Get nhpk
           let nhpk = this.entry.$tx.$i[
             this.shared.getLabelIOMap(true, this.streams[i].state._id as string)
@@ -372,9 +430,7 @@ export class StreamUpdater {
     }
 
     // Remember to let other nodes know
-    if (this.earlyCommit) {
-      this.earlyCommit();
-    }
+    if (this.earlyCommit) this.earlyCommit();
 
     if (emit) {
       // Respond with the possible early commited
