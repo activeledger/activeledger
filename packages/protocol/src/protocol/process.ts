@@ -319,8 +319,7 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    // ! TODO: Try testing without the .info as it may be massively reducing TPS
-    ActiveLogger.info("New TX : " + this.entry.$umid);
+    ActiveLogger.debug("New TX : " + this.entry.$umid);
     ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
