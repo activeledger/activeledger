@@ -303,6 +303,7 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
+
     this.isDefault
       ? Process.defaultContractsVM.destroy(umid)
       : this.contractRef
@@ -318,6 +319,10 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
+    // ! TODO: Try testing without the .info as it may be massively reducing TPS
+    ActiveLogger.info("New TX : " + this.entry.$umid);
+    ActiveLogger.debug(this.entry, "Starting TX");
+
     // Compiled Contracts sit in another location
     const setupDefaultLocation = () => {
       // Set isDefault flag to true
@@ -631,10 +636,10 @@ export class Process extends EventEmitter {
           new Error("Vote Failure - " + JSON.stringify(error)),
           10
         );
-      } catch (storeError) {
+      } catch (errorStoringError) {
         // Continue Execution of consensus even with this failing
         // Just add a fatal message
-        ActiveLogger.fatal(error, "Voting Error Log Issues");
+        ActiveLogger.fatal(errorStoringError, "Voting Error Log Issues");
       } finally {
         // Continue Execution of consensus
         // Update Error
@@ -930,7 +935,7 @@ export class Process extends EventEmitter {
    */
   private async commit(
     virtualMachine: IVirtualMachine,
-    earlyCommit?: () => void
+    earlyCommit?: Function
   ): Promise<void> {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
@@ -981,6 +986,7 @@ export class Process extends EventEmitter {
             this,
             this.shared
           );
+
           earlyCommit
             ? streamUpdater.updateStreams(earlyCommit)
             : streamUpdater.updateStreams();
@@ -1039,7 +1045,7 @@ export class Process extends EventEmitter {
                 );
                 // Contract ran its own reconcile procedure
                 if (reconciled) {
-                  ActiveLogger.info("Self Renconcile Successful");
+                  ActiveLogger.info("Self Reconcile Successful");
                   // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
                   const streamUpdater = new StreamUpdater(
                     this.entry,
@@ -1056,7 +1062,7 @@ export class Process extends EventEmitter {
                   // Upgrade error code so restore will process it
                   if (this.errorOut.code === 1000) {
                     ActiveLogger.info(
-                      "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
+                      "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
                     );
                     // reset single error as 1000 is skipped anyway
                     this.shared.storeSingleError = false;
