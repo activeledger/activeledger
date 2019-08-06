@@ -114,8 +114,7 @@ npm install --global lerna
 ### Building
 
 ```bash
-lerna bootstrap
-npm run build
+npm run setup
 ```
 
 ## License
