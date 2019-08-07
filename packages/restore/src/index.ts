@@ -38,13 +38,13 @@ class ActiveRestore {
   }
 
   private async initialise(): Promise<void> {
-    const normalRestore = () => { new Interagent(); Provider.errorFeed.start(); }
+    const normalRestore = () => {
+      new Interagent();
+      Provider.errorFeed.start();
+    };
 
     await Provider.initialise();
-    !Provider.isQuickFullRestore
-      ? normalRestore()
-      : new QuickRestore();
-    }
+    !Provider.isQuickFullRestore ? normalRestore() : new QuickRestore();
   }
 }
 
