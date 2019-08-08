@@ -1,3 +1,26 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import {
@@ -8,6 +31,12 @@ import {
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { EventEmitter } from "events";
 
+/**
+ * Controls execution of contracts within the running VM
+ *
+ * @class ContractControl
+ * @implements {IVMObject}
+ */
 class ContractControl implements IVMObject {
   /**
    * Cache of initialised smart contracts
@@ -37,9 +66,11 @@ class ContractControl implements IVMObject {
     event: EventEngine,
     emitter: EventEmitter
   ): void {
+    // We don't need to verify the code unless we suspect server has been
+    // comprimised. We will verify with the "install" routine
     this.smartContracts[
       payload.umid
-    ] = new (require(payload.contractString)).default(
+    ] = new (require(payload.contractLocation)).default(
       payload.date,
       payload.remoteAddress,
       payload.umid,

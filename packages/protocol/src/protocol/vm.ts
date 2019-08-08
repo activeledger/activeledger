@@ -309,13 +309,13 @@ export class VirtualMachine extends events.EventEmitter
   /**
    * Dynamically import the contract. Currently object is created outside VM and set as a global
    *
-   * @returns {Promise<boolean>}
+   * @returns {Promise<void>}
    * @memberof VirtualMachine
    */
   public initialise(
     payload: IVMDataPayload,
     contractName: string
-  ): Promise<boolean> {
+  ): Promise<void> {
     // Return as promise for initalise
     return new Promise((resolve, reject) => {
       if (!this.contractReferences) {
@@ -358,7 +358,7 @@ export class VirtualMachine extends events.EventEmitter
         );
 
         // Continue
-        resolve(true);
+        resolve();
       } catch (e) {
         if (e instanceof Error) {
           // Exception
@@ -375,7 +375,7 @@ export class VirtualMachine extends events.EventEmitter
    * @memberof VirtualMachine
    */
   public verify(sigless: boolean, umid: string): Promise<boolean> {
-    return new Promise<boolean>((resolve, reject) => {
+    return new Promise<boolean>(async (resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
 
@@ -391,27 +391,21 @@ export class VirtualMachine extends events.EventEmitter
         umid
       );
 
-      // Run Verify Phase
-      this.virtualInstance
-        .runVerify(umid, sigless)
-        .then(() => {
-          this.scriptFinishedExec = true;
-          resolve(true);
-        })
-        .catch((e: Error) => {
-          this.scriptFinishedExec = true;
-          if (e instanceof Error) {
-            // Exception
-            reject(this.catchException(e, umid));
-          } else {
-            // Rejected by contract
-            reject(e);
-          }
-        });
-      // TODO: Check what version finally is available in
-      /* .finally(() => {
-          this.scriptFinishedExec = true;
-        }); */
+      try {
+        // Run Verify Phase
+        await this.virtualInstance.runVerify(umid, sigless);
+        resolve(true);
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
     });
   }
 
@@ -422,7 +416,7 @@ export class VirtualMachine extends events.EventEmitter
    * @memberof VirtualMachine
    */
   public vote(umid: string): Promise<boolean> {
-    return new Promise<boolean>((resolve, reject) => {
+    return new Promise<boolean>(async (resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
 
@@ -438,27 +432,21 @@ export class VirtualMachine extends events.EventEmitter
         umid
       );
 
-      // Run Vote Phase
-      this.virtualInstance
-        .runVote(umid)
-        .then(() => {
-          this.scriptFinishedExec = true;
-          resolve(true);
-        })
-        .catch((e: Error) => {
-          this.scriptFinishedExec = true;
-          if (e instanceof Error) {
-            // Exception
-            reject(this.catchException(e, umid));
-          } else {
-            // Rejected by contract
-            reject(e);
-          }
-        });
-      // TODO: Check what version finally is available in
-      /* .finally(() => {
-          this.scriptFinishedExec = true;
-        }); */
+      try {
+        // Run Vote Phase
+        await this.virtualInstance.runVote(umid);
+        resolve(true);
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
     });
   }
 
@@ -475,7 +463,7 @@ export class VirtualMachine extends events.EventEmitter
     possibleTerritoriality: boolean = false,
     umid: string
   ): Promise<boolean> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Manage INC
       this.incMarshel(nodes, umid);
 
@@ -494,29 +482,23 @@ export class VirtualMachine extends events.EventEmitter
         umid
       );
 
-      // Get Commit
-      this.virtualInstance
-        .runCommit(umid, possibleTerritoriality)
-        .then(() => {
-          // Here we may update the database from the objects (commit should return)
-          // Or just manipulate / check the outputs
-          this.scriptFinishedExec = true;
-          resolve(true);
-        })
-        .catch((e: any) => {
-          this.scriptFinishedExec = true;
-          if (e instanceof Error) {
-            // Exception
-            reject(this.catchException(e, umid));
-          } else {
-            // Rejected by contract
-            reject(e);
-          }
-        });
-      // TODO: Check what version finally is available in
-      /* .finally(() => {
-          this.scriptFinishedExec = true;
-        }); */
+      try {
+        // Get Commit
+        await this.virtualInstance.runCommit(umid, possibleTerritoriality);
+        // Here we may update the database from the objects (commit should return)
+        // Or just manipulate / check the outputs
+        resolve(true);
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
     });
   }
 
@@ -531,7 +513,7 @@ export class VirtualMachine extends events.EventEmitter
     nodes: ActiveDefinitions.INodes,
     umid: string
   ): Promise<boolean> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Manage INC
       this.incMarshel(nodes, umid);
 
@@ -550,24 +532,23 @@ export class VirtualMachine extends events.EventEmitter
         umid
       );
 
-      // Get Commit
-      this.virtualInstance
-        .reconcile(umid)
-        .then(() => {
-          // Here we may update the database from the objects (commit should return)
-          // Or just manipulate / check the outputs
-          this.scriptFinishedExec = true;
-          resolve(true);
-        })
-        .catch((e: any) => {
-          if (e instanceof Error) {
-            // Exception
-            reject(this.catchException(e, umid));
-          } else {
-            // Rejected by contract
-            reject(e);
-          }
-        });
+      try {
+        // Get Commit
+        await this.virtualInstance.reconcile(umid);
+        // Here we may update the database from the objects (commit should return)
+        // Or just manipulate / check the outputs
+        resolve(true);
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
     });
   }
 
@@ -601,32 +582,35 @@ export class VirtualMachine extends events.EventEmitter
         umid
       );
 
-      // Run Post Process
-      this.virtualInstance
-        .postProcess(umid, territoriality, who)
-        .then((postProcess: any) => {
-          // Do something with the returned value
-          // Maybe resolve with the data
-          this.scriptFinishedExec = true;
+      try {
+        // Run Post Process
+        const postProcess: any = this.virtualInstance.postProcess(
+          umid,
+          territoriality,
+          who
+        );
+        // Do something with the returned value
+        // Maybe resolve with the data
 
-          // Reload Configuration Required?
-          if (this.contractReferences[umid].tx.$namespace == "default") {
-            if (this.virtualInstance.reloadSysConfig(umid)) {
-              ActiveLogger.info("Reloading Configuration Request");
-              this.emit("reload");
-            }
+        // Reload Configuration Required?
+        if (this.contractReferences[umid].tx.$namespace == "default") {
+          if (this.virtualInstance.reloadSysConfig(umid)) {
+            ActiveLogger.info("Reloading Configuration Request");
+            this.emit("reload");
           }
-          resolve(postProcess);
-        })
-        .catch((e: Error) => {
-          if (e instanceof Error) {
-            // Exception
-            reject(this.catchException(e, umid));
-          } else {
-            // Rejected by contract
-            reject(e);
-          }
-        });
+        }
+        resolve(postProcess);
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
     });
   }
 
@@ -665,32 +649,22 @@ export class VirtualMachine extends events.EventEmitter
     }
   }
 
-  public getVolatile() {}
+  // ? Not sure if this is needed??
+  // public getVolatile() {}
 
   private listenForVolatile(): void {
-    this.emitter.on("getVolatile", (umid: string, streamId: string) => {
+    this.emitter.on("getVolatile", async (umid: string, streamId: string) => {
       // Check that the UMID matches the transactions Stream ID
       ActiveLogger.debug(this.contractReferences[umid], "TX");
 
-      // if (Object.keys(this.contractReferences[umid].tx.$i)[0] === streamId) {
-      this.db
-        .get(`${streamId}:volatile`)
-        .then((volatile: ActiveDefinitions.IVolatile) => {
-          this.emitter.emit(
-            `volatileFetched-${umid}${streamId}`,
-            null,
-            volatile
-          );
-        })
-        .catch((error: Error) => {
-          this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
-        });
-      /* } else {
-        this.emitter.emit(
-          `volatileFetched-${umid}${streamId}`,
-          new Error("Access Denied")
+      try {
+        const volatile: ActiveDefinitions.IVolatile = await this.db.get(
+          `${streamId}:volatile`
         );
-      } */
+        this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
+      } catch (error) {
+        this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
+      }
     });
   }
 
@@ -708,13 +682,11 @@ export class VirtualMachine extends events.EventEmitter
       // Has the script not finished
       if (!this.scriptFinishedExec) {
         // Has it extended its timeout
-        if (!this.hasBeenExtended(umid)) {
-          // Hasn't been extended so call function
-          timedout();
-        } else {
-          // Check again later
-          this.checkTimeout(type, timedout, umid);
-        }
+        !this.hasBeenExtended(umid)
+          ? // Hasn't been extended so call function
+            timedout()
+          : // Check again later
+            this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
