@@ -82,6 +82,13 @@ export class ActiveHttpd {
   private routes: any = [];
 
   /**
+   * Creates an instance of ActiveHttpd.
+   * @param {boolean} [enableCORS=false]
+   * @memberof ActiveHttpd
+   */
+  constructor(private enableCORS: boolean = false) {}
+
+  /**
    * Define Route
    *
    * @param {string} url
@@ -207,6 +214,13 @@ export class ActiveHttpd {
     );
     if (handler) {
       try {
+        // Default Allow CORS
+        if (this.enableCORS && req.headers["origin"]) {
+          res.setHeader("Access-Control-Allow-Origin", req.headers[
+            "origin"
+          ] as string);
+        }
+        // Run the call handler
         const data = await handler(incoming, req, res);
         // If the headers have been sent handler took control
         if (data) {
@@ -230,6 +244,7 @@ export class ActiveHttpd {
         }
       } catch (error) {
         // Defined error or default to internal server error
+        ActiveLogger.error(error);
         res.statusCode = error.status || error.statusCode || 500;
         this.writeAsHttpData(error, res);
         res.end();
