@@ -34,14 +34,17 @@ class ActiveRestore {
   constructor() {
     Helper.verbose = this.verbose;
 
-    Provider.initialise().then(() => {
-      if (!Provider.isQuickFullRestore) {
-        new Interagent();
-        Provider.errorFeed.start();
-      } else {
-        new QuickRestore();
-      }
-    });
+    this.initialise();
+  }
+
+  private async initialise(): Promise<void> {
+    const normalRestore = () => {
+      new Interagent();
+      Provider.errorFeed.start();
+    };
+
+    await Provider.initialise();
+    !Provider.isQuickFullRestore ? normalRestore() : new QuickRestore();
   }
 }
 
