@@ -1,0 +1,48 @@
+{
+  "name": "@activeledger/httpd",
+  "version": "2.0.0-rc.8.0.60",
+  "description": "Lightweight portable HTTP server used by Activeledger",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "http",
+    "webserver",
+    "blockchain",
+    "dlt",
+    "distributed ledger technology"
+  ],
+  "homepage": "https://activeledger.io",
+  "main": "./lib/index.js",
+  "scripts": {
+    "start": "node lib/index.js",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:es": "tsc --outDir es --module es6",
+    "build": "npm run build:commonjs && npm run build:es",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^12.6.9",
+    "typescript": "^3.5.3"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activelogger": "^2.0.0-rc.8.0.62",
+    "@activeledger/activeutilities": "^2.0.0-rc.8.0.64"
+  }
+}

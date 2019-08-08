@@ -20,32 +20,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { ServerResponse } from "http";
 
-import { BootMixin } from "@loopback/boot";
-import { ApplicationConfig } from "@loopback/core";
-import { RepositoryMixin } from "@loopback/repository";
-import { RestApplication } from "@loopback/rest";
-import { ServiceMixin } from "@loopback/service-proxy";
-import { MySequence } from "./sequence";
 
-export class ActivecoreApplication extends BootMixin(
-  ServiceMixin(RepositoryMixin(RestApplication))
-) {
-  constructor(options: ApplicationConfig = {}) {
-    super(options);
-
-    // Set up the custom sequence
-    this.sequence(MySequence);
-
-    this.projectRoot = __dirname;
-    // Customize @loopback/boot Booter Conventions here
-    this.bootOptions = {
-      controllers: {
-        // Customize ControllerBooter Conventions here
-        dirs: ["controllers"],
-        extensions: [".controller.js"],
-        nested: true
+/**
+ * Connection Heartbeat management
+ *
+ * @export
+ * @class HeartBeat
+ */
+export class HeartBeat {
+  /**
+   * Start & Maintain SSE Heartbeat
+   *
+   * @static
+   * @param {ServerResponse} response
+   * @returns {NodeJS.Timeout}
+   * @memberof HeartBeat
+   */
+  public static Start(response: ServerResponse): NodeJS.Timeout {
+    return setInterval(() => {
+      if (response.writable) {
+        response.write("\0");
       }
-    };
+    }, 60000);
+  }
+
+  /**
+   * Stop SSE Heartbeat
+   *
+   * @static
+   * @param {NodeJS.Timeout} interval
+   * @memberof HeartBeat
+   */
+  public static Stop(interval: NodeJS.Timeout): void {
+    clearInterval(interval);
   }
 }

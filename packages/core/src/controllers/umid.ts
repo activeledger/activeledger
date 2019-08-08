@@ -20,39 +20,25 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { IActiveHttpIncoming } from "@activeledger/httpd";
+import { ActiveledgerDatasource } from "./../datasource";
 
-import { inject } from "@loopback/context";
-import {
-  FindRoute,
-  InvokeMethod,
-  ParseParams,
-  Reject,
-  RequestContext,
-  RestBindings,
-  Send,
-  SequenceHandler
-} from "@loopback/rest";
-
-const SequenceActions = RestBindings.SequenceActions;
-
-export class MySequence implements SequenceHandler {
-  constructor(
-    @inject(SequenceActions.FIND_ROUTE) protected findRoute: FindRoute,
-    @inject(SequenceActions.PARSE_PARAMS) protected parseParams: ParseParams,
-    @inject(SequenceActions.INVOKE_METHOD) protected invoke: InvokeMethod,
-    @inject(SequenceActions.SEND) public send: Send,
-    @inject(SequenceActions.REJECT) public reject: Reject
-  ) {}
-
-  async handle(context: RequestContext) {
-    try {
-      const { request, response } = context;
-      const route = this.findRoute(request);
-      const args = await this.parseParams(request, route);
-      const result = await this.invoke(route, args);
-      this.send(response, result);
-    } catch (err) {
-      this.reject(context, err);
-    }
+/**
+ * Search Datastore for matching UMID Transaction
+ *
+ * @export
+ * @param {IActiveHttpIncoming} incoming
+ * @returns {Promise<object>}
+ */
+export async function findUmid(incoming: IActiveHttpIncoming): Promise<object> {
+  const result = await ActiveledgerDatasource.getDb().get(
+    incoming.url[2] + ":umid"
+  );
+  if (result) {
+    return {
+      umid: result.umid
+    };
+  } else {
+    return result;
   }
 }

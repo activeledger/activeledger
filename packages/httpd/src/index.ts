@@ -20,39 +20,5 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Response } from "@loopback/rest";
-
-/**
- * Connection Heartbeat management
- *
- * @export
- * @class HeartBeat
- */
-export class HeartBeat {
-  /**
-   * Start & Maintain SSE Heartbeat
-   *
-   * @static
-   * @param {Response} response
-   * @returns {NodeJS.Timeout}
-   * @memberof HeartBeat
-   */
-  public static Start(response: Response): NodeJS.Timeout {
-    return setInterval(() => {
-      if (response.writable) {
-        response.write("\0");
-      }
-    }, 60000);
-  }
-
-  /**
-   * Stop SSE Heartbeat
-   *
-   * @static
-   * @param {NodeJS.Timeout} interval
-   * @memberof HeartBeat
-   */
-  public static Stop(interval: NodeJS.Timeout): void {
-    clearInterval(interval);
-  }
-}
+import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
+export { ActiveHttpd, IActiveHttpIncoming };
