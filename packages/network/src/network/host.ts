@@ -222,7 +222,7 @@ export class Host extends Home {
         let body: Buffer[] = [];
 
         // Reads body data
-        req.on("data", chunk => {
+        req.on("data", (chunk) => {
           body.push(chunk);
         });
 
@@ -244,11 +244,11 @@ export class Host extends Home {
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
               false
           )
-            .then(body => {
+            .then((body) => {
               // Post Converted, Continue processing
               this.processEndpoints(req, res, body);
             })
-            .catch(error => {
+            .catch((error) => {
               // Failed to convery respond;
               this.writeResponse(
                 res,
@@ -303,7 +303,7 @@ export class Host extends Home {
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
       })
-      .catch(e => {
+      .catch((e) => {
         throw new Error("Couldn't create default index");
       });
   }
@@ -323,7 +323,7 @@ export class Host extends Home {
     });
 
     // Listen for message to respond to waiting http
-    pFork.on("message", m => {
+    pFork.on("message", (m) => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -416,11 +416,11 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", error => {
+    pFork.on("error", (error) => {
       ActiveLogger.fatal(error, "Processor Crashed");
       // Look for any transactions which are in this processor
       const pendings = Object.keys(this.processPending);
-      pendings.forEach(key => {
+      pendings.forEach((key) => {
         // Get Transaction
         const pending = this.processPending[key];
         // Was this transaction in the broken processor
@@ -437,7 +437,7 @@ export class Host extends Home {
         }
       });
       // find from processors list
-      const pos = this.processors.findIndex(processor => {
+      const pos = this.processors.findIndex((processor) => {
         return processor.pid === pFork.pid;
       });
       // Remove from processors list
@@ -485,7 +485,7 @@ export class Host extends Home {
           this.terriBuildMap();
         }
         // Now to make sure all other processors reload
-        this.processors.forEach(processor => {
+        this.processors.forEach((processor) => {
           processor.send({
             type: "reload",
             data: {
