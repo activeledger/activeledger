@@ -943,6 +943,9 @@ export class Process extends EventEmitter {
         // Consensus reached commit phase
         this.commiting = true;
 
+        // Make sure broadcast timeout is cleared
+        clearTimeout(this.broadcastTimeout);
+
         // Pass Nodes for possible INC injection
         try {
           await virtualMachine.commit(
@@ -1201,7 +1204,7 @@ export class Process extends EventEmitter {
         let keyRefs = Object.keys(readOnly);
 
         // Map all the objects to get their promises
-        const promiseCache = keyRefs.map((reference) => {
+        const promiseCache = keyRefs.map(reference => {
           // Create promise to manage all revisions at once
           manageRevisions(readOnly, reference);
         });
