@@ -156,7 +156,7 @@ export class Host extends Home {
       if (entry.$broadcast) {
         // We may already have the $umid in memory
         if (this.processPending[entry.$umid]) {
-          ActiveLogger.warn("Broadcast Recieved : " + entry.$umid);
+          ActiveLogger.debug("Broadcast Recieved : " + entry.$umid);
           // Process Assigned?
           if (this.processPending[entry.$umid].pid) {
             // Find Processor to send in the broadcast message
