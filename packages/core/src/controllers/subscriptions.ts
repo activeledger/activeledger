@@ -23,7 +23,7 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
 import { ActiveledgerDatasource } from "./../datasource";
-import { HeartBeat } from "./../heatbeat";
+import { HeartBeat } from "../heartbeat";
 
 /**
  * Skip Restore Engine Changes
