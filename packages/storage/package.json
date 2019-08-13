@@ -22,7 +22,7 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/ && copyfiles -u 1 ./src/pouchdb/** ./lib/",
+    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/* ./lib/ && copyfiles -u 1 ./src/fauxton/**/*/* ./lib/ && copyfiles -u 1 ./src/pouchdb/*/lib/* ./lib/ && copyfiles -u 1 ./src/pouchdb/*/* ./lib/",
     "prepublishOnly": "npm run build"
   },
   "repository": {

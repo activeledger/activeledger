@@ -192,7 +192,7 @@ function createView(sourceDB, viewName, mapFun, reduceFun, temporary, localDocNa
     return pouchdbUtils.upsert(sourceDB, '_local/' + localDocName, diffFunction).then(function () {
       return sourceDB.registerDependentDatabase(depDbName).then(function (res) {
         var db = res.db;
-        db.auto_compaction = true;
+        db.auto_compaction = false;
         var view = {
           name: depDbName,
           db: db,

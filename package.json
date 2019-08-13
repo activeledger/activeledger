@@ -2,7 +2,7 @@
   "name": "activeledger-monorepo",
   "private": true,
   "scripts": {
-    "setup":"lerna clean --yes && lerna bootstrap && npm rum build && lerna bootstrap",
+    "setup": "lerna clean --yes && lerna bootstrap && npm rum build && lerna bootstrap",
     "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm rum build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
