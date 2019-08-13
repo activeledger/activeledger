@@ -317,7 +317,7 @@ export class Host extends Home {
    */
   private createProcessor(setup: setup, cpuTotal?: number): ChildProcess {
     // Create Process
-    const pFork = fork(`${__dirname}\\process.js`, [], {
+    const pFork = fork(`${__dirname}/process.js`, [], {
       cwd: process.cwd(),
       stdio: "inherit"
     });
