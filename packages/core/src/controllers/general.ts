@@ -49,7 +49,8 @@ export function options(
 ): void {
   // Default Allow CORS
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "content-type");
+  res.setHeader("Access-Control-Allow-Headers", "content-type, cache-control, accept, DNT, User-Agent, Sec-Fetch-Mode");
+  res.statusCode = 200;
 }
 
 /**
@@ -76,6 +77,11 @@ export function explorer(
   res: ServerResponse
 ): object {
   res.statusCode = 301;
-  res.setHeader("Location", `https://developers.activeledger.io/explorer?url=http://${req.headers["host"]}/openapi.json`);
+  res.setHeader(
+    "Location",
+    `https://developers.activeledger.io/explorer?url=http://${
+      req.headers["host"]
+    }/openapi.json`
+  );
   return {};
 }
