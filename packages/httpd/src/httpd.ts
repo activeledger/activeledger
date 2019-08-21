@@ -238,8 +238,10 @@ export class ActiveHttpd {
           }
           res.end();
         } else {
-          res.statusCode = 404;
-          res.write("404");
+          if (!res.statusCode) {
+            res.statusCode = 404;
+            res.write("404");
+          }
           res.end();
         }
       } catch (error) {
