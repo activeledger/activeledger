@@ -1,26 +1,6 @@
 {
-  "$schema": "http://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.settings.json",
   "compilerOptions": {
-    "emitDecoratorMetadata": true,
-    "experimentalDecorators": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "resolveJsonModule": true,
-    "lib": ["es2018", "dom", "esnext.asynciterable"],
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "target": "es2017",
-    "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true,
-    "alwaysStrict": true,
-    "removeComments": true
-  },
-  "include": ["src", "test", "index.ts"],
-  "exclude": [
-    "lib",
-    "node_modules/**",
-    "packages/*/node_modules/**",
-    "**/*.d.ts"
-  ]
+    "rootDir": "src"
+  }
 }
