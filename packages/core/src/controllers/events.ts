@@ -176,8 +176,8 @@ export async function contractSpecificEvent(
     ).on("change", (change: any) => {
       // This Contract && This Event?
       if (
-        change.doc.contract === incoming.body[2] &&
-        change.doc.name === incoming.body[3]
+        change.doc.contract === incoming.url[2] &&
+        change.doc.name === incoming.url[3]
       ) {
         // Prepare data
         let prepare = {
