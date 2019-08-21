@@ -303,13 +303,14 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-
-    this.isDefault
-      ? Process.defaultContractsVM.destroy(umid)
-      : this.contractRef
-      ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
-      : Process.generalContractVM.destroy(umid);
-
+    if (this.isDefault) {
+      // DefaultVM created?
+      if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+    } else {
+      this.contractRef
+        ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+        : Process.generalContractVM.destroy(umid);
+    }
     delete this.entry;
   }
 
