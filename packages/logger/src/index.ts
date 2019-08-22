@@ -363,7 +363,10 @@ export class ActiveLogger {
    * @memberof ActiveLogger
    */
   private static process(): string {
-    return ` ${ActiveLogger.colour(`(Activeledger/${process.pid})`, 90)} `;
+    return ` ${ActiveLogger.colour(
+      `(Activeledger/${process.pid.toString().padStart(5, "0")})`,
+      90
+    )} `;
   }
 
   /**

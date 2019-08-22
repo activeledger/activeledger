@@ -24,7 +24,6 @@
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
-import { Session } from "./session";
 import { Neighbour } from "./neighbour";
 
 /**
@@ -43,7 +42,7 @@ export class Maintain {
    * @type {string[]}
    * @memberof Maintain
    */
-  private neighbourOrder: Neighbour[];
+  private static neighbourOrder: Neighbour[];
 
   /**
    * Internal flag to see if we are already checking
@@ -52,7 +51,7 @@ export class Maintain {
    * @type {boolean}
    * @memberof Maintain
    */
-  private checking: boolean = false;
+  private static checking: boolean = false;
 
   /**
    * Internal Flag for managing rebasing attempted
@@ -61,7 +60,7 @@ export class Maintain {
    * @type {boolean}
    * @memberof Maintain
    */
-  private rebasing: boolean = false;
+  private static rebasing: boolean = false;
 
   /**
    * How many seconds between service calls
@@ -75,8 +74,10 @@ export class Maintain {
    * @type {number}
    * @memberof Watch
    */
-  private readonly interval: number =
+  private static readonly interval: number =
     (20 + Math.floor(Math.random() * 15) + -10) * 1000;
+
+  private static home: Home;
 
   /**
    * Creates an instance of Maintain
@@ -84,22 +85,15 @@ export class Maintain {
    * @param {Home} home
    * @memberof Watch
    */
-  constructor(private home: Home, private session: Session) {
+  public static init(home: Home) {
+    // Move to statics in home
+    Maintain.home = home;
+
     // Order the network
-    this.createNetworkOrder();
+    Maintain.createNetworkOrder();
 
     // Start the timer
-    this.healthTimer(true);
-
-    // Subscribe to rebase call
-    this.session.on("rebase", () => {
-      this.rebaseNeighbourhood();
-    });
-
-    // Subscribe to network resets
-    this.session.on("reorder", () => {
-      this.createNetworkOrder();
-    });
+    Maintain.healthTimer(true);
   }
 
   /**
@@ -109,13 +103,13 @@ export class Maintain {
    * @param {boolean} [boot=false]
    * @memberof Maintain
    */
-  private healthTimer(boot: boolean = false) {
+  private static healthTimer(boot: boolean = false) {
     setTimeout(() => {
-      this.healthTimer();
-    }, this.interval);
+      Maintain.healthTimer();
+    }, Maintain.interval);
     if (!boot) {
       ActiveLogger.debug("Checking Neighbourhood");
-      this.checkNeighbourhood();
+      Maintain.checkNeighbourhood();
     }
   }
 
@@ -125,12 +119,12 @@ export class Maintain {
    * @private
    * @memberof Maintain
    */
-  private createNetworkOrder() {
+  private static createNetworkOrder() {
     // Get all neighbours
-    let neighbours = this.home.neighbourhood.get();
+    let neighbours = Maintain.home.neighbourhood.get();
 
     // Get Key Index for looping
-    let keys = this.home.neighbourhood.keys();
+    let keys = Maintain.home.neighbourhood.keys();
     let i = keys.length;
 
     // Temporary Array for holding references
@@ -145,7 +139,7 @@ export class Maintain {
     }
 
     // sort may move into the neighbour object
-    this.neighbourOrder = tempOrder.sort(
+    Maintain.neighbourOrder = tempOrder.sort(
       (x, y): number => {
         if (x.reference > y.reference) return 1;
         return -1;
@@ -156,27 +150,28 @@ export class Maintain {
   /**
    * Will rebase the neighbourhood asap
    *
-   * @private
+   * @public
    * @memberof Maintain
    */
-  private rebaseNeighbourhood(): void {
+  public static rebaseNeighbourhood(): void {
     // Only Rebase if recognised
     ActiveLogger.debug("Rebase Request");
     if (
-      (!this.rebasing && this.home.getStatus() == NeighbourStatus.Recognised) ||
-      this.home.getStatus() == NeighbourStatus.Unrecognised
+      (!Maintain.rebasing &&
+        Maintain.home.getStatus() == NeighbourStatus.Recognised) ||
+      Maintain.home.getStatus() == NeighbourStatus.Unrecognised
     ) {
-      this.rebasing = true;
+      Maintain.rebasing = true;
       // If still checking wait to retry
-      if (this.checking) {
+      if (Maintain.checking) {
         ActiveLogger.debug("Waiting to Rebase");
         setTimeout(() => {
-          this.rebaseNeighbourhood();
+          Maintain.rebaseNeighbourhood();
         }, 2000);
       } else {
         ActiveLogger.debug("Starting Rebase");
-        this.checkNeighbourhood();
-        this.rebasing = false;
+        Maintain.checkNeighbourhood();
+        Maintain.rebasing = false;
       }
     }
   }
@@ -189,18 +184,20 @@ export class Maintain {
    * @returns {*}
    * @memberof Maintain
    */
-  private async checkNeighbourhood(force: boolean = false): Promise<void> {
-    if (this.checking && !force) return;
+  private static async checkNeighbourhood(
+    force: boolean = false
+  ): Promise<void> {
+    if (Maintain.checking && !force) return;
 
     // Store current processing reference
     let currentRef = Home.reference;
 
     // Set checking Flag
-    this.checking = true;
+    Maintain.checking = true;
 
     // Get All Status
     await Promise.all(
-      this.neighbourOrder.map((neighbour: Neighbour) => {
+      Maintain.neighbourOrder.map((neighbour: Neighbour) => {
         return new Promise(async (resolve, reject) => {
           neighbour
             .knock("status")
@@ -209,13 +206,6 @@ export class Maintain {
               if (currentRef == Home.reference) {
                 // Node is Home
                 neighbour.isHome = true;
-
-                // May remove this code, For now lets update
-                // Child processes about the status for output
-                this.session.shout("isHome", {
-                  reference: neighbour.reference,
-                  isHome: neighbour.isHome
-                });
               }
               // Resolve Promise to move on
               resolve();
@@ -225,13 +215,6 @@ export class Maintain {
               if (currentRef == Home.reference) {
                 // Node isn't home (Any error is a bad error)
                 neighbour.isHome = false;
-
-                // May remove this code, For now lets update
-                // Child processes about the status for output
-                this.session.shout("isHome", {
-                  reference: neighbour.reference,
-                  isHome: neighbour.isHome
-                });
               }
               // This isn't a failure so resolve to move on.
               resolve();
@@ -242,10 +225,10 @@ export class Maintain {
 
     // Pair with this nodes neighbour
     if (currentRef == Home.reference) {
-      this.pairing();
+      Maintain.pairing();
     } else {
-      this.checking = false;
-      this.rebasing = false;
+      Maintain.checking = false;
+      Maintain.rebasing = false;
     }
   }
 
@@ -258,9 +241,9 @@ export class Maintain {
    * @returns {*}
    * @memberof Maintain
    */
-  private pairing(): any {
+  private static pairing(): any {
     // Loop Index
-    let i: number = this.neighbourOrder.length;
+    let i: number = Maintain.neighbourOrder.length;
 
     // Where the home node is in this predictable order.
     // (Undefined for error management)
@@ -274,7 +257,7 @@ export class Maintain {
     // Find Home Position
     while (i--) {
       // Match on reference and break
-      if (this.home.reference == this.neighbourOrder[i].reference) {
+      if (Maintain.home.reference == Maintain.neighbourOrder[i].reference) {
         whereHomeIs = i;
         break;
       }
@@ -284,43 +267,43 @@ export class Maintain {
     // Need to refresh again for references
     if (whereHomeIs == undefined) {
       // No longer checking
-      this.checking = false;
-      this.rebasing = false;
-      return this.session.reload();
+      Maintain.checking = false;
+      Maintain.rebasing = false;
+      return;
     }
 
     // Loop starting position relative to home
     i = whereHomeIs as number;
     while (!isRight) {
       // Move "right" by one & Stay within range
-      if (++i >= this.neighbourOrder.length) i = 0;
+      if (++i >= Maintain.neighbourOrder.length) i = 0;
       // Neighbour Home to be on our right?
       if (
-        this.neighbourOrder[i] &&
-        !this.neighbourOrder[i].graceStop &&
-        this.neighbourOrder[i].isHome
+        Maintain.neighbourOrder[i] &&
+        !Maintain.neighbourOrder[i].graceStop &&
+        Maintain.neighbourOrder[i].isHome
       )
-        isRight = this.neighbourOrder[i];
+        isRight = Maintain.neighbourOrder[i];
 
       // Return Early, Network probably reordered with new nodes
-      if (!this.neighbourOrder[i]) return;
+      if (!Maintain.neighbourOrder[i]) return;
     }
 
     // Now Find left
     i = whereHomeIs as number;
     while (!isleft) {
       // Move "left" by one & Stay within range
-      if (--i == -1) i = this.neighbourOrder.length - 1;
+      if (--i == -1) i = Maintain.neighbourOrder.length - 1;
       // Neighbour Home to be on our left?
       if (
-        this.neighbourOrder[i] &&
-        !this.neighbourOrder[i].graceStop &&
-        this.neighbourOrder[i].isHome
+        Maintain.neighbourOrder[i] &&
+        !Maintain.neighbourOrder[i].graceStop &&
+        Maintain.neighbourOrder[i].isHome
       )
-        isleft = this.neighbourOrder[i];
+        isleft = Maintain.neighbourOrder[i];
 
       // Return Early, Network probably reordered with new nodes
-      if (!this.neighbourOrder[i]) return;
+      if (!Maintain.neighbourOrder[i]) return;
     }
 
     if (
@@ -332,17 +315,11 @@ export class Maintain {
         { left: isleft.reference, right: isRight.reference },
         "New Neighbour Update"
       );
-      this.home.setNeighbours(false, isleft.reference, isRight.reference);
-
-      // Let all processes know of our network position
-      this.session.shout("neighbour", {
-        left: isleft.reference,
-        right: isRight.reference
-      });
+      Maintain.home.setNeighbours(isleft.reference, isRight.reference);
     }
 
     // No longer checking
-    this.checking = false;
-    this.rebasing = false;
+    Maintain.checking = false;
+    Maintain.rebasing = false;
   }
 }

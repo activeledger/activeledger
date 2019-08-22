@@ -23,8 +23,7 @@
 import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
-import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
+import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { PouchDB, leveldown } from "./pouchdb";
 
 (function() {
@@ -72,6 +71,32 @@ import { PouchDB, leveldown } from "./pouchdb";
       });
     }
     return pDBCache[name];
+  };
+
+  /**
+   * Fast uuidV4 Generator
+   * Credit : https://gist.github.com/jed/982883
+   *
+   * @param {number} [a]
+   * @returns {number}
+   */
+  const uuidGenV4 = (a?: number): number =>
+    a
+      ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
+      : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
+          /[018]/g,
+          uuidGenV4
+        );
+
+  /**
+   * Checks for the existant of _id if not ads it and returns
+   *
+   * @param {*} doc
+   * @returns {*}
+   */
+  const checkDoc = (doc: any): any => {
+    if (!doc._id) doc._id = uuidGenV4();
+    return doc;
   };
 
   // Create Light Server
@@ -164,15 +189,6 @@ import { PouchDB, leveldown } from "./pouchdb";
 
   // Get UUID
   http.use("_uuids", "GET", async (incoming: IActiveHttpIncoming) => {
-    // Credit : https://gist.github.com/jed/982883
-    let uuidGenV4 = (a?: any) =>
-      a
-        ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
-        : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
-            /[018]/g,
-            uuidGenV4
-          );
-
     // uuid holder
     let uuids = [];
 
@@ -242,7 +258,7 @@ import { PouchDB, leveldown } from "./pouchdb";
       return { ok: true };
     }
   );
-  
+
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
@@ -265,7 +281,7 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {*} options
    * @returns
    */
-  let prepareAllDocs = (options: any) => {
+  const prepareAllDocs = (options: any) => {
     // Convert Limit
     if (options.limit) {
       options.limit = parseInt(options.limit) || null;
@@ -292,7 +308,7 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} path
    * @returns {Promise<any>}
    */
-  let genericGet = (dbLoc: string, path: string): Promise<any> => {
+  const genericGet = (dbLoc: string, path: string): Promise<any> => {
     // Get Database
     return new Promise(async (resolve, reject) => {
       // Get Database
@@ -313,7 +329,7 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} path
    * @returns {Promise<any>}
    */
-  let genericDelete = (dbLoc: string, docName: string): Promise<any> => {
+  const genericDelete = (dbLoc: string, docName: string): Promise<any> => {
     return new Promise(async (resolve, reject) => {
       // Let Pouch create the connection
       await getPDB(dbLoc).info();
@@ -375,7 +391,7 @@ import { PouchDB, leveldown } from "./pouchdb";
     // Get Database
     let db = getPDB(incoming.url[0]);
     try {
-      return await db.post(incoming.body);
+      return await db.post(checkDoc(incoming.body));
     } catch (e) {
       return "";
     }
