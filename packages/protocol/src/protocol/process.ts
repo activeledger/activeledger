@@ -28,6 +28,15 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import {
+  IVMDataPayload,
+  IVMContractHolder,
+  IVirtualMachine
+} from "./interfaces/vm.interface";
+import { ISecurityCache } from "./interfaces/process.interface";
+import { Shared } from "./shared";
+import { StreamUpdater } from "./streamUpdater";
+import { PermissionsChecker } from "./permissionsChecker";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -37,14 +46,55 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
  * @extends {EventEmitter}
  */
 export class Process extends EventEmitter {
+  // #region Class variables
+
   /**
-   * Hosts the VM instance
+   * Holds the instance that controls general contracts
    *
    * @private
    * @type {VirtualMachine}
    * @memberof Process
    */
-  private contractVM: VirtualMachine;
+  private static generalContractVM: VirtualMachine;
+
+  /**
+   * Holds the instance that controls the default contracts (anything in the default namespace)
+   *
+   * @private
+   * @static
+   * @type {VirtualMachine}
+   * @memberof Process
+   */
+  private static defaultContractsVM: VirtualMachine;
+
+  /**
+   * Holds an object of individual VM controller instances for unsafe contracts
+   * Unsafe contracts are separated by namespace, so these instances will still run multiple contracts
+   *
+   * @private
+   * @static
+   * @type {IVMContractHolder}
+   * @memberof Process
+   */
+  private static singleContractVMHolder: IVMContractHolder;
+
+  /**
+   * Is this instance of Process dealing with a default contract
+   *
+   * @private
+   * @type {boolean}
+   * @memberof Process
+   */
+  private isDefault: boolean = false;
+
+  /**
+   * A reference to a contract in singleContractVMHolder, via namespace
+   *
+   * @private
+   * @type {string}
+   * @memberof Process
+   */
+  private contractRef: string;
 
   /**
    * Holds string reference of inputs streams
@@ -63,14 +113,6 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private outputs: string[];
-
-  /**
-   * Maps streamId to their labels
-   *
-   * @private
-   * @memberof Process
-   */
-  private ioLabelMap: any = { i: {}, o: {} };
 
   /**
    * Flag for checking or setting revisions
@@ -155,6 +197,35 @@ export class Process extends EventEmitter {
   private currentVotes: number;
 
   /**
+   * A cache of the secure namespaces
+   *
+   * @private
+   * @type {string[]}
+   * @memberof Process
+   */
+  private securityCache: ISecurityCache | null;
+
+  /**
+   * Initialised shared class
+   *
+   * @private
+   * @type {Shared}
+   * @memberof Process
+   */
+  private shared: Shared;
+
+  /**
+   * Permission checking class
+   *
+   * @private
+   * @type {PermissionsChecker}
+   * @memberof Process
+   */
+  private permissionChecker: PermissionsChecker;
+
+  // #endregion
+
+  /**
    * Creates an instance of Process.
    *
    * @param {ActiveDefinitions.LedgerEntry} entry
@@ -179,8 +250,38 @@ export class Process extends EventEmitter {
   ) {
     super();
 
+    this.shared = new Shared(this.storeSingleError, this.entry, this.dbe, this);
+
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
+
+    try {
+      // Initialise the general contract VM
+      Process.generalContractVM = new VirtualMachine(
+        this.selfHost,
+        this.secured,
+        this.db,
+        this.dbev
+      );
+
+      Process.generalContractVM.initialiseVirtualMachine();
+    } catch (error) {
+      throw new Error(error);
+    }
+
+    // Check if the security data has been cached
+    if (!this.securityCache) {
+      this.securityCache = ActiveOptions.get<any>("security", null);
+    }
+
+    // Initialise the permission checker
+    this.permissionChecker = new PermissionsChecker(
+      this.entry,
+      this.db,
+      this.checkRevs,
+      this.securityCache as ISecurityCache,
+      this.shared
+    );
   }
 
   /**
@@ -188,10 +289,10 @@ export class Process extends EventEmitter {
    *
    * @memberof Process
    */
-  public destroy(): void {
+  public destroy(umid: string): void {
     // Record un commited transactions as an error
     if (!this.nodeResponse.commit) {
-      this.raiseLedgerError(
+      this.shared.raiseLedgerError(
         1600,
         new Error("Failed to commit before timeout"),
         true
@@ -202,8 +303,15 @@ export class Process extends EventEmitter {
     clearTimeout(this.broadcastTimeout);
 
     // Close VM and entry (cirular reference)
-    (this.contractVM as any) = null;
-    (this.entry as any) = null;
+    if (this.isDefault) {
+      // DefaultVM created?
+      if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+    } else {
+      this.contractRef
+        ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+        : Process.generalContractVM.destroy(umid);
+    }
+    delete this.entry;
   }
 
   /**
@@ -212,21 +320,37 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   public async start() {
-    ActiveLogger.info("New TX : " + this.entry.$umid);
+    ActiveLogger.debug("New TX : " + this.entry.$umid);
     ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
-    if (this.entry.$tx.$namespace == "default") {
+    const setupDefaultLocation = () => {
+      // Set isDefault flag to true
+      this.isDefault = true;
+
       // Default Contract Location
       this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
         this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`;
-    } else {
-      // Ledger Transpiled Contract Location
-      this.contractLocation = `${process.cwd()}/contracts/${
+    };
+
+    // Ledger Transpiled Contract Location
+    const setupLocation = () =>
+      (this.contractLocation = `${process.cwd()}/contracts/${
         this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`;
-    }
+      }/${this.entry.$tx.$contract}.js`);
+
+    // Is this a default contract
+    this.entry.$tx.$namespace === "default"
+      ? setupDefaultLocation()
+      : setupLocation();
+
+    // Setup the virtual machine for this process
+    const virtualMachine: IVirtualMachine = this.isDefault
+      ? Process.defaultContractsVM
+      : this.contractRef
+      ? Process.singleContractVMHolder[this.contractRef]
+      : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -237,8 +361,9 @@ export class Process extends EventEmitter {
       this.inputs = Object.keys(this.entry.$tx.$i || {});
 
       // We must have inputs (New Inputs can create brand new unknown outputs)
-      if (!this.inputs.length)
-        this.raiseLedgerError(1101, new Error("Inputs cannot be null"));
+      if (!this.inputs.length) {
+        this.shared.raiseLedgerError(1101, new Error("Inputs cannot be null"));
+      }
 
       // Which $i lookup are we using. Are they labelled or stream names
       this.labelOrKey();
@@ -270,31 +395,27 @@ export class Process extends EventEmitter {
         // [umid]:stream : Activeledger Meta Data
         // [umid]:volatile : Data that can be lost
 
-        // Check the input revisions
-        this.permissionsCheck()
-          .then((inputStreams: ActiveDefinitions.LedgerStream[]) => {
-            // Check the output revisions
-            this.permissionsCheck(false)
-              .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
-                this.process(inputStreams, outputStreams);
-              })
-              .catch(error => {
-                // Forward Error On
-                // We may not have the output stream, So we need to pass over the knocks
-                this.postVote({
-                  code: error.code,
-                  reason: error.reason || error.message
-                });
-              });
-          })
-          .catch(error => {
-            // Forward Error On
-            // We may not have the input stream, So we need to pass over the knocks
-            this.postVote({
-              code: error.code,
-              reason: error.reason || error.message
-            });
+        try {
+          // Check the input revisions
+          const inputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.inputs
+          );
+
+          // Check the output revisions
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.outputs,
+            false
+          );
+
+          this.process(inputStreams, outputStreams);
+        } catch (error) {
+          // Forward Error On
+          // We may not have the output stream, So we need to pass over the knocks
+          this.postVote(virtualMachine, {
+            code: error.code,
+            reason: error.reason || error.message
           });
+        }
       } else {
         ActiveLogger.debug("Self signed Transaction");
 
@@ -307,25 +428,26 @@ export class Process extends EventEmitter {
             let signature = this.entry.$sigs[sigs[i]];
             let input = this.entry.$tx.$i[sigs[i]];
 
+            const validSignature = () =>
+              this.shared.signatureCheck(
+                input.publicKey,
+                signature as string,
+                input.type ? input.type : "rsa"
+              );
+
             // Make sure we have an input (Can Skip otherwise maybe onboarded)
             if (input) {
               // Check the input has a public key
               if (input.publicKey) {
-                if (
-                  !this.signatureCheck(
-                    input.publicKey,
-                    signature as string,
-                    input.type ? input.type : "rsa"
-                  )
-                ) {
-                  return this.raiseLedgerError(
+                if (!validSignature()) {
+                  return this.shared.raiseLedgerError(
                     1250,
                     new Error("Self signed signature not matching")
                   );
                 }
               } else {
                 // We don't have the public key to check
-                return this.raiseLedgerError(
+                return this.shared.raiseLedgerError(
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " + sigs[i]
@@ -333,30 +455,30 @@ export class Process extends EventEmitter {
                 );
               }
             } else {
-              return this.raiseLedgerError(
-                1245,
-                new Error("Self signed signature missing input pairing")
-              );
+              return;
             }
           }
         }
 
-        // No input streams, Maybe Output
-        this.permissionsCheck(false)
-          .then((outputStreams: ActiveDefinitions.LedgerStream[]) => {
-            this.process([], outputStreams);
-          })
-          .catch(error => {
-            // Forward Error On
-            this.postVote({
-              code: error.code,
-              reason: error.reason || error.message
-            });
+        try {
+          // No input streams, Maybe Output
+          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
+            this.outputs,
+            false
+          );
+
+          this.process([], outputStreams);
+        } catch (error) {
+          // Forward Error On
+          this.postVote(virtualMachine, {
+            code: error.code,
+            reason: error.reason || error.message
           });
+        }
       }
     } else {
       // Contract not found
-      this.postVote({
+      this.postVote(virtualMachine, {
         code: 1401,
         reason: "Contract Not Found"
       });
@@ -378,8 +500,15 @@ export class Process extends EventEmitter {
       // Reset Reference node response
       this.nodeResponse = this.entry.$nodes[this.reference];
       // Try run commit!
-      this.commit();
+
+      // Get the correct VM instance reference
+      this.isDefault
+        ? this.commit(Process.defaultContractsVM)
+        : this.contractRef
+        ? this.commit(Process.singleContractVMHolder[this.contractRef])
+        : this.commit(Process.generalContractVM);
     }
+
     return this.nodeResponse;
   }
 
@@ -394,6 +523,200 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Initialise the default contracts VM instance if needed and/or pass through the data
+   *
+   * @private
+   * @param {IVMDataPayload} payload
+   * @param {string} contractName
+   * @memberof Process
+   */
+  private processDefaultContracts(
+    payload: IVMDataPayload,
+    contractName: string
+  ) {
+    // Check if the holder needs to be initialised
+    if (!Process.defaultContractsVM) {
+      // Setup for default contracts
+      const external = [];
+      const builtin = [];
+      switch (payload.transaction.$contract) {
+        case "contract":
+          external.push("typescript");
+          builtin.push("fs", "path", "os", "crypto");
+          break;
+        case "setup":
+          builtin.push("fs", "path");
+          break;
+      }
+
+      try {
+        Process.defaultContractsVM = new VirtualMachine(
+          this.selfHost,
+          this.secured,
+          this.db,
+          this.dbev
+        );
+
+        Process.defaultContractsVM.initialiseVirtualMachine(builtin, external);
+      } catch (error) {
+        throw new Error(error);
+      }
+    }
+
+    // Pass through the VM holder and data to the VM Handler
+    this.handleVM(Process.defaultContractsVM, payload, contractName);
+  }
+
+  /**
+   * Handle the initialisation and pass through of data for unsafe contracts
+   *
+   * @private
+   * @param {IVMDataPayload} payload
+   * @param {string} namespace
+   * @param {string} contractName
+   * @param {string[]} extraBuiltins
+   * @memberof Process
+   */
+  private processUnsafeContracts(
+    payload: IVMDataPayload,
+    namespace: string,
+    contractName: string,
+    extraBuiltins: string[]
+  ) {
+    this.contractRef = namespace;
+
+    // If we have initialised an instance for this namespace reuse it
+    // Otherwise we should create an instance for it
+    if (!Process.singleContractVMHolder[this.contractRef]) {
+      try {
+        Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
+          this.selfHost,
+          this.secured,
+          this.db,
+          this.dbev
+        );
+
+        Process.singleContractVMHolder[
+          this.contractRef
+        ].initialiseVirtualMachine(extraBuiltins);
+      } catch (error) {
+        throw new Error(error);
+      }
+    }
+
+    // Pass VM instance and data to the VM Handler
+    this.handleVM(
+      Process.singleContractVMHolder[this.contractRef],
+      payload,
+      contractName
+    );
+  }
+
+  /**
+   * Handler processing of a transaction using a specified pre-initialised VM instance
+   *
+   * @private
+   * @param {IVirtualMachine} virtualMachine
+   * @param {IVMDataPayload} payload
+   * @param {string} contractName
+   * @memberof Process
+   */
+  private async handleVM(
+    virtualMachine: IVirtualMachine,
+    payload: IVMDataPayload,
+    contractName: string
+  ) {
+    // Internal micro functions
+
+    // Handle a vote error
+    const handleVoteError = async (error: Error) => {
+      try {
+        await this.shared.storeError(
+          1000,
+          new Error("Vote Failure - " + JSON.stringify(error)),
+          10
+        );
+      } catch (errorStoringError) {
+        // Continue Execution of consensus even with this failing
+        // Just add a fatal message
+        ActiveLogger.fatal(errorStoringError, "Voting Error Log Issues");
+      } finally {
+        // Continue Execution of consensus
+        // Update Error
+        this.nodeResponse.error = error.message;
+
+        // Continue to next nodes vote
+        this.postVote(virtualMachine);
+      }
+    };
+
+    // If there is an error processing should stop
+    let continueProcessing = true;
+
+    // Initialise the contract in the VM
+    try {
+      await virtualMachine.initialise(payload, contractName);
+    } catch (error) {
+      // Contract not found / failed to start
+      ActiveLogger.debug(error, "VM initialisation failed");
+      this.shared.raiseLedgerError(
+        1401,
+        new Error("VM Init Failure - " + JSON.stringify(error.message || error))
+      );
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // Run the verification round
+    try {
+      if (continueProcessing)
+        await virtualMachine.verify(this.entry.$selfsign, this.entry.$umid);
+    } catch (error) {
+      ActiveLogger.debug(error, "Verify Failure");
+      // Verification Failure
+      this.shared.raiseLedgerError(1310, new Error(error));
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // Run the vote round
+    try {
+      if (continueProcessing) await virtualMachine.vote(this.entry.$umid);
+    } catch (error) {
+      // Do something with the error
+      handleVoteError(error);
+
+      // Stop processing
+      continueProcessing = false;
+    }
+
+    // All previous rounds successful continue processing
+    if (continueProcessing) {
+      // Update Vote Entry
+      this.nodeResponse.vote = true;
+
+      // Internode Communication picked up here, Doesn't mean every node
+      // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+      this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+        this.entry.$umid
+      );
+
+      // Return Data for this nodes contract run (Useful for $instant request expected id's)
+      this.nodeResponse.return = virtualMachine.getReturnContractData(
+        this.entry.$umid
+      );
+
+      // Clearing All node comms?
+      this.entry = this.shared.clearAllComms(virtualMachine);
+
+      // Continue to next nodes vote
+      this.postVote(virtualMachine);
+    }
+  }
+
+  /**
    * Processes the transaction through the contract phases
    * Verify, Vote, Commit.
    * Vote phase is in memory blocked during conensus unless instant transaction
@@ -402,116 +725,80 @@ export class Process extends EventEmitter {
    * @param {LedgerStream[]} inputs
    * @memberof Process
    */
-  private process(inputs: ActiveDefinitions.LedgerStream[]): void;
-  private process(
+  private async process(
+    inputs: ActiveDefinitions.LedgerStream[]
+  ): Promise<void>;
+  private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[]
-  ): void;
-  private process(
+  ): Promise<void>;
+  private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[] = []
-  ): void {
-    this.getReadOnlyStreams()
-      .then(readonly => {
-        // We don't need to verify the code unless we suspect server has been
-        // comprimised. We will verify with the "install" routine
-        // TODO: Fix temp path solution (Param? PATH? Global?)
-        this.contractVM = new VirtualMachine(
-          this.contractLocation,
-          this.selfHost,
-          this.entry.$umid,
-          this.entry.$datetime,
-          this.entry.$remoteAddr,
-          this.entry.$tx,
-          this.entry.$sigs,
-          inputs,
-          outputs,
-          readonly,
-          this.db,
-          this.dbev,
-          this.secured
+  ): Promise<void> {
+    try {
+      // Get readonly data
+      const readonly = await this.getReadOnlyStreams();
+
+      const contractName = this.contractLocation.substr(
+        this.contractLocation.lastIndexOf("/") + 1
+      );
+
+      // Build the contract payload
+      const payload: IVMDataPayload = {
+        contractLocation: this.contractLocation,
+        umid: this.entry.$umid,
+        date: this.entry.$datetime,
+        remoteAddress: this.entry.$remoteAddr,
+        transaction: this.entry.$tx,
+        signatures: this.entry.$sigs,
+        inputs,
+        outputs,
+        readonly,
+        key: Math.floor(Math.random() * 100)
+      };
+
+      // Check if the security data has been cached
+      if (!this.securityCache) {
+        this.securityCache = ActiveOptions.get<any>("security", null);
+      }
+
+      if (
+        !this.securityCache &&
+        !this.securityCache!.namespace &&
+        !this.securityCache!.namespace[payload.transaction.$namespace] &&
+        payload.transaction.$namespace !== "default"
+      ) {
+        // Use the General contract VM
+        this.handleVM(Process.generalContractVM, payload, contractName);
+      } else if (
+        this.securityCache &&
+        this.securityCache.namespace &&
+        this.securityCache.namespace[payload.transaction.$namespace]
+      ) {
+        const builtin: string[] = [];
+        // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
+        this.securityCache.namespace[
+          payload.transaction.$namespace
+        ].std.forEach((item: string) => {
+          builtin.push(item);
+        });
+
+        // Initialise the unsafe contract VM
+        this.processUnsafeContracts(
+          payload,
+          payload.transaction.$namespace,
+          contractName,
+          builtin
         );
-
-        // Initalise contract VM
-        this.contractVM
-          .initalise()
-          .then(() => {
-            // Verify Transaction details in the contract
-            // Also allow the contract to verify it likes signatureless transactions
-            this.contractVM
-              .verify(this.entry.$selfsign)
-              .then(() => {
-                // Get Vote (May change to string as it can contain the reason)
-                // Or in the VM we can catch any thrown errors messages
-                this.contractVM
-                  .vote()
-                  .then(() => {
-                    // Update Vote Entry
-                    this.nodeResponse.vote = true;
-
-                    // Internode Communication picked up here, Doesn't mean every node
-                    // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-                    this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
-
-                    // Return Data for this nodes contract run (Useful for $instant request expected id's)
-                    this.nodeResponse.return = this.contractVM.getReturnContractData();
-
-                    // Clearing All node comms?
-                    this.clearAllComms();
-
-                    // Continue to next nodes vote
-                    this.postVote();
-                  })
-                  .catch(error => {
-                    // Vote failed (Not and error continue casting vote on the network)
-                    ActiveLogger.debug(error, "Vote Failure");
-
-                    // Update errors (Dont know what the contract will reject as so string)
-                    this.storeError(
-                      1000,
-                      new Error("Vote Failure - " + JSON.stringify(error)),
-                      10
-                    )
-                      .then(() => {
-                        // Continue Execution of consensus
-                        // Update Error
-                        this.nodeResponse.error = error;
-
-                        // Continue to next nodes vote
-                        this.postVote();
-                      })
-                      .catch(error => {
-                        // Continue Execution of consensus even with this failing
-                        // Just add a fatal message
-                        ActiveLogger.fatal(error, "Voting Error Log Issues");
-
-                        // Update Error
-                        this.nodeResponse.error = error;
-
-                        // Continue to next nodes vote
-                        this.postVote();
-                      });
-                  });
-              })
-              .catch(error => {
-                ActiveLogger.debug(error, "Verify Failure");
-                // Verification Failure
-                this.raiseLedgerError(1310, new Error(error));
-              });
-          })
-          .catch(e => {
-            // Contract not found / failed to start
-            ActiveLogger.debug(e, "VM initialisation failed");
-            this.raiseLedgerError(
-              1401,
-              new Error("VM Init Failure - " + JSON.stringify(e.message || e))
-            );
-          });
-      })
-      .catch(e => {
-        // error fetch read only streams
-        this.raiseLedgerError(1210, new Error("Read Only Stream Error"));
-      });
+      } else {
+        // Use the Default contract VM (for contracts that are built into Activeledger)
+        this.processDefaultContracts(payload, contractName);
+      }
+    } catch (error) {
+      // error fetch read only streams
+      this.shared.raiseLedgerError(1210, new Error("Read Only Stream Error"));
+    }
   }
 
   /**
@@ -520,7 +807,7 @@ export class Process extends EventEmitter {
    * @private
    * @memberof Process
    */
-  private postVote(error: any = false): void {
+  private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
     this.voting = false;
 
@@ -538,24 +825,27 @@ export class Process extends EventEmitter {
         this.entry.$nodes[this.reference].error = error.reason;
       }
       // Let all other nodes know about this transaction and our opinion
-      this.emit("broadcast", this.entry);
+      this.emit("broadcast");
 
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {
         // Try run commit! (May have reach consensus here)
-        this.commit();
+        this.commit(virtualMachine);
       }
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
-        this.commit(() => {
-          this.right
-            .knock("init", this.entry)
-            .then((response: any) => {
+        this.commit(virtualMachine, async () => {
+          try {
+            const response = await this.right.knock("init", this.entry);
+
+            // Check we didn't commit early
+            if (!this.nodeResponse.commit) {
               // Territoriality set?
               this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
+
               // Append new $nodes
               this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
 
@@ -564,39 +854,40 @@ export class Process extends EventEmitter {
 
               // Normal, Or getting other node opinions?
               if (error) {
-                this.raiseLedgerError(error.code, error.reason, true, 10);
+                this.shared.raiseLedgerError(
+                  error.code,
+                  error.reason,
+                  true,
+                  10
+                );
               }
 
               // Run the Commit Phase
-              this.commit();
-            })
-            .catch((error: any) => {
-              // Need to manage errors this would mean the node is unreachable
-              ActiveLogger.debug(error, "Knock Failure");
+              this.commit(virtualMachine);
+            }
+          } catch (error) {
+            // Need to manage errors this would mean the node is unreachable
+            ActiveLogger.debug(error, "Knock Failure");
 
-              // if debug mode forward
-              // IF error has status and error this came from another node which has erroed (not unreachable)
-              if (ActiveOptions.get<boolean>("debug", false)) {
-                // rethrow same error
-                this.raiseLedgerError(
+            // if debug mode forward
+            // IF error has status and error this came from another node which has erroed (not unreachable)
+            ActiveOptions.get<boolean>("debug", false)
+              ? this.shared.raiseLedgerError(
                   error.status || 1502,
                   new Error(error.error)
-                );
-              } else {
-                // Generic error 404/ 500
-                this.raiseLedgerError(1501, new Error("Bad Knock Transaction"));
-              }
-            });
+                ) // rethrow same error
+              : this.shared.raiseLedgerError(
+                  1501,
+                  new Error("Bad Knock Transaction")
+                ); // Generic error 404/ 500
+          }
         });
       } else {
         ActiveLogger.debug("Origin is next (Sending Back)");
-        if (error) {
-          // Ofcourse if next is origin we need to send back for the promises!
-          this.raiseLedgerError(error.code, error.reason);
-        } else {
-          // Run the Commit Phase
-          this.commit();
-        }
+
+        error
+          ? this.shared.raiseLedgerError(error.code, error.reason) // Of course if next is origin we need to send back for the promises!
+          : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
   }
@@ -612,17 +903,15 @@ export class Process extends EventEmitter {
   private canCommit(skipBoost = false): boolean {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
-    let i = networkNodes.length;
     this.currentVotes = 0;
 
     // Small performance boost if we voted no
     if (skipBoost || this.nodeResponse.vote) {
+      let i = networkNodes.length;
       while (i--) {
         if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
     }
-
-    ActiveLogger.info(this.entry.$nodes, "Current Votes " + this.currentVotes);
 
     // Return if consensus has been reached
     return (
@@ -644,66 +933,89 @@ export class Process extends EventEmitter {
    * @returns {void}
    * @memberof Process
    */
-  private commit(earlyCommit?: Function): void {
+  private async commit(
+    virtualMachine: IVirtualMachine,
+    earlyCommit?: Function
+  ): Promise<void> {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
       // check we can commit still
       if (this.canCommit()) {
         // Consensus reached commit phase
         this.commiting = true;
+
+        // Make sure broadcast timeout is cleared
+        clearTimeout(this.broadcastTimeout);
+
         // Pass Nodes for possible INC injection
-        this.contractVM
-          .commit(
+        try {
+          await virtualMachine.commit(
             this.entry.$nodes,
-            this.entry.$territoriality == this.reference
-          )
-          .then(() => {
-            // Update Commit Entry
-            this.nodeResponse.commit = true;
+            this.entry.$territoriality === this.reference,
+            this.entry.$umid
+          );
 
-            // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
+          // Update Commit Entry
+          this.nodeResponse.commit = true;
 
-            // Return Data for this nodes contract run
-            this.nodeResponse.return = this.contractVM.getReturnContractData();
+          // Update in communication (Recommended pre commit only but can be edge use cases)
+          this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+            this.entry.$umid
+          );
 
-            // Clearing All node comms?
-            this.clearAllComms();
+          // Return Data for this nodes contract run
+          this.nodeResponse.return = virtualMachine.getReturnContractData(
+            this.entry.$umid
+          );
 
-            // Are we throwing to another ledger(s)?
-            let throws = this.contractVM.getThrowsFromVM();
+          // Clearing All node comms?
+          this.entry = this.shared.clearAllComms(virtualMachine);
 
-            // Emit to network handler
-            if (throws && throws.length) {
-              this.emit("throw", { locations: throws });
-            }
+          // Are we throwing to another ledger(s)?
+          let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
 
-            // Update Streams
-            this.updateStreams({ tx: this.compactTxEntry() }, earlyCommit);
-          })
-          .catch(error => {
-            // Don't let local error stop other nodes
-            if (earlyCommit) earlyCommit();
-            ActiveLogger.debug(error, "VM Commit Failure");
+          // Emit to network handler
+          if (throws && throws.length) {
+            this.emit("throw", { locations: throws });
+          }
 
-            // If debug mode forward full error
-            if (ActiveOptions.get<boolean>("debug", false)) {
-              this.raiseLedgerError(
+          // Update Streams
+          const streamUpdater = new StreamUpdater(
+            this.entry,
+            virtualMachine,
+            this.reference,
+            this.nodeResponse,
+            this.db,
+            this,
+            this.shared
+          );
+
+          earlyCommit
+            ? streamUpdater.updateStreams(earlyCommit)
+            : streamUpdater.updateStreams();
+        } catch (error) {
+          // Don't let local error stop other nodes
+          if (earlyCommit) earlyCommit();
+
+          ActiveLogger.debug(error, "VM Commit Failure");
+
+          // If debug mode forward full error
+          ActiveOptions.get<boolean>("debug", false)
+            ? this.shared.raiseLedgerError(
                 1302,
                 new Error(
                   "Commit Failure - " + JSON.stringify(error.message || error)
                 )
-              );
-            } else {
-              this.raiseLedgerError(
+              )
+            : this.shared.raiseLedgerError(
                 1301,
                 new Error("Failed Commit Transaction")
               );
-            }
-          });
+        }
       } else {
         // If Early commit we don't need to manage these errors
         if (earlyCommit) return earlyCommit();
+
         // Consensus not reached
         if (!this.nodeResponse.vote) {
           // We didn't vote right
@@ -714,7 +1026,7 @@ export class Process extends EventEmitter {
 
           // We voted false, Need to process
           // Still required as broadcast will skip over 1000
-          this.raiseLedgerError(
+          this.shared.raiseLedgerError(
             1505,
             new Error("This node voted false"),
             false
@@ -729,42 +1041,53 @@ export class Process extends EventEmitter {
                 "Network Consensus reached without me (Reconciling)"
               );
 
-              this.contractVM
-                .reconcile(this.entry.$nodes)
-                .then((reconciled: boolean) => {
-                  // Contract ran its own reconcile procedure
-                  if (reconciled) {
-                    ActiveLogger.info("Self Renconcile Successful");
-                    // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
-                    this.updateStreams({ tx: this.compactTxEntry() });
+              try {
+                const reconciled: boolean = await virtualMachine.reconcile(
+                  this.entry.$nodes,
+                  this.entry.$umid
+                );
+                // Contract ran its own reconcile procedure
+                if (reconciled) {
+                  ActiveLogger.info("Self Reconcile Successful");
+                  // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
+                  const streamUpdater = new StreamUpdater(
+                    this.entry,
+                    virtualMachine,
+                    this.reference,
+                    this.nodeResponse,
+                    this.db,
+                    this,
+                    this.shared
+                  );
+                  streamUpdater.updateStreams();
+                } else {
+                  // No move onto internal attempts
+                  // Upgrade error code so restore will process it
+                  if (this.errorOut.code === 1000) {
+                    ActiveLogger.info(
+                      "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
+                    );
+                    // reset single error as 1000 is skipped anyway
+                    this.shared.storeSingleError = false;
+                    // try/catch to finish execution
+                    this.shared
+                      .storeError(1001, new Error(this.errorOut.reason), 11)
+                      .then(() => {
+                        this.emit("commited");
+                      })
+                      .catch(() => {
+                        this.emit("commited");
+                      });
                   } else {
-                    // No move onto internal attempts
-                    // Upgrade error code so restore will process it
-                    if (this.errorOut.code === 1000) {
-                      ActiveLogger.info(
-                        "Self Renconcile Failed & Upgrading Error Code for Auto Restore"
-                      );
-                      // reset single error as 1000 is skipped anyway
-                      this.storeSingleError = false;
-                      // try/catch to finish execution
-                      this.storeError(1001, new Error(this.errorOut.reason), 11)
-                        .then(() => {
-                          this.emit("commited");
-                        })
-                        .catch(() => {
-                          this.emit("commited");
-                        });
-                    } else {
-                      // Because we voted no doesn't mean the network should error
-                      this.emit("commited");
-                    }
+                    // Because we voted no doesn't mean the network should error
+                    this.emit("commited");
                   }
-                })
-                .catch(e => {
-                  // Timed out
-                  ActiveLogger.debug(e);
-                  this.emit("commited");
-                });
+                }
+              } catch (error) {
+                // Timed out
+                ActiveLogger.debug(error);
+                this.emit("commited");
+              }
             }
           } else {
             // Because we voted no doesn't mean the network should error
@@ -774,7 +1097,7 @@ export class Process extends EventEmitter {
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-            this.raiseLedgerError(
+            this.shared.raiseLedgerError(
               1510,
               new Error("Failed Network Voting Round")
             );
@@ -795,7 +1118,7 @@ export class Process extends EventEmitter {
               clearTimeout(this.broadcastTimeout);
               // Entire Network didn't reach consensus
               ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-              return this.raiseLedgerError(
+              return this.shared.raiseLedgerError(
                 1510,
                 new Error("Failed Network Voting Round")
               );
@@ -815,7 +1138,7 @@ export class Process extends EventEmitter {
                 this.broadcastTimeout = setTimeout(() => {
                   // Entire Network didn't reach consensus in time
                   ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
-                  return this.raiseLedgerError(
+                  return this.shared.raiseLedgerError(
                     1510,
                     new Error("Failed Network Voting Timeout")
                   );
@@ -823,7 +1146,7 @@ export class Process extends EventEmitter {
               } else {
                 // Even if the other nodes voted yes we will still not reach conesnsus
                 ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-                return this.raiseLedgerError(
+                return this.shared.raiseLedgerError(
                   1510,
                   new Error("Failed Network Voting Round")
                 );
@@ -836,626 +1159,8 @@ export class Process extends EventEmitter {
       // We have committed do nothing.
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();
-      this.emit("commited");
+      //? this.emit("commited");
     }
-  }
-
-  private updateStreams(commitData: unknown, earlyCommit?: Function) {
-    {
-      // Get the changed data streams
-      let streams: ActiveDefinitions.LedgerStream[] = this.contractVM.getActivityStreamsFromVM();
-
-      // Get current working inputs to compare and update if not modified above
-      let inputs: ActiveDefinitions.LedgerStream[] = this.contractVM.getInputs();
-
-      let skip: string[] = [];
-
-      // Determanistic Collision Managamenent
-      let collisions: any[] = [];
-
-      // Compile streams for umid & return reference
-      let refStreams = {
-        new: [] as any[],
-        updated: [] as any[]
-      };
-
-      // Cache Harden Key Flag
-      let nhkCheck = ActiveOptions.get<any>("security", {})
-        .hardenedKeys as boolean;
-
-      // Any Changes
-      if (streams.length) {
-        // Process Changes to the database
-        // Bulk Insert Docs
-        let docs: any[] = [];
-
-        // Loop Streams
-        let i = streams.length;
-        while (i--) {
-          // New or Updating?
-          if (!streams[i].meta._rev) {
-            // Make sure we have an id
-            if (!streams[i].meta._id) {
-              // New (Need to set ids)
-              streams[i].state._id = this.entry.$umid + i;
-              streams[i].meta._id = streams[i].state._id + ":stream";
-              streams[i].volatile._id = streams[i].state._id + ":volatile";
-            }
-
-            // Need to add transaction to all meta documents
-            streams[i].meta.txs = [this.entry.$umid];
-            // Also set as intalisiser stream (stream constructor)
-            streams[i].meta.$constructor = true;
-
-            // Need to remove rev
-            delete streams[i].state._rev;
-            delete streams[i].meta._rev;
-            delete streams[i].volatile._rev;
-
-            // New Streams need to check if collision will happen
-            if (streams[i].meta.umid !== this.entry.$umid) {
-              collisions.push(streams[i].meta._id);
-            }
-
-            // Add to reference
-            refStreams.new.push({
-              id: streams[i].state._id,
-              name: streams[i].meta.name
-            });
-          } else {
-            // Updated Streams, These could be inputs
-            // So update the transaction and remove for inputs for later processing
-            if (streams[i].meta.txs && streams[i].meta.txs.length) {
-              streams[i].meta.txs.push(this.entry.$umid);
-              skip.push(streams[i].meta._id as string);
-            }
-
-            // Hardened Keys?
-            if (streams[i].state._id && nhkCheck) {
-              // Get nhpk
-              let nhpk = this.entry.$tx.$i[
-                this.getLabelIOMap(true, streams[i].state._id as string)
-              ].$nhpk;
-
-              // Loop Signatures as they should be rewritten with authoritied nested
-              // That way if any new auths were added they will be skipped
-              let txSigAuthsKeys = Object.keys(
-                this.entry.$sigs[streams[i].state._id as string]
-              );
-
-              // Loop all authorities to try and find a match
-              streams[i].meta.authorities.forEach(
-                (authority: ActiveDefinitions.ILedgerAuthority) => {
-                  // Get tx auth signature if existed
-                  const txSigAuthKey = txSigAuthsKeys.indexOf(
-                    authority.hash as string
-                  );
-                  if (txSigAuthKey !== -1) {
-                    (authority as any).public =
-                      nhpk[txSigAuthsKeys[txSigAuthKey]];
-                  }
-                }
-              );
-            }
-
-            // Add to reference
-            refStreams.updated.push({
-              id: streams[i].state._id,
-              name: streams[i].meta.name
-            });
-          }
-
-          // Data State (Developers Control)
-          if (streams[i].state._id) docs.push(streams[i].state);
-
-          // Meta (Stream Data) for internal usage
-          if (streams[i].meta._id) docs.push(streams[i].meta);
-
-          // Volatile data which cannot really be trusted
-          if (streams[i].volatile._id) docs.push(streams[i].volatile);
-        }
-
-        // Any inputs left (Means not modified, Unmodified outputs can be ignored)
-        // Now we need to append transaction to the inputs of the transaction
-        if (inputs && inputs.length) {
-          // Add to all docs
-          let i = inputs.length;
-          while (i--) {
-            if (
-              skip.indexOf(inputs[i].meta._id as string) === -1 &&
-              inputs[i].meta.txs &&
-              inputs[i].meta.txs.length
-            ) {
-              // Add Compact Transaction
-              inputs[i].meta.txs.push(this.entry.$umid);
-
-              // Hardened Keys?
-              if (inputs[i].state._id && nhkCheck) {
-                // Get nhpk
-                let nhpk = this.entry.$tx.$i[
-                  this.getLabelIOMap(true, inputs[i].state._id as string)
-                ].$nhpk;
-
-                // Loop Signatures as they should be rewritten with authoritied nested
-                // That way if any new auths were added they will be skipped
-                let txSigAuthsKeys = Object.keys(
-                  this.entry.$sigs[inputs[i].state._id as string]
-                );
-
-                // Loop all authorities to try and find a match
-                inputs[i].meta.authorities.forEach(
-                  (authority: ActiveDefinitions.ILedgerAuthority) => {
-                    // Get tx auth signature if existed
-                    const txSigAuthKey = txSigAuthsKeys.indexOf(
-                      authority.hash as string
-                    );
-                    if (txSigAuthKey !== -1) {
-                      (authority as any).public =
-                        nhpk[txSigAuthsKeys[txSigAuthKey]];
-                    }
-                  }
-                );
-              }
-
-              // Push to docs (Only Meta)
-              docs.push(inputs[i].meta);
-            }
-          }
-        }
-
-        // Create umid document containing the transaction details
-        docs.push({
-          _id: this.entry.$umid + ":umid",
-          umid: this.compactTxEntry(),
-          streams: refStreams
-        });
-
-        /**
-         * Delegate Function
-         * Attempt to atomicaly save to the datastore
-         * Allow for delay execution for deterministic test
-         */
-        let append = () => {
-          this.db
-            .bulkDocs(docs)
-            .then(() => {
-              // Set datetime to reflect when data is set from memory to disk
-              this.nodeResponse.datetime = new Date();
-
-              // Were we first?
-              if (!this.entry.$territoriality)
-                this.entry.$territoriality = this.reference;
-
-              // If Origin Explain streams in output
-              if (this.reference == this.entry.$origin) {
-                this.entry.$streams = refStreams;
-              }
-
-              // Manage Post Processing (If Exists)
-              this.contractVM
-                .postProcess(
-                  this.entry.$territoriality == this.reference,
-                  this.entry.$territoriality
-                )
-                .then(post => {
-                  this.nodeResponse.post = post;
-
-                  // Update in communication (Recommended pre commit only but can be edge use cases)
-                  this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
-
-                  // Return Data for this nodes contract run
-                  this.nodeResponse.return = this.contractVM.getReturnContractData();
-
-                  // Clearing All node comms?
-                  this.clearAllComms();
-
-                  // Remember to let other nodes know
-                  if (earlyCommit) earlyCommit();
-
-                  // Respond with the possible early commited
-                  this.emit("commited", commitData);
-                })
-                .catch(() => {
-                  // Don't let local error stop other nodes
-                  if (earlyCommit) earlyCommit();
-
-                  // Ignore errors for now, As commit was still a success
-                  this.emit("commited", commitData);
-                });
-            })
-            .catch((error: Error) => {
-              // Don't let local error stop other nodes
-              if (earlyCommit) earlyCommit();
-              ActiveLogger.debug(error, "Datatore Failure");
-              this.raiseLedgerError(1510, new Error("Failed to save"));
-            });
-        };
-
-        // Detect Collisions
-        if (collisions.length) {
-          ActiveLogger.info("Deterministic streams to be checked");
-
-          // Store the promises to wait on.
-          let streamColCheck: any[] = [];
-
-          // Loop all streams
-          collisions.forEach((streamId: string) => {
-            // Query datastore for streams
-            streamColCheck.push(this.db.get(streamId));
-          });
-
-          // Wait for all checks
-          Promise.all(streamColCheck)
-            .then(streams => {
-              // Problem Streams Exist
-              ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
-              // Update commit
-              this.nodeResponse.commit = false;
-              this.raiseLedgerError(
-                1530,
-                new Error("Deterministic Stream Name Exists")
-              );
-            })
-            .catch(() => {
-              // Continue (Error being document not found)
-              append();
-            });
-        } else {
-          // Continue
-          append();
-        }
-      } else {
-        // Nothing to store which is _no longer_ strange contract may not make changes!
-        // Were we first?
-        if (!this.entry.$territoriality)
-          this.entry.$territoriality = this.reference;
-
-        // Manage Post Processing (If Exists)
-        this.contractVM
-          .postProcess(
-            this.entry.$territoriality == this.reference,
-            this.entry.$territoriality
-          )
-          .then(post => {
-            this.nodeResponse.post = post;
-
-            // Update in communication (Recommended pre commit only but can be edge use cases)
-            this.nodeResponse.incomms = this.contractVM.getInternodeCommsFromVM();
-
-            // Return Data for this nodes contract run
-            this.nodeResponse.return = this.contractVM.getReturnContractData();
-
-            // Clearing All node comms?
-            this.clearAllComms();
-
-            // Remember to let other nodes know
-            if (earlyCommit) earlyCommit();
-
-            // Respond with the possible early commited
-            this.emit("commited", commitData);
-          })
-          .catch(error => {
-            // Don't let local error stop other nodes
-            if (earlyCommit) earlyCommit();
-            // Ignore errors for now, As commit was still a success
-            this.emit("commited", commitData);
-          });
-      }
-    }
-  }
-
-  /**
-   * Manages the permissions of revisions and signatures of each stream type
-   *
-   * @private
-   * @param {string[]} check
-   * @returns {Promise<any>}
-   * @memberof Process
-   */
-  private permissionsCheck(inputs: boolean = true): Promise<any> {
-    // Backwards compatibile will need to be managed here as stream wont exist
-    // Then on "commit" phase we can create the stream file for this to work
-
-    // Test the right object
-    let check = this.inputs;
-    if (!inputs) check = this.outputs;
-
-    // Return as promise for execution
-    return new Promise((resolve, reject) => {
-      // Process all promises at "once"
-      Promise.all(
-        // Map all the objects to get their promises
-        check.map(item => {
-          // Create promise to manage all revisions at once
-          return new Promise((resolve, reject) => {
-            // Get Meta data
-            this.db
-              .get(item + ":stream")
-              .then((meta: any) => {
-                // Check Script Lock
-                let iMeta: ActiveDefinitions.IMeta = meta as ActiveDefinitions.IMeta;
-                if (
-                  iMeta.contractlock &&
-                  iMeta.contractlock.length &&
-                  iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
-                ) {
-                  // We have a lock but not for the current contract request
-                  return reject({
-                    code: 1700,
-                    reason: "Stream contract locked"
-                  });
-                }
-                // Check Namespace Lock
-                if (
-                  iMeta.namespaceLock &&
-                  iMeta.namespaceLock.length &&
-                  iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
-                ) {
-                  // We have a lock but not for the current contract request
-                  return reject({
-                    code: 1710,
-                    reason: "Stream namespace locked"
-                  });
-                }
-
-                // Got the meta, Now for real stream
-                this.db
-                  .get(item)
-                  .then((state: any) => {
-                    // Got the state now for volatile
-                    this.db
-                      .get(item + ":volatile")
-                      .then((volatile: any) => {
-                        // Resolve the whole stream
-                        resolve({
-                          meta: meta,
-                          state: state,
-                          volatile: volatile
-                        });
-                      })
-                      .catch((error: any) => {
-                        // Add Info
-                        error.code = 960;
-                        error.reason = "Volatile not found";
-                        // Rethrow
-                        reject(error);
-                      });
-                  })
-                  .catch((error: any) => {
-                    // Add Info
-                    error.code = 960;
-                    error.reason = "State not found";
-                    // Rethrow
-                    reject(error);
-                  });
-              })
-              .catch((error: any) => {
-                // Add Info
-                error.code = 950;
-                error.reason = "Stream not found";
-                // Rethrow
-                reject(error);
-              });
-          });
-        })
-      )
-        // Now have all the streams to process from the database
-        .then((stream: ActiveDefinitions.LedgerStream[]) => {
-          // All streams documents, May need to convert to promises but all this code is sync
-          let i = stream.length;
-          while (i--) {
-            // Quick Reference
-            let streamId: string = (stream[i].meta as any)._id as string;
-
-            // Remove :stream
-            streamId = streamId.substring(0, streamId.length - 7);
-
-            // Get Revision type
-            let revType = this.entry.$revs.$i;
-            if (!inputs) revType = this.entry.$revs.$o;
-
-            // Check or set Revisions
-            if (this.checkRevs) {
-              if (
-                revType[streamId] !==
-                (stream[i].meta._rev as any) +
-                  ":" +
-                  (stream[i].state._rev as any)
-              )
-                // Break loop and reject
-                return reject({
-                  code: 1200,
-                  reason:
-                    (inputs ? "Input" : "Output") + " Stream Position Incorrect"
-                });
-            } else {
-              revType[streamId] =
-                (stream[i].meta._rev as any) +
-                ":" +
-                (stream[i].state._rev as any);
-            }
-
-            // Signature Check & Hardened Keys (Inputs and maybe Outputs based on configuration)
-            if (
-              inputs ||
-              ActiveOptions.get<any>("security", {}).signedOutputs
-            ) {
-              // Authorities need to be check flag
-              let nhpkCheck = false;
-              // Label or Key support
-              // let nhpkCheckIOMap = inputs
-              //   ? this.ioLabelMap.i
-              //   : this.ioLabelMap.o;
-              let nhpkCheckIO = inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
-              // Check to see if key hardening is enabled and done
-              if (ActiveOptions.get<any>("security", {}).hardenedKeys) {
-                // Maybe specific authority of the stream now, $nhpk could be string or object of strings
-                // Need to map over because it may not be stream id!
-                if (!nhpkCheckIO[this.getLabelIOMap(inputs, streamId)].$nhpk) {
-                  return reject({
-                    code: 1230,
-                    reason:
-                      (inputs ? "Input" : "Output") +
-                      " Security Hardened Key Transactions Only"
-                  });
-                } else {
-                  // Now need to check if $nhpk is nested with authorities
-                  nhpkCheck = true;
-                }
-              }
-
-              // Now can check signature
-              if ((stream[i].meta as any).authorities) {
-                // Some will return true early. At this stage we only need 1
-                // The Smart contract developer can use the other signatures to create
-                // a mini consensus within their own application (Such as ownership)
-
-                if (
-                  ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
-                    this.entry.$sigs[streamId]
-                  )
-                ) {
-                  // Multiple signatures passed
-                  // Check that they haven't sent more signatures than we have authorities
-                  let sigStreamKeys = Object.keys(this.entry.$sigs[streamId]);
-                  if (
-                    sigStreamKeys.length >
-                    (stream[i].meta as any).authorities.length
-                  ) {
-                    return reject({
-                      code: 1225,
-                      reason:
-                        (inputs ? "Input" : "Output") +
-                        " Incorrect Signature List Length"
-                    });
-                  }
-
-                  // Loop over signatures
-                  // Every supplied signature should exist and pass
-                  if (
-                    !sigStreamKeys.every((sigStream: string) => {
-                      // Get Signature form tx object
-                      const signature = (this.entry.$sigs[
-                        streamId
-                      ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
-
-                      // Have all the supplied keys given new public keys
-                      if (nhpkCheck) {
-                        if (
-                          !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
-                            .$nhpk[sigStream]
-                        ) {
-                          return reject({
-                            code: 1230,
-                            reason:
-                              (inputs ? "Input" : "Output") +
-                              " Security Hardened Key Transactions Only"
-                          });
-                        }
-                      }
-
-                      // Loop authorities and find a match
-                      return (stream[i].meta as any).authorities.some(
-                        (authority: ActiveDefinitions.ILedgerAuthority) => {
-                          // If matching hash do sig check
-                          if (authority.hash == sigStream) {
-                            return this.signatureCheck(
-                              authority.public,
-                              signature,
-                              authority.type
-                            );
-                          } else {
-                            return false;
-                          }
-                        }
-                      );
-                    })
-                  ) {
-                    // Break loop and reject
-                    return reject({
-                      code: 1228,
-                      reason:
-                        (inputs ? "Input" : "Output") +
-                        " Signature List Incorrect"
-                    });
-                  }
-                } else {
-                  // Only one signature passed (Do not need to check for nhpk as its done above with 1:1)
-                  if (
-                    !(stream[i].meta as any).authorities.some(
-                      (authority: ActiveDefinitions.ILedgerAuthority) => {
-                        if (
-                          authority.hash &&
-                          this.signatureCheck(
-                            authority.public,
-                            this.entry.$sigs[streamId] as string,
-                            authority.type
-                          )
-                        ) {
-                          // Check for new keys for this authority
-                          if (nhpkCheck) {
-                            if (
-                              !nhpkCheckIO[this.getLabelIOMap(inputs, streamId)]
-                                .$nhpk
-                            ) {
-                              return reject({
-                                code: 1230,
-                                reason:
-                                  (inputs ? "Input" : "Output") +
-                                  " Security Hardened Key Transactions Only"
-                              });
-                            }
-                          }
-
-                          // Remap $sigs for later consumption
-                          this.entry.$sigs[streamId] = {
-                            [authority.hash]: this.entry.$sigs[
-                              streamId
-                            ] as string
-                          };
-                          return true;
-                        }
-                        return false;
-                      }
-                    )
-                  ) {
-                    // Break loop and reject
-                    return reject({
-                      code: 1220,
-                      reason:
-                        (inputs ? "Input" : "Output") + " Signature Incorrect"
-                    });
-                  }
-                }
-              } else {
-                // Backwards Compatible Check
-                if (
-                  !this.signatureCheck(
-                    (stream[i].meta as any).public,
-                    this.entry.$sigs[streamId] as string,
-                    (stream[i].meta as any).type
-                      ? (stream[i].meta as any).type
-                      : "rsa"
-                  )
-                ) {
-                  // Break loop and reject
-                  return reject({
-                    code: 1220,
-                    reason:
-                      (inputs ? "Input" : "Output") + " Signature Incorrect"
-                  });
-                }
-              }
-            }
-          }
-          // Everything is good
-          resolve(stream);
-        })
-        .catch(error => {
-          // Rethrow error
-          reject(error);
-        });
-    });
   }
 
   /**
@@ -1466,7 +1171,30 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private getReadOnlyStreams(): Promise<ActiveDefinitions.LedgerIORputs> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
+      // Promise builder
+      const manageRevisions = (
+        readOnly: ActiveDefinitions.LedgerIORputs,
+        reference: string
+      ) => {
+        return new Promise(async (resolve, reject) => {
+          // Get Meta data
+          try {
+            const read: any = await this.db.get(readOnly[reference]);
+            // Remove _id and _rev
+            delete read._id;
+            delete read._rev;
+
+            // Overwrite reference with state
+            readonlyStreams[reference] = read;
+            resolve(read);
+          } catch (error) {
+            // Rethrow
+            reject(error);
+          }
+        });
+      };
+
       // Holds the read only stream data
       let readonlyStreams: ActiveDefinitions.LedgerIORputs = {};
 
@@ -1476,69 +1204,24 @@ export class Process extends EventEmitter {
         // Get Index
         let keyRefs = Object.keys(readOnly);
 
-        Promise.all(
-          // Map all the objects to get their promises
-          keyRefs.map(reference => {
-            // Create promise to manage all revisions at once
-            return new Promise((resolve, reject) => {
-              // Get Meta data
-              this.db
-                .get(readOnly[reference])
-                .then((read: any) => {
-                  // Remove _id and _rev
-                  delete read._id;
-                  delete read._rev;
+        // Map all the objects to get their promises
+        const promiseCache = keyRefs.map(reference => {
+          // Create promise to manage all revisions at once
+          manageRevisions(readOnly, reference);
+        });
 
-                  // Overwrite reference with state
-                  readonlyStreams[reference] = read;
-                  resolve(read);
-                })
-                .catch((error: Error) => {
-                  // Rethrow
-                  reject(error);
-                });
-            });
-          })
-        )
-          .then(() => {
-            // Shoudln't need to do anything as reference object has been updated
-            resolve(readonlyStreams);
-          })
-          .catch(error => {
-            // Rethrow
-            reject(error);
-          });
+        try {
+          await Promise.all(promiseCache);
+          // Shoudln't need to do anything as reference object has been updated
+          resolve(readonlyStreams);
+        } catch (error) {
+          // Rethrow
+          reject(error);
+        }
       } else {
         resolve(readonlyStreams);
       }
     });
-  }
-
-  /**
-   * Validate signature for the transaction
-   *
-   * @private
-   * @param {string} publicKey
-   * @param {string} signature
-   * @param {string} rsa
-   * @returns {boolean}
-   * @memberof Process
-   */
-  private signatureCheck(
-    publicKey: string,
-    signature: string,
-    type: string = "rsa"
-  ): boolean {
-    try {
-      // Get Key Object
-      let key: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(type, publicKey);
-
-      // Return Valid or not
-      return key.verify(this.entry.$tx, signature);
-    } catch (error) {
-      ActiveLogger.error(error, "Signature Check Error");
-      return false;
-    }
   }
 
   /**
@@ -1550,168 +1233,20 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private labelOrKey(outputs: boolean = false): void {
-    // Get Reference for inputs
-    let streams = this.inputs;
-    let txIO = this.entry.$tx.$i;
-    let map = this.ioLabelMap.i;
-
-    // Override for outputs
-    if (outputs) {
-      streams = this.outputs;
-      txIO = this.entry.$tx.$o;
-      map = this.ioLabelMap.o;
-    }
+    // Get reference for input or output
+    const streams = outputs ? this.outputs : this.inputs;
+    const txIO = outputs ? this.entry.$tx.$o : this.entry.$tx.$i;
+    const map = outputs ? this.shared.ioLabelMap.o : this.shared.ioLabelMap.i;
 
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      let i = streams.length;
-      while (i--) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
         streams[i] = streamId;
       }
-    }
-  }
-
-  /**
-   * Get the correct input for Label or key
-   *
-   * @private
-   * @param {boolean} inputs
-   * @param {string} streamId
-   * @returns {string}
-   * @memberof Process
-   */
-  private getLabelIOMap(inputs: boolean, streamId: string): string {
-    // Get Correct Map
-    let checkIOMap = inputs ? this.ioLabelMap.i : this.ioLabelMap.o;
-
-    // If map empty default to key stream
-    if (!Object.keys(checkIOMap).length) {
-      return streamId;
-    }
-    return checkIOMap[streamId];
-  }
-
-  /**
-   * Creates a smaler trasnaction entry for ledger walking. This will also
-   * keep the value deterministic (not including nodes)
-   *
-   * @private
-   * @returns
-   * @memberof Process
-   */
-  private compactTxEntry() {
-    return {
-      $umid: this.entry.$umid,
-      $tx: this.entry.$tx,
-      $sigs: this.entry.$sigs,
-      $revs: this.entry.$revs,
-      $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false
-    };
-  }
-
-  /**
-   * Clears all Internode Communication if contract requests
-   *
-   * @private
-   * @memberof Process
-   */
-  private clearAllComms() {
-    if (this.contractVM.clearingInternodeCommsFromVM()) {
-      Object.values(this.entry.$nodes).forEach(node => {
-        node.incomms = null;
-      });
-    }
-  }
-
-  /**
-   * Manage all errors from the Process & VM to put into the activerestore. So activerestore
-   * can verify if it failed due to local coniditions or just a bad entry
-   *
-   * @private
-   * @param {number} code
-   * @param {Error} reason
-   * @param {Boolean} [stop]
-   * @memberof Process
-   */
-  private raiseLedgerError(
-    code: number,
-    reason: Error,
-    stop: Boolean = false,
-    priority: number = 0
-  ): void {
-    // Store in database for activesrestore to review
-    this.storeError(code, reason, priority)
-      .then(() => {
-        // Emit failed event for execution
-        if (!stop) {
-          this.emit("failed", {
-            status: this.errorOut.code,
-            error: this.errorOut.reason
-          });
-        }
-      })
-      .catch(error => {
-        // Problem could be serious (Database down?)
-        // However if this errors we need to just emit to let the ledger continue
-        ActiveLogger.fatal(error, "Database Error Log Issues");
-
-        // Emit failed event for execution
-        if (!stop) {
-          this.emit("failed", {
-            status: code,
-            error: error
-          });
-        }
-      });
-  }
-
-  /**
-   * Store Error into Database
-   * TODO: Defer storing into the database until after execution or on crash
-   *
-   * @private
-   * @param {number} code
-   * @param {Error} reason
-   * @param {number} priority
-   * @returns {Promise<any>}
-   * @memberof Process
-   */
-  private storeError(
-    code: number,
-    reason: Error,
-    priority: number = 0
-  ): Promise<any> {
-    // Only want to send 1 error to the browser as well.
-    // As we may only need to store one we may need to manage Contract errors
-    if (priority >= this.errorOut.priority) {
-      this.errorOut.code = code;
-      this.errorOut.reason = (reason && reason.message
-        ? reason.message
-        : reason) as string;
-      this.errorOut.priority = priority;
-    }
-
-    if (!this.storeSingleError) {
-      // Build Document for couch
-      let doc = {
-        code: code,
-        processed: this.storeSingleError,
-        umid: this.entry.$umid, // Easier umid lookup
-        transaction: this.entry,
-        reason: reason && reason.message ? reason.message : reason
-      };
-
-      // Now if we store another error it wont be prossed
-      this.storeSingleError = true;
-
-      // Return
-      return this.dbe.post(doc);
-    } else {
-      return Promise.resolve();
     }
   }
 }

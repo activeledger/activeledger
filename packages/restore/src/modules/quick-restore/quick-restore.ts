@@ -282,22 +282,21 @@ export class QuickRestore {
     const streamDataCorrect = (data: IStreamInformation) =>
       data ? true : false;
 
-    return new Promise((resolve, reject) => {
-      Promise.all(promises)
-        .then((streamInformation) => {
-          const cleanedStreamInformation = streamInformation.filter(
-            streamDataCorrect
-          );
+    return new Promise(async (resolve, reject) => {
+      try {
+        const streamInformation = await Promise.all(promises);
+        const cleanedStreamInformation = streamInformation.filter(
+          streamDataCorrect
+        );
 
-          Helper.output("cleanedStreamInformation", cleanedStreamInformation);
+        Helper.output("cleanedStreamInformation", cleanedStreamInformation);
 
-          Object.keys(cleanedStreamInformation).length > 0
-            ? resolve(this.reduceStreamInformation(cleanedStreamInformation))
-            : reject("No data to process");
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
+        Object.keys(cleanedStreamInformation).length > 0
+          ? resolve(this.reduceStreamInformation(cleanedStreamInformation))
+          : reject("No data to process");
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
