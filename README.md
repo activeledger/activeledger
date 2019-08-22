@@ -1,4 +1,3 @@
-[![Status on NPM](https://img.shields.io/badge/status-release%20candidate-orange.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
 [![npm version](https://badge.fury.io/js/%40activeledger%2Factiveledger.svg)](https://badge.fury.io/js/%40activeledger%2Factiveledger) 
 [![npm](https://img.shields.io/npm/dt/@activeledger/activeledger.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
 [![lerna](https://img.shields.io/badge/maintained%20with-lerna-cc00ff.svg)](https://lernajs.io/)
