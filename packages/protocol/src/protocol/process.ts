@@ -763,37 +763,36 @@ export class Process extends EventEmitter {
         this.securityCache = ActiveOptions.get<any>("security", null);
       }
 
-      if (
-        !this.securityCache &&
-        !this.securityCache!.namespace &&
-        !this.securityCache!.namespace[payload.transaction.$namespace] &&
-        payload.transaction.$namespace !== "default"
-      ) {
-        // Use the General contract VM
-        this.handleVM(Process.generalContractVM, payload, contractName);
-      } else if (
-        this.securityCache &&
-        this.securityCache.namespace &&
-        this.securityCache.namespace[payload.transaction.$namespace]
-      ) {
-        const builtin: string[] = [];
-        // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-        this.securityCache.namespace[
-          payload.transaction.$namespace
-        ].std.forEach((item: string) => {
-          builtin.push(item);
-        });
-
-        // Initialise the unsafe contract VM
-        this.processUnsafeContracts(
-          payload,
-          payload.transaction.$namespace,
-          contractName,
-          builtin
-        );
-      } else {
+      // Which VM to run transaction in
+      if (payload.transaction.$namespace === "default") {
         // Use the Default contract VM (for contracts that are built into Activeledger)
         this.processDefaultContracts(payload, contractName);
+      } else {
+        // Check Namespace
+        if (
+          this.securityCache &&
+          this.securityCache.namespace &&
+          this.securityCache.namespace[payload.transaction.$namespace]
+        ) {
+          const builtin: string[] = [];
+          // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
+          this.securityCache.namespace[
+            payload.transaction.$namespace
+          ].std.forEach((item: string) => {
+            builtin.push(item);
+          });
+
+          // Initialise the unsafe contract VM
+          this.processUnsafeContracts(
+            payload,
+            payload.transaction.$namespace,
+            contractName,
+            builtin
+          );
+        } else {
+          // Use the General contract VM
+          this.handleVM(Process.generalContractVM, payload, contractName);
+        }
       }
     } catch (error) {
       // error fetch read only streams
