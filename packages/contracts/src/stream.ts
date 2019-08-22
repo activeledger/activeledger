@@ -277,8 +277,8 @@ export class Stream {
     let total = 0;
     // Get Authority signatures as array
     let authSigs = Object.keys(this.sigs[activity.getId()]);
-    activity.getAuthorities().map((authority) => {
-      authSigs.some((authHash) => {
+    activity.getAuthorities().map(authority => {
+      authSigs.some(authHash => {
         // Signature already verified in procss.ts (Reject Code 1228)
         if (authHash == authority.hash) {
           total += authority.stake;
@@ -317,8 +317,9 @@ export class Stream {
   ): void {
     if (this.key == secret) {
       this.inINC = data;
+    } else {
+      throw new Error("Secret Key Needed");
     }
-    throw new Error("Secret Key Needed");
   }
 
   /**
@@ -408,7 +409,7 @@ export class Stream {
       return matches === this.remoteAddr;
     } else {
       return Boolean(
-        matches.find((ip) => {
+        matches.find(ip => {
           return ip === this.remoteAddr;
         })
       );
@@ -685,7 +686,7 @@ export class Activity {
         }
 
         // Check we have a hash
-        authority.forEach((auth) => {
+        authority.forEach(auth => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
@@ -704,7 +705,7 @@ export class Activity {
             value: ActiveDefinitions.ILedgerAuthority,
             i: number,
             self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map((x) => x.hash).indexOf(value.hash) == i
+          ) => self.map(x => x.hash).indexOf(value.hash) == i
         );
 
         // Set Update Flag
