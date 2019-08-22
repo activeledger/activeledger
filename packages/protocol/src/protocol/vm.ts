@@ -640,7 +640,7 @@ export class VirtualMachine extends events.EventEmitter
 
       // Any Comms to send into VM (Alternative parse directly as JSON)
       if (sendComms) {
-        return this.virtualInstance.setINC(
+        return this.virtualInstance.setInternodeComms(
           umid,
           comms,
           this.contractReferences[umid].key
