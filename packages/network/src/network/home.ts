@@ -373,9 +373,7 @@ export class Home extends Neighbour {
    */
   public findProcessor(pid: number): ChildProcess | undefined {
     return this.processors.find(processor => {
-      if (processor.pid === pid) {
-        return true;
-      }
+      return processor.pid === pid ? true : false;
     }) as ChildProcess;
   }
 }
