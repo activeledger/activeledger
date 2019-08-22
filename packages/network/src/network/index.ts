@@ -27,5 +27,4 @@ export * from "./endpoints";
 export * from "./neighbour";
 export * from "./neighbourhood";
 export * from "./maintain";
-export * from "./session";
 export * from "./locker";

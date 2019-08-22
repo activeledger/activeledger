@@ -24,6 +24,7 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveLogger as DefaultActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto as DefaultActiveCrypto } from "@activeledger/activecrypto";
+import { EventEmitter } from "events";
 
 /**
  * Stream management class. This will control ACL and permissions for activeledger
@@ -40,6 +41,15 @@ export class Stream {
    * @memberof Stream
    */
   private activities: { [reference: string]: Activity } = {};
+
+  /**
+   *  Storage of inbounc INC data
+   *
+   * @private
+   * @type {Object}
+   * @memberof Stream
+   */
+  private inINC: ActiveDefinitions.ICommunications;
 
   /**
    * Storage of outbound INC data
@@ -125,18 +135,19 @@ export class Stream {
     private reads: ActiveDefinitions.LedgerIORputs,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private key: number,
+    private eventEmitter: EventEmitter,
     private selfHost: string
   ) {
     // Input Steam Activities
     let i: number = this.inputs.length;
     while (i--) {
       this.activities[this.inputs[i].state._id as string] = new Activity(
-        null,
+        umid,
         null,
         (this.inputs[i].state._id as string) in this.sigs,
+        this.eventEmitter,
         this.inputs[i].meta,
-        this.inputs[i].state,
-        this.inputs[i].volatile
+        this.inputs[i].state
       );
 
       // Set Secret Key
@@ -147,12 +158,12 @@ export class Stream {
     i = this.outputs.length;
     while (i--) {
       this.activities[this.outputs[i].state._id as string] = new Activity(
-        null,
+        umid,
         null,
         false,
+        this.eventEmitter,
         this.outputs[i].meta,
-        this.outputs[i].state,
-        this.outputs[i].volatile
+        this.outputs[i].state
       );
 
       // Set Secret Key
@@ -211,8 +222,10 @@ export class Stream {
       let activity = new Activity(
         deterministic ? deterministic : this.umid,
         name,
-        false
+        false,
+        this.eventEmitter
       );
+
       // Set Secret Key
       activity.setKey(this.key);
       // TODO: Convert name into a umid string and alert dev
@@ -264,8 +277,8 @@ export class Stream {
     let total = 0;
     // Get Authority signatures as array
     let authSigs = Object.keys(this.sigs[activity.getId()]);
-    activity.getAuthorities().map(authority => {
-      authSigs.some(authHash => {
+    activity.getAuthorities().map((authority) => {
+      authSigs.some((authHash) => {
         // Signature already verified in procss.ts (Reject Code 1228)
         if (authHash == authority.hash) {
           total += authority.stake;
@@ -292,6 +305,23 @@ export class Stream {
   }
 
   /**
+   * Sets the InterNodeComms from the network
+   *
+   * @param {number} secret
+   * @param {ActiveDefinitions.ICommunications} data
+   * @memberof Stream
+   */
+  public setInterNodeComms(
+    secret: number,
+    data: ActiveDefinitions.ICommunications
+  ): void {
+    if (this.key == secret) {
+      this.inINC = data;
+    }
+    throw new Error("Secret Key Needed");
+  }
+
+  /**
    * Return the inbound INC messages
    *
    * @param {number} secret
@@ -299,7 +329,7 @@ export class Stream {
    * @memberof Stream
    */
   protected getInterNodeComms(): ActiveDefinitions.ICommunications {
-    return (global as any).INC as ActiveDefinitions.ICommunications;
+    return this.inINC;
   }
 
   /**
@@ -378,7 +408,7 @@ export class Stream {
       return matches === this.remoteAddr;
     } else {
       return Boolean(
-        matches.find(ip => {
+        matches.find((ip) => {
           return ip === this.remoteAddr;
         })
       );
@@ -470,21 +500,29 @@ export class Activity {
   private safeMode: boolean = false;
 
   /**
+   * Holds volatile data if it exists
+   *
+   * @private
+   * @type {ActiveDefinitions.IVolatile}
+   * @memberof Activity
+   */
+  private volatile: ActiveDefinitions.IVolatile;
+
+  /**
    * Creates an instance of Activity.
    *
    * @param {string} name
    * @param {ActiveDefinitions.IMeta} meta
    * @param {ActiveDefinitions.IState} state
-   * @param {ActiveDefinitions.IVolatile} volatile
    * @memberof Activity
    */
   constructor(
-    private umid: string | null,
+    private umid: string,
     private name: string | null,
     private signature: boolean,
+    private eventEmitter: EventEmitter,
     private meta: ActiveDefinitions.IMeta = { _id: null, _rev: null },
-    private state: ActiveDefinitions.IState = { _id: null, _rev: null },
-    public volatile: ActiveDefinitions.IVolatile = { _id: null, _rev: null }
+    private state: ActiveDefinitions.IState = { _id: null, _rev: null }
   ) {
     // Only if name is defined (Quick solution)
     if (umid && name) {
@@ -493,7 +531,9 @@ export class Activity {
 
       this.state._id = stream;
       this.meta._id = stream + ":stream";
-      this.volatile._id = stream + ":volatile";
+
+      // Create default Volatile
+      this.volatile = { _id: stream + ":volatile", _rev: null };
 
       // Flag for search filtering
       // $ notation should be treated like a reservation for Activelegder
@@ -524,11 +564,17 @@ export class Activity {
    */
   public export2Ledger(secret: number): ActiveDefinitions.LedgerStream {
     if (this.key == secret) {
-      return {
+      const stream: ActiveDefinitions.LedgerStream = {
         meta: this.meta,
-        volatile: this.volatile,
         state: this.state as ActiveDefinitions.IFullState
       };
+
+      // Have we loaded in a volatile to return
+      if (this.volatile) {
+        stream.volatile = this.volatile;
+      }
+
+      return stream;
     }
     throw new Error("Secret Key Needed");
   }
@@ -540,7 +586,9 @@ export class Activity {
    * @memberof Activity
    */
   public setKey(secret: number): void {
-    this.key = secret;
+    if (!this.key) {
+      this.key = secret;
+    }
   }
 
   /**
@@ -637,7 +685,7 @@ export class Activity {
         }
 
         // Check we have a hash
-        authority.forEach(auth => {
+        authority.forEach((auth) => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
@@ -656,7 +704,7 @@ export class Activity {
             value: ActiveDefinitions.ILedgerAuthority,
             i: number,
             self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map(x => x.hash).indexOf(value.hash) == i
+          ) => self.map((x) => x.hash).indexOf(value.hash) == i
         );
 
         // Set Update Flag
@@ -875,9 +923,41 @@ export class Activity {
    * @returns {ActiveDefinitions.IVolatile}
    * @memberof Activity
    */
-  public getVolatile(): ActiveDefinitions.IVolatile {
+  public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
+    return new Promise((resolve, reject) => {
+      if (this.volatile) {
+        resolve(this.makeVolatileSafe());
+      } else {
+        const umid = this.umid,
+          streamid = this.getId();
+        this.eventEmitter.emit("getVolatile", umid, streamid);
+
+        this.eventEmitter.on(
+          `volatileFetched-${umid}${streamid}`,
+          (err: Error, volatile: ActiveDefinitions.IVolatile) => {
+            if (err) {
+              ActiveLogger.debug(err, "Event error");
+              reject(err);
+            }
+            // Set all data as volatile
+            this.volatile = volatile;
+            resolve(this.makeVolatileSafe());
+          }
+        );
+      }
+    });
+  }
+
+  /**
+   * Returns volatile data in a safe way for contract to modify
+   *
+   * @private
+   * @returns {ActiveDefinitions.IVolatile}
+   * @memberof Activity
+   */
+  private makeVolatileSafe(): ActiveDefinitions.IVolatile {
     // Deep copy
-    let volatile: ActiveDefinitions.IVolatile = JSON.parse(
+    const volatile: ActiveDefinitions.IVolatile = JSON.parse(
       JSON.stringify(this.volatile)
     );
 
@@ -905,10 +985,10 @@ export class Activity {
     if (fVolatile._rev) delete fVolatile._rev;
 
     // Merge Objects
-    this.volatile = Object.assign(
-      this.volatile,
-      fVolatile
-    ) as ActiveDefinitions.IFullState;
+    this.volatile = {
+      ...this.volatile,
+      ...fVolatile
+    } as ActiveDefinitions.IFullState;
 
     // Set Update Flag
     this.updated = true;
@@ -918,6 +998,8 @@ export class Activity {
    * Consensus Number Generator
    * Warning: Not to be considered a RNG becausew if you know current streams, contracts and inputs you can work out this value
    * This is used for when you want to get a reference style identifier without knowing a name.
+   *
+   * If running with a new stream a buffer must be provided, otherwise 0 will be returned
    *
    * @param {string} buffer
    * @returns {number}

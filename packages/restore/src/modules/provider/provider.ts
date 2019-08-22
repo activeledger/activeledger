@@ -64,25 +64,18 @@ export class Provider {
    * @memberof Provider
    */
   public static initialise(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve) => {
       ActiveOptions.init();
 
-      this.getIdentity()
-        .then(() => {
-          return this.getConfig();
-        })
-        .then(() => {
-          return this.setupDatabase();
-        })
-        .then(() => {
-          return this.getConsensusData();
-        })
-        .then(() => {
-          resolve();
-        })
-        .catch((error: Error) => {
-          ActiveLogger.error(error);
-        });
+      try {
+        await this.getIdentity();
+        await this.getConfig();
+        await this.setupDatabase();
+        await this.getConsensusData();
+        resolve();
+      } catch (error) {
+        ActiveLogger.error(error);
+      }
     });
   }
 
@@ -109,7 +102,7 @@ export class Provider {
    * @memberof Provider
    */
   private static getConfig(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       Helper.output("Getting Config");
 
       let path = ActiveOptions.get<string>("path", "");
@@ -133,14 +126,14 @@ export class Provider {
       ActiveOptions.parseConfig();
 
       Helper.output("Extending Config");
-      ActiveOptions.extendConfig()
-        .then(() => {
-          Helper.output("Config Extended");
-          resolve();
-        })
-        .catch((err: unknown) => {
-          reject(err);
-        });
+
+      try {
+        await ActiveOptions.extendConfig();
+        Helper.output("Config Extended");
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
