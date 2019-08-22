@@ -114,6 +114,7 @@ npm install --global lerna
 ### Building
 
 ```bash
+npm i
 npm run setup
 ```
 
