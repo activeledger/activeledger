@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.2]
+
+### Bug Fixes
+* **Contracts:** Setting Internode Communications no longer always throws an error .
+
 ## [2.1.1]
 
 ### Bug Fixes
