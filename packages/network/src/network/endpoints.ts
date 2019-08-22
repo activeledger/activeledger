@@ -28,6 +28,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
+import { Maintain } from "./maintain";
 
 /**
  * Endpoints used to manage Network Neighbourhood
@@ -44,7 +45,7 @@ export class Endpoints {
    * @type {number}
    * @memberof Endpoints
    */
-  public static ipcThrottle: number = 0;
+  public static rebaseThrottle: number = 0;
 
   /**
    * Handles all external requests being submitted into the network
@@ -171,7 +172,7 @@ export class Endpoints {
               }
             }
           })
-          .catch(error => {
+          .catch((error) => {
             // Do something with the response before returning
             return reject({
               statusCode: 500,
@@ -215,13 +216,13 @@ export class Endpoints {
         // Walk all properties
         secureTx
           .encrypt(body as any)
-          .then(results => {
+          .then((results) => {
             resolve({
               statusCode: 200,
               content: results
             });
           })
-          .catch(error => {
+          .catch((error) => {
             reject({
               statusCode: 500,
               content: error
@@ -258,7 +259,6 @@ export class Endpoints {
 
       // Cast Body
       let tx = body as ActiveDefinitions.LedgerEntry;
-
       // Send into host pool
       host
         .pending(tx)
@@ -317,12 +317,12 @@ export class Endpoints {
             // Send and wait on their response
             rebroadcast
               .knock("", tx, true)
-              .then(ledger => {
+              .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;
                 resolve(ledger);
               })
-              .catch(error => {
+              .catch((error) => {
                 reject(error);
               });
             // Safe to return
@@ -336,8 +336,8 @@ export class Endpoints {
       // Send into host pool
       host
         .pending(tx)
-        .then(ledger => resolve(ledger))
-        .catch(error => reject(error));
+        .then((ledger) => resolve(ledger))
+        .catch((error) => reject(error));
     });
   }
 
@@ -356,7 +356,7 @@ export class Endpoints {
       let neighbour = host.neighbourhood.get(requester);
       if (requester != "NA") {
         // Increase Count
-        Endpoints.ipcThrottle++;
+        Endpoints.rebaseThrottle++;
 
         // Is this a live request
         if (neighbour && !neighbour.graceStop) {
@@ -371,11 +371,12 @@ export class Endpoints {
 
         // When should we rebase
         if (
-          Endpoints.ipcThrottle > ActiveOptions.get<number>("ipcThrottle", 8)
+          Endpoints.rebaseThrottle >
+          ActiveOptions.get<number>("rebaseThrottle", 8)
         ) {
           // However we can trigger a "rebase" of the ordering if this comes from a node we think is offline
-          host.moan("rebase");
-          Endpoints.ipcThrottle = 0;
+          Maintain.rebaseNeighbourhood();
+          Endpoints.rebaseThrottle = 0;
         }
       } else {
         // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
@@ -442,7 +443,7 @@ export class Endpoints {
 
           // Fetch Request (Catch error here and forward on as an object to process in .all)
           fetchStream.push(
-            db.get(body.$streams[i]).catch(error => {
+            db.get(body.$streams[i]).catch((error) => {
               return { _error: error };
             })
           );

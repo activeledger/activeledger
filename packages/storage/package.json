@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "2.0.0-rc.8.0.65",
+  "version": "2.1.0",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,7 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:es": "tsc --outDir es --module es6",
-    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/** ./lib/",
+    "build": "npm run build:commonjs && npm run build:es && copyfiles -u 1 ./src/fauxton/* ./lib/ && copyfiles -u 1 ./src/fauxton/**/*/* ./lib/ && copyfiles -u 1 ./src/pouchdb/*/lib/* ./lib/ && copyfiles -u 1 ./src/pouchdb/*/* ./lib/",
     "prepublishOnly": "npm run build"
   },
   "repository": {
@@ -47,11 +47,18 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.0.0-rc.8.0.62",
-    "@activeledger/activeoptions": "^2.0.0-rc.8.0.64",
-    "@activeledger/activeutilities": "^2.0.0-rc.8.0.64",
-    "pouchdb-adapter-leveldb": "7.1.1",
-    "pouchdb-core": "7.1.1",
-    "pouchdb-find": "7.1.1"
+    "@activeledger/activelogger": "^2.1.0",
+    "@activeledger/activeoptions": "^2.1.0",
+    "@activeledger/activeutilities": "^2.1.0",
+    "@activeledger/httpd": "^2.1.0",
+    "double-ended-queue": "2.1.0-0",
+    "level": "5.0.1",
+    "level-codec": "9.0.1",
+    "level-write-stream": "1.0.0",
+    "leveldown": "5.1.1",
+    "levelup": "4.1.0",
+    "ltgt": "2.2.1",
+    "readable-stream": "3.4.0",
+    "through2": "3.0.1"
   }
 }

@@ -180,7 +180,7 @@ export interface LedgerAuthSignatures {
 export interface LedgerStream {
   meta: IMeta;
   state: IFullState;
-  volatile: IVolatile;
+  volatile?: IVolatile;
 }
 
 /**

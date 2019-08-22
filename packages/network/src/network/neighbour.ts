@@ -122,10 +122,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           "GET",
           ["X-Activeledger:" + Home.reference]
         )
-          .then(response => {
+          .then((response) => {
             resolve(response);
           })
-          .catch(error => {
+          .catch((error) => {
             ActiveLogger.error(
               error,
               `${this.host}:${this.port}/${endpoint} - GET Failed`

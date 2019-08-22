@@ -4,6 +4,7 @@ node_modules
 # Typescript output
 lib
 es
+!/storage/src/pouchdb/**
 
 # Activeledger Specifics
 .identity

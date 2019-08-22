@@ -12,5 +12,7 @@
         { "path": "query" },
         { "path": "storage" },
         { "path": "restore" }
+        { "path": "httpd" },
+        { "path": "utilities" },
     ]
 }
