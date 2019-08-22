@@ -29,7 +29,7 @@ import {
   IResponse
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ErrorCodes } from './error-codes.enum';
+import { ErrorCodes } from "./error-codes.enum";
 
 /**
  * Interagent that listens for error events and attempts to fix them
@@ -93,14 +93,13 @@ export class Interagent {
 
       // Has the document been processed?
       if (!changeDoc.processed) {
-        this.processDocument(changeDoc)
-          .then(() => {
-            Provider.errorFeed.resume();
-            Helper.output("Restoration complete.");
-          })
-          .catch((error: Error) => {
-            ActiveLogger.error(error);
-          });
+        try {
+          this.processDocument(changeDoc);
+          Provider.errorFeed.resume();
+          Helper.output("Restoration complete.");
+        } catch (error) {
+          ActiveLogger.error(error);
+        }
       } else {
         Provider.errorFeed.resume();
       }
@@ -336,7 +335,7 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private getRevisions(document: IChangeDocument): Promise<string[]> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       Helper.output("Getting revisions");
       const transaction = document.transaction;
 
@@ -347,57 +346,59 @@ export class Interagent {
       ];
 
       Helper.output(`Getting data from network. Using UMID:`, document.umid);
-      Provider.network.neighbourhood
-        .knockAll(`umid/${document.umid}`, null, true)
-        .then((responses: IResponse[]) => {
-          let streamCache: any[] = [];
 
-          Helper.output("Network data", responses);
+      try {
+        const responses: IResponse[] = await Provider.network.neighbourhood.knockAll(
+          `umid/${document.umid}`,
+          null,
+          true
+        );
 
-          // Merge streams from responses
-          for (let i = responses.length; i--; ) {
-            const response = responses[i];
+        let streamCache: any[] = [];
 
-            this.responseHasError(response)
-              ? streamCache.push(...this.createStreamCache(response))
-              : !this.attemptUmidDoc
-              ? // The error could be on this node
-                // Attempt to try and add the UMID
-                (this.attemptUmidDoc = true)
-              : null;
-            //: reject("Unable to retrieve necessary data");
-          }
+        Helper.output("Network data", responses);
 
-          streamCache.length > 0
-            ? Helper.output("Stream cache:", streamCache)
-            : this.attemptUmidDoc
-            ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
-            : Helper.output("Stream cache empty and not attempting UMID doc.");
+        // Merge streams from responses
+        for (let i = responses.length; i--; ) {
+          const response = responses[i];
 
-          const getId = (data: any) => data.id;
-          const revNotStored = (data: any) => {
-            return (array: string[]) => {
-              return array.indexOf(data) > -1;
-            };
+          this.responseHasError(response)
+            ? streamCache.push(...this.createStreamCache(response))
+            : !this.attemptUmidDoc
+            ? // The error could be on this node
+              // Attempt to try and add the UMID
+              (this.attemptUmidDoc = true)
+            : null;
+          //: reject("Unable to retrieve necessary data");
+        }
+
+        streamCache.length > 0
+          ? Helper.output("Stream cache:", streamCache)
+          : this.attemptUmidDoc
+          ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
+          : Helper.output("Stream cache empty and not attempting UMID doc.");
+
+        const getId = (data: any) => data.id;
+        const revNotStored = (data: any) => {
+          return (array: string[]) => {
+            return array.indexOf(data) > -1;
           };
+        };
 
-          const streamIds: string[] = streamCache
-            .filter(revNotStored)
-            .map(getId);
+        const streamIds: string[] = streamCache.filter(revNotStored).map(getId);
 
-          revisions.concat(...streamIds);
+        revisions.concat(...streamIds);
 
-          // Need to add :stream as well
-          // As revs is prepopulated we need to go through the revs array and add :stream
-          for (let i = revisions.length; i--; ) {
-            revisions.push(`${revisions[i]}:stream`);
-          }
+        // Need to add :stream as well
+        // As revs is prepopulated we need to go through the revs array and add :stream
+        for (let i = revisions.length; i--; ) {
+          revisions.push(`${revisions[i]}:stream`);
+        }
 
-          resolve(revisions);
-        })
-        .catch((err: unknown) => {
-          console.error(err);
-        });
+        resolve(revisions);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -414,7 +415,7 @@ export class Interagent {
     reducedStreamData: any,
     document: IChangeDocument
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const streams = Object.keys(reducedStreamData);
       const promiseHolder = [];
 
@@ -436,23 +437,23 @@ export class Interagent {
         }
       }
 
-      Promise.all(promiseHolder)
-        .then(async (results: unknown[]) => {
-          await this.setProcessed(document);
+      try {
+        const results: unknown[] = await Promise.all(promiseHolder);
 
-          if (!results.some((e: boolean) => e)) {
-            ActiveLogger.warn("Data Check - False Positive");
-            if (this.attemptUmidDoc) {
-              await this.insertUmid(this.umidDoc);
-            }
+        await this.setProcessed(document);
+
+        if (!results.some((e: boolean) => e)) {
+          ActiveLogger.warn("Data Check - False Positive");
+          if (this.attemptUmidDoc) {
+            await this.insertUmid(this.umidDoc);
           }
+        }
 
-          resolve();
-        })
-        .catch((error: Error) => {
-          ActiveLogger.error(error, "All Datafix processes errored");
-          reject(error);
-        });
+        resolve();
+      } catch (error) {
+        ActiveLogger.error(error, "All Datafix processes errored");
+        reject(error);
+      }
     });
   }
 
@@ -464,18 +465,16 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private insertUmid(umidDoc: any): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (umidDoc) {
-        Provider.database
-          .bulkDocs([umidDoc], { new_edits: false })
-          .then(() => {
-            ActiveLogger.info("UMID Added");
-            resolve();
-          })
-          .catch((error: Error) => {
-            ActiveLogger.info(error || umidDoc, "Adding UMID failed");
-            reject(error);
-          });
+        try {
+          await Provider.database.bulkDocs([umidDoc], { new_edits: false });
+          ActiveLogger.info("UMID Added");
+          resolve();
+        } catch (error) {
+          ActiveLogger.info(error || umidDoc, "Adding UMID failed");
+          reject(error);
+        }
       } else {
         resolve();
       }
@@ -493,35 +492,33 @@ export class Interagent {
    */
   private fixStream(streamId: any, revision: any): Promise<boolean> {
     Helper.output(`Stream ${streamId} revision ${revision} needs fixing...`);
-    return new Promise((resolve, reject) => {
-      Provider.database
-        .get(streamId)
-        .then((document: any) => {
-          if (document._rev === revision) {
+    return new Promise(async (resolve) => {
+      try {
+        const document: any = await Provider.database.get(streamId);
+        if (document._rev === revision) {
+          resolve(false);
+        } else {
+          Helper.output("Revision not found fixing", document);
+
+          try {
+            await this.fixDocument(document, streamId, revision, false);
+            Helper.output("Document fixed");
+            resolve(true);
+          } catch (error) {
             resolve(false);
-          } else {
-            Helper.output("Revision not found fixing", document);
-            this.fixDocument(document, streamId, revision, false)
-              .then(() => {
-                Helper.output("Document fixed");
-                resolve(true);
-              })
-              .catch(() => {
-                resolve(false);
-              });
           }
-        })
-        .catch((err: unknown) => {
-          Helper.output("Error getting document found fixing");
-          this.fixDocument({ _id: streamId }, streamId, revision, false)
-            .then(() => {
-              Helper.output("Document fixed");
-              resolve(true);
-            })
-            .catch(() => {
-              resolve(false);
-            });
-        });
+        }
+      } catch (error) {
+        Helper.output("Error getting document found fixing");
+
+        try {
+          this.fixDocument({ _id: streamId }, streamId, revision, false);
+          Helper.output("Document fixed");
+          resolve(true);
+        } catch (error) {
+          resolve(false);
+        }
+      }
     });
   }
 
@@ -567,54 +564,55 @@ export class Interagent {
     $rev: string,
     volatile: boolean
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve) => {
       Helper.output(
         "Fetching neighbourhood stream data, beginning door duty..."
       );
-      Provider.network.neighbourhood
-        .knockAll("stream", { $stream, $rev }, true)
-        .then((streams: any) => {
-          Helper.output("Received the following data: ", streams);
+      try {
+        const streams: any = await Provider.network.neighbourhood.knockAll(
+          "stream",
+          { $stream, $rev },
+          true
+        );
+        Helper.output("Received the following data: ", streams);
 
-          const promises: Promise<boolean>[] = [];
+        const promises: Promise<boolean>[] = [];
 
-          for (let i = streams.length; i--; ) {
-            const stream = streams[i];
-            if (!stream.error) {
-              if (this.isDocMissing(document)) {
-                document._id = document.docId;
-              }
-
-              Helper.output(
-                "Checking stream correct: " +
-                  this.isStreamDefinedAndNotEmptyArray(stream),
-                stream ? stream : "No stream data"
-              );
-              if (this.isStreamDefinedAndNotEmptyArray(stream)) {
-                if (Provider.isSelfhost) {
-                  Helper.output("Self host enabled, rebuilding self.");
-                  promises.push(this.rebuildSelf(document, stream));
-                } else {
-                  Helper.output("Rebuilding remote.");
-                  promises.push(this.rebuildRemote(document, stream, volatile));
-                }
-              }
-            } else {
-              Helper.output("Stream contains an error...", stream);
+        for (let i = streams.length; i--; ) {
+          const stream = streams[i];
+          if (!stream.error) {
+            if (this.isDocMissing(document)) {
+              document._id = document.docId;
             }
-          }
 
-          return Promise.all(promises);
-        })
-        .then(() => {
-          Helper.output("Rebuild complete");
-          resolve();
-        })
-        .catch((error: Error) => {
-          ActiveLogger.error(error, "Error Message");
-          ActiveLogger.warn(document, "Document");
-          resolve(false);
-        });
+            Helper.output(
+              "Checking stream correct: " +
+                this.isStreamDefinedAndNotEmptyArray(stream),
+              stream ? stream : "No stream data"
+            );
+            if (this.isStreamDefinedAndNotEmptyArray(stream)) {
+              if (Provider.isSelfhost) {
+                Helper.output("Self host enabled, rebuilding self.");
+                promises.push(this.rebuildSelf(document, stream));
+              } else {
+                Helper.output("Rebuilding remote.");
+                promises.push(this.rebuildRemote(document, stream, volatile));
+              }
+            }
+          } else {
+            Helper.output("Stream contains an error...", stream);
+          }
+        }
+
+        // Wait for all the promises to finish
+        await Promise.all(promises);
+        Helper.output("Rebuild complete");
+        resolve();
+      } catch (error) {
+        ActiveLogger.error(error, "Error Message");
+        ActiveLogger.warn(document, "Document");
+        resolve(false);
+      }
     });
   }
 
@@ -647,20 +645,18 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private rebuildSelf(document: any, stream: any): Promise<boolean> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       Helper.output("Beginning data rebuild process on self");
-      Provider.database
-        .purge(document)
-        .then(() => {
-          return Provider.database.bulkDocs([stream], { new_edits: false });
-        })
-        .then(() => {
-          Helper.output("Finished self data rebuild");
-          resolve(true);
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
+
+      try {
+        await Provider.database.purge(document);
+
+        await Provider.database.bulkDocs([stream], { new_edits: false });
+        Helper.output("Finished self data rebuild");
+        resolve(true);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -673,26 +669,29 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private getNetworkStreamData($streams: string[]): Promise<any> {
-    return new Promise((resolve, reject) => {
-      Provider.network.neighbourhood
-        .knockAll("stream", { $streams }, true)
-        .then((streamData: any) => {
-          let reduction = {};
+    return new Promise(async (resolve, reject) => {
+      try {
+        const streamData: any = await Provider.network.neighbourhood.knockAll(
+          "stream",
+          { $streams },
+          true
+        );
 
-          for (let i = streamData.length; i--; ) {
-            const streams = streamData[i];
-            if (!streams.error) {
-              reduction = this.reduceStreamData(streams, reduction);
-            }
+        let reduction = {};
+
+        for (let i = streamData.length; i--; ) {
+          const streams = streamData[i];
+          if (!streams.error) {
+            reduction = this.reduceStreamData(streams, reduction);
           }
+        }
 
-          Helper.output("Reduction complete", reduction);
+        Helper.output("Reduction complete", reduction);
 
-          resolve(reduction);
-        })
-        .catch((error: Error) => {
-          reject(error);
-        });
+        resolve(reduction);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 
@@ -740,24 +739,23 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private setProcessed(document: IChangeDocument): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       Helper.output("Setting document processed flag to true");
       document.processed = true;
       document.processedAt = new Date();
 
-      Provider.errorDatabase
-        .put(document)
-        .then(() => {
-          Helper.output("Document updated");
-          resolve();
-        })
-        .catch((error: Error) => {
-          Helper.output("Error updating document");
+      try {
+        Provider.errorDatabase.put(document);
 
-          // There may be conflicts as there are multiple streams per transaction, so multiple may have the haveProcessed flag
-          // In the future this will be handled differently, but for now just resolve
-          reject(error);
-        });
+        Helper.output("Document updated");
+        resolve();
+      } catch (error) {
+        Helper.output("Error updating document");
+
+        // There may be conflicts as there are multiple streams per transaction, so multiple may have the haveProcessed flag
+        // In the future this will be handled differently, but for now just resolve
+        reject(error);
+      }
     });
   }
 }
