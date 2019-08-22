@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.1]
+
+### Bug Fixes
+* **Protocol:** No longer selects the incorrect VM container on initalisation of a broadcast transaction type.
+
 ## [2.1.0]
 
 ### Bug Fixes
