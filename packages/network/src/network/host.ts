@@ -626,7 +626,7 @@ export class Host extends Home {
     let output = Object.keys(v.$tx.$o || {});
 
     // Ask for locks
-    if (Locker.hold([...input, ...output])) {
+    if (Locker.hold(Object.assign(input, output))) {
       // Get next process from the array
       const robin = this.getRobin();
 
@@ -651,7 +651,7 @@ export class Host extends Home {
       return;
     } else {
       // No, How to deal with it?
-      this.processPending[v.$umid].resolve({
+      this.processPending[v.$umid].reject({
         status: 100,
         error: "Busy Locks"
       });

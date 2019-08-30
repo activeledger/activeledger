@@ -1,9 +1,16 @@
 # Activeledger Changelog
 
+## [2.1.3]
+
+### Bug Fixes
+* **Network:** Duplicate transaction input/output reference no longer run into a locking issue.
+* **Network:** Busy locks now rejects error instead of resolving the error.
+* **Restore:** Resolved implicit any build error for unknown stream data struts.
+
 ## [2.1.2]
 
 ### Bug Fixes
-* **Contracts:** Setting Internode Communications no longer always throws an error .
+* **Contracts:** Setting Internode Communications no longer always throws an error.
 
 ## [2.1.1]
 
