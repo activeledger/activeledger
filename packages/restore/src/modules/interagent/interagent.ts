@@ -177,7 +177,7 @@ export class Interagent {
    */
   private createStreamCache = (data: any) => {
     this.umidDoc = data;
-    let concatArray;
+    let concatArray: any;
 
     data.streams
       ? (concatArray = [...data.streams.new, ...data.streams.updated])
