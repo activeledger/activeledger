@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.4]
+
+### Bug Fixes
+* **Httpd:** Removed unnecessary break statement when route parsing. This fixes incorrect route handlers from being selected.
+
 ## [2.1.3]
 
 ### Bug Fixes
