@@ -8,6 +8,7 @@ import { ActiveCrypto } from "../packages/crypto/src";
 import { Stream } from "../packages/contracts/src";
 import { expect, should } from "chai";
 import "mocha";
+import { EventEmitter } from "events";
 
 describe("Stream Management Test (Activecontracts)", () => {
   // Security Key
@@ -47,6 +48,7 @@ describe("Stream Management Test (Activecontracts)", () => {
       $sig: ""
     },
     key,
+    new EventEmitter(),
     "localhost"
   );
 
@@ -125,9 +127,8 @@ describe("Stream Management Test (Activecontracts)", () => {
 
   it("should FAIL to export activities to the ledger", () => {
     const activity = activeledgerStream.newActivityStream("test.export");
-    activity.setKey(0);
     should().throw(() => {
-      activity.export2Ledger(key);
+      activity.export2Ledger(0);
     });
   });
 

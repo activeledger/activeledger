@@ -400,8 +400,6 @@ export class ActiveHttpd {
         c++;
       } else if (element == "**") {
         c += 2; // Or just ++ will we ever have a ** clash to resolve?
-      } else {
-        break;
       }
     }
     return c;
