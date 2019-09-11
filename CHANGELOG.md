@@ -4,6 +4,7 @@
 
 ### Bug Fixes
 * **Httpd:** Removed unnecessary break statement when route parsing. This fixes incorrect route handlers from being selected.
+* **Tests:** Updated tests to reflect changes made in 2.1.X release.
 
 ## [2.1.3]
 
