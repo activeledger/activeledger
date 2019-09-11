@@ -3,13 +3,17 @@ import { Process } from "../packages/protocol/src/protocol/process";
 import { ActiveCrypto } from "../packages/crypto/src";
 import { expect } from "chai";
 import "mocha";
+import * as fs from 'fs';
 
 describe("Process (Activeprotocol)", () => {
   // Some Random Test Data
-  const random = Math.floor(Math.random() * 100000000 + 1).toString();
   let process: Process;
 
   it("should create process", () => {
+
+    // Make temporay vmscript.js
+    fs.writeFileSync("./packages/protocol/src/protocol/vmscript.js","{}");
+
     process = new Process(
       {
         $nodes: {
@@ -50,6 +54,10 @@ describe("Process (Activeprotocol)", () => {
       {} as any,
       new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any // Fix private type
     );
+
+    // Remove temporay vmscript.js
+    fs.unlinkSync("./packages/protocol/src/protocol/vmscript.js");
+
     expect(process).to.be.an("object");
   });
 });
