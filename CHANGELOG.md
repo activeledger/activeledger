@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.5]
+
+### Bug Fixes
+* **Network:** Encrypted Consensus fixed, Issue with creating new node connections across processors excluded their key data.
+
 ## [2.1.4]
 
 ### Bug Fixes
