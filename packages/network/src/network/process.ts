@@ -158,7 +158,7 @@ class Processor {
               // Setup Processor
               this.setup(m.data);
             })
-            .catch((e) => {
+            .catch(e => {
               ActiveLogger.fatal(e, "Config Extension Issues");
             });
           break;
@@ -522,7 +522,16 @@ class Processor {
     right: any,
     neighbours?: { [reference: string]: Neighbour }
   ) {
-    Home.right = new Neighbour(right.host, right.port);
+
+    // Create new right neighbour with identity if known
+    Home.right = new Neighbour(
+      right.host,
+      right.port,
+      right.isHome,
+      right.identity
+        ? new ActiveCrypto.KeyPair(right.identity.type, right.identity.pem)
+        : undefined
+    );
 
     // Are we updating the neighbourhood?
     if (neighbours) {
