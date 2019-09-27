@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.6]
+
+### Bug Fixes
+* **Protocol:** Read-only streams are correctly awaited before executing the contract.
+
 ## [2.1.5]
 
 ### Bug Fixes
