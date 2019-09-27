@@ -83,7 +83,7 @@ this.transactions.$i["[key]"].
 $r包含了一对“键-值”的对象，用来读取数据流的情况，其中键的值是定义的名，其中的值是数据id，在只读模式模式访问其中内容可以用：
 
 ```typescript
-let state = this.getReadOnlyStream(this.transactions.$r["reference"])
+let state = this.getReadOnlyStream("reference")
 ```
 
 状态包括了现在执行时间。
