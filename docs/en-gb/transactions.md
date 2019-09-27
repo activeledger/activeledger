@@ -119,7 +119,7 @@ This object follows the same rules as $i however any identities here do not need
 This property contains a simple key-value object. This is used for accessing streams state in read only mode. The key is the reference name and the value is the stream id. So to access this read only stream you can call one of helper functions :
 
 ```typescript
-let state = this.getReadOnlyStream(this.transactions.$r["reference"]);
+let state = this.getReadOnlyStream("reference");
 ```
 
 state now contains the current execution time stream state .
