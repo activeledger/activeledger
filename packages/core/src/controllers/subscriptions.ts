@@ -63,6 +63,9 @@ export async function allActivityStreams(
     // Set Header
     res.setHeader("Content-type", "text/event-stream");
 
+    
+    // Let the browser know what is going on
+    res.flushHeaders();
     // Let httpd know we are on the case!
     resolve("handled");
 
@@ -121,6 +124,8 @@ export async function specificActivityStream(
     // Set Header
     res.setHeader("Content-type", "text/event-stream");
 
+    // Let the browser know what is going on
+    res.flushHeaders();
     // Let httpd know we are on the case!
     resolve("handled");
 
@@ -184,9 +189,14 @@ export async function multipleActivityStreams(
     // Set Header
     res.setHeader("Content-type", "text/event-stream");
 
+    // Let the browser know what is going on
+    res.flushHeaders();
     // Let httpd know we are on the case!
     resolve("handled");
 
+    // Body or multiple GETS
+    let multiples: string[] = incoming.body || incoming.url.slice(3);
+    
     // Start Heartbeat
     const heartBeat = HeartBeat.Start(res);
 
@@ -198,7 +208,7 @@ export async function multipleActivityStreams(
       // Skip any with a : (umid, volatile, stream)
       if (dontSkip(change)) {
         // Is this change for our documents?
-        if (incoming.body.indexOf(change.doc._id) !== -1) {
+        if (multiples.indexOf(change.doc._id) !== -1) {
           // Prepare data
           let prepare = {
             event: "update",

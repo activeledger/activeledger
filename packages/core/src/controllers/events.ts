@@ -49,6 +49,8 @@ export async function events(
     // Start Heartbeat
     const heartBeat = HeartBeat.Start(res);
 
+    // Let the browser know what is going on
+    res.flushHeaders();
     resolve("handled");
 
     // Listen for changes
@@ -107,6 +109,8 @@ export async function contractEvents(
     // Start Heartbeat
     const heartBeat = HeartBeat.Start(res);
 
+    // Let the browser know what is going on
+    res.flushHeaders();
     resolve("handled");
 
     // Listen for changes
@@ -168,6 +172,8 @@ export async function contractSpecificEvent(
     // Start Heartbeat
     const heartBeat = HeartBeat.Start(res);
 
+    // Let the browser know what is going on
+    res.flushHeaders();
     resolve("handled");
 
     // Listen for changes
