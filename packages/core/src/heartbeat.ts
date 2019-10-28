@@ -43,7 +43,7 @@ export class HeartBeat {
       if (response.writable) {
         response.write("\0");
       }
-    }, 60000);
+    }, 30000);
   }
 
   /**
