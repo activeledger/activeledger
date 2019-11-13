@@ -23,7 +23,8 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
 import { ActiveledgerDatasource } from "./../datasource";
-import { HeartBeat } from "../heartbeat";
+import { SSE } from "./sse";
+
 
 /**
  * Create SSE for all the events created by contracts
@@ -40,23 +41,19 @@ export async function events(
   res: ServerResponse
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    // Make sure we have an array
-    res.statusCode = 200;
+    // Create SSE Connection
+    const sse = new SSE(req, res);
 
-    // Set Header
-    res.setHeader("Content-type", "text/event-stream");
-
-    // Start Heartbeat
-    const heartBeat = HeartBeat.Start(res);
-
-    // Let the browser know what is going on
-    res.flushHeaders();
+    // Let httpd know we are on the case!
     resolve("handled");
 
-    // Listen for changes
-    ActiveledgerDatasource.getEvents(
+    // Create data source event emitter
+    const source = ActiveledgerDatasource.getChanges(
       (req.headers["Last-Event-ID"] as string) || "now"
-    ).on("change", (change: any) => {
+    );
+
+    // Listen for changes
+    source.on("change", (change: any) => {
       // Prepare data
       let prepare = {
         event: {
@@ -67,20 +64,17 @@ export async function events(
         time: Date.now()
       };
 
-      // Connection still open?
-      if (res.writable) {
-        // Write new event
-        res.write(
-          `id:${change.seq}\nevent: message\ndata:${JSON.stringify(prepare)}`
-        );
-        res.write("\n\n");
-      } else {
-        // End Server Side
-        res.end();
-        // End Heartbeat
-        HeartBeat.Stop(heartBeat);
+      // Attempt to send
+      if (!sse.write(change.seq, prepare)) {
+        // Failed
+        source.removeAllListeners();
         reject("socket closed");
       }
+    });
+
+    // On disconnect remove listener
+    req.on("close", () => {
+      source.removeAllListeners();
     });
   });
 }
@@ -100,23 +94,19 @@ export async function contractEvents(
   res: ServerResponse
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    // Make sure we have an array
-    res.statusCode = 200;
+    // Create SSE Connection
+    const sse = new SSE(req, res);
 
-    // Set Header
-    res.setHeader("Content-type", "text/event-stream");
-
-    // Start Heartbeat
-    const heartBeat = HeartBeat.Start(res);
-
-    // Let the browser know what is going on
-    res.flushHeaders();
+    // Let httpd know we are on the case!
     resolve("handled");
 
-    // Listen for changes
-    ActiveledgerDatasource.getEvents(
+    // Create data source event emitter
+    const source = ActiveledgerDatasource.getChanges(
       (req.headers["Last-Event-ID"] as string) || "now"
-    ).on("change", (change: any) => {
+    );
+
+    // Listen for changes
+    source.on("change", (change: any) => {
       // This Contract?
       if (change.doc.contract === incoming.url[2]) {
         // Prepare data
@@ -129,21 +119,18 @@ export async function contractEvents(
           time: Date.now()
         };
 
-        // Connection still open?
-        if (res.writable) {
-          // Write new event
-          res.write(
-            `id:${change.seq}\nevent: message\ndata:${JSON.stringify(prepare)}`
-          );
-          res.write("\n\n");
-        } else {
-          // End Server Side
-          res.end();
-          // End Heartbeat
-          HeartBeat.Stop(heartBeat);
+        // Attempt to send
+        if (!sse.write(change.seq, prepare)) {
+          // Failed
+          source.removeAllListeners();
           reject("socket closed");
         }
       }
+    });
+
+    // On disconnect remove listener
+    req.on("close", () => {
+      source.removeAllListeners();
     });
   });
 }
@@ -163,23 +150,19 @@ export async function contractSpecificEvent(
   res: ServerResponse
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    // Make sure we have an array
-    res.statusCode = 200;
+    // Create SSE Connection
+    const sse = new SSE(req, res);
 
-    // Set Header
-    res.setHeader("Content-type", "text/event-stream");
-
-    // Start Heartbeat
-    const heartBeat = HeartBeat.Start(res);
-
-    // Let the browser know what is going on
-    res.flushHeaders();
+    // Let httpd know we are on the case!
     resolve("handled");
 
-    // Listen for changes
-    ActiveledgerDatasource.getEvents(
+    // Create data source event emitter
+    const source = ActiveledgerDatasource.getChanges(
       (req.headers["Last-Event-ID"] as string) || "now"
-    ).on("change", (change: any) => {
+    );
+
+    // Listen for changes
+    source.on("change", (change: any) => {
       // This Contract && This Event?
       if (
         change.doc.contract === incoming.url[2] &&
@@ -195,21 +178,18 @@ export async function contractSpecificEvent(
           time: Date.now()
         };
 
-        // Connection still open?
-        if (res.writable) {
-          // Write new event
-          res.write(
-            `id:${change.seq}\nevent: message\ndata:${JSON.stringify(prepare)}`
-          );
-          res.write("\n\n");
-        } else {
-          // End Server Side
-          res.end();
-          // End Heartbeat
-          HeartBeat.Stop(heartBeat);
+        // Attempt to send
+        if (!sse.write(change.seq, prepare)) {
+          // Failed
+          source.removeAllListeners();
           reject("socket closed");
         }
       }
+    });
+
+    // On disconnect remove listener
+    req.on("close", () => {
+      source.removeAllListeners();
     });
   });
 }
