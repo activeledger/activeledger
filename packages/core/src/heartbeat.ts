@@ -43,11 +43,14 @@ export class HeartBeat {
         // Empty bytes can cause issues to some client
         //response.write("\0");
         // better to use a "comment"
-        response.write(":\n\n");
+        if (response.write(":\n\n")) {
+          // force flush
+          process.nextTick(() => {});
+        }
       }
-      // Increase timeout with TCP keepalive enabled. 
+      // Increase timeout with TCP keepalive enabled.
       // Some connections still may timeout after long periods of inactivity
-    }, 30 * 60 * 1000);
+    }, 10 * 60 * 1000);
   }
 
   /**

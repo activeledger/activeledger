@@ -37,6 +37,16 @@ export class SSE {
     // Set Header
     res.setHeader("Content-type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
+
+    /*
+      Ngnix recommend values:
+      proxy_set_header Connection '';
+      proxy_http_version 1.1;
+      proxy_connect_timeout 24h;
+      proxy_read_timeout 24h;
+    */
+    // Prevents proxy buffering
+    res.setHeader("X-Accel-Buffering", "no");
     if (req.httpVersion !== "2.0") {
       res.setHeader("Connection", "keep-alive");
     }
@@ -72,9 +82,14 @@ export class SSE {
     // Connection still open?
     if (this.res.writable) {
       // Write new event
-      this.res.write(
-        `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
-      );
+      if (
+        this.res.write(
+          `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
+        )
+      ) {
+        // force flush
+        process.nextTick(() => {});
+      }
       return true;
     } else {
       // End Server Side

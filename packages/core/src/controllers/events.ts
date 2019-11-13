@@ -48,7 +48,7 @@ export async function events(
     resolve("handled");
 
     // Create data source event emitter
-    const source = ActiveledgerDatasource.getChanges(
+    const source = ActiveledgerDatasource.getEvents(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
@@ -101,7 +101,7 @@ export async function contractEvents(
     resolve("handled");
 
     // Create data source event emitter
-    const source = ActiveledgerDatasource.getChanges(
+    const source = ActiveledgerDatasource.getEvents(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
@@ -157,7 +157,7 @@ export async function contractSpecificEvent(
     resolve("handled");
 
     // Create data source event emitter
-    const source = ActiveledgerDatasource.getChanges(
+    const source = ActiveledgerDatasource.getEvents(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
