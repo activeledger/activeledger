@@ -22,7 +22,6 @@
  */
 import { ServerResponse } from "http";
 
-
 /**
  * Connection Heartbeat management
  *
@@ -41,9 +40,14 @@ export class HeartBeat {
   public static Start(response: ServerResponse): NodeJS.Timeout {
     return setInterval(() => {
       if (response.writable) {
-        response.write("\0");
+        // Empty bytes can cause issues to some client
+        //response.write("\0");
+        // better to use a "comment"
+        response.write(":\n\n");
       }
-    }, 30000);
+      // Increase timeout with TCP keepalive enabled. 
+      // Some connections still may timeout after long periods of inactivity
+    }, 30 * 60 * 1000);
   }
 
   /**
