@@ -83,14 +83,15 @@ export class SSE {
     if (this.res.writable) {
       // Write new event
       if (
-        this.res.write(
+        !this.res.write(
           `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
         )
       ) {
-        // force flush
+        return true;
+      } else {
         process.nextTick(() => {});
+        return true;
       }
-      return true;
     } else {
       // End Server Side
       this.res.end();
