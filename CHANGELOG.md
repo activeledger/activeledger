@@ -1,5 +1,44 @@
 # Activeledger Changelog
 
+## [2.1.8]
+
+### Bug Fixes
+* **Core:** SSE socket writes being flushed correctly.
+* **Core:** SSE Proxy aware headers being set.
+* **Core:** SSE Connections heartbeat timeout was 30 minutes not 10.
+* **Core:** Event Notifications filtered correctly instead of all changes.
+
+## [2.1.7]
+
+### Features
+* **Network:** Busy Locks & Network Stable errors are now returned with the status code 200.
+* **Core:** SSE Connections now have native TCP Keepalive enabled.
+
+### Bug Fixes
+* **Core:** SSE Connections heartbeat uses SSE comments instead of 0 bytes.
+* **Core:** SSE Connections heartbeat increased to 10 minutes.
+
+### BREAKING CHANGES
+* **Network:** Busy Locks & Network Stable errors no longer return as status code 500 instead it is now 200. This was done to bring them inline with other errors within Activeledger (Such as contract errors). If you're using one of the SDK's not many changes should be needed because the returned summary values will be blank apart from the error property. An example error response will look like :
+
+```json
+{
+    "$umid": "",
+    "$summary": {
+        "total": 1,
+        "vote": 0,
+        "commit": 0,
+        "errors": [
+            "Busy Locks"
+        ]
+    },
+    "$streams": {
+        "new": [],
+        "updated": []
+    }
+}
+```
+
 ## [2.1.6]
 
 ### Bug Fixes
