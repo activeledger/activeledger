@@ -70,6 +70,7 @@ if (ActiveOptions.get("db", false)) {
 
   // Activity
   http.use("/api/activity/subscribe/*", "GET", specificActivityStream);
+  http.use("/api/activity/subscribe/**", "GET", multipleActivityStreams);
   http.use("/api/activity/subscribe", "GET", allActivityStreams);
   http.use("/api/activity/subscribe", "POST", multipleActivityStreams);
 
