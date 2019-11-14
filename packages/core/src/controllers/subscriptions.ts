@@ -24,9 +24,6 @@ import { IncomingMessage, ServerResponse } from "http";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
 import { ActiveledgerDatasource } from "./../datasource";
 import { SSE } from "./sse";
-import { EventEmitter } from "events";
-
-class rad extends EventEmitter {}
 
 /**
  * Skip Restore Engine Changes
