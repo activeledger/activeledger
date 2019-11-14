@@ -43,7 +43,8 @@ export class HeartBeat {
         // Empty bytes can cause issues to some client
         //response.write("\0");
         // better to use a "comment"
-        if (response.write(":\n\n")) {
+        if (!response.write(":\n\n")) {
+        } else {
           // force flush
           process.nextTick(() => {});
         }
