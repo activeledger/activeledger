@@ -24,6 +24,9 @@ import { IncomingMessage, ServerResponse } from "http";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
 import { ActiveledgerDatasource } from "./../datasource";
 import { SSE } from "./sse";
+import { EventEmitter } from "events";
+
+class rad extends EventEmitter {}
 
 /**
  * Skip Restore Engine Changes
@@ -68,8 +71,7 @@ export async function allActivityStreams(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
-    // Listen for changes
-    source.on("change", (change: any) => {
+    const handler = (change: any) => {
       if (dontSkip(change)) {
         // Prepare data
         let prepare = {
@@ -81,15 +83,18 @@ export async function allActivityStreams(
         // Attempt to send
         if (!sse.write(change.seq, prepare)) {
           // Failed
-          source.removeAllListeners();
+          source.off("change", handler);
           reject("socket closed");
         }
       }
-    });
+    };
+
+    // Listen for changes
+    source.on("change", handler);
 
     // On disconnect remove listener
     req.on("close", () => {
-      source.removeAllListeners();
+      source.off("change", handler);
       reject("socket closed");
     });
   });
@@ -121,8 +126,7 @@ export async function specificActivityStream(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
-    // Listen for changes
-    source.on("change", (change: any) => {
+    const handler = (change: any) => {
       if (dontSkip(change)) {
         // Is this change for our document?
         if (change.doc._id === incoming.url[3]) {
@@ -136,16 +140,19 @@ export async function specificActivityStream(
           // Attempt to send
           if (!sse.write(change.seq, prepare)) {
             // Failed
-            source.removeAllListeners();
+            source.off("change", handler);
             reject("socket closed");
           }
         }
       }
-    });
+    };
+
+    // Listen for changes
+    source.on("change", handler);
 
     // On disconnect remove listener
     req.on("close", () => {
-      source.removeAllListeners();
+      source.off("change", handler);
       reject("socket closed");
     });
   });
@@ -179,8 +186,8 @@ export async function multipleActivityStreams(
 
     // Body or multiple GETS
     let multiples: string[] = incoming.body || incoming.url.slice(3);
-    // Listen for changes
-    source.on("change", (change: any) => {
+
+    const handler = (change: any) => {
       // Skip Restore Engine Changes
       // Skip any with a : (umid, volatile, stream)
       if (dontSkip(change)) {
@@ -196,16 +203,19 @@ export async function multipleActivityStreams(
           // Attempt to send
           if (!sse.write(change.seq, prepare)) {
             // Failed
-            source.removeAllListeners();
+            source.off("change", handler);
             reject("socket closed");
           }
         }
       }
-    });
+    };
+
+    // Listen for changes
+    source.on("change", handler);
 
     // On disconnect remove listener
     req.on("close", () => {
-      source.removeAllListeners();
+      source.off("change", handler);
       reject("socket closed");
     });
   });
