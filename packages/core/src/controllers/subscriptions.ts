@@ -68,6 +68,7 @@ export async function allActivityStreams(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
+    // Change handler so we can dereference on socket close
     const handler = (change: any) => {
       if (dontSkip(change)) {
         // Prepare data
@@ -123,6 +124,7 @@ export async function specificActivityStream(
       (req.headers["Last-Event-ID"] as string) || "now"
     );
 
+    // Change handler so we can dereference on socket close
     const handler = (change: any) => {
       if (dontSkip(change)) {
         // Is this change for our document?
@@ -184,6 +186,7 @@ export async function multipleActivityStreams(
     // Body or multiple GETS
     let multiples: string[] = incoming.body || incoming.url.slice(3);
 
+    // Change handler so we can dereference on socket close
     const handler = (change: any) => {
       // Skip Restore Engine Changes
       // Skip any with a : (umid, volatile, stream)
