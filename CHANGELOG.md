@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.10]
+
+### Bug Fixes
+* **Core:** Subscriptions / Events close specific event listener instead of all.
+
 ## [2.1.9]
 
 ### Bug Fixes
