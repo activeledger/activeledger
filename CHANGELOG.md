@@ -1,9 +1,13 @@
 # Activeledger Changelog
 
-## [2.1.8]
+## [2.1.9]
 
 ### Bug Fixes
 * **Core:** SSE socket writes being flushed correctly.
+
+## [2.1.8]
+
+### Bug Fixes
 * **Core:** SSE Proxy aware headers being set.
 * **Core:** SSE Connections heartbeat timeout was 30 minutes not 10.
 * **Core:** Event Notifications filtered correctly instead of all changes.
