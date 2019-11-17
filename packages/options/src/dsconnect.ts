@@ -311,4 +311,9 @@ export class ActiveDSChanges extends EventEmitter
   public cancel(): void {
     this.stop = true;
   }
+
+  public restart(): void {
+    this.stop = false;
+    this.listen();
+  }
 }
