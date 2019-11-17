@@ -630,24 +630,12 @@ export class Process extends EventEmitter {
 
     // Handle a vote error
     const handleVoteError = async (error: Error) => {
-      try {
-        await this.shared.storeError(
-          1000,
-          new Error("Vote Failure - " + JSON.stringify(error)),
-          10
-        );
-      } catch (errorStoringError) {
-        // Continue Execution of consensus even with this failing
-        // Just add a fatal message
-        ActiveLogger.fatal(errorStoringError, "Voting Error Log Issues");
-      } finally {
-        // Continue Execution of consensus
-        // Update Error
-        this.nodeResponse.error = error.message;
+      // Continue Execution of consensus
+      // Update Error (Keep same format as before to not be a breaking change)
+      this.nodeResponse.error = "Vote Failure - " + JSON.stringify(error);
 
-        // Continue to next nodes vote
-        this.postVote(virtualMachine);
-      }
+      // Continue to next nodes vote
+      this.postVote(virtualMachine);
     };
 
     // If there is an error processing should stop
@@ -1024,10 +1012,9 @@ export class Process extends EventEmitter {
           );
 
           // We voted false, Need to process
-          // Still required as broadcast will skip over 1000
           this.shared.raiseLedgerError(
             1505,
-            new Error("This node voted false"),
+            new Error(this.nodeResponse.error),
             false
           );
 
@@ -1062,11 +1049,11 @@ export class Process extends EventEmitter {
                 } else {
                   // No move onto internal attempts
                   // Upgrade error code so restore will process it
-                  if (this.errorOut.code === 1000) {
+                  if (this.errorOut.code === 1505) {
                     ActiveLogger.info(
                       "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
                     );
-                    // reset single error as 1000 is skipped anyway
+                    // reset single error as 1505 is skipped anyway
                     this.shared.storeSingleError = false;
                     // try/catch to finish execution
                     this.shared

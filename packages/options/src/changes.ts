@@ -119,6 +119,8 @@ export class ActiveChanges extends events.EventEmitter {
           this.resume(true);
         }
       });
+    } else {
+      this.dbChanges.restart();
     }
   }
 
@@ -131,7 +133,7 @@ export class ActiveChanges extends events.EventEmitter {
     // Make sure changes exists
     if (this.dbChanges) {
       this.dbChanges.cancel();
-      this.dbChanges = (null as unknown) as ActiveDSChanges;
+      //this.dbChanges = (null as unknown) as ActiveDSChanges;
     }
   }
 

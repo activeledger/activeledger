@@ -54,6 +54,7 @@ interface IChangeDocumentTransaction {
   $broadcast: boolean;
   $revs: IRevisionData;
   $tx: ITransactionData;
+  $origin: string;
 }
 
 interface INodesData {
@@ -62,6 +63,8 @@ interface INodesData {
 
 interface INodeData {
   vote: boolean;
+  commit: boolean;
+  error: string
 }
 
 interface IResponseStreamData {

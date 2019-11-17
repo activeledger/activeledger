@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.1.11]
+* **Protocol:** No longer emits 1000 errors to be handled grouped with 1505.
+* **Restore:** Filter vote failure errors to process the document if mismatched error messages are found
+* **Restore:** Fixed stop/start listener from failing to emit the process event.
+
 ## [2.1.10]
 
 ### Bug Fixes
