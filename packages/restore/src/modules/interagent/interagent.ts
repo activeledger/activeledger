@@ -306,6 +306,12 @@ export class Interagent {
         ActiveLogger.info("Data Check - Resuming");
 
         try {
+          // Did the nodes error together?
+          Helper.output("Error Mismatch finder");
+          if(!this.errorMismatchFinder(document)) {
+            return resolve();
+          }
+
           //  Get the revisions
           Helper.output("Getting revisions");
           const revs = await this.getRevisions(document);
@@ -324,6 +330,34 @@ export class Interagent {
         }
       }, 500);
     });
+  }
+
+  /**
+   * Process the document error messages if 1505 to see if all nodes "agreed with the error"
+   * If a single node was different to myself continue
+   * 
+   * @private
+   * @param {IChangeDocument} document
+   * @returns
+   * @memberof Interagent
+   */
+  private errorMismatchFinder(document: IChangeDocument) {
+    if(document.code === ErrorCodes.NodeFinalReject){
+      const nodeErrors = Object.keys(document.transaction.$nodes);
+      const myError = document.transaction.$nodes[document.transaction.$origin].error;
+      // Loop nodes and search for different error
+      for (let i = nodeErrors.length; i--; ) {
+        if(document.transaction.$nodes[nodeErrors[i]].error !== myError) {
+          // Only verify 1 error is different instead of a conensus %
+          // Continue processing
+          return true;
+        }
+      }
+      // Don't continue, All nodes should have failed together
+      return false
+    }
+    // Incorrect error code
+    return true;
   }
 
   /**
