@@ -26,7 +26,8 @@ import { fork, ChildProcess } from "child_process";
 import {
   ActiveDSConnect,
   ActiveOptions,
-  ActiveGZip
+  ActiveGZip,
+  ActiveRequest
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -91,15 +92,6 @@ export class Host extends Home {
   public readonly api: Server;
 
   /**
-   * Server Sent events
-   *
-   * @private
-   * @type {ServerResponse[]}
-   * @memberof Host
-   */
-  private sse: ServerResponse[] = [];
-
-  /**
    * Server connection to the couchdb instance for this node
    *
    * @private
@@ -144,6 +136,14 @@ export class Host extends Home {
    * @memberof Host
    */
   private cpuReady = 0;
+
+  /**
+   * How many hybrid connected nodes 
+   *
+   * @private
+   * @memberof Host
+   */
+  private hybridHosts = [{ active: true, url: "http://localhost:5222" }];
 
   /**
    * Add process into pending
@@ -242,7 +242,7 @@ export class Host extends Home {
             this,
             data.toString(),
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-              false
+            false
           )
             .then((body) => {
               // Post Converted, Continue processing
@@ -346,6 +346,11 @@ export class Host extends Home {
           });
           // Remove Locks
           this.release(pending);
+          
+          // If Hybrid enabled, Send transaction on
+          if (m.data && this.hybridHosts.length) {
+            this.processHybridNodes(JSON.stringify(pending.entry.$tx));
+          }
           break;
         case "commited":
           // Process response back into entry for previous neighbours to know the results
@@ -356,21 +361,9 @@ export class Host extends Home {
           // Remove Locks
           this.release(pending);
 
-          // Post Reply Processing
-          if (m.data) {
-            // If Transaction rebroadcast if hybrid enabled
-            if (this.sse && m.data.tx) {
-              let i = this.sse.length;
-              while (i--) {
-                // Check for active connection
-                if (this.sse[i] && !this.sse[i].finished) {
-                  this.sse[i].write(
-                    `event: message\ndata:${JSON.stringify(pending.entry)}`
-                  );
-                  this.sse[i].write("\n\n");
-                }
-              }
-            }
+          // If Hybrid enabled, Send transaction on
+          if (m.data && this.hybridHosts.length) {
+            this.processHybridNodes(JSON.stringify(pending.entry.$tx));
           }
           break;
         case "broadcast":
@@ -393,7 +386,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                      ActiveInterfaces.getBindingDetails("port")
+                    ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -703,6 +696,29 @@ export class Host extends Home {
   }
 
   /**
+   * Manage Hybrid Nodes
+   *
+   * @private
+   * @param {string} tx
+   * @memberof Host
+   */
+  private processHybridNodes(tx: string) {
+    this.hybridHosts.forEach(hybrid => {
+      if (hybrid.active) {
+        console.log("Sending to " + hybrid.url)
+        ActiveRequest.send(hybrid.url, "POST", ["Content-Type:application/json"], tx, true).then((a) => {
+          console.log(a.data);
+          // If return is ok then do nothing
+          // We may need to send the latest value, Do we have it at this stage?
+        }).catch((e) => {
+          console.log(e);
+          // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
+        })
+      }
+    });
+  }
+
+  /**
    * Process Activeledger request endpoints
    *
    * @private
@@ -740,42 +756,6 @@ export class Host extends Home {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
-          case "/hybrid":
-            let experimental = ActiveOptions.get<any>("experimental", {});
-            if (
-              experimental &&
-              experimental.hybrid &&
-              experimental.hybrid.host
-            ) {
-              // Connection Limiter
-              if (experimental.hybrid.maxConnections > this.sse.length) {
-                // Write the required header
-                res.writeHead(200, {
-                  Connection: "keep-alive",
-                  "Content-Type": "text/event-stream",
-                  "Cache-Control": "no-cache",
-                  "Access-Control-Allow-Origin": "*",
-                  "X-Powered-By": "Activeledger"
-                });
-                // Add to response array
-                let index = this.sse.push(res);
-                // Listen for close and remove by index
-                res.on("close", () => {
-                  // Remove from array (-1 for correct index)
-                  this.sse.splice(index - 1, 1);
-                });
-                return;
-              } else {
-                return this.writeResponse(
-                  res,
-                  418,
-                  "I'm a teapot",
-                  gzipAccepted
-                );
-              }
-            } else {
-              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
-            }
           default:
             // All Stream Management with start point
             if (this.firewallCheck(requester, req)) {
@@ -827,7 +807,7 @@ export class Host extends Home {
               this,
               body,
               ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-                false,
+              false,
               this.dbConnection
             );
             // Pass db conntection
@@ -939,7 +919,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-          (req.connection.remoteAddress as string)
+        (req.connection.remoteAddress as string)
       )
     );
   }
