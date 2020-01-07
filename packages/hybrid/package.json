@@ -16,8 +16,8 @@
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
-    "build:commonjs": "tsc --outDir lib --module commonjs  && copyfiles -f ./src/default.config.json ./lib",
-    "build:es": "tsc --outDir es --module es6  && copyfiles -f ./src/default.config.json ./es",
+    "build:commonjs": "tsc --outDir lib --module commonjs  && copyfiles -f ./src/default.config.json ./lib && copyfiles -u 3 ../activeledger/lib/contracts/default/* ./lib",
+    "build:es": "tsc --outDir es --module es6  && copyfiles -f ./src/default.config.json ./es && copyfiles -u 3 ../activeledger/es/contracts/default/* ./es",
     "build": "npm run build:commonjs && npm run build:es",
     "prepublishOnly": "npm run build"
   },
@@ -31,6 +31,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@activeledger/activedefinitions": "^2.1.3",
     "@types/node": "^12.6.9",
     "copyfiles": "^2.1.1",
     "typescript": "^3.5.3"
@@ -43,8 +44,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "@activeledger/activecrypto": "^2.1.3",
     "@activeledger/activelogger": "^2.1.3",
     "@activeledger/activeoptions": "^2.1.11",
+    "@activeledger/activeprotocol": "^2.1.11",
+    "@activeledger/activestorage": "^2.1.11",
     "@activeledger/httpd": "^2.1.4"
   }
 }

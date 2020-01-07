@@ -346,11 +346,12 @@ export class Host extends Home {
           });
           // Remove Locks
           this.release(pending);
-          
+
+          // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          if (m.data && this.hybridHosts.length) {
-            this.processHybridNodes(JSON.stringify(pending.entry.$tx));
-          }
+          // if (m.data && this.hybridHosts.length) {
+          //   this.processHybridNodes(pending.entry);
+          // }
           break;
         case "commited":
           // Process response back into entry for previous neighbours to know the results
@@ -361,10 +362,11 @@ export class Host extends Home {
           // Remove Locks
           this.release(pending);
 
+          // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          if (m.data && this.hybridHosts.length) {
-            this.processHybridNodes(JSON.stringify(pending.entry.$tx));
-          }
+          // if (m.data && this.hybridHosts.length) {
+          //   this.processHybridNodes(pending.entry);
+          // }
           break;
         case "broadcast":
           ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
@@ -641,6 +643,12 @@ export class Host extends Home {
         type: "tx",
         entry: this.processPending[v.$umid].entry
       });
+
+      // If we want to send BEFORE this node has processed uncomment 
+      if (this.hybridHosts.length) {
+        this.processHybridNodes(this.processPending[v.$umid].entry);
+      }
+
       return;
     } else {
       // No, How to deal with it?
@@ -702,11 +710,25 @@ export class Host extends Home {
    * @param {string} tx
    * @memberof Host
    */
-  private processHybridNodes(tx: string) {
+  private processHybridNodes(tx: ActiveDefinitions.LedgerEntry) {
+    // Minmum data needed for hybrid to process
+    const txData = JSON.stringify({
+      $tx: tx.$tx,
+      $datatime: tx.$datetime,
+      $umid: tx.$umid,
+      $selfsign: tx.$selfsign,
+      $sigs: tx.$sigs
+    });
+
+    if(this.reference != "c247d59bcd692a709984d33cdbfa95263c92f65d") {
+      return;
+    }
+
+    // Loop all hybrids and send
     this.hybridHosts.forEach(hybrid => {
       if (hybrid.active) {
         console.log("Sending to " + hybrid.url)
-        ActiveRequest.send(hybrid.url, "POST", ["Content-Type:application/json"], tx, true).then((a) => {
+        ActiveRequest.send(hybrid.url, "POST", ["Content-Type:application/json"], txData, true).then((a) => {
           console.log(a.data);
           // If return is ok then do nothing
           // We may need to send the latest value, Do we have it at this stage?
