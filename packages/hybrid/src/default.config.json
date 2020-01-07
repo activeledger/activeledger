@@ -19,6 +19,17 @@
     "limit": 20,
     "delay": 0
   },
-  "CORS": ["*"],
-  "upstreams": []
+  "CORS": [
+    "*"
+  ],
+  "upstreams": [],
+  "neighbourhood": [
+    "hybrid"
+  ],
+  "consensus": {
+    "reached": 100
+  },
+  "security": {
+    "hardenedKeys": false
+  }
 }
