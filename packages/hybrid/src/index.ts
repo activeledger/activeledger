@@ -23,9 +23,15 @@
  * SOFTWARE.
  */
 import * as fs from "fs";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
+import { ActiveDataStore } from "@activeledger/activestorage";
+import { ActiveProtocol } from "@activeledger/activeprotocol";
+
+// WARNING: Lots of copy pasted code here in functional way, Get working then improve!
 
 // Initalise CLI Options
 ActiveOptions.init();
@@ -71,55 +77,196 @@ if (!fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))) {
 //#endregion
 ActiveOptions.parseConfig();
 
+// Set Base Path
+ActiveOptions.set("__base", __dirname);
+
+// Get Default Db connection data
+const db = ActiveOptions.get<any>("db", false);
+
 // Basic check for database and config
 if (ActiveOptions.get("db", false)) {
 
-    // Create Database
+    // Self Hosted Database
+    if (ActiveOptions.get<any>("db", {}).selfhost) {
+        // Create Datastore instance
+        let datastore: ActiveDataStore = new ActiveDataStore();
 
-    // Create Light Server
-    let http = new ActiveHttpd(true);
+        // Rewrite config for this process
+        ActiveOptions.get<any>("db", {}).url = datastore.launch();
 
-    http.use("/", "POST", async (incoming: IActiveHttpIncoming, r: any) => {
-        console.log(incoming.body);
-        // Check Token And "From Server"
+        // Enable Extended Debugging
+        ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
 
-        // Run Transaction
+        // Wait a bit for process to fully start
+        setTimeout(() => {
+            boot();
+        }, 2000);
 
-        // Worked or failed we should still resend to nodes connected to us!
-
-        // NOT FOR NOW : With IoT and core no auth, I wonder if the solution
-        // is they sign a code with their key to get the SSE connection accepted?
-        // doing this means we could also send in real-time from a mainnet node
-        // However for now best to keep in here less overhead and less chance of vunrabilities
-
-        // If everything is ok, return ok
-
-        // If failed report as error to database and remote
-
-        // Remote may then send the "latest version"
-
-        // As we will be single threaded for the moment it shouldnt be an issue for fast transactions.
-        // However we may need to do some rev matching.
-
-        // Remote Side if ok then skip
-        // Remote side if not 200 status code store for later push
-
-        return { status: "ok" };
-
-    })
-
-
-    // Testing Purposes
-    http.use("/", "GET", async () => {
-        return { hello: "world" }
-    })
-
-    // Listen!
-    const [, port] = ActiveOptions.get<String>("host", ":5260").split(":");
-    http.listen(parseInt(port), true);
-    ActiveLogger.info("Activecore API is running at 0.0.0.0:" + port);
-
+    }
 } else {
     ActiveLogger.fatal("Configuration file incomplete");
     process.exit(0);
+}
+
+function boot() {
+
+    // Create connection string
+    const dbConnection = new ActiveDSConnect(db.url + "/" + db.database);
+    dbConnection.info();
+
+    // Create connection string
+    const dbErrorConnection = new ActiveDSConnect(db.url + "/" + db.error);
+    dbErrorConnection.info();
+
+    // Create connection string
+    const dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
+    dbEventConnection.info();
+
+
+    // Create Index
+    dbConnection
+        .createIndex({
+            index: {
+                fields: ["namespace", "type", "_id"]
+            }
+        })
+        .then(() => {
+            // Create Light Server
+            let http = new ActiveHttpd(true);
+
+            http.use("/", "POST", async (incoming: IActiveHttpIncoming, r: any) => {
+                const tx = incoming.body as ActiveDefinitions.LedgerEntry;
+                console.log(tx);
+                // Check Token And "From Server"
+
+                // Endpoints ExternalInit validation needed
+
+                // What to do with locking, Same principle? Or self manage
+                // we should self manage here because mainnet wont really submit
+                // unless we get into handling that on the mainnet side. Then we could get stuck in
+                // forever loops!
+
+                // Run Transaction
+
+                // Worked or failed we should still resend to nodes connected to us!
+
+                // NOT FOR NOW : With IoT and core no auth, I wonder if the solution
+                // is they sign a code with their key to get the SSE connection accepted?
+                // doing this means we could also send in real-time from a mainnet node
+                // However for now best to keep in here less overhead and less chance of vunrabilities
+
+                // If everything is ok, return ok
+
+                // If failed report as error to database and remote
+
+                // Remote may then send the "latest version"
+
+                // As we will be single threaded for the moment it shouldnt be an issue for fast transactions.
+                // However we may need to do some rev matching.
+
+                // Remote Side if ok then skip
+                // Remote side if not 200 status code store for later push
+
+                // Trick Process
+                tx.$nodes = {
+                    hybrid: {
+                        vote: false,
+                        commit: false
+                    }
+                };
+
+                //tx.$broadcast = true;
+
+                // Create new Protocol Process object for transaction
+                let protocol = new ActiveProtocol.Process(
+                    tx,
+                    "hybrid", // Maybe Mimic
+                    "hybrid", // Maybe Mimic
+                    { knock: () => { console.log("KNOCKED ME"); return {} } } as any,
+                    dbConnection,
+                    dbErrorConnection,
+                    dbEventConnection,
+                    new ActiveCrypto.Secured(db, {}, {}) // Fix this
+                );
+
+                // Listen to global unhandled!
+
+                // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
+                // While it is global we need to manage it here to keep the encapsulation
+                // this.unhandledRejection[m.entry.$umid] = (reason: Error) => {
+                //     // Make sure the object exists
+                //     if (this.protocols[m.entry.$umid]) {
+                //         this.unhandled(m.entry, reason);
+                //     }
+                // };
+
+
+                // Event: Manage Unhandled Rejections from VM
+                // process.on(
+                //     "unhandledRejection",
+                //     this.unhandledRejection[m.entry.$umid]
+                // );
+
+                // Event: Manage Commits
+                protocol.on("commited", (response: any) => {
+                    console.log("I DID IT!!");
+                    return { status: "ok" };
+
+                });
+
+                // Event: Manage Failed
+                protocol.on("failed", (error: any) => {
+                    console.log("I FAILEDD IT!!");
+                    return { status: "ok" };
+                    // this.failed(m.entry, error.error);
+                });
+
+                // Event: Manage broadcast
+                protocol.on("broadcast", () => {
+                    console.log("I SHOULD NOT BE HERE!!");
+                    console.log("Actually this is how we can trick consensus");
+                    return { status: "ok" };
+
+                });
+
+                // Event: Manage Reload Requests
+                protocol.on("reload", () => {
+                    console.log("I should do nothing IT!!");
+                    return { status: "ok" };
+
+                });
+
+                // Event: Manage Throw Transactions
+                protocol.on("throw", (response: any) => {
+                    console.log("Should I throw maybe NOT");
+                    return { status: "ok" };
+
+                });
+
+                // MAY NEED TO MODIFY COSNESUS
+                // Start the process
+                protocol.start();
+
+
+
+                // return { status: "ok" };
+
+            })
+
+
+            // Testing Purposes
+            http.use("/", "GET", async () => {
+                console.log("how manay times");
+                return { hello: "world" }
+            })
+
+            // Listen!
+            const [, port] = ActiveOptions.get<String>("host", ":5260").split(":");
+            http.listen(parseInt(port), true);
+            ActiveLogger.info("Activecore Hybrid is running at 0.0.0.0:" + port);
+        })
+        .catch((e) => {
+            throw new Error("Couldn't create default index");
+        });
+
 }
