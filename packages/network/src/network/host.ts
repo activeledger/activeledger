@@ -720,6 +720,7 @@ export class Host extends Home {
       $sigs: tx.$sigs
     });
 
+    // DELETE THIS, This is for testnet
     if(this.reference != "c247d59bcd692a709984d33cdbfa95263c92f65d") {
       return;
     }

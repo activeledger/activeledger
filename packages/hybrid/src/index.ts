@@ -80,6 +80,17 @@ ActiveOptions.parseConfig();
 // Set Base Path
 ActiveOptions.set("__base", __dirname);
 
+// Check for local contracts folder
+if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
+
+// Check for modules link for running contracts
+if (!fs.existsSync("contracts/node_modules"))
+  fs.symlinkSync(
+    `${__dirname}/../node_modules`,
+    "contracts/node_modules",
+    "dir"
+  );
+
 // Get Default Db connection data
 const db = ActiveOptions.get<any>("db", false);
 
@@ -167,6 +178,8 @@ function boot() {
                 // Remote Side if ok then skip
                 // Remote side if not 200 status code store for later push
 
+                // Should we push to other hybrids of the hybrids?
+
                 // Trick Process
                 tx.$nodes = {
                     hybrid: {
@@ -216,7 +229,8 @@ function boot() {
 
                 // Event: Manage Failed
                 protocol.on("failed", (error: any) => {
-                    console.log("I FAILEDD IT!!");
+                    ActiveLogger.error(error, "I failed because :");
+
                     return { status: "ok" };
                     // this.failed(m.entry, error.error);
                 });
