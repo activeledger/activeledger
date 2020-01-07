@@ -331,14 +331,14 @@ export class Process extends EventEmitter {
       // Default Contract Location
       this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
         this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`;
+        }/${this.entry.$tx.$contract}.js`;
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () =>
       (this.contractLocation = `${process.cwd()}/contracts/${
         this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`);
+        }/${this.entry.$tx.$contract}.js`);
 
     // Is this a default contract
     this.entry.$tx.$namespace === "default"
@@ -349,8 +349,8 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = this.isDefault
       ? Process.defaultContractsVM
       : this.contractRef
-      ? Process.singleContractVMHolder[this.contractRef]
-      : Process.generalContractVM;
+        ? Process.singleContractVMHolder[this.contractRef]
+        : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -505,8 +505,8 @@ export class Process extends EventEmitter {
       this.isDefault
         ? this.commit(Process.defaultContractsVM)
         : this.contractRef
-        ? this.commit(Process.singleContractVMHolder[this.contractRef])
-        : this.commit(Process.generalContractVM);
+          ? this.commit(Process.singleContractVMHolder[this.contractRef])
+          : this.commit(Process.generalContractVM);
     }
 
     return this.nodeResponse;
@@ -537,18 +537,6 @@ export class Process extends EventEmitter {
     // Check if the holder needs to be initialised
     if (!Process.defaultContractsVM) {
       // Setup for default contracts
-      const external = [];
-      const builtin = [];
-      switch (payload.transaction.$contract) {
-        case "contract":
-          external.push("typescript");
-          builtin.push("fs", "path", "os", "crypto");
-          break;
-        case "setup":
-          builtin.push("fs", "path");
-          break;
-      }
-
       try {
         Process.defaultContractsVM = new VirtualMachine(
           this.selfHost,
@@ -556,8 +544,11 @@ export class Process extends EventEmitter {
           this.db,
           this.dbev
         );
-
-        Process.defaultContractsVM.initialiseVirtualMachine(builtin, external);
+        // Create VM with all access it needs
+        Process.defaultContractsVM.initialiseVirtualMachine(
+          ["fs", "path", "os", "crypto"],
+          ["typescript"]
+        );
       } catch (error) {
         throw new Error(error);
       }
@@ -860,13 +851,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                  error.status || 1502,
-                  new Error(error.error)
-                ) // rethrow same error
+                error.status || 1502,
+                new Error(error.error)
+              ) // rethrow same error
               : this.shared.raiseLedgerError(
-                  1501,
-                  new Error("Bad Knock Transaction")
-                ); // Generic error 404/ 500
+                1501,
+                new Error("Bad Knock Transaction")
+              ); // Generic error 404/ 500
           }
         });
       } else {
@@ -905,8 +896,8 @@ export class Process extends EventEmitter {
       ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-          100 >=
-          ActiveOptions.get<any>("consensus", {}).reached) ||
+        100 >=
+        ActiveOptions.get<any>("consensus", {}).reached) ||
       false
     );
   }
@@ -989,15 +980,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-                1302,
-                new Error(
-                  "Commit Failure - " + JSON.stringify(error.message || error)
-                )
+              1302,
+              new Error(
+                "Commit Failure - " + JSON.stringify(error.message || error)
               )
+            )
             : this.shared.raiseLedgerError(
-                1301,
-                new Error("Failed Commit Transaction")
-              );
+              1301,
+              new Error("Failed Commit Transaction")
+            );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1227,7 +1218,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
