@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activequery",
-  "version": "2.1.3",
+  "version": "2.1.12",
   "description": "Wrapper to enable querying of Activeledger data.",
   "keywords": [
     "blockchain",
@@ -42,8 +42,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.1.3",
-    "@activeledger/activedefinitions": "^2.1.3",
-    "@activeledger/activelogger": "^2.1.3"
+    "@activeledger/activecrypto": "^2.1.12",
+    "@activeledger/activedefinitions": "^2.1.12",
+    "@activeledger/activelogger": "^2.1.12"
   }
 }
