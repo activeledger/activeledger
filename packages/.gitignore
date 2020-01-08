@@ -14,6 +14,3 @@ config.*.json
 instance*/*
 .*/
 log.txt
-
-# lock files
-package-lock.json
