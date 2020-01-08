@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.1.11",
+  "version": "2.1.12",
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",
@@ -43,11 +43,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^2.1.3",
-    "@activeledger/activedefinitions": "^2.1.3",
-    "@activeledger/activelogger": "^2.1.3",
-    "@activeledger/activeoptions": "^2.1.11",
-    "@activeledger/activeprotocol": "^2.1.11",
-    "@activeledger/activequery": "^2.1.3"
+    "@activeledger/activecrypto": "^2.1.12",
+    "@activeledger/activedefinitions": "^2.1.12",
+    "@activeledger/activelogger": "^2.1.12",
+    "@activeledger/activeoptions": "^2.1.12",
+    "@activeledger/activeprotocol": "^2.1.12",
+    "@activeledger/activequery": "^2.1.12"
   }
 }
