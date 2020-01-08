@@ -34,8 +34,19 @@ import { ActiveGZip } from "@activeledger/activeutilities";
  */
 export interface IActiveHttpIncoming {
   url: string[];
+  ip: IActiveHttpIp;
   query?: any;
   body?: any;
+}
+
+/**
+ * Remote IP Details (Including Proxy)
+ *
+ * @interface IActiveHttpIp
+ */
+interface IActiveHttpIp {
+  remote: string;
+  proxy?: string;
 }
 
 /**
@@ -86,7 +97,7 @@ export class ActiveHttpd {
    * @param {boolean} [enableCORS=false]
    * @memberof ActiveHttpd
    */
-  constructor(private enableCORS: boolean = false) {}
+  constructor(private enableCORS: boolean = false) { }
 
   /**
    * Define Route
@@ -121,7 +132,7 @@ export class ActiveHttpd {
     this.server = http.createServer();
 
     // Bind to request event
-    this.server.on("request", async function(
+    this.server.on("request", async function (
       req: http.IncomingMessage,
       res: http.ServerResponse
     ) {
@@ -135,6 +146,17 @@ export class ActiveHttpd {
       // Setup Default
       if (!pathSegments.length) {
         pathSegments.push("/");
+      }
+
+      // Press Remote IP
+      const ip: IActiveHttpIp = {
+        remote: req.connection.remoteAddress as string
+      };
+
+      // Has a proxy been involved
+      if (req.headers["x-forwarded-for"]) {
+        ip.proxy = ip.remote;
+        ip.remote = req.headers["x-forwarded-for"] as string;
       }
 
       // Capture POST data
@@ -171,7 +193,8 @@ export class ActiveHttpd {
             {
               url: pathSegments,
               query: querystring.parse(parsedUrl.query as string),
-              body: data
+              body: data,
+              ip
             },
             req,
             res
@@ -182,7 +205,8 @@ export class ActiveHttpd {
         httpd.processListen(
           {
             url: pathSegments,
-            query: querystring.parse(parsedUrl.query as string)
+            query: querystring.parse(parsedUrl.query as string),
+            ip
           },
           req,
           res

@@ -143,7 +143,7 @@ export class Host extends Home {
    * @private
    * @memberof Host
    */
-  private hybridHosts = [{ active: true, url: "http://localhost:5222" }];
+  private hybridHosts: ActiveDefinitions.IHybridNodes[];
 
   /**
    * Add process into pending
@@ -208,6 +208,9 @@ export class Host extends Home {
     // Create connection string
     this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
     this.dbEventConnection.info();
+
+    // Build Hybrid Node List
+    this.hybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>("hybrid", []);
 
     // Create HTTP server for managing transaction requests
     this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -349,9 +352,9 @@ export class Host extends Home {
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          // if (m.data && this.hybridHosts.length) {
-          //   this.processHybridNodes(pending.entry);
-          // }
+          if (m.data && this.hybridHosts.length) {
+            this.processHybridNodes(pending.entry);
+          }
           break;
         case "commited":
           // Process response back into entry for previous neighbours to know the results
@@ -364,9 +367,9 @@ export class Host extends Home {
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          // if (m.data && this.hybridHosts.length) {
-          //   this.processHybridNodes(pending.entry);
-          // }
+          if (m.data && this.hybridHosts.length) {
+            this.processHybridNodes(pending.entry);
+          }
           break;
         case "broadcast":
           ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
@@ -645,9 +648,9 @@ export class Host extends Home {
       });
 
       // If we want to send BEFORE this node has processed uncomment 
-      if (this.hybridHosts.length) {
-        this.processHybridNodes(this.processPending[v.$umid].entry);
-      }
+      // if (this.hybridHosts.length) {
+      //   this.processHybridNodes(this.processPending[v.$umid].entry);
+      // }
 
       return;
     } else {
@@ -717,13 +720,9 @@ export class Host extends Home {
       $datatime: tx.$datetime,
       $umid: tx.$umid,
       $selfsign: tx.$selfsign,
-      $sigs: tx.$sigs
+      $sigs: tx.$sigs,
+      $remoteAddr: tx.$remoteAddr
     });
-
-    // DELETE THIS, This is for testnet
-    if(this.reference != "c247d59bcd692a709984d33cdbfa95263c92f65d") {
-      return;
-    }
 
     // Loop all hybrids and send
     this.hybridHosts.forEach(hybrid => {
@@ -733,6 +732,12 @@ export class Host extends Home {
           console.log(a.data);
           // If return is ok then do nothing
           // We may need to send the latest value, Do we have it at this stage?
+
+          // Remote may then send the "latest version"
+
+          // Remote Side if ok then skip
+          // Remote side if not 200 status code store for later push
+
         }).catch((e) => {
           console.log(e);
           // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
