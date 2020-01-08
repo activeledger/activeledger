@@ -21,7 +21,14 @@
  * SOFTWARE.
  */
 
-export * from "./ledger";
-export * from "./document";
-export * from "./hybrid";
-export * from "./interface";
+/**
+ * Contains the data state of the ledger entry created by the contract
+ * 
+ * @export
+ * @interface IState
+ */
+export interface IHybridNodes {
+    active: boolean;
+    url: string;
+    auth: string;
+}
