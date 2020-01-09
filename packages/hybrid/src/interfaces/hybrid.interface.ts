@@ -1,6 +1,6 @@
 /*
  * MIT License (MIT)
- * Copyright (c) 2018 Activeledger
+ * Copyright (c) 2019 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,5 +20,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { ActiveHttpd, IActiveHttpIncoming, IActiveHttpIp } from "./httpd";
-export { ActiveHttpd, IActiveHttpIncoming, IActiveHttpIp };
+
+export interface IUpstreamNode {
+  scheme: string;
+  remote: string;
+  port: number;
+  auth: string;
+}

@@ -22,7 +22,12 @@
   "CORS": [
     "*"
   ],
-  "upstreams": [],
+  "upstream": {
+    "scheme":"http",
+    "remote": "127.0.0.1",
+    "port": 5260,
+    "auth": "@rdh12@112!"
+},
   "neighbourhood": [
     "hybrid"
   ],

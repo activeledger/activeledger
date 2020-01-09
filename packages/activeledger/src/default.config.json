@@ -23,12 +23,14 @@
     "core": true,
     "restore": true
   },
-  "experimental": {
-    "hybrid": {
-      "host": false,
-      "maxConnections": 10
+  "hybrid": [
+    {
+      "active": true,
+      "url": "http://localhost:5222",
+      "auth": "@rdh12@112!"
     }
-  },
+  ],
+  "experimental": {},
   "api": {
     "port": 5261
   },
@@ -37,6 +39,8 @@
     "limit": 20,
     "delay": 0
   },
-  "CORS": ["*"],
+  "CORS": [
+    "*"
+  ],
   "neighbourhood": []
 }

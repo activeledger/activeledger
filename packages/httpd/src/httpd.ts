@@ -42,9 +42,10 @@ export interface IActiveHttpIncoming {
 /**
  * Remote IP Details (Including Proxy)
  *
+ * @export
  * @interface IActiveHttpIp
  */
-interface IActiveHttpIp {
+export interface IActiveHttpIp {
   remote: string;
   proxy?: string;
 }
@@ -97,7 +98,7 @@ export class ActiveHttpd {
    * @param {boolean} [enableCORS=false]
    * @memberof ActiveHttpd
    */
-  constructor(private enableCORS: boolean = false) { }
+  constructor(private enableCORS: boolean = false) {}
 
   /**
    * Define Route
@@ -132,7 +133,7 @@ export class ActiveHttpd {
     this.server = http.createServer();
 
     // Bind to request event
-    this.server.on("request", async function (
+    this.server.on("request", async function(
       req: http.IncomingMessage,
       res: http.ServerResponse
     ) {
@@ -150,13 +151,13 @@ export class ActiveHttpd {
 
       // Press Remote IP
       const ip: IActiveHttpIp = {
-        remote: req.connection.remoteAddress as string
+        remote: httpd.ipv46(req.connection.remoteAddress as string)
       };
 
       // Has a proxy been involved
       if (req.headers["x-forwarded-for"]) {
         ip.proxy = ip.remote;
-        ip.remote = req.headers["x-forwarded-for"] as string;
+        ip.remote = httpd.ipv46(req.headers["x-forwarded-for"] as string);
       }
 
       // Capture POST data
@@ -240,9 +241,10 @@ export class ActiveHttpd {
       try {
         // Default Allow CORS
         if (this.enableCORS && req.headers["origin"]) {
-          res.setHeader("Access-Control-Allow-Origin", req.headers[
-            "origin"
-          ] as string);
+          res.setHeader(
+            "Access-Control-Allow-Origin",
+            req.headers["origin"] as string
+          );
         }
         // Run the call handler
         const data = await handler(incoming, req, res);
@@ -427,5 +429,17 @@ export class ActiveHttpd {
       }
     }
     return c;
+  }
+
+  /**
+   * IPv4 & IPv6 notation support
+   *
+   * @private
+   * @param {string} ip
+   * @returns {string}
+   * @memberof ActiveHttpd
+   */
+  private ipv46(ip: string): string {
+    return ip.substr(0, 7) == "::ffff:" ? ip.substr(7) : ip;
   }
 }
