@@ -751,14 +751,32 @@ export class Host extends Home {
 
               // Everything but ok, should see latest version
               if (data.status !== "ok") {
+                // Get all New / Updated Docs
+                this.dbConnection
+                  .bulkDocs([
+                    ...(activityStreams?.new || []),
+                    ...(activityStreams?.updated || [])
+                  ])
+                  .then(results => {
+                    // Return the results with the error id
+                    if (results.length) {
+                      // Can ignore responses
+                      ActiveRequest.send(
+                        `${hybrid.url}/streamState/${data.streamState}`,
+                        "POST",
+                        ["X-Activeledger:" + hybrid.auth],
+                        results
+                      );
+                    }
+                  })
+                  .catch(() => {
+                    // Can Ignore catch for now
+                  });
               }
-
-              ActiveLogger.info(activityStreams as any, "What do we have");
-
-              // I must have access to the new / updated streams here which I can then send on if errors occur
             })
             .catch(e => {
               console.log(e);
+              // TODO: Remember What has been missed. (Or act like a fresh hybrid, Eventual Consensus)
               // Remote side if not 200 status code store for later push
               // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
             });
