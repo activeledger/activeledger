@@ -112,10 +112,19 @@ export class HybridNode {
 
     // Listen for stream state responses from host hybrid node
     this.httpServer.use(
-      "/streamState",
+      "/streamState/*",
       "POST",
       (incoming: IActiveHttpIncoming, req: IncomingMessage) => {
-        console.log(incoming.body);
+        ActiveLogger.info(incoming.body, "What do we have ere");
+        console.log(incoming.url);
+
+        // Get error document from incoming[1]
+        // We should also get the umid for extra verification
+        // compare documents that exist were in the $i $o
+        // new documents are "safe" to assume ok for write
+        // update error document saying what we got and did we decide
+        // to force update our state 
+
         return;
       }
     );
@@ -176,7 +185,7 @@ export class HybridNode {
           protocol.once("failed", async (error: any) => {
             ActiveLogger.error(error, "Failed Tx");
             // Create error record about failure
-            const result = this.raiseError({
+            const result = await this.raiseError({
               code: 10000,
               transaction: tx,
               reason: error,
