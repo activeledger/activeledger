@@ -371,7 +371,8 @@ export class Host extends Home {
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
           if (this.hybridHosts.length) {
-            this.processHybridNodes(pending.entry, m.data.entry.$streams);
+            // TODO : TypeError: Cannot read property '$streams' of undefined
+            this.processHybridNodes(pending.entry, m.data.entry?.$streams);
           }
           break;
         case "broadcast":
@@ -748,25 +749,42 @@ export class Host extends Home {
               // ok = do nothing
               // unhandledRejection, failed = send latest version
               const data = response.data as any;
+              console.log(data);
 
               // Everything but ok, should see latest version
               if (data.status !== "ok") {
                 // Get all New / Updated Docs
+                const updated = [
+                  ...(activityStreams?.new || []),
+                  ...(activityStreams?.updated || [])
+                ].map(stream => stream.id);
+
+                // Also need $i, $o and $r,  Can probably reuse the .keys
+                const input = Object.keys(tx.$tx.$i || {});
+                const output = Object.keys(tx.$tx.$o || {});
+
+                // Fetch all docs (Dupes should be managed, If not use set)
                 this.dbConnection
-                  .bulkDocs([
-                    ...(activityStreams?.new || []),
-                    ...(activityStreams?.updated || [])
-                  ])
+                  .allDocs({
+                    include_docs: true,
+                    keys: [
+                      ...updated,
+                      ...input,
+                      ...output
+                    ]
+                  })
                   .then(results => {
                     // Return the results with the error id
-                    if (results.length) {
+                    if (results.rows.length) {
                       // Can ignore responses
                       ActiveRequest.send(
                         `${hybrid.url}/streamState/${data.streamState}`,
                         "POST",
                         ["X-Activeledger:" + hybrid.auth],
-                        results
-                      );
+                        results.rows
+                      ).catch(() => {
+                        // Can Ignore catch for now
+                      });
                     }
                   })
                   .catch(() => {
