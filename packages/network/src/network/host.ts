@@ -138,7 +138,7 @@ export class Host extends Home {
   private cpuReady = 0;
 
   /**
-   * How many hybrid connected nodes 
+   * How many hybrid connected nodes
    *
    * @private
    * @memberof Host
@@ -210,7 +210,10 @@ export class Host extends Home {
     this.dbEventConnection.info();
 
     // Build Hybrid Node List
-    this.hybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>("hybrid", []);
+    this.hybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>(
+      "hybrid",
+      []
+    );
 
     // Create HTTP server for managing transaction requests
     this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -225,7 +228,7 @@ export class Host extends Home {
         let body: Buffer[] = [];
 
         // Reads body data
-        req.on("data", (chunk) => {
+        req.on("data", chunk => {
           body.push(chunk);
         });
 
@@ -245,13 +248,13 @@ export class Host extends Home {
             this,
             data.toString(),
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-            false
+              false
           )
-            .then((body) => {
+            .then(body => {
               // Post Converted, Continue processing
               this.processEndpoints(req, res, body);
             })
-            .catch((error) => {
+            .catch(error => {
               // Failed to convery respond;
               this.writeResponse(
                 res,
@@ -306,7 +309,7 @@ export class Host extends Home {
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
       })
-      .catch((e) => {
+      .catch(e => {
         throw new Error("Couldn't create default index");
       });
   }
@@ -326,7 +329,7 @@ export class Host extends Home {
     });
 
     // Listen for message to respond to waiting http
-    pFork.on("message", (m) => {
+    pFork.on("message", m => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -367,8 +370,8 @@ export class Host extends Home {
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          if (m.data && this.hybridHosts.length) {
-            this.processHybridNodes(pending.entry);
+          if (this.hybridHosts.length) {
+            this.processHybridNodes(pending.entry, m.data.entry.$streams);
           }
           break;
         case "broadcast":
@@ -391,7 +394,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                    ActiveInterfaces.getBindingDetails("port")
+                      ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -414,11 +417,11 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", (error) => {
+    pFork.on("error", error => {
       ActiveLogger.fatal(error, "Processor Crashed");
       // Look for any transactions which are in this processor
       const pendings = Object.keys(this.processPending);
-      pendings.forEach((key) => {
+      pendings.forEach(key => {
         // Get Transaction
         const pending = this.processPending[key];
         // Was this transaction in the broken processor
@@ -435,7 +438,7 @@ export class Host extends Home {
         }
       });
       // find from processors list
-      const pos = this.processors.findIndex((processor) => {
+      const pos = this.processors.findIndex(processor => {
         return processor.pid === pFork.pid;
       });
       // Remove from processors list
@@ -483,7 +486,7 @@ export class Host extends Home {
           this.terriBuildMap();
         }
         // Now to make sure all other processors reload
-        this.processors.forEach((processor) => {
+        this.processors.forEach(processor => {
           processor.send({
             type: "reload",
             data: {
@@ -647,7 +650,7 @@ export class Host extends Home {
         entry: this.processPending[v.$umid].entry
       });
 
-      // If we want to send BEFORE this node has processed uncomment 
+      // If we want to send BEFORE this node has processed uncomment
       // if (this.hybridHosts.length) {
       //   this.processHybridNodes(this.processPending[v.$umid].entry);
       // }
@@ -711,39 +714,57 @@ export class Host extends Home {
    *
    * @private
    * @param {string} tx
+   * @param {ActiveDefinitions.IStreams} [activityStreams]
    * @memberof Host
    */
-  private processHybridNodes(tx: ActiveDefinitions.LedgerEntry) {
-    // Minmum data needed for hybrid to process
-    const txData = JSON.stringify({
-      $tx: tx.$tx,
-      $datatime: tx.$datetime,
-      $umid: tx.$umid,
-      $selfsign: tx.$selfsign,
-      $sigs: tx.$sigs,
-      $remoteAddr: tx.$remoteAddr
-    });
+  private processHybridNodes(
+    tx: ActiveDefinitions.LedgerEntry,
+    activityStreams?: ActiveDefinitions.IStreams
+  ) {
+    // Skip default/setup as it doesn't help hybrids
+    if (tx.$tx.$namespace === "default" && tx.$tx.$contract !== "setup") {
+      // Minmum data needed for hybrid to process
+      const txData = JSON.stringify({
+        $tx: tx.$tx,
+        $datatime: tx.$datetime,
+        $umid: tx.$umid,
+        $selfsign: tx.$selfsign,
+        $sigs: tx.$sigs,
+        $remoteAddr: tx.$remoteAddr
+      });
 
-    // Loop all hybrids and send
-    this.hybridHosts.forEach(hybrid => {
-      if (hybrid.active) {
-        console.log("Sending to " + hybrid.url)
-        ActiveRequest.send(hybrid.url, "POST", ["Content-Type:application/json"], txData, true).then((a) => {
-          console.log(a.data);
-          // If return is ok then do nothing
-          // We may need to send the latest value, Do we have it at this stage?
+      // Loop all hybrids and send
+      this.hybridHosts.forEach(hybrid => {
+        if (hybrid.active) {
+          console.log("Sending to " + hybrid.url);
+          ActiveRequest.send(
+            hybrid.url,
+            "POST",
+            ["Content-Type:application/json", "X-Activeledger:" + hybrid.auth],
+            txData,
+            true
+          )
+            .then(response => {
+              // ok = do nothing
+              // unhandledRejection, failed = send latest version
+              const data = response.data as any;
 
-          // Remote may then send the "latest version"
+              // Everything but ok, should see latest version
+              if (data.status !== "ok") {
+              }
 
-          // Remote Side if ok then skip
-          // Remote side if not 200 status code store for later push
+              ActiveLogger.info(activityStreams as any, "What do we have");
 
-        }).catch((e) => {
-          console.log(e);
-          // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
-        })
-      }
-    });
+              // I must have access to the new / updated streams here which I can then send on if errors occur
+            })
+            .catch(e => {
+              console.log(e);
+              // Remote side if not 200 status code store for later push
+              // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
+            });
+        }
+      });
+    }
   }
 
   /**
@@ -835,7 +856,7 @@ export class Host extends Home {
               this,
               body,
               ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-              false,
+                false,
               this.dbConnection
             );
             // Pass db conntection
@@ -947,7 +968,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-        (req.connection.remoteAddress as string)
+          (req.connection.remoteAddress as string)
       )
     );
   }
