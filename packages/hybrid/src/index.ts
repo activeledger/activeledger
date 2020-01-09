@@ -22,21 +22,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import * as fs from "fs";
-import { ActiveCrypto } from "@activeledger/activecrypto";
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+
+ import * as fs from "fs";
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
-import {
-  ActiveHttpd,
-  IActiveHttpIncoming,
-  IActiveHttpIp
-} from "@activeledger/httpd";
 import { ActiveDataStore } from "@activeledger/activestorage";
-import { ActiveProtocol } from "@activeledger/activeprotocol";
-import { ActiveRequest } from "@activeledger/activeutilities";
-import { IncomingMessage } from "http";
 import { IUpstreamNode } from "./interfaces/hybrid.interface";
+import { HybridNode } from "./server";
 
 // WARNING: Lots of copy pasted code here in functional way, Get working then improve!
 
@@ -111,9 +103,6 @@ if (!fs.existsSync("contracts/node_modules"))
     "dir"
   );
 
-// Get Default Db connection data
-const db = ActiveOptions.get<any>("db", false);
-
 // Basic check for database and config
 if (ActiveOptions.get("db", false)) {
   // Self Hosted Database
@@ -137,189 +126,18 @@ if (ActiveOptions.get("db", false)) {
   process.exit(0);
 }
 
-// Upstream Details
-const upstreamNode = ActiveOptions.get<IUpstreamNode>("upstream", {});
-if (!upstreamNode.remote && !upstreamNode.port && !upstreamNode.auth) {
-  ActiveLogger.fatal("No Upstream Node Configured");
-  process.exit(0);
-}
-
 /**
  * Start Hybrid Application
  *
  */
 function boot() {
-  // Create connection string
-  const dbConnection = new ActiveDSConnect(db.url + "/" + db.database);
-  dbConnection.info();
+  // Upstream Details
+  const upstreamNode = ActiveOptions.get<IUpstreamNode>("upstream", {});
+  if (!upstreamNode.remote && !upstreamNode.port && !upstreamNode.auth) {
+    ActiveLogger.fatal("No Upstream Node Configured");
+    process.exit(0);
+  }
 
-  // Create connection string
-  const dbErrorConnection = new ActiveDSConnect(db.url + "/" + db.error);
-  dbErrorConnection.info();
-
-  // Create connection string
-  const dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
-  dbEventConnection.info();
-
-  // Get Downstream Attached Hybrid Hosts
-  // Should we push to other hybrids of the hybrids?
-  // Enable in the future
-  //const attachedHybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>("hybrid", []);
-
-  // Create Index
-  dbConnection
-    .createIndex({
-      index: {
-        fields: ["namespace", "type", "_id"]
-      }
-    })
-    .then(() => {
-      // Create Light Server
-      let http = new ActiveHttpd(true);
-
-      // Listen for root requests
-      http.use(
-        "/",
-        "POST",
-        (
-          incoming: IActiveHttpIncoming,
-          req: IncomingMessage
-        ): Promise<unknown> => {
-          return new Promise<unknown>((resolve, reject) => {
-            // Basic Check Transaction
-            if (
-              incoming.body &&
-              ActiveDefinitions.LedgerTypeChecks.isEntry(incoming.body)
-            ) {
-              const tx = incoming.body as ActiveDefinitions.LedgerEntry;
-
-              // Same entry point, So need to detect if its a new transaction or from the main network
-              // The reason to using the same endpoint is that it will work with all existing code
-              if (isUpstream(incoming.ip)) {
-                // Token Check
-                if (req.headers["x-activeledger"] !== upstreamNode.auth) {
-                  ActiveLogger.error(
-                    "Incorrect Authentication Header Value (" +
-                      req.headers["x-activeledger"] +
-                      ")"
-                  );
-                  reject();
-                }
-
-                // What to do with locking, Same principle? Or self manage
-                // we should self manage here because mainnet wont really submit
-                // unless we get into handling that on the mainnet side. Then we could get stuck in
-                // forever loops!
-
-                // Manipulate transaction to by hybrid safe
-                makeHybrid(tx);
-
-                // Create new Protocol Process object for transaction
-                let protocol = new ActiveProtocol.Process(
-                  tx,
-                  "hybrid",
-                  "hybrid",
-                  {} as any,
-                  dbConnection,
-                  dbErrorConnection,
-                  dbEventConnection,
-                  // Fix this, So we can run all in contract encryption / decryption processes but as developers won't know the hybrid nodes they cant be targetting
-                  new ActiveCrypto.Secured(db, {}, {})
-                );
-
-                // Simpler UnhandledRejects Processing
-                process.once("unhandledRejection", () => {
-                  // Add to database Same as failure really
-                  resolve({ status: "unhandledRejection " });
-                });
-
-                // Event: Manage Commits
-                protocol.once("commited", () => {
-                  // Send on to IoT? (See Above)
-                  resolve({ status: "ok" });
-                });
-
-                // Event: Manage Failed
-                protocol.once("failed", (error: any) => {
-                  ActiveLogger.error(error, "Failed Tx");
-                  // Write to database, Pass back database to get it back
-                  resolve({ status: "failed" });
-                });
-
-                //#region Ignored Events
-                // Event: Manage broadcast
-                // Hybrid doesn't need to broadcast as it isn't a network its store and forward
-                // protocol.on("broadcast", () => {});
-
-                // Event: Manage Reload Requests
-                // We won't be adding / removing nodes so no need to reload!
-                // INFO : Possibly we need to create code to ignore those type of transactions?
-                // protocol.on("reload", () => {});
-
-                // Event: Manage Throw Transactions
-                // Developers won't know about all the hybrid nodes
-                // So we can ignore this event
-                // protocol.on("throw", (response: any) => {});
-                //#endregion
-
-                // Start the process
-                protocol.start();
-              } else {
-                // Standard Transaction, So just forward to upstream and return!
-                ActiveRequest.send(
-                  `${upstreamNode.scheme}://${upstreamNode.remote}:${upstreamNode.port}`,
-                  "POST",
-                  [],
-                  tx,
-                  true
-                )
-                  .then(r => resolve(r.data))
-                  .catch(reject);
-              }
-            } else {
-              return;
-            }
-          });
-        }
-      );
-
-      // Start Hybrider Listner (Single Threaded Process for now)
-      const [, port] = ActiveOptions.get<String>("host", ":5260").split(":");
-      http.listen(parseInt(port), true);
-      ActiveLogger.info("Activecore Hybrid is running at 0.0.0.0:" + port);
-    })
-    .catch(e => {
-      throw new Error("Couldn't create default index");
-    });
-}
-
-/**
- * Detect where the transaction comes from
- *
- * @param {IActiveHttpIp} ip
- * @returns {boolean}
- */
-function isUpstream(ip: IActiveHttpIp): boolean {
-  console.log(upstreamNode.remote + " == " + ip.remote);
-  return upstreamNode.remote === (ip.proxy || ip.remote) ? true : false;
-}
-
-/**
- * Takes the transaction and modify to work in a single hybrid environment
- *
- * @param {ActiveDefinitions.LedgerEntry} tx
- * @returns {void}
- */
-function makeHybrid(tx: ActiveDefinitions.LedgerEntry): void {
-  // Let Contract know its running inside a hybrid
-  tx.$nodes = {
-    hybrid: {
-      vote: false,
-      commit: false
-    }
-  };
-
-  // Make sure it isn't a broadcast transaction
-  tx.$broadcast = false;
-  return;
+  const hybrid = new HybridNode(upstreamNode);
+  hybrid.start();
 }
