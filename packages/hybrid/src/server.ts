@@ -109,6 +109,16 @@ export class HybridNode {
         return this.requestRoot(incoming, req);
       }
     );
+
+    // Listen for stream state responses from host hybrid node
+    this.httpServer.use(
+      "/streamState",
+      "POST",
+      (incoming: IActiveHttpIncoming, req: IncomingMessage) => {
+        console.log(incoming.body);
+        return;
+      }
+    );
   }
 
   /**
