@@ -126,22 +126,7 @@ export class HybridNode {
       "/q/",
       "POST",
       (incoming: IActiveHttpIncoming, req: IncomingMessage) => {
-        const txs = incoming.body as string[];
-        for (let i = txs.length; i--; ) {
-          const tx: ActiveDefinitions.LedgerEntry = JSON.parse(txs[i]);
-          this.contractProcessor(tx)
-            .then(result => {
-              if (result.status === "ok") {
-                ActiveLogger.info(`${tx.$umid} Transaction Caught Up`);
-              } else {
-                ActiveLogger.warn(
-                  `${tx.$umid} Transaction Problem (${result.streamState})`
-                );
-              }
-            })
-            .catch();
-        }
-        return;
+        return this.requestQBack(incoming, req);
       }
     );
   }
@@ -300,6 +285,40 @@ export class HybridNode {
           await this.dbErrorConnection.post(errorDoc);
           ActiveLogger.info("Error Recovered Document Updated");
         }
+      }
+    }
+    return;
+  }
+
+  /**
+   * Process any transaction queued up on the upstream node
+   * Using best effort to catch up correctly
+   * 
+   * @private
+   * @param {IActiveHttpIncoming} incoming
+   * @param {IncomingMessage} req
+   * @returns {void}
+   * @memberof HybridNode
+   */
+  private requestQBack(
+    incoming: IActiveHttpIncoming,
+    req: IncomingMessage
+  ): void {
+    if (this.isUpStream(incoming.ip) && this.authTokenCheck(req.headers)) {
+      const txs = incoming.body as string[];
+      for (let i = txs.length; i--; ) {
+        const tx: ActiveDefinitions.LedgerEntry = JSON.parse(txs[i]);
+        this.contractProcessor(tx)
+          .then(result => {
+            if (result.status === "ok") {
+              ActiveLogger.info(`${tx.$umid} Transaction Caught Up`);
+            } else {
+              ActiveLogger.warn(
+                `${tx.$umid} Transaction Problem (${result.streamState})`
+              );
+            }
+          })
+          .catch();
       }
     }
     return;

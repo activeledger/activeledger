@@ -30,8 +30,6 @@ import { ActiveDataStore } from "@activeledger/activestorage";
 import { IUpstreamNode } from "./interfaces/hybrid.interface";
 import { HybridNode } from "./server";
 
-// WARNING: Lots of copy pasted code here in functional way, Get working then improve!
-
 /*
 IOT Options
 
