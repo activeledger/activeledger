@@ -23,13 +23,7 @@
     "core": true,
     "restore": true
   },
-  "hybrid": [
-    {
-      "active": true,
-      "url": "http://localhost:5222",
-      "auth": "@rdh12@112!"
-    }
-  ],
+  "hybrid": [],
   "experimental": {},
   "api": {
     "port": 5261
