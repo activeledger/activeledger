@@ -737,7 +737,6 @@ export class Host extends Home {
       // Loop all hybrids and send
       this.hybridHosts.forEach(hybrid => {
         if (hybrid.active) {
-          console.log("Sending to " + hybrid.url);
           ActiveRequest.send(
             hybrid.url,
             "POST",
@@ -749,7 +748,6 @@ export class Host extends Home {
               // ok = do nothing
               // unhandledRejection, failed = send latest version
               const data = response.data as any;
-              console.log(data);
 
               // Everything but ok, should see latest version
               if (data.status !== "ok") {
@@ -776,7 +774,7 @@ export class Host extends Home {
                 keys.push(...tmp);
 
                 // Fetch all docs (Dupes should be managed, If not use set)
-                this.dbConnection
+                return this.dbConnection
                   .allDocs({
                     include_docs: true,
                     keys
@@ -785,7 +783,7 @@ export class Host extends Home {
                     // Return the results with the error id
                     if (results.rows.length) {
                       // Can ignore responses
-                      ActiveRequest.send(
+                      return ActiveRequest.send(
                         `${hybrid.url}/streamState/${data.streamState}`,
                         "POST",
                         ["X-Activeledger:" + hybrid.auth],
@@ -793,18 +791,46 @@ export class Host extends Home {
                           umid: tx.$umid,
                           streams: results.rows
                         }
-                      ).catch(() => {
-                        // Can Ignore catch for now
-                      });
+                      );
                     }
-                  })
-                  .catch(() => {
-                    // Can Ignore catch for now
                   });
               }
             })
             .catch(e => {
               console.log(e);
+              // Best Effort Approach
+              // Store all failed requests into a error document named after the node
+              // Node comes online and pings the mainnet to send this best effort list
+              // Whhy best effort?
+              // If the node has missed 1000 transactions and it takes 5 seconds a transaction there is a good chance that
+              // a new transaction will come in that later relies on one of the missed transactions which may not yet be processed
+              // This will tricker the trusted recovery, When that transaction does get caught up it will now also fail by being behind again triggering recovery
+              // This recovery will continue to happen until all transactions have finished and with best effort (and duplication) the data should be up to date.
+              // Error database can be deleted so this record would be lost and then it would be a slower recovery reason behind "best effort" naming
+
+              // Get Unique document name for hybrid connection
+              const document = ActiveCrypto.Hash.getHash(
+                hybrid.url + hybrid.auth
+              );
+
+              // Get Document if exists
+              this.dbErrorConnection
+                .createget(document)
+                .then((doc: any) => {
+                  // Add the tx to this nodes queue
+                  if (doc.q) {
+                    doc.q.push(txData);
+                  } else {
+                    doc.q = [txData];
+                  }
+
+                  // Write document back to the database
+                  return this.dbErrorConnection.post(doc);
+                })
+                .catch(() => {
+                  // Can Ignore catch for now
+                });
+
               // TODO: Remember What has been missed. (Or act like a fresh hybrid, Eventual Consensus)
               // Remote side if not 200 status code store for later push
               // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
