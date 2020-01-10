@@ -6,14 +6,20 @@
     "access": "public"
   },
   "keywords": [
-    "http",
-    "webserver",
     "blockchain",
     "dlt",
-    "distributed ledger technology"
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "hybrid"
   ],
   "homepage": "https://activeledger.io",
-  "main": "./lib/index.js",
+  "preferGlobal": true,
+  "bin": {
+    "activehybrid": "./lib/index.js"
+  },
   "scripts": {
     "start": "node lib/index.js",
     "build:commonjs": "tsc --outDir lib --module commonjs  && copyfiles -f ./src/default.config.json ./lib && copyfiles -u 3 ../activeledger/lib/contracts/default/* ./lib",
@@ -52,5 +58,8 @@
     "@activeledger/activeutilities": "^2.1.12",
     "@activeledger/httpd": "^2.1.4",
     "typescript": "^3.3.3"
+  },
+  "optionalDependencies": {
+    "@_activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
   }
 }
