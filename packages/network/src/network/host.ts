@@ -763,15 +763,23 @@ export class Host extends Home {
                 const input = Object.keys(tx.$tx.$i || {});
                 const output = Object.keys(tx.$tx.$o || {});
 
+                // Dupes should be managed (If not switch to set)
+                const keys = [...updated, ...input, ...output];
+
+                // Loop all and append :stream to get meta data
+                const tmp = [];
+                for (let i = keys.length; i--; ) {
+                  tmp.push(keys[i] + ":stream");
+                }
+
+                // Push tmp back into keys so we get everything
+                keys.push(...tmp);
+
                 // Fetch all docs (Dupes should be managed, If not use set)
                 this.dbConnection
                   .allDocs({
                     include_docs: true,
-                    keys: [
-                      ...updated,
-                      ...input,
-                      ...output
-                    ]
+                    keys
                   })
                   .then(results => {
                     // Return the results with the error id
@@ -781,7 +789,10 @@ export class Host extends Home {
                         `${hybrid.url}/streamState/${data.streamState}`,
                         "POST",
                         ["X-Activeledger:" + hybrid.auth],
-                        results.rows
+                        {
+                          umid: tx.$umid,
+                          streams: results.rows
+                        }
                       ).catch(() => {
                         // Can Ignore catch for now
                       });

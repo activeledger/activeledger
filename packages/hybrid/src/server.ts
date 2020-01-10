@@ -37,6 +37,8 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IncomingMessage, IncomingHttpHeaders } from "http";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import { Contract } from "./contract";
 
 /**
  * Hybrid Node Handler
@@ -115,17 +117,7 @@ export class HybridNode {
       "/streamState/*",
       "POST",
       (incoming: IActiveHttpIncoming, req: IncomingMessage) => {
-        ActiveLogger.info(incoming.body, "What do we have ere");
-        console.log(incoming.url);
-
-        // Get error document from incoming[1]
-        // We should also get the umid for extra verification
-        // compare documents that exist were in the $i $o
-        // new documents are "safe" to assume ok for write
-        // update error document saying what we got and did we decide
-        // to force update our state 
-
-        return;
+        return this.requestErrorRestore(incoming, req);
       }
     );
   }
@@ -166,6 +158,7 @@ export class HybridNode {
             // Create error record about failure
             const result = await this.raiseError({
               code: 10500,
+              processed: false,
               transaction: tx,
               reason: "Unhandled Rejection",
               streamState: {}
@@ -187,6 +180,7 @@ export class HybridNode {
             // Create error record about failure
             const result = await this.raiseError({
               code: 10000,
+              processed: false,
               transaction: tx,
               reason: error,
               streamState: {}
@@ -214,6 +208,138 @@ export class HybridNode {
         reject();
       }
     });
+  }
+
+  /**
+   * Restores bad data from failed transactions using upstream servers latest state
+   *
+   *
+   * @private
+   * @param {IActiveHttpIncoming} incoming
+   * @param {IncomingMessage} req
+   * @returns {Promise<void>}
+   * @memberof HybridNode
+   */
+  private async requestErrorRestore(
+    incoming: IActiveHttpIncoming,
+    req: IncomingMessage
+  ): Promise<void> {
+    // Validate the request
+    if (
+      incoming.url.length === 2 &&
+      this.isUpStream(incoming.ip) &&
+      this.authTokenCheck(req.headers)
+    ) {
+      ActiveLogger.info(
+        `Error Data Forward Recovery Started (${incoming.url[1]})`
+      );
+
+      // Fetch the error document for reference
+      const errorDoc = await this.dbErrorConnection.get(incoming.url[1]);
+      const tx = errorDoc.transaction as ActiveDefinitions.LedgerEntry;
+
+      // Check Umid Match
+      if (!errorDoc.processed && tx.$umid === incoming.body.umid) {
+        // Which documents can be changed
+        const changable = new Set<string>([
+          ...Object.keys(tx.$tx.$i || {}),
+          ...Object.keys(tx.$tx.$o || {})
+        ]);
+
+        // Streams that can be forced purged and updated
+        const writableStreams: IStreams[] = [];
+
+        // Contracts to write to disl
+        const writableContractCode: IStreams[] = [];
+
+        // Loop streams, See if they're safe or "new"
+        for (let i = incoming.body.streams.length; i--; ) {
+          const stream = incoming.body.streams[i] as {
+            id: string;
+            doc: any;
+          };
+          // Can the stream be changed?
+          // (Detecting we can remove :stream and flow will work for both)
+          if (changable.has(stream.id.replace(":stream", ""))) {
+            // Can Update
+            writableStreams.push(stream.doc);
+
+            // Purge Existing (sync shouldn't cause issues)
+            await this.purgeStream(stream.id);
+
+            // Contains Contracts?
+            if (this.isContractStream(stream.doc)) {
+              writableContractCode.push(stream.doc);
+            }
+          } else {
+            // Maybe we can change if its NEW stream
+            // Check database to make sure it doesn't exist
+            if (
+              !(
+                await this.dbConnection.allDocs({
+                  key: stream.id
+                })
+              ).rows.length
+            ) {
+              // Can Write
+              writableStreams.push(stream.doc);
+
+              // Contains Contracts?
+              if (this.isContractStream(stream.doc)) {
+                writableContractCode.push(stream.doc);
+              }
+            }
+          }
+        }
+
+        // Streams to be written?
+        if (writableStreams.length) {
+          ActiveLogger.info(`Writing ${writableStreams.length} streams`);
+          await this.dbConnection.bulkDocs(writableStreams, {
+            new_edits: false
+          });
+
+          // Write Contracts
+          if (writableContractCode.length) {
+            ActiveLogger.info(
+              `Created ${writableContractCode.length} contracts`
+            );
+
+            for (let i = writableContractCode.length; i--; ) {
+              Contract.rebuild(writableContractCode[i]);
+            }
+          }
+
+          // Update the error document
+          errorDoc.processed = true;
+          await this.dbErrorConnection.post(errorDoc);
+          ActiveLogger.info("Error Recovered Document Updated");
+        }
+      }
+    }
+    return;
+  }
+
+  /**
+   * Delete a record fully from the database (Dangerous Operation!)
+   *
+   * @private
+   * @param {string} id
+   * @returns {Promise<void>}
+   * @memberof HybridNode
+   */
+  private async purgeStream(id: string): Promise<void> {
+    // Trusted Purged?
+    // Do we have the same purge updated from x% of upstreams?
+
+    // Remove record (Currently only 1 upstream supported)
+    try {
+      const doc = await this.dbConnection.get(id);
+      if (doc._id && doc._rev) {
+        await this.dbConnection.purge(doc);
+      }
+    } catch {}
+    return;
   }
 
   /**
@@ -291,6 +417,18 @@ export class HybridNode {
   }
 
   /**
+   * Detects if the stream contains contract data
+   *
+   * @private
+   * @param {*} data
+   * @returns {boolean}
+   * @memberof HybridNode
+   */
+  private isContractStream(data: any): boolean {
+    return data.namespace && data.contract && data.compiled ? true : false;
+  }
+
+  /**
    * Raises error into the database returning its id
    *
    * @private
@@ -310,7 +448,6 @@ export class HybridNode {
    * @returns {boolean}
    */
   private isUpStream(ip: IActiveHttpIp): boolean {
-    console.log(this.upstreamNode.remote + " == " + ip.remote);
     return this.upstreamNode.remote === (ip.proxy || ip.remote) ? true : false;
   }
 
