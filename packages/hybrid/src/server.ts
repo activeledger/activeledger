@@ -120,6 +120,30 @@ export class HybridNode {
         return this.requestErrorRestore(incoming, req);
       }
     );
+
+    // Best Effort tx Catch Up!
+    this.httpServer.use(
+      "/q/",
+      "POST",
+      (incoming: IActiveHttpIncoming, req: IncomingMessage) => {
+        const txs = incoming.body as string[];
+        for (let i = txs.length; i--; ) {
+          const tx: ActiveDefinitions.LedgerEntry = JSON.parse(txs[i]);
+          this.contractProcessor(tx)
+            .then(result => {
+              if (result.status === "ok") {
+                ActiveLogger.info(`${tx.$umid} Transaction Caught Up`);
+              } else {
+                ActiveLogger.warn(
+                  `${tx.$umid} Transaction Problem (${result.streamState})`
+                );
+              }
+            })
+            .catch();
+        }
+        return;
+      }
+    );
   }
 
   /**
@@ -149,49 +173,10 @@ export class HybridNode {
           // Token Check
           if (!this.authTokenCheck(req.headers)) return resolve();
 
-          // Create new Protocol Process object for transaction
-          const protocol = this.getContractProtocol(tx);
-
-          // Simpler UnhandledRejects Processing
-          process.once("unhandledRejection", async () => {
-            ActiveLogger.error("Unhandled Rejection");
-            // Create error record about failure
-            const result = await this.raiseError({
-              code: 10500,
-              processed: false,
-              transaction: tx,
-              reason: "Unhandled Rejection",
-              streamState: {}
-            });
-
-            // Let mainnet node know, It will send the latest state for us to consider
-            resolve({ status: "failed", streamState: result });
-          });
-
-          // Event: Manage Commits
-          protocol.once("commited", () => {
-            // Send on to IoT? (See Above)
-            resolve({ status: "ok" });
-          });
-
-          // Event: Manage Failed
-          protocol.once("failed", async (error: any) => {
-            ActiveLogger.error(error, "Failed Tx");
-            // Create error record about failure
-            const result = await this.raiseError({
-              code: 10000,
-              processed: false,
-              transaction: tx,
-              reason: error,
-              streamState: {}
-            });
-
-            // Let mainnet node know, It will send the latest state for us to consider
-            resolve({ status: "failed", streamState: result });
-          });
-
-          // Start the process
-          protocol.start();
+          // Create new Protocol and process transaction
+          this.contractProcessor(tx)
+            .then(resolve)
+            .catch(reject);
         } else {
           // Standard Transaction, So just forward to upstream and return!
           ActiveRequest.send(
@@ -375,45 +360,86 @@ export class HybridNode {
    * @returns {ActiveProtocol.Process}
    * @memberof HybridNode
    */
-  private getContractProtocol(
-    tx: ActiveDefinitions.LedgerEntry
-  ): ActiveProtocol.Process {
-    // Manipulate transaction to by hybrid safe
-    this.makeHybrid(tx);
+  private contractProcessor(tx: ActiveDefinitions.LedgerEntry): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Manipulate transaction to by hybrid safe
+      this.makeHybrid(tx);
 
-    // What to do with locking, Same principle? Or self manage
-    // we should self manage here because mainnet wont really submit
-    // unless we get into handling that on the mainnet side. Then we could get stuck in
-    // forever loops!
+      // What to do with locking, Same principle? Or self manage
+      // we should self manage here because mainnet wont really submit
+      // unless we get into handling that on the mainnet side. Then we could get stuck in
+      // forever loops!
 
-    //#region Ignored Events
-    // Event: Manage broadcast
-    // Hybrid doesn't need to broadcast as it isn't a network its store and forward
-    // protocol.on("broadcast", () => {});
+      //#region Ignored Events
+      // Event: Manage broadcast
+      // Hybrid doesn't need to broadcast as it isn't a network its store and forward
+      // protocol.on("broadcast", () => {});
 
-    // Event: Manage Reload Requests
-    // We won't be adding / removing nodes so no need to reload!
-    // INFO : Possibly we need to create code to ignore those type of transactions?
-    // protocol.on("reload", () => {});
+      // Event: Manage Reload Requests
+      // We won't be adding / removing nodes so no need to reload!
+      // INFO : Possibly we need to create code to ignore those type of transactions?
+      // protocol.on("reload", () => {});
 
-    // Event: Manage Throw Transactions
-    // Developers won't know about all the hybrid nodes
-    // So we can ignore this event
-    // protocol.on("throw", (response: any) => {});
-    //#endregion
+      // Event: Manage Throw Transactions
+      // Developers won't know about all the hybrid nodes
+      // So we can ignore this event
+      // protocol.on("throw", (response: any) => {});
+      //#endregion
 
-    // Create Protocol Process as mainnet
-    return new ActiveProtocol.Process(
-      tx,
-      "hybrid",
-      "hybrid",
-      {} as any,
-      this.dbConnection,
-      this.dbErrorConnection,
-      this.dbEventConnection,
-      // Fix this, So we can run all in contract encryption / decryption processes but as developers won't know the hybrid nodes they cant be targetting
-      new ActiveCrypto.Secured(ActiveOptions.get<any>("db", false), {}, {})
-    );
+      // Create Protocol Process as mainnet
+      const protocol = new ActiveProtocol.Process(
+        tx,
+        "hybrid",
+        "hybrid",
+        {} as any,
+        this.dbConnection,
+        this.dbErrorConnection,
+        this.dbEventConnection,
+        // Fix this, So we can run all in contract encryption / decryption processes but as developers won't know the hybrid nodes they cant be targetting
+        new ActiveCrypto.Secured(ActiveOptions.get<any>("db", false), {}, {})
+      );
+
+      // Simpler UnhandledRejects Processing
+      process.once("unhandledRejection", async () => {
+        ActiveLogger.error("Unhandled Rejection");
+        // Create error record about failure
+        const result = await this.raiseError({
+          code: 10500,
+          processed: false,
+          transaction: tx,
+          reason: "Unhandled Rejection",
+          streamState: {}
+        });
+
+        // Let mainnet node know, It will send the latest state for us to consider
+        resolve({ status: "failed", streamState: result });
+      });
+
+      // Event: Manage Commits
+      protocol.once("commited", () => {
+        // Send on to IoT? (See Above)
+        resolve({ status: "ok" });
+      });
+
+      // Event: Manage Failed
+      protocol.once("failed", async (error: any) => {
+        ActiveLogger.error(error, "Failed Tx");
+        // Create error record about failure
+        const result = await this.raiseError({
+          code: 10000,
+          processed: false,
+          transaction: tx,
+          reason: error,
+          streamState: {}
+        });
+
+        // Let mainnet node know, It will send the latest state for us to consider
+        resolve({ status: "failed", streamState: result });
+      });
+
+      // Start the process
+      protocol.start();
+    });
   }
 
   /**

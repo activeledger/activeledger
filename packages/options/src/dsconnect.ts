@@ -131,15 +131,13 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * Checks to see if a document exists
    *
    * @param {string} id
-   * @returns {Promise<Boolean>}
+   * @returns {(Promise<{} | Boolean>)}
    * @memberof ActiveDSConnect
    */
-  public exists(id: string): Promise<Boolean> {
+  public exists(id: string): Promise<{} | Boolean> {
     return new Promise<Boolean>(resolve => {
       ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, {})
-        .then(() => {
-          resolve(true);
-        })
+        .then((response: any) => resolve(response.data))
         .catch(() => {
           resolve(false);
         });

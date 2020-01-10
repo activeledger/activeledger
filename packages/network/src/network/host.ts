@@ -215,6 +215,14 @@ export class Host extends Home {
       []
     );
 
+    // Set hybrid doc name
+    if (this.hybridHosts.length) {
+      for (let i = this.hybridHosts.length; i--; ) {
+        const hybrid = this.hybridHosts[i];
+        hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
+      }
+    }
+
     // Create HTTP server for managing transaction requests
     this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
       // Log Request
@@ -743,98 +751,105 @@ export class Host extends Home {
             ["Content-Type:application/json", "X-Activeledger:" + hybrid.auth],
             txData,
             true
-          )
-            .then(response => {
-              // ok = do nothing
-              // unhandledRejection, failed = send latest version
-              const data = response.data as any;
+          ).then(response => {
+            // Hybrid Active, Has the node missed anything?
+            this.dbErrorConnection
+              .exists(hybrid.docName as string)
+              .then((exists: any) => {
+                if (exists && exists.q && exists.q.length) {
+                  // Send the queue (no need to wait being best effort)
+                  ActiveRequest.send(
+                    `${hybrid.url}/q`,
+                    "POST",
+                    ["X-Activeledger:" + hybrid.auth],
+                    exists.q
+                  ).catch();
 
-              // Everything but ok, should see latest version
-              if (data.status !== "ok") {
-                // Get all New / Updated Docs
-                const updated = [
-                  ...(activityStreams?.new || []),
-                  ...(activityStreams?.updated || [])
-                ].map(stream => stream.id);
-
-                // Also need $i, $o and $r,  Can probably reuse the .keys
-                const input = Object.keys(tx.$tx.$i || {});
-                const output = Object.keys(tx.$tx.$o || {});
-
-                // Dupes should be managed (If not switch to set)
-                const keys = [...updated, ...input, ...output];
-
-                // Loop all and append :stream to get meta data
-                const tmp = [];
-                for (let i = keys.length; i--; ) {
-                  tmp.push(keys[i] + ":stream");
+                  // Then delete!
+                  //this.dbErrorConnection.purge(exists).catch();
                 }
 
-                // Push tmp back into keys so we get everything
-                keys.push(...tmp);
+                // ok = do nothing
+                // unhandledRejection, failed = send latest version
+                const data = response.data as any;
 
-                // Fetch all docs (Dupes should be managed, If not use set)
-                return this.dbConnection
-                  .allDocs({
-                    include_docs: true,
-                    keys
-                  })
-                  .then(results => {
-                    // Return the results with the error id
-                    if (results.rows.length) {
-                      // Can ignore responses
-                      return ActiveRequest.send(
-                        `${hybrid.url}/streamState/${data.streamState}`,
-                        "POST",
-                        ["X-Activeledger:" + hybrid.auth],
-                        {
-                          umid: tx.$umid,
-                          streams: results.rows
-                        }
-                      );
-                    }
-                  });
-              }
-            })
-            .catch(e => {
-              console.log(e);
-              // Best Effort Approach
-              // Store all failed requests into a error document named after the node
-              // Node comes online and pings the mainnet to send this best effort list
-              // Whhy best effort?
-              // If the node has missed 1000 transactions and it takes 5 seconds a transaction there is a good chance that
-              // a new transaction will come in that later relies on one of the missed transactions which may not yet be processed
-              // This will tricker the trusted recovery, When that transaction does get caught up it will now also fail by being behind again triggering recovery
-              // This recovery will continue to happen until all transactions have finished and with best effort (and duplication) the data should be up to date.
-              // Error database can be deleted so this record would be lost and then it would be a slower recovery reason behind "best effort" naming
+                // Everything but ok, should see latest version
+                if (data.status !== "ok") {
+                  // Get all New / Updated Docs
+                  const updated = [
+                    ...(activityStreams?.new || []),
+                    ...(activityStreams?.updated || [])
+                  ].map(stream => stream.id);
 
-              // Get Unique document name for hybrid connection
-              const document = ActiveCrypto.Hash.getHash(
-                hybrid.url + hybrid.auth
-              );
+                  // Also need $i, $o and $r,  Can probably reuse the .keys
+                  const input = Object.keys(tx.$tx.$i || {});
+                  const output = Object.keys(tx.$tx.$o || {});
 
-              // Get Document if exists
-              this.dbErrorConnection
-                .createget(document)
-                .then((doc: any) => {
-                  // Add the tx to this nodes queue
-                  if (doc.q) {
-                    doc.q.push(txData);
-                  } else {
-                    doc.q = [txData];
+                  // Dupes should be managed (If not switch to set)
+                  const keys = [...updated, ...input, ...output];
+
+                  // Loop all and append :stream to get meta data
+                  const tmp = [];
+                  for (let i = keys.length; i--; ) {
+                    tmp.push(keys[i] + ":stream");
                   }
 
-                  // Write document back to the database
-                  return this.dbErrorConnection.post(doc);
-                })
-                .catch(() => {
-                  // Can Ignore catch for now
-                });
+                  // Push tmp back into keys so we get everything
+                  keys.push(...tmp);
 
-              // TODO: Remember What has been missed. (Or act like a fresh hybrid, Eventual Consensus)
-              // Remote side if not 200 status code store for later push
-              // Place into error database to send later! (How to detect? Maybe we do have a "ping" to join!)
-            });
+                  // Fetch all docs (Dupes should be managed, If not use set)
+                  return this.dbConnection
+                    .allDocs({
+                      include_docs: true,
+                      keys
+                    })
+                    .then(results => {
+                      // Return the results with the error id
+                      if (results.rows.length) {
+                        // Can ignore responses
+                        return ActiveRequest.send(
+                          `${hybrid.url}/streamState/${data.streamState}`,
+                          "POST",
+                          ["X-Activeledger:" + hybrid.auth],
+                          {
+                            umid: tx.$umid,
+                            streams: results.rows
+                          }
+                        );
+                      }
+                    });
+                }
+              })
+              .catch(() => {
+                // Best Effort Approach
+                // Store all failed requests into a error document named after the node
+                // Node comes online and pings the mainnet to send this best effort list
+                // Whhy best effort?
+                // If the node has missed 1000 transactions and it takes 5 seconds a transaction there is a good chance that
+                // a new transaction will come in that later relies on one of the missed transactions which may not yet be processed
+                // This will tricker the trusted recovery, When that transaction does get caught up it will now also fail by being behind again triggering recovery
+                // This recovery will continue to happen until all transactions have finished and with best effort (and duplication) the data should be up to date.
+                // Error database can be deleted so this record would be lost and then it would be a slower recovery reason behind "best effort" naming
+
+                // Get Document if exists
+                this.dbErrorConnection
+                  .createget(hybrid.docName as string)
+                  .then((doc: any) => {
+                    // Add the tx to this nodes queue
+                    if (doc.q) {
+                      doc.q.push(txData);
+                    } else {
+                      doc.q = [txData];
+                    }
+
+                    // Write document back to the database
+                    return this.dbErrorConnection.post(doc);
+                  })
+                  .catch(() => {
+                    // Can Ignore catch for now
+                  });
+              });
+          });
         }
       });
     }
@@ -878,6 +893,11 @@ export class Host extends Home {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
+          // This opens up a dos style attack (loop on every request)
+          // case "/hybrid/online": // Hybrid Node starting up
+          //   // Loop Hybrids, Find matching auth
+          //   const hAuth = req.headers["x-activeledger"] as string;
+          //   break;
           default:
             // All Stream Management with start point
             if (this.firewallCheck(requester, req)) {

@@ -31,4 +31,5 @@ export interface IHybridNodes {
     active: boolean;
     url: string;
     auth: string;
+    docName?: string;
 }
