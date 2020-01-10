@@ -364,7 +364,7 @@ export class HybridNode {
       .then(() => {
         const [, port] = ActiveOptions.get<String>("host", ":5260").split(":");
         this.httpServer.listen(parseInt(port), enableLogs);
-        ActiveLogger.info("Activecore Hybrid is running at 0.0.0.0:" + port);
+        ActiveLogger.info("Activehybrid is running at 0.0.0.0:" + port);
       })
       .catch(() => {
         throw new Error("Couldn't create default index");
