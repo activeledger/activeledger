@@ -108,7 +108,44 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         .catch(reject);
     });
   }
-  
+
+  /**
+   * Create New or Gets a specific document
+   *
+   * @param {string} id
+   * @param {*} [options={}]
+   * @returns
+   * @memberof ActiveDSConnect
+   */
+  public createget(id: string, options: any = {}): Promise<any> {
+    return new Promise(resolve => {
+      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+        .then((response: any) => resolve(response.data))
+        .catch(() => {
+          resolve({ _id: id });
+        });
+    });
+  }
+
+  /**
+   * Checks to see if a document exists
+   *
+   * @param {string} id
+   * @returns {Promise<Boolean>}
+   * @memberof ActiveDSConnect
+   */
+  public exists(id: string): Promise<Boolean> {
+    return new Promise<Boolean>(resolve => {
+      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, {})
+        .then(() => {
+          resolve(true);
+        })
+        .catch(() => {
+          resolve(false);
+        });
+    });
+  }
+
   /**
    * Query the data store
    *
