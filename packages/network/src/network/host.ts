@@ -23,6 +23,8 @@
 
 import { Server, IncomingMessage, ServerResponse, createServer } from "http";
 import { fork, ChildProcess } from "child_process";
+import { readlinkSync } from "fs";
+import { basename } from "path";
 import {
   ActiveDSConnect,
   ActiveOptions,
@@ -788,6 +790,19 @@ export class Host extends Home {
 
                     // Dupes should be managed (If not switch to set)
                     const keys = [...updated, ...input, ...output];
+
+                    // Missing Contract
+                    // TODO: Forward on error to filter this step
+                    if (tx.$tx.$namespace !== "default") {
+                      const path = `${tx.$tx.$namespace}/${tx.$tx.$contract}.js`;
+                      // Maybe symlink?
+                      try {
+                        keys.push(basename(readlinkSync(path), ".js"));
+                      } catch (e) {
+                        // File is a stream id
+                        keys.push(basename(readlinkSync(path), ".js"));
+                      }
+                    }
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
