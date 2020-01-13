@@ -414,7 +414,7 @@ export class HybridNode {
         this.dbConnection,
         this.dbErrorConnection,
         this.dbEventConnection,
-        // Fix this, So we can run all in contract encryption / decryption processes but as developers won't know the hybrid nodes they cant be targetting
+        // Developers can't target Hybrid for encryption / decryption but can still use stream public keys
         new ActiveCrypto.Secured(ActiveOptions.get<any>("db", false), {}, {})
       );
 
