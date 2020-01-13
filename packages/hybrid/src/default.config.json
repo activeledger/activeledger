@@ -23,11 +23,11 @@
     "*"
   ],
   "upstream": {
-    "scheme":"http",
+    "scheme": "http",
     "remote": "127.0.0.1",
     "port": 5260,
     "auth": "provided-by-upstream"
-},
+  },
   "neighbourhood": [
     "hybrid"
   ],
