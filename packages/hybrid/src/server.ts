@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { symlinkSync, existsSync } from "fs";
 import {
   ActiveHttpd,
   IActiveHttpIp,
@@ -39,7 +40,6 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 import { Contract } from "./contract";
-import { symlinkSync, existsSync } from "fs";
 
 /**
  * Hybrid Node Handler
