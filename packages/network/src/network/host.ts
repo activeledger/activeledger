@@ -733,7 +733,10 @@ export class Host extends Home {
     activityStreams?: ActiveDefinitions.IStreams
   ) {
     // Skip default/setup as it doesn't help hybrids
-    if (tx.$tx.$namespace === "default" && tx.$tx.$contract !== "setup") {
+    if (
+      tx.$tx.$namespace !== "default" ||
+      (tx.$tx.$namespace === "default" && tx.$tx.$contract !== "setup")
+    ) {
       // Minmum data needed for hybrid to process
       const txData = JSON.stringify({
         $tx: tx.$tx,
@@ -756,6 +759,7 @@ export class Host extends Home {
           )
             .then(response => {
               // Hybrid Active, Has the node missed anything?
+              // The below may create a 404 error log.
               this.dbErrorConnection
                 .exists(hybrid.docName as string)
                 .then((exists: any) => {
@@ -785,22 +789,27 @@ export class Host extends Home {
                     ].map(stream => stream.id);
 
                     // Also need $i, $o and $r,  Can probably reuse the .keys
-                    const input = Object.keys(tx.$tx.$i || {});
-                    const output = Object.keys(tx.$tx.$o || {});
+                    const input = tx.$tx.$i
+                      ? this.hybridLabelKeyId(tx.$tx.$i)
+                      : [];
+                    const output = tx.$tx.$o
+                      ? this.hybridLabelKeyId(tx.$tx.$o)
+                      : [];
 
                     // Dupes should be managed (If not switch to set)
                     const keys = [...updated, ...input, ...output];
 
                     // Missing Contract
-                    // TODO: Forward on error to filter this step
-                    if (tx.$tx.$namespace !== "default") {
-                      const path = `${tx.$tx.$namespace}/${tx.$tx.$contract}.js`;
+                    if (data.contract) {
+                      const path = `${process.cwd()}/contracts/${
+                        tx.$tx.$namespace
+                      }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
                       } catch (e) {
                         // File is a stream id
-                        keys.push(basename(readlinkSync(path), ".js"));
+                        keys.push(basename(path, ".js"));
                       }
                     }
 
@@ -868,6 +877,33 @@ export class Host extends Home {
             });
         }
       });
+    }
+  }
+
+  /**
+   * Extract stream id from transaction type
+   *
+   * @private
+   * @param {ActiveDefinitions.LedgerIORputs} txIO
+   * @returns {string[]}
+   * @memberof Host
+   */
+  private hybridLabelKeyId(txIO: ActiveDefinitions.LedgerIORputs): string[] {
+    // Get reference for input or output
+    const streams = Object.keys(txIO);
+
+    // Check the first one, If labelled then loop all.
+    // Means first has to be labelled but we don't want to loop when not needed
+    if (txIO[streams[0]].$stream) {
+      const streamMap: string[] = [];
+      for (let i = streams.length; i--; ) {
+        // Stream label or self
+        let streamId = txIO[streams[i]].$stream || streams[i];
+        streamMap.push(streamId);
+      }
+      return streamMap;
+    } else {
+      return streams;
     }
   }
 
