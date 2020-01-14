@@ -39,6 +39,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 import { Contract } from "./contract";
+import { symlinkSync, existsSync } from "fs";
 
 /**
  * Hybrid Node Handler
@@ -259,6 +260,8 @@ export class HybridNode {
                 writableContractCode.push(stream.doc);
               }
             }
+            // TODO : It need to look at revision information now, Edge use case contract may have been updated!
+            // We may also assume the contract may have changed by putting it into the set
           }
         }
 
@@ -278,6 +281,23 @@ export class HybridNode {
             for (let i = writableContractCode.length; i--; ) {
               Contract.rebuild(writableContractCode[i]);
             }
+
+            // If 1 then check for symlink that may need to be created
+            if (writableContractCode.length === 1) {
+              const contract = writableContractCode[0] as any;
+              // Check it doesn't exist
+              if (
+                !existsSync(
+                  `./${tx.$tx.$contract}.js`
+                )
+              ) {
+                symlinkSync(
+                  `./${contract._id}.js`,
+                  `./contracts/${contract.namespace}/${tx.$tx.$contract}.js`,
+                  "file"
+                );
+              }
+            }
           }
 
           // Update the error document
@@ -293,7 +313,7 @@ export class HybridNode {
   /**
    * Process any transaction queued up on the upstream node
    * Using best effort to catch up correctly
-   * 
+   *
    * @private
    * @param {IActiveHttpIncoming} incoming
    * @param {IncomingMessage} req
@@ -452,8 +472,20 @@ export class HybridNode {
           streamState: {}
         });
 
+        // Ready Main net response
+        const response = {
+          status: "failed",
+          streamState: result,
+          contract: 0
+        };
+
+        // Are we missing the contract?
+        if (error.status === 1401) {
+          response.contract = 1;
+        }
+
         // Let mainnet node know, It will send the latest state for us to consider
-        resolve({ status: "failed", streamState: result });
+        resolve(response);
       });
 
       // Start the process

@@ -128,7 +128,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
-   * Checks to see if a document exists
+   * Checks to see if a document exists, If doesn't exist a 404 log will be created
    *
    * @param {string} id
    * @returns {(Promise<{} | Boolean>)}
