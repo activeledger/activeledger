@@ -1,0 +1,63 @@
+{
+  "name": "@activeledger/activehybrid",
+  "description": "Activeledger Hybrid Connect, Maintain every permissioned chain yourself",
+  "version": "2.2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "hybrid"
+  ],
+  "homepage": "https://activeledger.io",
+  "preferGlobal": true,
+  "bin": {
+    "activehybrid": "./lib/index.js"
+  },
+  "scripts": {
+    "start": "node lib/index.js",
+    "build:commonjs": "tsc --outDir lib --module commonjs  && copyfiles -f ./src/default.config.json ./lib && copyfiles -u 3 ../activeledger/lib/contracts/default/* ./lib",
+    "build:es": "tsc --outDir es --module es6  && copyfiles -f ./src/default.config.json ./es && copyfiles -u 3 ../activeledger/es/contracts/default/* ./es",
+    "build": "npm run build:commonjs && npm run build:es",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^12.6.9",
+    "copyfiles": "^2.1.1"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activecontracts": "^2.2.0",
+    "@activeledger/activecrypto": "^2.2.0",
+    "@activeledger/activedefinitions": "^2.2.0",
+    "@activeledger/activelogger": "^2.2.0",
+    "@activeledger/activeoptions": "^2.2.0",
+    "@activeledger/activeprotocol": "^2.2.0",
+    "@activeledger/activestorage": "^2.2.0",
+    "@activeledger/activetoolkits": "^2.2.0",
+    "@activeledger/activeutilities": "^2.2.0",
+    "@activeledger/httpd": "^2.2.0",
+    "typescript": "^3.3.3"
+  }
+}

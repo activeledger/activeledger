@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.2.0]
+
+2 new features are published with this release of Activeleder
+
+### Features
+* **Toolkits:** Embdded Helper Libraries for Smart Contracts [Activetoolkits](https://github.com/activeledger/activeledger/tree/master/packages/toolkits)
+
+* **Hybrid:** External smart contract transaction processing, Be part of a permissioned network without priviliges to assist in network wide consensus only local consensus. [Activehybrid](https://github.com/activeledger/activeledger/tree/master/packages/hybrid) 
+
 ## [2.1.12]
 * **Protocol:** Default namespaces VM has correct permissions for all operations at boot. 
 

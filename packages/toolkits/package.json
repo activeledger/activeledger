@@ -1,0 +1,51 @@
+{
+  "name": "@activeledger/activetoolkits",
+  "version": "2.2.0",
+  "description": "Toolkit SDKs available for Activeledger Smart Contracts",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node"
+  ],
+  "homepage": "https://activeledger.io",
+  "main": "./lib/index.js",
+  "scripts": {
+    "start": "node lib/index.js",
+    "test": "cd ../../ && npm test",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:commonjs:dist": "tsc --outDir lib --module commonjs -d --emitDeclarationOnly --allowJs false",
+    "build:es": "tsc --outDir es --module es6",
+    "build:es:dist": "tsc --outDir es --module es6 -d --emitDeclarationOnly --allowJs false",
+    "build": "npm run build:commonjs && npm run build:commonjs:dist && npm run build:es && npm run build:es:dist",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@activeledger/activedefinitions": "^2.2.0",
+    "@types/node": "^10.12.23",
+    "typescript": "^3.3.4000"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activeutilities": "^2.2.0"
+  }
+}

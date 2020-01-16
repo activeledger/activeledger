@@ -20,5 +20,5 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { ActiveHttpd, IActiveHttpIncoming } from "./httpd";
-export { ActiveHttpd, IActiveHttpIncoming };
+import { ActiveHttpd, IActiveHttpIncoming, IActiveHttpIp } from "./httpd";
+export { ActiveHttpd, IActiveHttpIncoming, IActiveHttpIp };

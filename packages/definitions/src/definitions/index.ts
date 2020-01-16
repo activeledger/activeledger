@@ -23,4 +23,5 @@
 
 export * from "./ledger";
 export * from "./document";
+export * from "./hybrid";
 export * from "./interface";

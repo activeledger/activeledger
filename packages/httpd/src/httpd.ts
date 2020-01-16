@@ -34,8 +34,20 @@ import { ActiveGZip } from "@activeledger/activeutilities";
  */
 export interface IActiveHttpIncoming {
   url: string[];
+  ip: IActiveHttpIp;
   query?: any;
   body?: any;
+}
+
+/**
+ * Remote IP Details (Including Proxy)
+ *
+ * @export
+ * @interface IActiveHttpIp
+ */
+export interface IActiveHttpIp {
+  remote: string;
+  proxy?: string;
 }
 
 /**
@@ -137,6 +149,17 @@ export class ActiveHttpd {
         pathSegments.push("/");
       }
 
+      // Press Remote IP
+      const ip: IActiveHttpIp = {
+        remote: httpd.ipv46(req.connection.remoteAddress as string)
+      };
+
+      // Has a proxy been involved
+      if (req.headers["x-forwarded-for"]) {
+        ip.proxy = ip.remote;
+        ip.remote = httpd.ipv46(req.headers["x-forwarded-for"] as string);
+      }
+
       // Capture POST data
       if (req.method == "POST" || req.method == "PUT") {
         // Holds the body
@@ -171,7 +194,8 @@ export class ActiveHttpd {
             {
               url: pathSegments,
               query: querystring.parse(parsedUrl.query as string),
-              body: data
+              body: data,
+              ip
             },
             req,
             res
@@ -182,7 +206,8 @@ export class ActiveHttpd {
         httpd.processListen(
           {
             url: pathSegments,
-            query: querystring.parse(parsedUrl.query as string)
+            query: querystring.parse(parsedUrl.query as string),
+            ip
           },
           req,
           res
@@ -216,9 +241,10 @@ export class ActiveHttpd {
       try {
         // Default Allow CORS
         if (this.enableCORS && req.headers["origin"]) {
-          res.setHeader("Access-Control-Allow-Origin", req.headers[
-            "origin"
-          ] as string);
+          res.setHeader(
+            "Access-Control-Allow-Origin",
+            req.headers["origin"] as string
+          );
         }
         // Run the call handler
         const data = await handler(incoming, req, res);
@@ -403,5 +429,17 @@ export class ActiveHttpd {
       }
     }
     return c;
+  }
+
+  /**
+   * IPv4 & IPv6 notation support
+   *
+   * @private
+   * @param {string} ip
+   * @returns {string}
+   * @memberof ActiveHttpd
+   */
+  private ipv46(ip: string): string {
+    return ip.substr(0, 7) == "::ffff:" ? ip.substr(7) : ip;
   }
 }

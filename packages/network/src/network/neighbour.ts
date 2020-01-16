@@ -166,7 +166,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             "POST",
             ["X-Activeledger:" + Home.reference],
             post,
-            ActiveOptions.get<any>("experimental", {}).gzip || false
+            true
           )
             .then(resolve)
             .catch((error: any) => {

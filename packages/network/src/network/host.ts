@@ -23,10 +23,13 @@
 
 import { Server, IncomingMessage, ServerResponse, createServer } from "http";
 import { fork, ChildProcess } from "child_process";
+import { readlinkSync } from "fs";
+import { basename } from "path";
 import {
   ActiveDSConnect,
   ActiveOptions,
-  ActiveGZip
+  ActiveGZip,
+  ActiveRequest
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -91,15 +94,6 @@ export class Host extends Home {
   public readonly api: Server;
 
   /**
-   * Server Sent events
-   *
-   * @private
-   * @type {ServerResponse[]}
-   * @memberof Host
-   */
-  private sse: ServerResponse[] = [];
-
-  /**
    * Server connection to the couchdb instance for this node
    *
    * @private
@@ -144,6 +138,14 @@ export class Host extends Home {
    * @memberof Host
    */
   private cpuReady = 0;
+
+  /**
+   * How many hybrid connected nodes
+   *
+   * @private
+   * @memberof Host
+   */
+  private hybridHosts: ActiveDefinitions.IHybridNodes[];
 
   /**
    * Add process into pending
@@ -209,6 +211,20 @@ export class Host extends Home {
     this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
     this.dbEventConnection.info();
 
+    // Build Hybrid Node List
+    this.hybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>(
+      "hybrid",
+      []
+    );
+
+    // Set hybrid doc name
+    if (this.hybridHosts.length) {
+      for (let i = this.hybridHosts.length; i--; ) {
+        const hybrid = this.hybridHosts[i];
+        hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
+      }
+    }
+
     // Create HTTP server for managing transaction requests
     this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
       // Log Request
@@ -222,7 +238,7 @@ export class Host extends Home {
         let body: Buffer[] = [];
 
         // Reads body data
-        req.on("data", (chunk) => {
+        req.on("data", chunk => {
           body.push(chunk);
         });
 
@@ -244,11 +260,11 @@ export class Host extends Home {
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
               false
           )
-            .then((body) => {
+            .then(body => {
               // Post Converted, Continue processing
               this.processEndpoints(req, res, body);
             })
-            .catch((error) => {
+            .catch(error => {
               // Failed to convery respond;
               this.writeResponse(
                 res,
@@ -303,7 +319,7 @@ export class Host extends Home {
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
       })
-      .catch((e) => {
+      .catch(e => {
         throw new Error("Couldn't create default index");
       });
   }
@@ -323,7 +339,7 @@ export class Host extends Home {
     });
 
     // Listen for message to respond to waiting http
-    pFork.on("message", (m) => {
+    pFork.on("message", m => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -346,6 +362,12 @@ export class Host extends Home {
           });
           // Remove Locks
           this.release(pending);
+
+          // If we want to send AFTER this node has completed uncomment
+          // If Hybrid enabled, Send transaction on
+          if (m.data && this.hybridHosts.length) {
+            this.processHybridNodes(pending.entry);
+          }
           break;
         case "commited":
           // Process response back into entry for previous neighbours to know the results
@@ -356,21 +378,11 @@ export class Host extends Home {
           // Remove Locks
           this.release(pending);
 
-          // Post Reply Processing
-          if (m.data) {
-            // If Transaction rebroadcast if hybrid enabled
-            if (this.sse && m.data.tx) {
-              let i = this.sse.length;
-              while (i--) {
-                // Check for active connection
-                if (this.sse[i] && !this.sse[i].finished) {
-                  this.sse[i].write(
-                    `event: message\ndata:${JSON.stringify(pending.entry)}`
-                  );
-                  this.sse[i].write("\n\n");
-                }
-              }
-            }
+          // If we want to send AFTER this node has completed uncomment
+          // If Hybrid enabled, Send transaction on
+          if (this.hybridHosts.length) {
+            // TODO : TypeError: Cannot read property '$streams' of undefined
+            this.processHybridNodes(pending.entry, m.data.entry?.$streams);
           }
           break;
         case "broadcast":
@@ -416,11 +428,11 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", (error) => {
+    pFork.on("error", error => {
       ActiveLogger.fatal(error, "Processor Crashed");
       // Look for any transactions which are in this processor
       const pendings = Object.keys(this.processPending);
-      pendings.forEach((key) => {
+      pendings.forEach(key => {
         // Get Transaction
         const pending = this.processPending[key];
         // Was this transaction in the broken processor
@@ -437,7 +449,7 @@ export class Host extends Home {
         }
       });
       // find from processors list
-      const pos = this.processors.findIndex((processor) => {
+      const pos = this.processors.findIndex(processor => {
         return processor.pid === pFork.pid;
       });
       // Remove from processors list
@@ -485,7 +497,7 @@ export class Host extends Home {
           this.terriBuildMap();
         }
         // Now to make sure all other processors reload
-        this.processors.forEach((processor) => {
+        this.processors.forEach(processor => {
           processor.send({
             type: "reload",
             data: {
@@ -648,6 +660,12 @@ export class Host extends Home {
         type: "tx",
         entry: this.processPending[v.$umid].entry
       });
+
+      // If we want to send BEFORE this node has processed uncomment
+      // if (this.hybridHosts.length) {
+      //   this.processHybridNodes(this.processPending[v.$umid].entry);
+      // }
+
       return;
     } else {
       // No, How to deal with it?
@@ -703,6 +721,193 @@ export class Host extends Home {
   }
 
   /**
+   * Manage Hybrid Nodes
+   *
+   * @private
+   * @param {string} tx
+   * @param {ActiveDefinitions.IStreams} [activityStreams]
+   * @memberof Host
+   */
+  private processHybridNodes(
+    tx: ActiveDefinitions.LedgerEntry,
+    activityStreams?: ActiveDefinitions.IStreams
+  ) {
+    // Skip default/setup as it doesn't help hybrids
+    if (
+      tx.$tx.$namespace !== "default" ||
+      (tx.$tx.$namespace === "default" && tx.$tx.$contract !== "setup")
+    ) {
+      // Minmum data needed for hybrid to process
+      const txData = JSON.stringify({
+        $tx: tx.$tx,
+        $datatime: tx.$datetime,
+        $umid: tx.$umid,
+        $selfsign: tx.$selfsign,
+        $sigs: tx.$sigs,
+        $remoteAddr: tx.$remoteAddr
+      });
+
+      // Loop all hybrids and send
+      this.hybridHosts.forEach(hybrid => {
+        if (hybrid.active) {
+          ActiveRequest.send(
+            hybrid.url,
+            "POST",
+            ["Content-Type:application/json", "X-Activeledger:" + hybrid.auth],
+            txData,
+            true
+          )
+            .then(response => {
+              // Hybrid Active, Has the node missed anything?
+              // The below may create a 404 error log.
+              this.dbErrorConnection
+                .exists(hybrid.docName as string)
+                .then((exists: any) => {
+                  if (exists && exists.q && exists.q.length) {
+                    // Send the queue (no need to wait being best effort)
+                    ActiveRequest.send(
+                      `${hybrid.url}/q`,
+                      "POST",
+                      ["X-Activeledger:" + hybrid.auth],
+                      exists.q
+                    ).catch();
+
+                    // Then delete!
+                    this.dbErrorConnection.purge(exists).catch();
+                  }
+
+                  // ok = do nothing
+                  // unhandledRejection, failed = send latest version
+                  const data = response.data as any;
+
+                  // Everything but ok, should see latest version
+                  if (data.status !== "ok") {
+                    // Get all New / Updated Docs
+                    const updated = [
+                      ...(activityStreams?.new || []),
+                      ...(activityStreams?.updated || [])
+                    ].map(stream => stream.id);
+
+                    // Also need $i, $o and $r,  Can probably reuse the .keys
+                    const input = tx.$tx.$i
+                      ? this.hybridLabelKeyId(tx.$tx.$i)
+                      : [];
+                    const output = tx.$tx.$o
+                      ? this.hybridLabelKeyId(tx.$tx.$o)
+                      : [];
+
+                    // Dupes should be managed (If not switch to set)
+                    const keys = [...updated, ...input, ...output];
+
+                    // Missing Contract
+                    if (data.contract) {
+                      const path = `${process.cwd()}/contracts/${
+                        tx.$tx.$namespace
+                      }/${tx.$tx.$contract}.js`;
+                      // Maybe symlink?
+                      try {
+                        keys.push(basename(readlinkSync(path), ".js"));
+                      } catch (e) {
+                        // File is a stream id
+                        keys.push(basename(path, ".js"));
+                      }
+                    }
+
+                    // Loop all and append :stream to get meta data
+                    const tmp = [];
+                    for (let i = keys.length; i--; ) {
+                      tmp.push(keys[i] + ":stream");
+                    }
+
+                    // Push tmp back into keys so we get everything
+                    keys.push(...tmp);
+
+                    // Fetch all docs (Dupes should be managed, If not use set)
+                    return this.dbConnection
+                      .allDocs({
+                        include_docs: true,
+                        keys
+                      })
+                      .then(results => {
+                        // Return the results with the error id
+                        if (results.rows.length) {
+                          // Can ignore responses
+                          return ActiveRequest.send(
+                            `${hybrid.url}/streamState/${data.streamState}`,
+                            "POST",
+                            ["X-Activeledger:" + hybrid.auth],
+                            {
+                              umid: tx.$umid,
+                              streams: results.rows
+                            }
+                          );
+                        }
+                      });
+                  }
+                });
+            })
+            .catch(() => {
+              // Best Effort Approach
+              // Store all failed requests into a error document named after the node
+              // Node comes online and pings the mainnet to send this best effort list
+              // Whhy best effort?
+              // If the node has missed 1000 transactions and it takes 5 seconds a transaction there is a good chance that
+              // a new transaction will come in that later relies on one of the missed transactions which may not yet be processed
+              // This will tricker the trusted recovery, When that transaction does get caught up it will now also fail by being behind again triggering recovery
+              // This recovery will continue to happen until all transactions have finished and with best effort (and duplication) the data should be up to date.
+              // Error database can be deleted so this record would be lost and then it would be a slower recovery reason behind "best effort" naming
+
+              // Get Document if exists
+              this.dbErrorConnection
+                .createget(hybrid.docName as string)
+                .then((doc: any) => {
+                  // Add the tx to this nodes queue
+                  if (doc.q) {
+                    doc.q.push(txData);
+                  } else {
+                    doc.q = [txData];
+                  }
+
+                  // Write document back to the database
+                  return this.dbErrorConnection.post(doc);
+                })
+                .catch(() => {
+                  // Can Ignore catch for now
+                });
+            });
+        }
+      });
+    }
+  }
+
+  /**
+   * Extract stream id from transaction type
+   *
+   * @private
+   * @param {ActiveDefinitions.LedgerIORputs} txIO
+   * @returns {string[]}
+   * @memberof Host
+   */
+  private hybridLabelKeyId(txIO: ActiveDefinitions.LedgerIORputs): string[] {
+    // Get reference for input or output
+    const streams = Object.keys(txIO);
+
+    // Check the first one, If labelled then loop all.
+    // Means first has to be labelled but we don't want to loop when not needed
+    if (txIO[streams[0]].$stream) {
+      const streamMap: string[] = [];
+      for (let i = streams.length; i--; ) {
+        // Stream label or self
+        let streamId = txIO[streams[i]].$stream || streams[i];
+        streamMap.push(streamId);
+      }
+      return streamMap;
+    } else {
+      return streams;
+    }
+  }
+
+  /**
    * Process Activeledger request endpoints
    *
    * @private
@@ -740,42 +945,11 @@ export class Host extends Home {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
-          case "/hybrid":
-            let experimental = ActiveOptions.get<any>("experimental", {});
-            if (
-              experimental &&
-              experimental.hybrid &&
-              experimental.hybrid.host
-            ) {
-              // Connection Limiter
-              if (experimental.hybrid.maxConnections > this.sse.length) {
-                // Write the required header
-                res.writeHead(200, {
-                  Connection: "keep-alive",
-                  "Content-Type": "text/event-stream",
-                  "Cache-Control": "no-cache",
-                  "Access-Control-Allow-Origin": "*",
-                  "X-Powered-By": "Activeledger"
-                });
-                // Add to response array
-                let index = this.sse.push(res);
-                // Listen for close and remove by index
-                res.on("close", () => {
-                  // Remove from array (-1 for correct index)
-                  this.sse.splice(index - 1, 1);
-                });
-                return;
-              } else {
-                return this.writeResponse(
-                  res,
-                  418,
-                  "I'm a teapot",
-                  gzipAccepted
-                );
-              }
-            } else {
-              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
-            }
+          // This opens up a dos style attack (loop on every request)
+          // case "/hybrid/online": // Hybrid Node starting up
+          //   // Loop Hybrids, Find matching auth
+          //   const hAuth = req.headers["x-activeledger"] as string;
+          //   break;
           default:
             // All Stream Management with start point
             if (this.firewallCheck(requester, req)) {

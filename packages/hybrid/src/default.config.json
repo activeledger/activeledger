@@ -1,0 +1,40 @@
+{
+  "debug": true,
+  "host": "127.0.0.1:5260",
+  "db": {
+    "selfhost": {
+      "host": "127.0.0.1",
+      "port": "5259"
+    },
+    "url": "http://[user]:[pass]@[host]:[port]",
+    "database": "activeledger",
+    "event": "activeledgerevents",
+    "error": "activeledgererrors"
+  },
+  "api": {
+    "port": 5261
+  },
+  "rate": {
+    "minutes": 10,
+    "limit": 20,
+    "delay": 0
+  },
+  "CORS": [
+    "*"
+  ],
+  "upstream": {
+    "scheme": "http",
+    "remote": "127.0.0.1",
+    "port": 5260,
+    "auth": "provided-by-upstream"
+  },
+  "neighbourhood": [
+    "hybrid"
+  ],
+  "consensus": {
+    "reached": 100
+  },
+  "security": {
+    "hardenedKeys": false
+  }
+}

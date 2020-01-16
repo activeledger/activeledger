@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activedefinitions",
-  "version": "2.1.12",
+  "version": "2.2.0",
   "description": "This package contains definition files used within Activeledger.",
   "keywords": [
     "blockchain",
@@ -32,6 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^13.1.6",
     "typescript": "^3.3.3"
   },
   "files": [
@@ -40,5 +41,8 @@
   ],
   "types": "./lib/index.d.ts",
   "jsnext:main": "./es/index.js",
-  "module": "./es/index.js"
+  "module": "./es/index.js",
+  "dependencies": {
+    "@types/events": "^3.0.0"
+  }
 }

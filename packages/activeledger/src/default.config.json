@@ -23,12 +23,8 @@
     "core": true,
     "restore": true
   },
-  "experimental": {
-    "hybrid": {
-      "host": false,
-      "maxConnections": 10
-    }
-  },
+  "hybrid": [],
+  "experimental": {},
   "api": {
     "port": 5261
   },
@@ -37,6 +33,8 @@
     "limit": 20,
     "delay": 0
   },
-  "CORS": ["*"],
+  "CORS": [
+    "*"
+  ],
   "neighbourhood": []
 }
