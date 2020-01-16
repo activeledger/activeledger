@@ -57,9 +57,7 @@
     "@activeledger/activestorage": "^2.1.11",
     "@activeledger/activeutilities": "^2.1.12",
     "@activeledger/httpd": "^2.1.4",
+    "@activeledger/activetoolkits": "^2.1.12",
     "typescript": "^3.3.3"
-  },
-  "optionalDependencies": {
-    "@_activeledger/activetoolkits": "^2.0.0-rc.8.0.56"
   }
 }
