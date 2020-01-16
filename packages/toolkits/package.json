@@ -1,10 +1,6 @@
 {
-  "name": "@_activeledger/activetoolkits",
-  "private": false,
-  "publishConfig": {
-    "registry": "http://registry.activeledger.io"
-  },
-  "version": "2.0.0-rc.8.0.58",
+  "name": "@activeledger/activetoolkits",
+  "version": "2.1.12",
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",
@@ -52,6 +48,6 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeutilities": "^2.0.0-rc.8.0.56"
+    "@activeledger/activeutilities": "2.1.12"
   }
 }

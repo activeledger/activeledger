@@ -32,6 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^13.1.6",
     "typescript": "^3.3.3"
   },
   "files": [
