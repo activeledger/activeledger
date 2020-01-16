@@ -152,7 +152,9 @@ export class VirtualMachine extends events.EventEmitter
     // Toolkit Availability Check
     let toolkitAvailable = true;
     try {
-      require.resolve("@_activeledger/activetoolkits");
+      // Keep this check for backward compatibility
+      // to prevent any corrupt / mix install bases from crashing 
+      require.resolve("@activeledger/activetoolkits");
     } catch (error) {
       // Toolkits not installed
       toolkitAvailable = false;
@@ -160,7 +162,6 @@ export class VirtualMachine extends events.EventEmitter
 
     // Manage Externals & buildit
     let external: string[] = [
-      // this.contractPath,
       "@activeledger/activecontracts"
     ];
     let builtin: string[] = ["buffer"];
@@ -169,7 +170,7 @@ export class VirtualMachine extends events.EventEmitter
     if (toolkitAvailable) {
       external.push(
         "@activeledger/activeutilities",
-        "@_activeledger/activetoolkits"
+        "@activeledger/activetoolkits"
       );
       builtin.push("events", "http", "https", "url", "zlib");
     }

@@ -13,6 +13,7 @@
         { "path": "query" },
         { "path": "storage" },
         { "path": "restore" },
+        { "path": "toolkits" },
         { "path": "httpd" },
         { "path": "utilities" },
     ]
