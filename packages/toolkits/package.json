@@ -34,7 +34,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.0.0-rc.8.0.50",
+    "@activeledger/activedefinitions": "^2.1.12",
     "@types/node": "^10.12.23",
     "@types/pdfkit": "^0.7.36",
     "@types/pdfmake": "^0.1.3",
