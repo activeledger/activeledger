@@ -1,5 +1,5 @@
 {
-  "name": "@activeledger/hybrid",
+  "name": "@activeledger/activehybrid",
   "description": "Activeledger Hybrid Connect, Maintain every permissioned chain yourself",
   "version": "2.2.0",
   "publishConfig": {
