@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "This package manages the optional runtime classes used within Activeledger",
   "keywords": [
     "blockchain",
