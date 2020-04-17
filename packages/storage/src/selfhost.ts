@@ -26,7 +26,7 @@ import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { PouchDB, leveldown } from "./pouchdb";
 
-(function() {
+(function () {
   // Fauxton Path
   const FAUXTON_PATH = __dirname + "/fauxton/";
 
@@ -38,6 +38,7 @@ import { PouchDB, leveldown } from "./pouchdb";
 
   // How PouchDB wraps documents keys
   const PouchDBDocBuffer = Buffer.from("ÿdocument-storeÿ");
+  const PouchDBSeqBuffer = Buffer.from("ÿby-sequenceÿ");
 
   // PouchDB Connection Cache
   let pDBCache: any = {};
@@ -64,10 +65,10 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  let getPDB = (name: string) => {
+  const getPDB = (name: string) => {
     if (!pDBCache[name]) {
       pDBCache[name] = new PouchDb(name, {
-        db: levelupdown
+        db: levelupdown,
       });
     }
     return pDBCache[name];
@@ -106,7 +107,7 @@ import { PouchDB, leveldown } from "./pouchdb";
   http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
-      adapters: ["leveldb"]
+      adapters: ["leveldb"],
     };
   });
 
@@ -220,7 +221,7 @@ import { PouchDB, leveldown } from "./pouchdb";
     return await db.deleteIndex({
       ddoc: incoming.url[2],
       type: incoming.url[3],
-      name: incoming.url[4]
+      name: incoming.url[4],
     });
   });
 
@@ -238,11 +239,9 @@ import { PouchDB, leveldown } from "./pouchdb";
       // Loop all indexes Fauxton wants to delete
       incoming.body.docids.forEach(async (docId: string) => {
         // Do we have this as a design index
-        let index = indexes.find(
-          (index: any): boolean => {
-            return index.ddoc == docId;
-          }
-        );
+        let index = indexes.find((index: any): boolean => {
+          return index.ddoc == docId;
+        });
 
         // Did we find a match to delete?
         if (index) {
@@ -250,7 +249,7 @@ import { PouchDB, leveldown } from "./pouchdb";
           await db.deleteIndex({
             ddoc: index.ddoc,
             type: index.type,
-            name: index.name
+            name: index.name,
           });
         }
       });
@@ -375,21 +374,266 @@ import { PouchDB, leveldown } from "./pouchdb";
     return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
   });
 
+  // Gets raw unparsed document straight from leveldb
+  // Document Store http://localhost:5259/activeledger/_raw/[document._id]
+  // Sequence (data) http://localhost:5259/activeledger/_raw/[document._id]@[revision] (revision Example = 10-f0b21ef22ec86f7c6d71c250b4563bba)
+  http.use("*/_raw/*", "GET", async (incoming: IActiveHttpIncoming) => {
+    // Getting revision?
+    const [root, revision] = incoming.url[2].split("@");
+    const dbLoc = DIR_PREFIX + incoming.url[0];
+    const dbKeyPath = Buffer.concat([
+      PouchDBDocBuffer,
+      Buffer.from(decodeURIComponent(root)),
+    ]);
+    await getPDB(incoming.url[0]).info();
+
+    // Get Main Doc
+    const rootDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+
+    // If getting revision we need sequence
+    if (revision) {
+      try {
+        //ÿby-sequenceÿ0000000000000109
+        //ÿby-sequenceÿ0000000000000110
+        const revSeq = rootDoc.rev_map[revision];
+        console.log(revSeq);
+
+        const dbSeqPath = Buffer.concat([
+          PouchDBSeqBuffer,
+          Buffer.from(revSeq.toString().padStart(16, 0)),
+        ]);
+
+        return await fetchRawDoc(dbLoc, dbSeqPath);
+      } catch (e) {
+        console.log(e);
+        throw new Error("Revision Fetch Failed");
+      }
+    }
+    return rootDoc;
+  });
+
   // Add new / updated document to the database
   http.use("*/**", "PUT", async (incoming: IActiveHttpIncoming) => {
+    // Archive Document?
+    await markAsArchived(incoming);
+    return genericPut(incoming.url[0], incoming.body);
+  });
+
+  /**
+   * Detects if root pouch document needs to be archived and archives
+   *
+   * @param {IActiveHttpIncoming} incoming
+   * @returns {Promise<boolean>}
+   */
+  const markAsArchived = async (
+    incoming: IActiveHttpIncoming
+  ): Promise<boolean> => {
+    const position = isArchivable(incoming.body._rev);
+    if (position) {
+      try {
+        const dbLoc = DIR_PREFIX + incoming.url[0];
+        const dbKeyPath = Buffer.concat([
+          PouchDBDocBuffer,
+          Buffer.from(decodeURIComponent(incoming.url[1])),
+        ]);
+        const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+
+        // Make sure archive database exists
+        const archDb = await getCreateArchiveDb(incoming.url[0]);
+
+        // Time to modify!
+        const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+
+        // Prevent clashes
+        metaDoc.stream = metaDoc.id;
+        delete metaDoc.id, metaDoc._id;
+
+        // We could add to existing but then we would archive the archive
+        // Write document to archive
+        await archDb.post(checkDoc(metaDoc));
+
+        // Rewrite pouchdb meta root document
+        await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+        return true;
+      } catch (e) {
+        // Any errors continue
+        return false;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * Pouchdb Metadoc rewrite (trimming)
+   *
+   * @param {*} metaDoc
+   * @param {string} position
+   * @returns
+   */
+  const prepareArchiveDoc = (metaDoc: any, position: number) => {
+    // Time to modify!
+    const newMetaDoc = {
+      id: metaDoc.id,
+      rev: metaDoc.rev,
+      rev_tree: [
+        {
+          // pos: metaDoc.rev_tree[0].pos,
+          pos: position - 1, // Get parent starting pos
+          ids: getLastInTree(metaDoc.rev_tree[0].ids),
+        },
+      ],
+      rev_map: {
+        [metaDoc.rev]: metaDoc.rev_map[metaDoc.rev],
+      },
+      winningRev: metaDoc.winningRev,
+      deleted: metaDoc.deleted,
+      seq: metaDoc.seq,
+    };
+    return newMetaDoc;
+  };
+
+  /**
+   * Create Archive Database
+   *
+   * @param {string} name
+   * @returns
+   */
+  const getCreateArchiveDb = async (name: string): Promise<any> => {
+    const archDb = getPDB(name + "_archive");
+    await archDb.info();
+
+    // Add index on id column that matches streams
+    await archDb.createIndex({
+      index: {
+        fields: ["stream"],
+      },
+    });
+
+    return archDb;
+  };
+
+  /**
+   * Gets the last 2 leafs in the tree (parent, current)
+   *
+   * @param {any[]} tree
+   * @param {any[]} [prevTree]
+   * @returns {*}
+   */
+  const getLastInTree = (tree: any[], prevTree?: any[]): any => {
+    if (tree[2].length) {
+      return getLastInTree(tree[2][0], tree);
+    }
+    return prevTree ? prevTree : tree;
+  };
+
+  /**
+   * Should we Archive the document
+   *
+   * @param {string} revString
+   * @returns {number}
+   */
+  const isArchivable = (revString: string): number => {
+    if (revString) {
+      const position = parseInt(revString.split("-")[0]);
+
+      // If we want to go for more (1000+) these files need updating :
+      // packages/storage/src/pouchdb/pouchdb-adapter-utils/lib/index.js:361
+      // packages/storage/src/pouchdb/pouchdb-adapter-utils/src/processDocs.js:18
+      // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
+      return position % 300 === 0 ? position : 0;
+    }
+    return 0;
+  };
+
+  /**
+   * Writes document directly to leveldb bypasses pouch
+   *
+   * @param {string} dbLoc
+   * @param {Buffer} path
+   * @param {string} data
+   * @returns {Promise<boolean>}
+   */
+  const writeRawDoc = (
+    dbLoc: string,
+    path: Buffer,
+    data: string
+  ): Promise<boolean> => {
+    return new Promise((resolve, reject) => {
+      // Get raw level access
+      const dbl = levelupdown(dbLoc);
+      if (dbl.status === "open") {
+        dbl.put(path, data, (error: Error) => {
+          if (error) {
+            return reject(error);
+          } else {
+            try {
+              return resolve(true);
+            } catch (e) {
+              return reject(e);
+            }
+          }
+        });
+      } else {
+        // dbl.close();
+        return reject("failed to open");
+      }
+    });
+  };
+
+  /**
+   * Reads document directly from leveldb bypasses pouch
+   *
+   * @param {string} dbLoc
+   * @param {Buffer} path
+   * @returns {Promise<any>}
+   */
+  const fetchRawDoc = (dbLoc: string, path: Buffer): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      // Get raw level access
+      const dbl = levelupdown(dbLoc);
+      if (dbl.status === "open") {
+        dbl.get(path, { asBuffer: false }, (error: Error, doc: string) => {
+          if (error) {
+            return reject(error);
+          } else {
+            try {
+              return resolve(JSON.parse(doc));
+            } catch (e) {
+              return reject(e);
+            }
+          }
+        });
+      } else {
+        return reject("failed to open");
+      }
+    });
+  };
+
+  /**
+   * Reusable Get for mutliple paths
+   *
+   * @param {string} dbLoc
+   * @param {string} path
+   * @returns {Promise<any>}
+   */
+  const genericPut = async (dbLoc: string, body: string): Promise<any> => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getPDB(dbLoc);
     try {
-      return await db.put(incoming.body);
+      return await db.put(body);
     } catch (e) {
       return "";
     }
-  });
+  };
 
   // Add new / updated document to the database with auto id
   http.use("*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
+
+    // Archive Document?
+    await markAsArchived(incoming);
+
     try {
       return await db.post(checkDoc(incoming.body));
     } catch (e) {
@@ -500,7 +744,7 @@ import { PouchDB, leveldown } from "./pouchdb";
         let opts = {
           new_edits:
             incoming.body.new_edits ||
-            (incoming.body.options && incoming.body.options.new_edits)
+            (incoming.body.options && incoming.body.options.new_edits),
         };
 
         // Protect from being empty or bad value
@@ -513,6 +757,47 @@ import { PouchDB, leveldown } from "./pouchdb";
 
         // Get Database
         let db = getPDB(incoming.url[0]);
+
+        // Prepare Archive database
+        // Make sure archive database exists
+        const archDb = await getCreateArchiveDb(incoming.url[0]);
+
+        // Cache database Location
+        const dbLoc = DIR_PREFIX + incoming.url[0];
+
+        // We need to see if the docs need archiving
+        for (let i = incoming.body.docs.length; i--; ) {
+          const doc = incoming.body.docs[i];
+          const position = isArchivable(doc._rev);
+          if (position) {
+            try {
+              // Raw LevelDB Path
+              const dbKeyPath = Buffer.concat([
+                PouchDBDocBuffer,
+                Buffer.from(doc._id),
+              ]);
+
+              // This may cause a problem re-opening? Or does c++ binding it re-use underneath?
+              const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+
+              // Time to modify!
+              const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+
+              // Prevent clashes
+              metaDoc.stream = metaDoc.id;
+              delete metaDoc.id, metaDoc._id;
+
+              // We could add to existing but then we would archive the archive
+              // Write document to archive
+              await archDb.post(checkDoc(metaDoc));
+
+              // Rewrite pouchdb meta root document
+              await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+            } catch (e) {
+              // Ignore errors and continue
+            }
+          }
+        }
 
         // Bulk Insert
         return await db.bulkDocs(incoming.body.docs, opts);
@@ -545,7 +830,7 @@ import { PouchDB, leveldown } from "./pouchdb";
       // We want to force /_utils to /_utils/ as this is the CouchDB behavior
       if (req.url === "/_utils") {
         res.writeHead(301, {
-          Location: "/_utils/"
+          Location: "/_utils/",
         });
         return;
       }
