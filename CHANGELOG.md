@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.3.0]
+
+* **Storage:** Automatic Archiving - Metadata surrounding data files (Streams, Stream Metadata & Volatile Data) is archived. The underlying data is still available from the database ([stream]@[revision]) using these archive files to access the revision values. Archiving happens every 300 revisions. The **data is not** archived.
+
+* **Storage:** New HTTP endpoint _raw to read the data files metadata.
+
 ## [2.2.0]
 
 2 new features are published with this release of Activeleder
