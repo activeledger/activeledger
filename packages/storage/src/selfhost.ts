@@ -65,7 +65,7 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  let getPDB = (name: string) => {
+  const getPDB = (name: string) => {
     if (!pDBCache[name]) {
       pDBCache[name] = new PouchDb(name, {
         db: levelupdown,
@@ -394,7 +394,7 @@ import { PouchDB, leveldown } from "./pouchdb";
     if (revision) {
       try {
         //ÿby-sequenceÿ0000000000000109
-        //ÿby-sequenceÿ0000000000000110        ;
+        //ÿby-sequenceÿ0000000000000110
         const revSeq = rootDoc.rev_map[revision];
         console.log(revSeq);
 
@@ -414,10 +414,22 @@ import { PouchDB, leveldown } from "./pouchdb";
 
   // Add new / updated document to the database
   http.use("*/**", "PUT", async (incoming: IActiveHttpIncoming) => {
-    // Get Database
-    // let db = getPDB(incoming.url[0]);
+    // Archive Document?
+    await markAsArchived(incoming);
+    return genericPut(incoming.url[0], incoming.body);
+  });
 
-    if (isArchivable(incoming.body._rev)) {
+  /**
+   * Detects if root pouch document needs to be archived and archives
+   *
+   * @param {IActiveHttpIncoming} incoming
+   * @returns {Promise<boolean>}
+   */
+  const markAsArchived = async (
+    incoming: IActiveHttpIncoming
+  ): Promise<boolean> => {
+    const position = isArchivable(incoming.body._rev);
+    if (position) {
       try {
         const dbLoc = DIR_PREFIX + incoming.url[0];
         const dbKeyPath = Buffer.concat([
@@ -427,52 +439,78 @@ import { PouchDB, leveldown } from "./pouchdb";
         const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
 
         // Make sure archive database exists
-        const archDb = getPDB(incoming.url[0] + "_archive");
-        await archDb.info();
+        const archDb = await getCreateArchiveDb(incoming.url[0]);
 
-        // Add index on id column that matches streams
-        await archDb.createIndex({
-          index: {
-            fields: ["streams"],
-          },
-        });
-
-        const [position] = metaDoc.rev.split("-");
         // Time to modify!
-        const newMetaDoc = {
-          id: metaDoc.id,
-          rev: metaDoc.rev,
-          rev_tree: [
-            {
-              // pos: metaDoc.rev_tree[0].pos,
-              pos: parseInt(position) - 1, // Get parent starting pos
-              ids: getLastInTree(metaDoc.rev_tree[0].ids),
-            },
-          ],
-          rev_map: {
-            [metaDoc.rev]: metaDoc.rev_map[metaDoc.rev],
-          },
-          winningRev: metaDoc.winningRev,
-          deleted: metaDoc.deleted,
-          seq: metaDoc.seq,
-        };
+        const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
         // Prevent clashes
         metaDoc.stream = metaDoc.id;
         delete metaDoc.id, metaDoc._id;
+
         // We could add to existing but then we would archive the archive
         // Write document to archive
         await archDb.post(checkDoc(metaDoc));
 
         // Rewrite pouchdb meta root document
         await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+        return true;
       } catch (e) {
         // Any errors continue
-        return genericPut(incoming.url[0], incoming.body);
+        return false;
       }
     }
-    return genericPut(incoming.url[0], incoming.body);
-  });
+    return false;
+  };
+
+  /**
+   * Pouchdb Metadoc rewrite (trimming)
+   *
+   * @param {*} metaDoc
+   * @param {string} position
+   * @returns
+   */
+  const prepareArchiveDoc = (metaDoc: any, position: number) => {
+    // Time to modify!
+    const newMetaDoc = {
+      id: metaDoc.id,
+      rev: metaDoc.rev,
+      rev_tree: [
+        {
+          // pos: metaDoc.rev_tree[0].pos,
+          pos: position - 1, // Get parent starting pos
+          ids: getLastInTree(metaDoc.rev_tree[0].ids),
+        },
+      ],
+      rev_map: {
+        [metaDoc.rev]: metaDoc.rev_map[metaDoc.rev],
+      },
+      winningRev: metaDoc.winningRev,
+      deleted: metaDoc.deleted,
+      seq: metaDoc.seq,
+    };
+    return newMetaDoc;
+  };
+
+  /**
+   * Create Archive Database
+   *
+   * @param {string} name
+   * @returns
+   */
+  const getCreateArchiveDb = async (name: string): Promise<any> => {
+    const archDb = getPDB(name + "_archive");
+    await archDb.info();
+
+    // Add index on id column that matches streams
+    await archDb.createIndex({
+      index: {
+        fields: ["stream"],
+      },
+    });
+
+    return archDb;
+  };
 
   /**
    * Gets the last 2 leafs in the tree (parent, current)
@@ -492,18 +530,19 @@ import { PouchDB, leveldown } from "./pouchdb";
    * Should we Archive the document
    *
    * @param {string} revString
-   * @returns {boolean}
+   * @returns {number}
    */
-  const isArchivable = (revString: string): boolean => {
+  const isArchivable = (revString: string): number => {
     if (revString) {
-      const [position] = revString.split("-");
+      const position = parseInt(revString.split("-")[0]);
 
       // If we want to go for more (1000+) these files need updating :
       // packages/storage/src/pouchdb/pouchdb-adapter-utils/lib/index.js:361
       // packages/storage/src/pouchdb/pouchdb-adapter-utils/src/processDocs.js:18
-      return parseInt(position) % 500 === 0;
+      // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
+      return position % 300 === 0 ? position : 0;
     }
-    return false;
+    return 0;
   };
 
   /**
@@ -591,6 +630,10 @@ import { PouchDB, leveldown } from "./pouchdb";
   http.use("*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
     let db = getPDB(incoming.url[0]);
+
+    // Archive Document?
+    await markAsArchived(incoming);
+
     try {
       return await db.post(checkDoc(incoming.body));
     } catch (e) {
@@ -714,6 +757,47 @@ import { PouchDB, leveldown } from "./pouchdb";
 
         // Get Database
         let db = getPDB(incoming.url[0]);
+
+        // Prepare Archive database
+        // Make sure archive database exists
+        const archDb = await getCreateArchiveDb(incoming.url[0]);
+
+        // Cache database Location
+        const dbLoc = DIR_PREFIX + incoming.url[0];
+
+        // We need to see if the docs need archiving
+        for (let i = incoming.body.docs.length; i--; ) {
+          const doc = incoming.body.docs[i];
+          const position = isArchivable(doc._rev);
+          if (position) {
+            try {
+              // Raw LevelDB Path
+              const dbKeyPath = Buffer.concat([
+                PouchDBDocBuffer,
+                Buffer.from(doc._id),
+              ]);
+
+              // This may cause a problem re-opening? Or does c++ binding it re-use underneath?
+              const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+
+              // Time to modify!
+              const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+
+              // Prevent clashes
+              metaDoc.stream = metaDoc.id;
+              delete metaDoc.id, metaDoc._id;
+
+              // We could add to existing but then we would archive the archive
+              // Write document to archive
+              await archDb.post(checkDoc(metaDoc));
+
+              // Rewrite pouchdb meta root document
+              await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+            } catch (e) {
+              // Ignore errors and continue
+            }
+          }
+        }
 
         // Bulk Insert
         return await db.bulkDocs(incoming.body.docs, opts);
