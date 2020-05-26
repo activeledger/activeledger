@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "0",
+  "version": "2.3.0",
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",
