@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.3.1]
+
+### Bug Fixes
+* **Network:** Locker correctly locks streams depending on transaction type. (Label or Key based).
+
 ## [2.3.0]
 
 * **Storage:** Automatic Archiving - Metadata surrounding data files (Streams, Stream Metadata & Volatile Data) is archived. The underlying data is still available from the database ([stream]@[revision]) using these archive files to access the revision values. Archiving happens every 300 revisions. The **data is not** archived.

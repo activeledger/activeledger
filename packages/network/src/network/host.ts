@@ -29,7 +29,7 @@ import {
   ActiveDSConnect,
   ActiveOptions,
   ActiveGZip,
-  ActiveRequest
+  ActiveRequest,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -166,13 +166,13 @@ export class Host extends Home {
               type: "broadcast",
               data: {
                 umid: entry.$umid,
-                nodes: entry.$nodes
-              }
+                nodes: entry.$nodes,
+              },
             });
           }
           return resolve({
             status: 200,
-            data: this.processPending[entry.$umid].entry
+            data: this.processPending[entry.$umid].entry,
           });
         }
       }
@@ -182,7 +182,7 @@ export class Host extends Home {
         entry: entry,
         resolve: resolve,
         reject: reject,
-        pid: 0
+        pid: 0,
       };
       // Ask for hold
       this.hold(entry);
@@ -238,7 +238,7 @@ export class Host extends Home {
         let body: Buffer[] = [];
 
         // Reads body data
-        req.on("data", chunk => {
+        req.on("data", (chunk) => {
           body.push(chunk);
         });
 
@@ -260,11 +260,11 @@ export class Host extends Home {
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
               false
           )
-            .then(body => {
+            .then((body) => {
               // Post Converted, Continue processing
               this.processEndpoints(req, res, body);
             })
-            .catch(error => {
+            .catch((error) => {
               // Failed to convery respond;
               this.writeResponse(
                 res,
@@ -284,8 +284,8 @@ export class Host extends Home {
     this.dbConnection
       .createIndex({
         index: {
-          fields: ["namespace", "type", "_id"]
-        }
+          fields: ["namespace", "type", "_id"],
+        },
       })
       .then(() => {
         // How many threads (Cache so we can check on ready)
@@ -302,8 +302,8 @@ export class Host extends Home {
             pubPem: Home.publicPem,
             privPem: Home.identity.pem,
             db: ActiveOptions.get<any>("db", {}),
-            __base: ActiveOptions.get("__base", __dirname)
-          }
+            __base: ActiveOptions.get("__base", __dirname),
+          },
         };
 
         // Setup Processors
@@ -319,7 +319,7 @@ export class Host extends Home {
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
       })
-      .catch(e => {
+      .catch((e) => {
         throw new Error("Couldn't create default index");
       });
   }
@@ -335,11 +335,11 @@ export class Host extends Home {
     // Create Process
     const pFork = fork(`${__dirname}/process.js`, [], {
       cwd: process.cwd(),
-      stdio: "inherit"
+      stdio: "inherit",
     });
 
     // Listen for message to respond to waiting http
-    pFork.on("message", m => {
+    pFork.on("message", (m) => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -348,7 +348,7 @@ export class Host extends Home {
         //pending.entry.$nodes[this.reference] = m.data.self;
         pending.entry.$nodes = {
           ...pending.entry.$nodes,
-          ...m.data.nodes
+          ...m.data.nodes,
         };
       }
 
@@ -358,7 +358,7 @@ export class Host extends Home {
           // So if we send as resolve it should still work (Will it keep our error?)
           pending.resolve({
             status: 200,
-            data: pending.entry
+            data: pending.entry,
           });
           // Remove Locks
           this.release(pending);
@@ -373,7 +373,7 @@ export class Host extends Home {
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
-            data: { ...pending.entry, ...m.data.entry }
+            data: { ...pending.entry, ...m.data.entry },
           });
           // Remove Locks
           this.release(pending);
@@ -416,7 +416,7 @@ export class Host extends Home {
           // So if we send as resolve it should still work
           pending.resolve({
             status: 200,
-            data: "UnhandledRejection Error"
+            data: "UnhandledRejection Error",
           });
           // Remove Locks
           this.release(pending);
@@ -428,11 +428,11 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", error => {
+    pFork.on("error", (error) => {
       ActiveLogger.fatal(error, "Processor Crashed");
       // Look for any transactions which are in this processor
       const pendings = Object.keys(this.processPending);
-      pendings.forEach(key => {
+      pendings.forEach((key) => {
         // Get Transaction
         const pending = this.processPending[key];
         // Was this transaction in the broken processor
@@ -440,7 +440,7 @@ export class Host extends Home {
           // Resolve to return oprhened transactions
           pending.resolve({
             status: 200,
-            data: pending.entry
+            data: pending.entry,
           });
 
           // Clear Internal
@@ -449,7 +449,7 @@ export class Host extends Home {
         }
       });
       // find from processors list
-      const pos = this.processors.findIndex(processor => {
+      const pos = this.processors.findIndex((processor) => {
         return processor.pid === pFork.pid;
       });
       // Remove from processors list
@@ -497,14 +497,14 @@ export class Host extends Home {
           this.terriBuildMap();
         }
         // Now to make sure all other processors reload
-        this.processors.forEach(processor => {
+        this.processors.forEach((processor) => {
           processor.send({
             type: "reload",
             data: {
               reference: Home.reference,
               right: Home.right,
-              neighbourhood: this.neighbourhood.get()
-            }
+              neighbourhood: this.neighbourhood.get(),
+            },
           });
         });
       })
@@ -527,8 +527,8 @@ export class Host extends Home {
       this.findProcessor(this.processPending[umid].pid)!.send({
         type: "destory",
         data: {
-          umid
-        }
+          umid,
+        },
       });
       (this.processPending[umid] as any).entry = null;
       (this.processPending[umid] as any) = null;
@@ -559,8 +559,8 @@ export class Host extends Home {
         $nodes: {
           [this.reference]: this.processPending[umid].entry.$nodes[
             this.reference
-          ]
-        }
+          ],
+        },
       });
 
       // Loop them all and broadcast the transaction
@@ -614,14 +614,35 @@ export class Host extends Home {
         transaction: {
           $broadcast: true,
           $tx: {},
-          $revs: {}
+          $revs: {},
         },
-        reason: "Failed to rebroadcast while in memory"
+        reason: "Failed to rebroadcast while in memory",
       };
 
       // Return
       this.dbErrorConnection.post(doc);
     }
+  }
+
+  /**
+   * TODO: Need to merge with labelOrKey@protocol/process.ts
+   *
+   * @private
+   * @param {*} txIO
+   * @param {boolean} [outputs=false]
+   * @returns {string[]}
+   * @memberof Host
+   */
+  private labelOrKey(txIO: any): string[] {
+    // Get reference for input or output
+    const keys = Object.keys(txIO || {});
+    const out: string[] = [];
+
+    for (let i = keys.length; i--; ) {
+      // Stream label or self
+      out.push(txIO[keys[i]].$stream || keys[i]);
+    }
+    return out;
   }
 
   /**
@@ -634,11 +655,14 @@ export class Host extends Home {
   private hold(v: ActiveDefinitions.LedgerEntry) {
     // Build a list of streams to lock
     // Would be good to cache this
-    let input = Object.keys(v.$tx.$i || {});
-    let output = Object.keys(v.$tx.$o || {});
+    // let input = Object.keys(v.$tx.$i || {});
+    // let output = Object.keys(v.$tx.$o || {});
 
     // Ask for locks
-    if (Locker.hold(Object.assign(input, output))) {
+    if (
+      v.$selfsign ||
+      Locker.hold([...this.labelOrKey(v.$tx.$i), ...this.labelOrKey(v.$tx.$o)])
+    ) {
       // Get next process from the array
       const robin = this.getRobin();
 
@@ -649,7 +673,7 @@ export class Host extends Home {
       // Setup this node response
       this.processPending[v.$umid].entry.$nodes[Home.reference] = {
         vote: false,
-        commit: false
+        commit: false,
       };
 
       // Remember who got selected
@@ -658,7 +682,7 @@ export class Host extends Home {
       // Pass transaction to sub processor
       robin.send({
         type: "tx",
-        entry: this.processPending[v.$umid].entry
+        entry: this.processPending[v.$umid].entry,
       });
 
       // If we want to send BEFORE this node has processed uncomment
@@ -671,7 +695,7 @@ export class Host extends Home {
       // No, How to deal with it?
       this.processPending[v.$umid].reject({
         status: 100,
-        error: "Busy Locks"
+        error: "Busy Locks",
       });
     }
   }
@@ -705,11 +729,14 @@ export class Host extends Home {
   private release(pending: process) {
     // Build a list of streams to release
     // Would be good to cache this
-    const input = Object.keys(pending.entry.$tx.$i || {});
-    const output = Object.keys(pending.entry.$tx.$o || {});
+    // const input = Object.keys(pending.entry.$tx.$i || {});
+    // const output = Object.keys(pending.entry.$tx.$o || {});
 
     // Ask for releases
-    Locker.release([...input, ...output]);
+    Locker.release([
+      ...this.labelOrKey(pending.entry.$tx.$i),
+      ...this.labelOrKey(pending.entry.$tx.$o),
+    ]);
 
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
@@ -744,11 +771,11 @@ export class Host extends Home {
         $umid: tx.$umid,
         $selfsign: tx.$selfsign,
         $sigs: tx.$sigs,
-        $remoteAddr: tx.$remoteAddr
+        $remoteAddr: tx.$remoteAddr,
       });
 
       // Loop all hybrids and send
-      this.hybridHosts.forEach(hybrid => {
+      this.hybridHosts.forEach((hybrid) => {
         if (hybrid.active) {
           ActiveRequest.send(
             hybrid.url,
@@ -757,7 +784,7 @@ export class Host extends Home {
             txData,
             true
           )
-            .then(response => {
+            .then((response) => {
               // Hybrid Active, Has the node missed anything?
               // The below may create a 404 error log.
               this.dbErrorConnection
@@ -785,8 +812,8 @@ export class Host extends Home {
                     // Get all New / Updated Docs
                     const updated = [
                       ...(activityStreams?.new || []),
-                      ...(activityStreams?.updated || [])
-                    ].map(stream => stream.id);
+                      ...(activityStreams?.updated || []),
+                    ].map((stream) => stream.id);
 
                     // Also need $i, $o and $r,  Can probably reuse the .keys
                     const input = tx.$tx.$i
@@ -826,9 +853,9 @@ export class Host extends Home {
                     return this.dbConnection
                       .allDocs({
                         include_docs: true,
-                        keys
+                        keys,
                       })
-                      .then(results => {
+                      .then((results) => {
                         // Return the results with the error id
                         if (results.rows.length) {
                           // Can ignore responses
@@ -838,7 +865,7 @@ export class Host extends Home {
                             ["X-Activeledger:" + hybrid.auth],
                             {
                               umid: tx.$umid,
-                              streams: results.rows
+                              streams: results.rows,
                             }
                           );
                         }
@@ -1031,7 +1058,7 @@ export class Host extends Home {
           "Access-Control-Allow-Methods": "GET, POST",
           "Access-Control-Allow-Headers":
             (req.headers["access-control-request-headers"] as string) || "*",
-          "X-Powered-By": "Activeledger"
+          "X-Powered-By": "Activeledger",
         });
         res.end();
         return;
@@ -1084,7 +1111,7 @@ export class Host extends Home {
       "Content-Type": "application/json",
       "Content-Encoding": "none",
       "Access-Control-Allow-Origin": "*",
-      "X-Powered-By": "Activeledger"
+      "X-Powered-By": "Activeledger",
     };
 
     // Modify output if can compress
