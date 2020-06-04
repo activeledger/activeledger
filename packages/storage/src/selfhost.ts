@@ -24,7 +24,9 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
-import { PouchDB, leveldown } from "./pouchdb";
+import { LevelMe } from "./levelme";
+//import { PouchDB, leveldown } from "./pouchdb";
+
 
 (function () {
   // Fauxton Path
@@ -34,14 +36,15 @@ import { PouchDB, leveldown } from "./pouchdb";
   const DIR_PREFIX = "./" + process.argv[2] + "/";
 
   // PouchDB Connection Handler
-  const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
+  // const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
 
   // How PouchDB wraps documents keys
   const PouchDBDocBuffer = Buffer.from("ÿdocument-storeÿ");
   const PouchDBSeqBuffer = Buffer.from("ÿby-sequenceÿ");
 
   // PouchDB Connection Cache
-  let pDBCache: any = {};
+  let pDBCache: { [index: string]: LevelMe } = {};
+  //let pDBCache: any = {};
 
   // Leveldown Cache
   let leveldownCache: any = {};
@@ -52,12 +55,12 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  let levelupdown = (name: string) => {
-    if (!leveldownCache[name]) {
-      leveldownCache[name] = leveldown(name);
-    }
-    return leveldownCache[name];
-  };
+  // let levelupdown = (name: string) => {
+  //   if (!leveldownCache[name]) {
+  //     leveldownCache[name] = leveldown(name);
+  //   }
+  //   return leveldownCache[name];
+  // };
 
   /**
    * Manages Pouch Connections
@@ -65,11 +68,9 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  const getPDB = (name: string) => {
+  const getPDB = (name: string): LevelMe => {
     if (!pDBCache[name]) {
-      pDBCache[name] = new PouchDb(name, {
-        db: levelupdown,
-      });
+      pDBCache[name] = new LevelMe(name);
     }
     return pDBCache[name];
   };
@@ -107,7 +108,7 @@ import { PouchDB, leveldown } from "./pouchdb";
   http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
-      adapters: ["leveldb"],
+      adapters: ["levelme"],
     };
   });
 
@@ -135,7 +136,9 @@ import { PouchDB, leveldown } from "./pouchdb";
     // if (fs.existsSync(DIR_PREFIX + incoming.url[0])) {
     // Get Database
     let db = getPDB(incoming.url[0]);
+    return {};
     let info = await db.info();
+
 
     // Now add data_size
     info.data_size = 0;
@@ -179,7 +182,7 @@ import { PouchDB, leveldown } from "./pouchdb";
       // If we have this db open we need to close it
       if (pDBCache[incoming.url[0]]) {
         await pDBCache[incoming.url[0]].close();
-        pDBCache[incoming.url[0]] = null;
+        delete pDBCache[incoming.url[0]];
       }
 
       // Delete Database
@@ -331,9 +334,9 @@ import { PouchDB, leveldown } from "./pouchdb";
   const genericDelete = (dbLoc: string, docName: string): Promise<any> => {
     return new Promise(async (resolve, reject) => {
       // Let Pouch create the connection
-      await getPDB(dbLoc).info();
+      //await getPDB(dbLoc).info();
       // Get Database as leveldown
-      let db = levelupdown(DIR_PREFIX + dbLoc);
+      let db = {} as any //levelupdown(DIR_PREFIX + dbLoc);
 
       // make sure the database was opened by pouch
       if (db.status === "open") {
@@ -560,7 +563,7 @@ import { PouchDB, leveldown } from "./pouchdb";
   ): Promise<boolean> => {
     return new Promise((resolve, reject) => {
       // Get raw level access
-      const dbl = levelupdown(dbLoc);
+      const dbl = {} as any //levelupdown(dbLoc);
       if (dbl.status === "open") {
         dbl.put(path, data, (error: Error) => {
           if (error) {
@@ -590,7 +593,7 @@ import { PouchDB, leveldown } from "./pouchdb";
   const fetchRawDoc = (dbLoc: string, path: Buffer): Promise<any> => {
     return new Promise((resolve, reject) => {
       // Get raw level access
-      const dbl = levelupdown(dbLoc);
+      const dbl = {} as any //levelupdown(dbLoc);
       if (dbl.status === "open") {
         dbl.get(path, { asBuffer: false }, (error: Error, doc: string) => {
           if (error) {
