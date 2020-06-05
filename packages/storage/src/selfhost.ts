@@ -27,7 +27,6 @@ import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
 //import { PouchDB, leveldown } from "./pouchdb";
 
-
 (function () {
   // Fauxton Path
   const FAUXTON_PATH = __dirname + "/fauxton/";
@@ -68,9 +67,9 @@ import { LevelMe } from "./levelme";
    * @param {string} name
    * @returns
    */
-  const getPDB = (name: string): LevelMe => {
+  const getDB = (name: string): LevelMe => {
     if (!pDBCache[name]) {
-      pDBCache[name] = new LevelMe(name);
+      pDBCache[name] = new LevelMe(DIR_PREFIX, name);
     }
     return pDBCache[name];
   };
@@ -135,10 +134,8 @@ import { LevelMe } from "./levelme";
   http.use("*", "GET", async (incoming: IActiveHttpIncoming) => {
     // if (fs.existsSync(DIR_PREFIX + incoming.url[0])) {
     // Get Database
-    let db = getPDB(incoming.url[0]);
-    return {};
+    let db = getDB(incoming.url[0]);
     let info = await db.info();
-
 
     // Now add data_size
     info.data_size = 0;
@@ -153,7 +150,7 @@ import { LevelMe } from "./levelme";
   // Create Database
   http.use("*", "PUT", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.body.name);
+    let db = getDB(incoming.body.name);
 
     // Create Database
     await db.info();
@@ -206,21 +203,21 @@ import { LevelMe } from "./levelme";
   // Get Index
   http.use("/*/_index", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Db
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.getIndexes();
   });
 
   // Create Index
   http.use("/*/_index", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Db
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.createIndex(incoming.body);
   });
 
   // Delete Index
   http.use("/*/_index/*/*/*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Db
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.deleteIndex({
       ddoc: incoming.url[2],
       type: incoming.url[3],
@@ -234,7 +231,7 @@ import { LevelMe } from "./levelme";
     "POST",
     async (incoming: IActiveHttpIncoming) => {
       // Get Db
-      let db = getPDB(incoming.url[0]);
+      let db = getDB(incoming.url[0]);
 
       // Get all Indexes
       const indexes: any[] = (await db.getIndexes()).indexes;
@@ -264,14 +261,14 @@ import { LevelMe } from "./levelme";
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.allDocs(prepareAllDocs(incoming.query));
   });
 
   // Get all docs filtered from a database
   http.use("*/_all_docs", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.allDocs(
       prepareAllDocs(Object.assign(incoming.query, incoming.body))
     );
@@ -314,7 +311,7 @@ import { LevelMe } from "./levelme";
     // Get Database
     return new Promise(async (resolve, reject) => {
       // Get Database
-      let db = getPDB(dbLoc);
+      let db = getDB(dbLoc);
       db.get(decodeURIComponent(path))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
@@ -336,7 +333,7 @@ import { LevelMe } from "./levelme";
       // Let Pouch create the connection
       //await getPDB(dbLoc).info();
       // Get Database as leveldown
-      let db = {} as any //levelupdown(DIR_PREFIX + dbLoc);
+      let db = {} as any; //levelupdown(DIR_PREFIX + dbLoc);
 
       // make sure the database was opened by pouch
       if (db.status === "open") {
@@ -388,7 +385,7 @@ import { LevelMe } from "./levelme";
       PouchDBDocBuffer,
       Buffer.from(decodeURIComponent(root)),
     ]);
-    await getPDB(incoming.url[0]).info();
+    await getDB(incoming.url[0]).info();
 
     // Get Main Doc
     const rootDoc = await fetchRawDoc(dbLoc, dbKeyPath);
@@ -502,7 +499,7 @@ import { LevelMe } from "./levelme";
    * @returns
    */
   const getCreateArchiveDb = async (name: string): Promise<any> => {
-    const archDb = getPDB(name + "_archive");
+    const archDb = getDB(name + "_archive");
     await archDb.info();
 
     // Add index on id column that matches streams
@@ -563,7 +560,7 @@ import { LevelMe } from "./levelme";
   ): Promise<boolean> => {
     return new Promise((resolve, reject) => {
       // Get raw level access
-      const dbl = {} as any //levelupdown(dbLoc);
+      const dbl = {} as any; //levelupdown(dbLoc);
       if (dbl.status === "open") {
         dbl.put(path, data, (error: Error) => {
           if (error) {
@@ -593,7 +590,7 @@ import { LevelMe } from "./levelme";
   const fetchRawDoc = (dbLoc: string, path: Buffer): Promise<any> => {
     return new Promise((resolve, reject) => {
       // Get raw level access
-      const dbl = {} as any //levelupdown(dbLoc);
+      const dbl = {} as any; //levelupdown(dbLoc);
       if (dbl.status === "open") {
         dbl.get(path, { asBuffer: false }, (error: Error, doc: string) => {
           if (error) {
@@ -621,7 +618,7 @@ import { LevelMe } from "./levelme";
    */
   const genericPut = async (dbLoc: string, body: string): Promise<any> => {
     // Get Database
-    let db = getPDB(dbLoc);
+    let db = getDB(dbLoc);
     try {
       return await db.put(body);
     } catch (e) {
@@ -632,7 +629,7 @@ import { LevelMe } from "./levelme";
   // Add new / updated document to the database with auto id
   http.use("*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
 
     // Archive Document?
     await markAsArchived(incoming);
@@ -654,7 +651,7 @@ import { LevelMe } from "./levelme";
       res: http.ServerResponse
     ) => {
       // Get Database
-      let db = getPDB(incoming.url[0]);
+      let db = getDB(incoming.url[0]);
 
       // Limit check
       if (incoming.query.limit < 1) {
@@ -759,7 +756,7 @@ import { LevelMe } from "./levelme";
         }
 
         // Get Database
-        let db = getPDB(incoming.url[0]);
+        let db = getDB(incoming.url[0]);
 
         // Prepare Archive database
         // Make sure archive database exists
@@ -811,13 +808,13 @@ import { LevelMe } from "./levelme";
   // Find API
   http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.find(incoming.body);
   });
 
   // Explain
   http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.explain(incoming.body);
   });
 
