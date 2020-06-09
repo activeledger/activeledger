@@ -1,3 +1,4 @@
+import { createHash, Hash } from "crypto";
 import RocksDB from "rocksdb";
 import { LevelUp, default as levelup } from "levelup";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -10,6 +11,7 @@ import { EventEmitter } from "events";
  */
 interface document {
   _id: string;
+  _rev?: string;
   [index: string]: unknown;
 }
 
@@ -23,6 +25,26 @@ interface allDocOptions {
   endkey?: string;
   limit?: number;
   skip?: number;
+}
+
+interface branchStatus {
+  status: string;
+}
+type branch = [[string, branchStatus, branch | []]];
+
+interface tree {
+  pos: number;
+  ids: branch;
+}
+
+interface schema extends document {
+  rev_tree: tree[];
+  rev_map: {
+    [index: string]: number;
+  };
+  winningRev: string;
+  deleted: boolean;
+  seq: number;
 }
 
 /**
@@ -93,8 +115,18 @@ export class LevelMe {
    */
   private docUpdateSeq = 0;
 
+  /**
+   * Store hash digster
+   *
+   * @private
+   * @type {Hash}
+   * @memberof LevelMe
+   */
+  private revHasher: Hash;
+
   constructor(location: string, private name: string) {
     this.levelUp = levelup(RocksDB(location + name));
+    this.revHasher = createHash("md5");
   }
 
   /**
@@ -115,6 +147,53 @@ export class LevelMe {
         await this.levelUp.get(LevelMe.META_PREFIX + "_local_last_update_seq")
       ).readInt32BE();
     }
+  }
+
+  /**
+   * Navigate to the end of the branch
+   *
+   * We can possibly ignore the winningRev as this isn't a concern for us at this point
+   *
+   * @private
+   * @param {branch} branch
+   * @param {number} [pos=0]
+   * @returns {{branch: branch, pos: number}}
+   * @memberof LevelMe
+   */
+  private findBranchEnd(
+    branch: branch,
+    pos: number = 0
+  ): { branch: branch; pos: number } {
+    if (branch[0][2].length) {
+      // Move further along the branch
+      return this.findBranchEnd(branch[0][2], ++pos);
+    } else {
+      // We are at the tip! Return this branch
+      return {
+        branch,
+        pos: ++pos,
+      };
+    }
+  }
+
+  /**
+   * Gets the latest sequence data document
+   *
+   * @private
+   * @param {schema} doc
+   * @returns {Promise<document>}
+   * @memberof LevelMe
+   */
+  private async seqDocFromRoot(doc: schema): Promise<document> {
+    // Fetch data document from twig (Performance boost could be found here)
+    const twig = this.findBranchEnd(doc.rev_tree[0].ids);
+
+    // Get the actual data document
+    return JSON.parse(
+      (
+        await this.levelUp.get(LevelMe.SEQ_PREFIX + twig.branch[0][0])
+      ).toString()
+    );
   }
 
   /**
@@ -228,6 +307,9 @@ export class LevelMe {
       // Cache rows to be returned
       const rows: any[] = [];
 
+      // For checking on end
+      const promises: Promise<document>[] = [];
+
       // Read / Search the database as a stream
       this.levelUp
         .createReadStream({
@@ -237,25 +319,35 @@ export class LevelMe {
             : LevelMe.META_PREFIX,
           limit,
         })
-        .on("data", function (data) {
+        .on("data", async (data) => {
           // Filter out the "skipped" keys
           if (options.skip) {
             options.skip--;
             return;
           }
           const doc = JSON.parse(data.value.toString());
+
+          // Get the actual data document
+          const promise = this.seqDocFromRoot(doc);
+          promises.push(promise);
+          const dataDoc = await promise;
+
           // UI Viewer Compatible
-          doc.id = doc._id;
-          delete doc._id;
-          rows.push(doc);
+          //dataDoc._id = data.key.slice(18).toString();
+          console.log(dataDoc._id);
+
+          //delete doc._id;
+          rows.push(dataDoc);
         })
-        .on("error", function (err) {
+        .on("error", (err) => {
           reject(err);
         })
-        .on("close", function () {})
-        .on("end", function () {
+        .on("close", () => {})
+        .on("end", async () => {
+          await Promise.all(promises);
+          console.log(rows);
           resolve({
-            total_rows: this.doc_count,
+            total_rows: this.docCount,
             offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
             rows,
           });
@@ -270,10 +362,16 @@ export class LevelMe {
    * @returns
    * @memberof LevelMe
    */
-  public async get(key: string) {
+  public async get(key: string, raw = false) {
     await this.open();
     // Allow errors to bubble up?
-    return await this.levelUp.get(LevelMe.DOC_PREFIX + key);
+    let doc = await this.levelUp.get(LevelMe.DOC_PREFIX + key);
+    if (raw) {
+      return doc;
+    } else {
+      doc = JSON.parse(doc) as schema;
+      return await this.seqDocFromRoot(doc);
+    }
   }
 
   /**
@@ -286,15 +384,104 @@ export class LevelMe {
   public async post(doc: document) {
     await this.open();
 
+    // Convert doc to string
+    const incomingDoc = JSON.stringify(doc);
+
+    // MD5 input to act as tree position
+    const md5 = this.revHasher.update(incomingDoc).digest("hex");
+
+    // Current Document root schema
+    let currentDocRoot: schema;
+
+    // Current head revision with position
+    let newRev: string;
+
+    // Flag for doc counter
+    let newDoc = false;
+
+    // Does Document eixst?
+    try {
+      currentDocRoot = JSON.parse(
+        await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
+      ) as schema;
+      // Revision / Tree Checks?
+      // Activeledger does this anyway so can we gain performance not doing it here
+
+      // find the end of the branch
+      // will only have 1 branch which will be first
+      const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
+
+      // Check incoming doc has the same revision
+      if (doc._rev !== `${++twig.pos}-${twig.branch[0][0]}`) {
+        throw "Revision Mismatch";
+      }
+
+      // Update rev_* and doc
+      newRev = `${++twig.pos}-${md5}`;
+      twig.branch[0][2] = [[md5, { status: "available" }, []]];
+      currentDocRoot.winningRev = newRev;
+      currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this.docUpdateSeq;
+      doc._rev = newRev;
+    } catch (e) {
+      newDoc = true;
+      // Sequence cache after increase
+      const seq = ++this.docUpdateSeq;
+      newRev = doc._rev = `1-${md5}`;
+      // New Doc
+      currentDocRoot = {
+        _id: doc._id,
+        rev_tree: [
+          {
+            pos: 1,
+            ids: [[md5, { status: "available" }, []]],
+          },
+        ],
+        rev_map: {
+          [newRev]: seq,
+        },
+        winningRev: newRev,
+        deleted: false,
+        seq,
+      };
+    }
+
     // increase sequence & count!
 
     // It is more complex than this, We need 2 documents metadata and "data" sequence doc
-    await this.levelUp.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+    //await this.levelUp.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
 
+    // submit as bulk
+    // 1. sequence data file
+    // 2. root file
+    // 3. LevelMe.META_PREFIX + "_local_last_update_seq"
+    // 4. LevelMe.META_PREFIX + "_local_doc_count"
+    try {
+      console.log("1");
+      const batch = this.levelUp
+        .batch()
+        .put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
+        .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
+        .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
+
+      if (newDoc) {
+        console.log("2");
+        await batch
+          .put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount)
+          .write();
+      } else {
+        await batch.write();
+      }
+    } catch (e) {
+      console.log(e);
+      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
+      // Actually the sequence cannot be unwound because while awaiting another document maybe pending
+    }
+
+    console.log("3");
     return {
       ok: true,
       id: doc._id,
-      rev: "TBD",
+      rev: newRev,
     };
   }
 
