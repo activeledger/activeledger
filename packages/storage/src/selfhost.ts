@@ -622,7 +622,8 @@ import { LevelMe } from "./levelme";
     try {
       return await db.put(body);
     } catch (e) {
-      return "";
+      e.reason = e.message;
+      throw e;
     }
   };
 
@@ -637,7 +638,8 @@ import { LevelMe } from "./levelme";
     try {
       return await db.post(checkDoc(incoming.body));
     } catch (e) {
-      return "";
+      e.reason = e.message;
+      throw e;
     }
   });
 
