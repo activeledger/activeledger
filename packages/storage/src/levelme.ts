@@ -1,4 +1,4 @@
-import { createHash, Hash } from "crypto";
+import { createHash } from "crypto";
 import RocksDB from "rocksdb";
 import { LevelUp, default as levelup } from "levelup";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -138,18 +138,8 @@ export class LevelMe {
    */
   private docUpdateSeq = 0;
 
-  /**
-   * Store hash digster
-   *
-   * @private
-   * @type {Hash}
-   * @memberof LevelMe
-   */
-  //private revHasher: Hash;
-
   constructor(location: string, private name: string) {
     this.levelUp = levelup(RocksDB(location + name));
-    //this.revHasher = createHash("md5");
   }
 
   /**
@@ -229,7 +219,6 @@ export class LevelMe {
    */
   private async seqDocFromRoot(doc: schema): Promise<document> {
     // Fetch data document from twig (Performance boost could be found here)
-    //const twig = this.findBranchEnd(doc.rev_tree[0].ids);
     const twig = this.findCachedBranchEnd(doc);
 
     // Get the actual data document
