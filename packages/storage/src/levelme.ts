@@ -27,16 +27,39 @@ interface allDocOptions {
   skip?: number;
 }
 
+/**
+ * Status of branch availibility. Typically "available"
+ *
+ * @interface branchStatus
+ */
 interface branchStatus {
   status: string;
 }
+
+
+/**
+ * Tuple of a branch
+ *
+ * @tuple tree
+ */
 type branch = [[string, branchStatus, branch | []]];
 
+/**
+ * Root of data tree
+ *
+ * @interface tree
+ */
 interface tree {
   pos: number;
   ids: branch;
 }
 
+/**
+ * Root document schema for tracking changes
+ *
+ * @interface schema
+ * @extends {document}
+ */
 interface schema extends document {
   rev_tree: tree[];
   rev_map: {
@@ -122,11 +145,11 @@ export class LevelMe {
    * @type {Hash}
    * @memberof LevelMe
    */
-  private revHasher: Hash;
+  //private revHasher: Hash;
 
   constructor(location: string, private name: string) {
     this.levelUp = levelup(RocksDB(location + name));
-    this.revHasher = createHash("md5");
+    //this.revHasher = createHash("md5");
   }
 
   /**
@@ -140,12 +163,16 @@ export class LevelMe {
       await this.levelUp.open();
 
       // Cache Values
-      this.docCount = (
-        await this.levelUp.get(LevelMe.META_PREFIX + "_local_doc_count")
-      ).readInt32BE();
-      this.docUpdateSeq = (
-        await this.levelUp.get(LevelMe.META_PREFIX + "_local_last_update_seq")
-      ).readInt32BE();
+      this.docCount = parseInt(
+        (
+          await this.levelUp.get(LevelMe.META_PREFIX + "_local_doc_count")
+        ).toString()
+      );
+      this.docUpdateSeq = parseInt(
+        (
+          await this.levelUp.get(LevelMe.META_PREFIX + "_local_last_update_seq")
+        ).toString()
+      );
     }
   }
 
@@ -177,6 +204,22 @@ export class LevelMe {
   }
 
   /**
+   * Jump straight to the cached wining branch end
+   *
+   * @private
+   * @param {schema} doc
+   * @returns {{ key: string; pos: number }}
+   * @memberof LevelMe
+   */
+  private findCachedBranchEnd(doc: schema): { key: string; pos: number } {
+    const [pos, key] = doc.winningRev.split("-");
+    return {
+      key,
+      pos: parseInt(pos),
+    };
+  }
+
+  /**
    * Gets the latest sequence data document
    *
    * @private
@@ -186,13 +229,12 @@ export class LevelMe {
    */
   private async seqDocFromRoot(doc: schema): Promise<document> {
     // Fetch data document from twig (Performance boost could be found here)
-    const twig = this.findBranchEnd(doc.rev_tree[0].ids);
+    //const twig = this.findBranchEnd(doc.rev_tree[0].ids);
+    const twig = this.findCachedBranchEnd(doc);
 
     // Get the actual data document
     return JSON.parse(
-      (
-        await this.levelUp.get(LevelMe.SEQ_PREFIX + twig.branch[0][0])
-      ).toString()
+      (await this.levelUp.get(LevelMe.SEQ_PREFIX + twig.key)).toString()
     );
   }
 
@@ -330,14 +372,7 @@ export class LevelMe {
           // Get the actual data document
           const promise = this.seqDocFromRoot(doc);
           promises.push(promise);
-          const dataDoc = await promise;
-
-          // UI Viewer Compatible
-          //dataDoc._id = data.key.slice(18).toString();
-          console.log(dataDoc._id);
-
-          //delete doc._id;
-          rows.push(dataDoc);
+          rows.push(await promise);
         })
         .on("error", (err) => {
           reject(err);
@@ -345,7 +380,6 @@ export class LevelMe {
         .on("close", () => {})
         .on("end", async () => {
           await Promise.all(promises);
-          console.log(rows);
           resolve({
             total_rows: this.docCount,
             offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
@@ -387,8 +421,8 @@ export class LevelMe {
     // Convert doc to string
     const incomingDoc = JSON.stringify(doc);
 
-    // MD5 input to act as tree position
-    const md5 = this.revHasher.update(incomingDoc).digest("hex");
+    // MD5 input to act as tree position    
+    const md5 = createHash("md5").update(incomingDoc).digest("hex");
 
     // Current Document root schema
     let currentDocRoot: schema;
@@ -412,21 +446,25 @@ export class LevelMe {
       const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
 
       // Check incoming doc has the same revision
-      if (doc._rev !== `${++twig.pos}-${twig.branch[0][0]}`) {
-        throw "Revision Mismatch";
+      if (doc._rev !== `${twig.pos}-${twig.branch[0][0]}`) {
+        throw { msg: "Revision Mismatch", throw: 1 };
       }
 
       // Update rev_* and doc
       newRev = `${++twig.pos}-${md5}`;
       twig.branch[0][2] = [[md5, { status: "available" }, []]];
-      currentDocRoot.winningRev = newRev;
+      currentDocRoot.winningRev = doc._rev = newRev;
       currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this.docUpdateSeq;
-      doc._rev = newRev;
     } catch (e) {
+      if (e?.throw) {
+        throw new Error(e.msg);
+      }
+
       newDoc = true;
       // Sequence cache after increase
       const seq = ++this.docUpdateSeq;
       newRev = doc._rev = `1-${md5}`;
+      
       // New Doc
       currentDocRoot = {
         _id: doc._id,
@@ -445,18 +483,12 @@ export class LevelMe {
       };
     }
 
-    // increase sequence & count!
-
-    // It is more complex than this, We need 2 documents metadata and "data" sequence doc
-    //await this.levelUp.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
-
     // submit as bulk
     // 1. sequence data file
     // 2. root file
     // 3. LevelMe.META_PREFIX + "_local_last_update_seq"
     // 4. LevelMe.META_PREFIX + "_local_doc_count"
     try {
-      console.log("1");
       const batch = this.levelUp
         .batch()
         .put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
@@ -464,7 +496,6 @@ export class LevelMe {
         .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
 
       if (newDoc) {
-        console.log("2");
         await batch
           .put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount)
           .write();
@@ -472,12 +503,10 @@ export class LevelMe {
         await batch.write();
       }
     } catch (e) {
-      console.log(e);
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
+      this.docCount--;
       // Actually the sequence cannot be unwound because while awaiting another document maybe pending
     }
-
-    console.log("3");
     return {
       ok: true,
       id: doc._id,
