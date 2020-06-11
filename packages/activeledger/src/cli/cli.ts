@@ -29,15 +29,20 @@ import { ActiveDataStore } from "@activeledger/activestorage";
 import { ActiveNetwork } from "@activeledger/activenetwork";
 import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
+import { PIDHandler, EPIDChild } from "./pid";
 
 export class CLIHandler {
+  private static readonly pidHandler: PIDHandler = new PIDHandler();
+
   /**
    * Start the local node
    *
    * @static
    * @memberof CLIHandler
    */
-  public static start(): void {
+  public static async start(pid: number): Promise<void> {
+    await CLIHandler.pidHandler.init();
+    await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, pid);
     this.normalStart();
   }
 
@@ -47,7 +52,18 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static stop(): void {}
+  public static async stop(): Promise<void> {
+    try {
+      await CLIHandler.pidHandler.init();
+      const pids = await CLIHandler.pidHandler.getPids();
+
+      process.kill(pids.activeledger, "SIGINT");
+      // process.kill(pids.activecore);
+      // process.kill(pids.activerestore);
+    } catch (error) {
+      ActiveLogger.error(error, "Error stopping activeledger");
+    }
+  }
 
   /**
    * Restart the local node
@@ -146,8 +162,6 @@ export class CLIHandler {
 
     // Check for local contracts folder
     if (!fs.existsSync("../contracts")) fs.mkdirSync("../contracts");
-
-    ActiveLogger.warn(fs.realpathSync("../contracts") + "/node_modules");
 
     // Check for modules link for running contracts
     if (!fs.existsSync("../contracts/node_modules"))
@@ -286,7 +300,7 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  private static boot(): void {
+  private static async boot(): Promise<void> {
     try {
       // Set Base Path
       ActiveOptions.set("__base", __dirname);
@@ -299,7 +313,7 @@ export class CLIHandler {
         if (ActiveOptions.get<any>("autostart", {}).core) {
           ActiveLogger.info("Auto starting - Core API");
           // Launch & Listen for launch error
-          child
+          const activecoreChild = child
             .spawn(
               /^win/.test(process.platform) ? "activecore.cmd" : "activecore",
               [],
@@ -311,13 +325,18 @@ export class CLIHandler {
             .on("error", (error) => {
               ActiveLogger.error(error, "Core API Failed to start");
             });
+
+          await CLIHandler.pidHandler.addPid(
+            EPIDChild.CORE,
+            activecoreChild.pid
+          );
         }
 
         // Auto Starting Restore Engine?
         if (ActiveOptions.get<any>("autostart", {}).restore) {
           ActiveLogger.info("Auto starting - Restore Engine");
           // Launch & Listen for launch error
-          child
+          const activerestoreChild = child
             .spawn(
               /^win/.test(process.platform)
                 ? "activerestore.cmd"
@@ -331,6 +350,11 @@ export class CLIHandler {
             .on("error", (error) => {
               ActiveLogger.error(error, "Restore Engine Failed to start");
             });
+
+          await CLIHandler.pidHandler.addPid(
+            EPIDChild.RESTORE,
+            activerestoreChild.pid
+          );
         }
       }
       //#endregion
@@ -521,9 +545,9 @@ export class CLIHandler {
             ActiveLogger.fatal("Networking Assertion Failed");
           });
       })
-      .catch((e) => {
+      .catch((error: any) => {
         ActiveLogger.fatal(
-          e.response ? e.response.data : e,
+          error.response ? error.response.data : error,
           "Unable to assess network for assertion"
         );
       });

@@ -43,11 +43,16 @@ if (!fs.existsSync("./.identity")) {
 // Quick Testnet builder
 if (ActiveOptions.get<boolean>("testnet", false)) {
   CLIHandler.setupTestnet();
-} else {
+} else if (ActiveOptions.get<boolean>("merge", false)) {
   // Merge Configs (Helps Build local net)
-  if (ActiveOptions.get<boolean>("merge", false)) {
-    CLIHandler.merge();
-  } else {
-    CLIHandler.start();
-  }
+  CLIHandler.merge();
+} else if (ActiveOptions.get<boolean>("stop", false)) {
+  CLIHandler.stop();
+} else {
+  CLIHandler.start(process.pid);
 }
+
+process.on("SIGINT", () => {
+  ActiveLogger.info("Got sigterm, exiting...");
+  process.exit();
+});
