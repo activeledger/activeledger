@@ -49,10 +49,10 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (ActiveOptions.get<boolean>("stop", false)) {
   CLIHandler.stop();
 } else {
-  CLIHandler.start(process.pid);
+  CLIHandler.start();
 }
 
-process.on("SIGINT", () => {
-  ActiveLogger.info("Got sigterm, exiting...");
+process.on("SIGTERM", () => {
+  ActiveLogger.warn(process.pid.toString(), "My PID");
   process.exit();
 });
