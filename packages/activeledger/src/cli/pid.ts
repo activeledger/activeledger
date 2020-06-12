@@ -139,6 +139,7 @@ export class PIDHandler {
     if (!data) {
       data = {
         activeledger: 0,
+        activechanges: 0,
         activecore: 0,
         activerestore: 0,
       };
@@ -177,12 +178,14 @@ export class PIDHandler {
 
 export enum EPIDChild {
   LEDGER = "activeledger",
+  CHANGES = "activechanges",
   CORE = "activecore",
   RESTORE = "activerestore",
 }
 
 interface IPID {
   activeledger: number;
+  activechanges: number;
   activecore: number;
   activerestore: number;
 }

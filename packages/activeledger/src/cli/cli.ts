@@ -40,9 +40,9 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static async start(pid: number): Promise<void> {
+  public static async start(): Promise<void> {
     await CLIHandler.pidHandler.init();
-    await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, pid);
+    await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
     this.normalStart();
   }
 
@@ -57,9 +57,12 @@ export class CLIHandler {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
 
-      process.kill(pids.activeledger, "SIGINT");
-      // process.kill(pids.activecore);
-      // process.kill(pids.activerestore);
+      process.kill(pids.activeledger);
+      if (pids.activechanges && pids.activechanges !== 0) {
+        // process.kill(pids.activechanges, "SIGINT");
+      }
+      // process.kill(pids.activecore, "SIGINT");
+      // process.kill(pids.activerestore, "SIGINT");
     } catch (error) {
       ActiveLogger.error(error, "Error stopping activeledger");
     }
