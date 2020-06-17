@@ -30,6 +30,19 @@ interface allDocOptions {
 }
 
 /**
+ * change doc options
+ *
+ * @interface changesOptions
+ */
+interface changesOptions {
+  since?: number | "now";
+  live?: boolean
+  limit?: number;
+  descending?: boolean
+  include_docs?: boolean;
+}
+
+/**
  * Status of branch availibility. Typically "available"
  *
  * @interface branchStatus
@@ -113,6 +126,15 @@ export class LevelMe {
    * @memberof LevelMe
    */
   private static SEQ_PREFIX = "ÿby-sequenceÿ";
+
+  /**
+   * Live changes emitter
+   *
+   * @private
+   * @static
+   * @memberof LevelMe
+   */
+  private static changeEmitter = new EventEmitter();
 
   /**
    * Holds the local copy of LevelUp
@@ -430,6 +452,10 @@ export class LevelMe {
     const writer = await this.prepareForWrite(doc, this.levelUp.batch());
     try {
       await writer.chain.write();
+      // Emit Changed Doc
+      LevelMe.changeEmitter.emit("change", {
+        doc,
+      });
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       this.docCount--;
@@ -473,7 +499,7 @@ export class LevelMe {
    * @returns {*}
    * @memberof LevelMe
    */
-  public changes(options: string): any {
+  public changes(options: changesOptions): any {
     // Promise<any> | EventEmittePromise<any> | EventEmitter {
     ActiveLogger.fatal("Not Implemented");
     return new Promise((a, b) => {});
@@ -498,6 +524,12 @@ export class LevelMe {
 
     try {
       await batch.write();
+      // Emit Changed Docs
+      for (let i = docs.length; i--; ) {
+        LevelMe.changeEmitter.emit("change", {
+          doc: docs[i] // Reference should be maintained
+        });
+      }
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       this.docCount = this.docCount - docs.length;
@@ -518,11 +550,13 @@ export class LevelMe {
   private async prepareForWrite(
     doc: document,
     chain: LevelUpChain<any, any>
-  ): Promise<{ chain: LevelUpChain<any, any>; rev: string }> {
+  ): Promise<{ chain: LevelUpChain<any, any>; rev: string, changes:any }> {
     await this.open();
 
     // Convert doc to string
     const incomingDoc = JSON.stringify(doc);
+
+    const changes = [];
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
