@@ -281,13 +281,13 @@ export class Host extends Home {
     });
 
     // Create Index
-    this.dbConnection
-      .createIndex({
-        index: {
-          fields: ["namespace", "type", "_id"],
-        },
-      })
-      .then(() => {
+    // this.dbConnection
+    //   .createIndex({
+    //     index: {
+    //       fields: ["namespace", "type", "_id"],
+    //     },
+    //   })
+    //   .then(() => {
         // How many threads (Cache so we can check on ready)
         const cpuTotal = PhysicalCores.count();
 
@@ -318,10 +318,10 @@ export class Host extends Home {
 
         // Setup Iterator
         this.processorIterator = this.processors[Symbol.iterator]();
-      })
-      .catch((e) => {
-        throw new Error("Couldn't create default index");
-      });
+      //})
+      // .catch((e) => {
+      //   throw new Error("Couldn't create default index");
+      // });
   }
 
   /**

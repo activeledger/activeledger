@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import RocksDB from "rocksdb";
-import { LevelUp, default as levelup } from "levelup";
+import { LevelUp, default as levelup, LevelUpChain } from "levelup";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 
@@ -25,6 +25,8 @@ interface allDocOptions {
   endkey?: string;
   limit?: number;
   skip?: number;
+  keys?: string[];
+  include_docs?: boolean;
 }
 
 /**
@@ -35,7 +37,6 @@ interface allDocOptions {
 interface branchStatus {
   status: string;
 }
-
 
 /**
  * Tuple of a branch
@@ -327,13 +328,6 @@ export class LevelMe {
   public allDocs(options: allDocOptions): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
       await this.open();
-      // No offset built in, Create one by skip + limit and counter on skip;
-      let limit = options.limit || -1;
-      if (options.skip && limit !== -1) {
-        // Convert to int
-        options.skip = parseInt((options.skip as unknown) as string);
-        limit += options.skip;
-      }
 
       // Cache rows to be returned
       const rows: any[] = [];
@@ -341,40 +335,68 @@ export class LevelMe {
       // For checking on end
       const promises: Promise<document>[] = [];
 
-      // Read / Search the database as a stream
-      this.levelUp
-        .createReadStream({
-          gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
-          lt: options.endkey
-            ? LevelMe.DOC_PREFIX + options.endkey
-            : LevelMe.META_PREFIX,
-          limit,
-        })
-        .on("data", async (data) => {
-          // Filter out the "skipped" keys
-          if (options.skip) {
-            options.skip--;
-            return;
-          }
-          const doc = JSON.parse(data.value.toString());
+      if (options.keys) {
+        for (let i = options.keys.length; i--; ) {
+          rows.push({ doc: await this.get(options.keys[i]) });
+        }
 
-          // Get the actual data document
-          const promise = this.seqDocFromRoot(doc);
-          promises.push(promise);
-          rows.push(await promise);
-        })
-        .on("error", (err) => {
-          reject(err);
-        })
-        .on("close", () => {})
-        .on("end", async () => {
-          await Promise.all(promises);
-          resolve({
-            total_rows: this.docCount,
-            offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
-            rows,
-          });
+        // Don't think much perfomance gain by a single await vs multi
+        //await Promise.all(promises);
+        return resolve({
+          total_rows: rows.length,
+          offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+          rows,
         });
+      } else {
+        // No offset built in, Create one by skip + limit and counter on skip;
+        let limit = options.limit || -1;
+        if (options.skip && limit !== -1) {
+          // Convert to int
+          options.skip = parseInt((options.skip as unknown) as string);
+          limit += options.skip;
+        }
+
+        // Read / Search the database as a stream
+        this.levelUp
+          .createReadStream({
+            gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
+            lt: options.endkey
+              ? LevelMe.DOC_PREFIX + options.endkey
+              : LevelMe.META_PREFIX,
+            limit,
+          })
+          .on("data", async (data) => {
+            // Filter out the "skipped" keys
+            if (options.skip) {
+              options.skip--;
+              return;
+            }
+            const doc = JSON.parse(data.value.toString());
+
+            // Don't realy need this but the quickest switch for needing "id" for database viewer
+            if (options.include_docs) {
+              // Get the actual data document
+              const promise = this.seqDocFromRoot(doc);
+              promises.push(promise);
+              rows.push(await promise);
+            } else {
+              doc.id = doc._id;
+              rows.push(doc);
+            }
+          })
+          .on("error", (err) => {
+            reject(err);
+          })
+          .on("close", () => {})
+          .on("end", async () => {
+            await Promise.all(promises);
+            resolve({
+              total_rows: this.docCount,
+              offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+              rows,
+            });
+          });
+      }
     });
   }
 
@@ -405,12 +427,104 @@ export class LevelMe {
    * @memberof LevelMe
    */
   public async post(doc: document) {
+    const writer = await this.prepareForWrite(doc, this.levelUp.batch());
+    try {
+      await writer.chain.write();
+    } catch (e) {
+      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
+      this.docCount--;
+      // Actually the sequence cannot be unwound because while awaiting another document maybe pending
+    }
+    return {
+      ok: true,
+      id: doc._id,
+      rev: writer.rev,
+    };
+  }
+
+  /**
+   * Alias for post, Legacy from PouchDb
+   *
+   * @param {(document | unknown)} doc
+   * @returns
+   * @memberof LevelMe
+   */
+  public async put(doc: document | unknown) {
+    return await this.post(doc as document);
+  }
+
+  /**
+   * Deletes a data / sequence / meta document
+   * Warning: Shouldn't be so easy to call this
+   *
+   * @param {string} key
+   * @returns
+   * @memberof LevelMe
+   */
+  public async del(key: string) {
+    ActiveLogger.fatal("Not Implemented");
+    return {};
+  }
+
+  /**
+   * Provide real-time document insertion with starting point supported
+   *
+   * @param {string} options
+   * @returns {*}
+   * @memberof LevelMe
+   */
+  public changes(options: string): any {
+    // Promise<any> | EventEmittePromise<any> | EventEmitter {
+    ActiveLogger.fatal("Not Implemented");
+    return new Promise((a, b) => {});
+    //return new EventEmitter();
+  }
+
+  /**
+   * Bulk write documents (While acting like post)
+   *
+   * @param {unknown[]} docs
+   * @param {unknown} options
+   * @returns
+   * @memberof LevelMe
+   */
+  public async bulkDocs(docs: document[]): Promise<boolean> {
+    // Now we could loop post, But then its not a single atomic write.
+    let batch = await this.levelUp.batch();
+    for (let i = docs.length; i--; ) {
+      const writer = await this.prepareForWrite(docs[i], batch);
+      batch = writer.chain; // Do I need do do this, Reference kept?
+    }
+
+    try {
+      await batch.write();
+    } catch (e) {
+      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
+      this.docCount = this.docCount - docs.length;
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   *
+   *
+   * @private
+   * @param {document} doc
+   * @param {LevelUpChain<any, any>} chain
+   * @returns {Promise<{ chain: LevelUpChain<any, any>; rev: string }>}
+   * @memberof LevelMe
+   */
+  private async prepareForWrite(
+    doc: document,
+    chain: LevelUpChain<any, any>
+  ): Promise<{ chain: LevelUpChain<any, any>; rev: string }> {
     await this.open();
 
     // Convert doc to string
     const incomingDoc = JSON.stringify(doc);
 
-    // MD5 input to act as tree position    
+    // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
 
     // Current Document root schema
@@ -453,7 +567,7 @@ export class LevelMe {
       // Sequence cache after increase
       const seq = ++this.docUpdateSeq;
       newRev = doc._rev = `1-${md5}`;
-      
+
       // New Doc
       currentDocRoot = {
         _id: doc._id,
@@ -477,79 +591,17 @@ export class LevelMe {
     // 2. root file
     // 3. LevelMe.META_PREFIX + "_local_last_update_seq"
     // 4. LevelMe.META_PREFIX + "_local_doc_count"
-    try {
-      const batch = this.levelUp
-        .batch()
-        .put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
-        .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
-        .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
+    chain
+      .put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
+      .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
+      .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
 
-      if (newDoc) {
-        await batch
-          .put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount)
-          .write();
-      } else {
-        await batch.write();
-      }
-    } catch (e) {
-      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
-      this.docCount--;
-      // Actually the sequence cannot be unwound because while awaiting another document maybe pending
+    if (newDoc) {
+      chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
     }
     return {
-      ok: true,
-      id: doc._id,
+      chain,
       rev: newRev,
     };
-  }
-
-  /**
-   * Alias for post, Legacy from PouchDb
-   *
-   * @param {(document | unknown)} doc
-   * @returns
-   * @memberof LevelMe
-   */
-  public async put(doc: document | unknown) {
-    return await this.post(doc as document);
-  }
-
-  /**
-   * Deletes a data / sequence / meta document
-   * Warning: Shouldn't be so easy to call this
-   *
-   * @param {string} key
-   * @returns
-   * @memberof LevelMe
-   */
-  public async del(key: string) {
-    ActiveLogger.fatal("Not Implemented");
-    return {};
-  }
-
-  /**
-   * Provide real-time document insertion with starting point supported
-   *
-   * @param {string} options
-   * @returns {*}
-   * @memberof LevelMe
-   */
-  public changes(options: string): any {
-    // Promise<any> | EventEmittePromise<any> | EventEmitter {
-    ActiveLogger.fatal("Not Implemented");
-    return new EventEmitter();
-  }
-
-  /**
-   * Bulk write documents (While acting like post)
-   *
-   * @param {unknown[]} docs
-   * @param {unknown} options
-   * @returns
-   * @memberof LevelMe
-   */
-  public async bulkDocs(docs: unknown[], options: unknown) {
-    ActiveLogger.fatal("Not Implemented");
-    return {};
   }
 }

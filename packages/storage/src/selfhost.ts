@@ -396,7 +396,6 @@ import { LevelMe } from "./levelme";
         //ÿby-sequenceÿ0000000000000109
         //ÿby-sequenceÿ0000000000000110
         const revSeq = rootDoc.rev_map[revision];
-        console.log(revSeq);
 
         const dbSeqPath = Buffer.concat([
           PouchDBSeqBuffer,
@@ -405,7 +404,6 @@ import { LevelMe } from "./levelme";
 
         return await fetchRawDoc(dbLoc, dbSeqPath);
       } catch (e) {
-        console.log(e);
         throw new Error("Revision Fetch Failed");
       }
     }
@@ -742,67 +740,75 @@ import { LevelMe } from "./levelme";
     if (!Array.isArray(incoming.body)) {
       // Must have docs
       if (incoming.body.docs) {
-        // Options for new_edits
-        let opts = {
-          new_edits:
-            incoming.body.new_edits ||
-            (incoming.body.options && incoming.body.options.new_edits),
-        };
+        // // Options for new_edits
+        // let opts = {
+        //   new_edits:
+        //     incoming.body.new_edits ||
+        //     (incoming.body.options && incoming.body.options.new_edits),
+        // };
 
-        // Protect from being empty or bad value
-        if (
-          typeof opts.new_edits === "undefined" ||
-          typeof opts.new_edits !== "boolean"
-        ) {
-          opts.new_edits = true;
-        }
+        // // Protect from being empty or bad value
+        // if (
+        //   typeof opts.new_edits === "undefined" ||
+        //   typeof opts.new_edits !== "boolean"
+        // ) {
+        //   opts.new_edits = true;
+        // }
 
         // Get Database
         let db = getDB(incoming.url[0]);
 
-        // Prepare Archive database
-        // Make sure archive database exists
-        const archDb = await getCreateArchiveDb(incoming.url[0]);
+        // // Prepare Archive database
+        // // Make sure archive database exists
+        // const archDb = await getCreateArchiveDb(incoming.url[0]);
 
-        // Cache database Location
-        const dbLoc = DIR_PREFIX + incoming.url[0];
+        // // Cache database Location
+        // const dbLoc = DIR_PREFIX + incoming.url[0];
 
-        // We need to see if the docs need archiving
-        for (let i = incoming.body.docs.length; i--; ) {
-          const doc = incoming.body.docs[i];
-          const position = isArchivable(doc._rev);
-          if (position) {
-            try {
-              // Raw LevelDB Path
-              const dbKeyPath = Buffer.concat([
-                PouchDBDocBuffer,
-                Buffer.from(doc._id),
-              ]);
+        // // We need to see if the docs need archiving
+        // for (let i = incoming.body.docs.length; i--; ) {
+        //   const doc = incoming.body.docs[i];
+        //   const position = isArchivable(doc._rev);
+        //   if (position) {
+        //     try {
+        //       // Raw LevelDB Path
+        //       const dbKeyPath = Buffer.concat([
+        //         PouchDBDocBuffer,
+        //         Buffer.from(doc._id),
+        //       ]);
 
-              // This may cause a problem re-opening? Or does c++ binding it re-use underneath?
-              const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+        //       // This may cause a problem re-opening? Or does c++ binding it re-use underneath?
+        //       const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
 
-              // Time to modify!
-              const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+        //       // Time to modify!
+        //       const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
-              // Prevent clashes
-              metaDoc.stream = metaDoc.id;
-              delete metaDoc.id, metaDoc._id;
+        //       // Prevent clashes
+        //       metaDoc.stream = metaDoc.id;
+        //       delete metaDoc.id, metaDoc._id;
 
-              // We could add to existing but then we would archive the archive
-              // Write document to archive
-              await archDb.post(checkDoc(metaDoc));
+        //       // We could add to existing but then we would archive the archive
+        //       // Write document to archive
+        //       await archDb.post(checkDoc(metaDoc));
 
-              // Rewrite pouchdb meta root document
-              await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
-            } catch (e) {
-              // Ignore errors and continue
-            }
-          }
-        }
+        //       // Rewrite pouchdb meta root document
+        //       await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+        //     } catch (e) {
+        //       // Ignore errors and continue
+        //     }
+        //   }
+        // }
 
         // Bulk Insert
-        return await db.bulkDocs(incoming.body.docs, opts);
+        if(await db.bulkDocs(incoming.body.docs)) {
+          return {
+            ok: true
+          }
+        }else{
+          return {
+            ok: false
+          }
+        }
       }
     }
   });

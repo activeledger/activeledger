@@ -105,10 +105,9 @@ export class PermissionsChecker {
             keys: [id + ":stream", id],
             include_docs: true
           });
-
           if (docs.rows.length === 2) {
-            // Get Documents
-            const [meta, state]: any = docs.rows as string[];
+            // Get Documents (Swapped around with new engine)
+            const [state, meta]: any = docs.rows as string[];
 
             // Check meta
             // Check script lock
