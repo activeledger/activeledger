@@ -57,12 +57,29 @@ export class CLIHandler {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
 
-      process.kill(pids.activeledger);
-      if (pids.activechanges && pids.activechanges !== 0) {
-        // process.kill(pids.activechanges, "SIGINT");
+      pids.activeledger && pids.activeledger !== 0 ?
+        process.kill(pids.activeledger)
+        : ActiveLogger.warn("No PID for Activeledger process");
+
+      pids.activestorage && pids.activestorage !== 0 ?
+        process.kill(pids.activestorage)
+        : ActiveLogger.warn("No PID for Activestorage process");
+
+      pids.activecore && pids.activecore !== 0 ?
+        process.kill(pids.activecore)
+        : ActiveLogger.warn("No PID for Activecore process");
+
+      pids.activerestore && pids.activerestore !== 0 ?
+        process.kill(pids.activerestore)
+        : ActiveLogger.warn("No PID for Activerestore process");
+
+      ActiveLogger.info("Shutdown complete, reseting PID file");
+      try {
+        CLIHandler.pidHandler.resetPidFile();
+      } catch (error) {
+        ActiveLogger.error(error, "Error reseting PID file");
       }
-      // process.kill(pids.activecore, "SIGINT");
-      // process.kill(pids.activerestore, "SIGINT");
+
     } catch (error) {
       ActiveLogger.error(error, "Error stopping activeledger");
     }
@@ -74,7 +91,7 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static restart(): void {}
+  public static restart(): void { }
 
   /**
    * Initialise the creation of a testnet

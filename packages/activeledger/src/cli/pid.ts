@@ -107,6 +107,16 @@ export class PIDHandler {
   }
 
   /**
+   * Reset the PID file, sets all PIDs to 0
+   *
+   * @returns {Promise<void>}
+   * @memberof PIDHandler
+   */
+  public async resetPidFile(): Promise<void> {
+    return await this.writePid();
+  }
+
+  /**
    * Check if the PID file exists
    *
    * @private
@@ -139,7 +149,7 @@ export class PIDHandler {
     if (!data) {
       data = {
         activeledger: 0,
-        activechanges: 0,
+        activestorage: 0,
         activecore: 0,
         activerestore: 0,
       };
@@ -178,14 +188,14 @@ export class PIDHandler {
 
 export enum EPIDChild {
   LEDGER = "activeledger",
-  CHANGES = "activechanges",
+  STORAGE = "activestorage",
   CORE = "activecore",
   RESTORE = "activerestore",
 }
 
 interface IPID {
   activeledger: number;
-  activechanges: number;
+  activestorage: number;
   activecore: number;
   activerestore: number;
 }
