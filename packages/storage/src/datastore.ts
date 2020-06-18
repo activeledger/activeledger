@@ -22,6 +22,7 @@
  */
 
 import * as fs from "fs";
+import { promises as fsPromises } from "fs";
 import * as child from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -67,7 +68,7 @@ export class ActiveDataStore {
     // Start Server, Can't block as server wont return
     ActiveLogger.info(
       "Self-hosted data engine @ http://127.0.0.1:" +
-        ActiveOptions.get<any>("db", {}).selfhost.port
+      ActiveOptions.get<any>("db", {}).selfhost.port
     );
   }
 
@@ -96,12 +97,15 @@ export class ActiveDataStore {
       `Self-hosted data engine : Starting Up (${this.process.pid})`
     );
 
+    // Store the PID for stop command
+    this.storePid(this.process.pid);
+
     // Listen for possible exits
     this.process.on("exit", (code: number, signal: string) => {
       // Just restart as we need the database up
       ActiveLogger.error(
         `Self-hosted data engine has shutdown (${code} : ${signal ||
-          "No Signal"})`
+        "No Signal"})`
       );
       // As its an attached process killing activeledger will prevent this restart
       this.launch();
@@ -109,5 +113,26 @@ export class ActiveDataStore {
 
     // Return running location
     return "http://127.0.0.1:" + ActiveOptions.get<any>("db", {}).selfhost.port;
+  }
+
+  private async storePid(pid: number): Promise<void> {
+    const pidPath = ".PID";
+    let pidData: {
+      activeledger: number,
+      activestorage: number,
+      activecore: number,
+      activerestore: number,
+    };
+
+    try {
+      pidData = JSON.parse((await fsPromises.readFile(pidPath)).toString());
+      pidData.activestorage = pid;
+
+      await fsPromises.writeFile(pidPath, JSON.stringify(pidData));
+    } catch (error) {
+      ActiveLogger.warn("Error storing PID, activeledger --stop may not work correctly");
+      ActiveLogger.warn(error.message);
+    }
+
   }
 }
