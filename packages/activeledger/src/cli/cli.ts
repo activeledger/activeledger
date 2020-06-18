@@ -91,7 +91,12 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static restart(): void { }
+  public static async restart(): Promise<void> {
+    ActiveLogger.info("Restarting");
+    await this.stop();
+    await this.start();
+    ActiveLogger.info("Restart complete");
+  }
 
   /**
    * Initialise the creation of a testnet

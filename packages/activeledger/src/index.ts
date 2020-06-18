@@ -48,6 +48,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   CLIHandler.merge();
 } else if (ActiveOptions.get<boolean>("stop", false)) {
   CLIHandler.stop();
+} else if (ActiveOptions.get<boolean>("restart", false)) {
+  CLIHandler.restart();
 } else {
   CLIHandler.start();
 }
