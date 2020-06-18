@@ -53,6 +53,5 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 }
 
 process.on("SIGTERM", () => {
-  ActiveLogger.warn(process.pid.toString(), "My PID");
   process.exit();
 });
