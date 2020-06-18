@@ -30,9 +30,11 @@ import { ActiveNetwork } from "@activeledger/activenetwork";
 import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
 import { PIDHandler, EPIDChild } from "./pid";
+import { StatsHandler } from "./stats";
 
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
+  private static readonly statsHandler: StatsHandler = new StatsHandler();
 
   /**
    * Start the local node
@@ -41,6 +43,7 @@ export class CLIHandler {
    * @memberof CLIHandler
    */
   public static async start(): Promise<void> {
+    this.statsHandler.init();
     await CLIHandler.pidHandler.init();
     await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
     this.normalStart();
@@ -85,17 +88,33 @@ export class CLIHandler {
     }
   }
 
+  public static resetAutoRestartCount(): void {
+    CLIHandler.statsHandler.resetAutoRestartCount();
+  }
+
   /**
    * Restart the local node
    *
    * @static
    * @memberof CLIHandler
    */
-  public static async restart(): Promise<void> {
+  public static async restart(auto?: boolean): Promise<void> {
     ActiveLogger.info("Restarting");
     await this.stop();
     await this.start();
     ActiveLogger.info("Restart complete");
+
+    CLIHandler.statsHandler.updateRestartCount(auto);
+  }
+
+  public static async getStats(): Promise<void> {
+    await this.statsHandler.init();
+    const stats = await this.statsHandler.getStats();
+    ActiveLogger.info(JSON.stringify(stats, null, 4));
+  }
+
+  public static async resetUptime(): Promise<void> {
+    this.statsHandler.resetUptime();
   }
 
   /**

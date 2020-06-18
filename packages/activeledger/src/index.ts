@@ -49,11 +49,19 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (ActiveOptions.get<boolean>("stop", false)) {
   CLIHandler.stop();
 } else if (ActiveOptions.get<boolean>("restart", false)) {
-  CLIHandler.restart();
+  if (ActiveOptions.get<boolean>("auto", false)) {
+    CLIHandler.restart(true);
+  } else {
+    CLIHandler.restart();
+  }
+} else if (ActiveOptions.get<boolean>("stats", false)) {
+  CLIHandler.getStats();
 } else {
   CLIHandler.start();
 }
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
+  await CLIHandler.resetUptime();
+  await CLIHandler.resetAutoRestartCount();
   process.exit();
 });
