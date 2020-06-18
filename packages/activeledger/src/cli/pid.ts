@@ -1,5 +1,4 @@
 import { promises as fs } from "fs";
-import * as path from "path";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 export class PIDHandler {
@@ -51,14 +50,38 @@ export class PIDHandler {
         }
 
       case EPIDChild.RESTORE:
-        if (pidData?.activerestore && pidData.activecore !== 0) {
+        if (pidData?.activerestore && pidData.activerestore !== 0) {
           return pidData.activerestore;
         } else {
           throw new Error("Error finding Activerestore PID");
         }
 
+      case EPIDChild.LEDGER:
+        if (pidData?.activeledger && pidData.activeledger !== 0) {
+          return pidData.activeledger;
+        } else {
+          throw new Error("Error finding Activeledger PID");
+        }
+
+      case EPIDChild.STORAGE:
+        if (pidData?.activestorage && pidData.activestorage !== 0) {
+          return pidData.activestorage;
+        } else {
+          throw new Error("Error finding Activestorage PID");
+        }
+
       default:
         throw new Error("Unkown PID requested");
+    }
+  }
+
+  public async getStatus(): Promise<boolean> {
+    try {
+      const ledgerPID = await this.getPID(EPIDChild.LEDGER);
+      process.kill(ledgerPID, 0);
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -160,7 +183,7 @@ export class PIDHandler {
     } catch (error) {
       ActiveLogger.error(
         error,
-        "Error creating the PID file, 'activeledger stop' may not function"
+        "Error creating the PID file, 'activeledger --stop' may not function"
       );
     }
   }
