@@ -688,7 +688,7 @@ import { LevelMe } from "./levelme";
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
 
-          db.changes(incoming.query).then((complete: any) => {
+          db.changesFromSeq(incoming.query).then((complete: any) => {
             if (complete.results.length) {
               res.write(JSON.stringify(complete));
               res.end();
@@ -698,38 +698,35 @@ import { LevelMe } from "./levelme";
               // mimicking CouchDB, start sending the JSON immediately
               res.write('{"results":[\n');
               incoming.query.live = incoming.query.continuous = true;
-              let changes = db
-                .changes(incoming.query)
-                .on("change", (change: any) => {
+
+              // Listener Process event (to turn off)
+              const listener = (change: any) => {
+                if (!req.connection.destroyed) {
                   res.write(JSON.stringify(change));
                   res.write('],\n"last_seq":' + change.seq + "}\n");
-                  changes.cancel();
-                })
-                .on("error", (e: any) => {
-                  req.connection.removeListener("close", cancelChanges);
-                  res.end();
-                  cleanUp();
-                })
-                .on("complete", () => {
-                  req.connection.removeListener("close", cancelChanges);
-                  res.end();
-                  cleanUp();
-                });
-
-              // Stop listening for changes
-              let cancelChanges = () => {
-                changes.cancel();
+                }
+                res.end();
+                cleanUp();
               };
-
+              
+              // Stop listening for changes
+              const cancelChanges = () => {
+                changes.off("change", listener);
+                req.connection.off("close", cancelChanges);
+              };
+              
               // Run on close connection
               req.connection.on("close", cancelChanges);
+
+              // Listening for changes
+              let changes = db.changes().on("change", listener);
             }
           });
         }
         return "handled";
       } else {
         // Just get the latest
-        return await db.changes(incoming.query);
+        return await db.changesFromSeq(incoming.query);
       }
     }
   );
@@ -800,14 +797,14 @@ import { LevelMe } from "./levelme";
         // }
 
         // Bulk Insert
-        if(await db.bulkDocs(incoming.body.docs)) {
+        if (await db.bulkDocs(incoming.body.docs)) {
           return {
-            ok: true
-          }
-        }else{
+            ok: true,
+          };
+        } else {
           return {
-            ok: false
-          }
+            ok: false,
+          };
         }
       }
     }

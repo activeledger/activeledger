@@ -36,9 +36,9 @@ interface allDocOptions {
  */
 interface changesOptions {
   since?: number | "now";
-  live?: boolean
+  live?: boolean;
   limit?: number;
-  descending?: boolean
+  descending?: boolean;
   include_docs?: boolean;
 }
 
@@ -128,13 +128,27 @@ export class LevelMe {
   private static SEQ_PREFIX = "ÿby-sequenceÿ";
 
   /**
+   * Warning: Not backwards compatible
+   * Different way to store sequence documents. Its like an index but without needing the indexers.
+   * While upgrading the change log will "start from here" there is no evidence that this will cause an issue as
+   * it was never really an exposed feature of Activeledger just "per node specific" write data.
+   *
+   * ÿ is xff unicode, Character code 255
+   *
+   * @private
+   * @static
+   * @memberof LevelMe
+   */
+  private static SEQ_META_PREFIX = "ÿsequence-storeÿ";
+
+  /**
    * Live changes emitter
    *
    * @private
    * @static
    * @memberof LevelMe
    */
-  private static changeEmitter = new EventEmitter();
+  private changeEmitter = new EventEmitter();
 
   /**
    * Holds the local copy of LevelUp
@@ -387,7 +401,7 @@ export class LevelMe {
               : LevelMe.META_PREFIX,
             limit,
           })
-          .on("data", async (data) => {
+          .on("data", async (data: { key: string; value: any }) => {
             // Filter out the "skipped" keys
             if (options.skip) {
               options.skip--;
@@ -396,17 +410,18 @@ export class LevelMe {
             const doc = JSON.parse(data.value.toString());
 
             // Don't realy need this but the quickest switch for needing "id" for database viewer
-            if (options.include_docs) {
+            // Only viewer should call, So want the doc
+            //if (options.include_docs) {
               // Get the actual data document
               const promise = this.seqDocFromRoot(doc);
               promises.push(promise);
               rows.push(await promise);
-            } else {
-              doc.id = doc._id;
-              rows.push(doc);
-            }
+            // } else {
+            //   doc.id = doc._id;
+            //   rows.push(doc);
+            // }
           })
-          .on("error", (err) => {
+          .on("error", (err: unknown) => {
             reject(err);
           })
           .on("close", () => {})
@@ -453,9 +468,7 @@ export class LevelMe {
     try {
       await writer.chain.write();
       // Emit Changed Doc
-      LevelMe.changeEmitter.emit("change", {
-        doc,
-      });
+      this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       this.docCount--;
@@ -499,11 +512,105 @@ export class LevelMe {
    * @returns {*}
    * @memberof LevelMe
    */
-  public changes(options: changesOptions): any {
-    // Promise<any> | EventEmittePromise<any> | EventEmitter {
-    ActiveLogger.fatal("Not Implemented");
-    return new Promise((a, b) => {});
-    //return new EventEmitter();
+  public changesFromSeq(
+    options: changesOptions
+  ): Promise<{
+    results: {
+      id: string;
+      changes: { rev: string }[];
+      doc?: document;
+      seq: number;
+    }[];
+    last_seq: number;
+  }> {
+    return new Promise((resolve, reject) => {
+      // get all sequenced documents with emitter, sequence "maybe up to date"
+      // Cache rows to be returned
+      const rows: any[] = [];
+
+      // For checking on end
+      const promises: Promise<document>[] = [];
+
+      // Filter for sequences metadata
+      const filter = {
+        gt: LevelMe.SEQ_META_PREFIX,
+        limit: parseInt((options.limit || 5).toString()),
+        reverse:
+          options.descending && options.descending.toString() === "true"
+            ? true
+            : false, // (array reverse maybe faster, but wont work with filter)
+      };
+
+      if (options.since) {
+        filter.gt =
+          LevelMe.SEQ_META_PREFIX + options.since.toString().padStart(30, "0");
+      }
+
+      // Read / Search the database as a stream
+      this.levelUp
+        .createReadStream(filter)
+        .on("data", async (data: { key: string; value: any }) => {
+          const doc = JSON.parse(data.value.toString());
+
+          // Get sequence from keyname
+          const seq = parseInt(
+            data.key.toString().replace(LevelMe.SEQ_META_PREFIX, "")
+          );
+          if (
+            options.include_docs &&
+            JSON.parse(options.include_docs.toString())
+          ) {
+            // Get the actual data document
+            const promise = this.seqDocFromRoot({
+              _id: doc._id,
+              winningRev: doc._rev,
+            } as any);
+            promises.push(promise);
+            rows.push({
+              id: doc._id,
+              seq,
+              changes: [
+                {
+                  rev: doc._rev,
+                },
+              ],
+              doc: await promise,
+            });
+          } else {
+            rows.push({
+              id: doc._id,
+              seq,
+              changes: [
+                {
+                  rev: doc._rev,
+                },
+              ],
+            });
+          }
+        })
+        .on("error", (err: unknown) => {
+          reject(err);
+        })
+        .on("close", () => {})
+        .on("end", async () => {
+          await Promise.all(promises);
+          resolve({
+            results: rows,
+            last_seq: this.docUpdateSeq,
+          });
+        });
+    });
+  }
+
+  /**
+   * Provide real-time document insertion with starting point supported
+   *
+   * @param {string} options
+   * @returns {*}
+   * @memberof LevelMe
+   */
+  public changes(): EventEmitter {
+    return this.changeEmitter;
   }
 
   /**
@@ -517,19 +624,17 @@ export class LevelMe {
   public async bulkDocs(docs: document[]): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
+    const changes = [];
     for (let i = docs.length; i--; ) {
       const writer = await this.prepareForWrite(docs[i], batch);
       batch = writer.chain; // Do I need do do this, Reference kept?
+      changes.push(writer.changes);
     }
 
     try {
       await batch.write();
       // Emit Changed Docs
-      for (let i = docs.length; i--; ) {
-        LevelMe.changeEmitter.emit("change", {
-          doc: docs[i] // Reference should be maintained
-        });
-      }
+      this.changeEmitter.emit("change", changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       this.docCount = this.docCount - docs.length;
@@ -539,7 +644,7 @@ export class LevelMe {
   }
 
   /**
-   *
+   * Prepare batch written of all meta documents
    *
    * @private
    * @param {document} doc
@@ -550,13 +655,23 @@ export class LevelMe {
   private async prepareForWrite(
     doc: document,
     chain: LevelUpChain<any, any>
-  ): Promise<{ chain: LevelUpChain<any, any>; rev: string, changes:any }> {
+  ): Promise<{
+    chain: LevelUpChain<any, any>;
+    rev: string;
+    changes: {
+      id: string;
+      changes: { rev: string }[];
+      doc: document;
+      seq: number;
+    };
+  }> {
     await this.open();
 
     // Convert doc to string
     const incomingDoc = JSON.stringify(doc);
 
-    const changes = [];
+    // Changes that will be written
+    const changes = {};
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
@@ -630,12 +745,33 @@ export class LevelMe {
       .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
       .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
 
+    // Include only data streams
+    // We skip this if not stream document, about 3 less writes per stream
+    if (doc._id.indexOf(":") === -1) {
+      chain.put(
+        LevelMe.SEQ_META_PREFIX +
+          this.docUpdateSeq.toString().padStart(30, "0"),
+        `{"_id": "${doc._id}" ,"_rev": "${doc._rev}"}`
+      );
+    }
+
     if (newDoc) {
       chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
     }
+
     return {
       chain,
       rev: newRev,
+      changes: {
+        id: doc._id,
+        changes: [
+          {
+            rev: newRev,
+          },
+        ],
+        doc,
+        seq: this.docUpdateSeq,
+      },
     };
   }
 }
