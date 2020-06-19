@@ -30,9 +30,12 @@ import { ActiveNetwork } from "@activeledger/activenetwork";
 import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
 import { PIDHandler, EPIDChild } from "./pid";
+import { StatsHandler } from "./stats";
 
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
+  private static readonly statsHandler: StatsHandler = new StatsHandler();
+  private static version: string;
 
   /**
    * Start the local node
@@ -41,8 +44,10 @@ export class CLIHandler {
    * @memberof CLIHandler
    */
   public static async start(): Promise<void> {
+    this.statsHandler.init();
     await CLIHandler.pidHandler.init();
     await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
+    await CLIHandler.statsHandler.resetUptime();
     this.normalStart();
   }
 
@@ -52,7 +57,7 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static async stop(): Promise<void> {
+  public static async stop(isRestart?: boolean): Promise<void> {
     try {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
@@ -80,6 +85,10 @@ export class CLIHandler {
         ActiveLogger.error(error, "Error reseting PID file");
       }
 
+      if (!isRestart) {
+        await CLIHandler.resetAutoRestartCount();
+      }
+
     } catch (error) {
       ActiveLogger.error(error, "Error stopping activeledger");
     }
@@ -91,11 +100,23 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static async restart(): Promise<void> {
+  public static async restart(auto?: boolean): Promise<void> {
     ActiveLogger.info("Restarting");
-    await this.stop();
+    await this.stop(true);
     await this.start();
+    await CLIHandler.statsHandler.updateRestartCount(auto);
     ActiveLogger.info("Restart complete");
+  }
+
+  public static async getStats(version: string): Promise<void> {
+    CLIHandler.version = version;
+    await this.statsHandler.init(CLIHandler.version);
+    const stats = await this.statsHandler.getStats();
+    ActiveLogger.info(JSON.stringify(stats, null, 4));
+  }
+
+  public static async resetAutoRestartCount(): Promise<void> {
+    await CLIHandler.statsHandler.resetAutoRestartCount();
   }
 
   /**
