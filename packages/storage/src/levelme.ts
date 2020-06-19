@@ -120,6 +120,8 @@ export class LevelMe {
    * Database value key
    *
    * ÿ is xff unicode, Character code 255
+   * 
+   * ÿby-sequenceÿ0000000000000110
    *
    * @private
    * @static
@@ -139,7 +141,7 @@ export class LevelMe {
    * @static
    * @memberof LevelMe
    */
-  private static SEQ_META_PREFIX = "ÿsequence-storeÿ";
+  //private static SEQ_META_PREFIX = "ÿsequence-storeÿ";
 
   /**
    * Live changes emitter
@@ -238,12 +240,8 @@ export class LevelMe {
    * @returns {{ key: string; pos: number }}
    * @memberof LevelMe
    */
-  private findCachedBranchEnd(doc: schema): { key: string; pos: number } {
-    const [pos, key] = doc.winningRev.split("-");
-    return {
-      key,
-      pos: parseInt(pos),
-    };
+  private findCachedBranchEnd(doc: schema): string {
+    return doc.rev_map[doc.winningRev].toString().padStart(16, "0");
   }
 
   /**
@@ -260,7 +258,7 @@ export class LevelMe {
 
     // Get the actual data document
     return JSON.parse(
-      (await this.levelUp.get(LevelMe.SEQ_PREFIX + twig.key)).toString()
+      (await this.levelUp.get(LevelMe.SEQ_PREFIX + twig)).toString()
     );
   }
 
@@ -412,10 +410,10 @@ export class LevelMe {
             // Don't realy need this but the quickest switch for needing "id" for database viewer
             // Only viewer should call, So want the doc
             //if (options.include_docs) {
-              // Get the actual data document
-              const promise = this.seqDocFromRoot(doc);
-              promises.push(promise);
-              rows.push(await promise);
+            // Get the actual data document
+            const promise = this.seqDocFromRoot(doc);
+            promises.push(promise);
+            rows.push(await promise);
             // } else {
             //   doc.id = doc._id;
             //   rows.push(doc);
@@ -500,9 +498,10 @@ export class LevelMe {
    * @returns
    * @memberof LevelMe
    */
-  public async del(key: string) {
-    ActiveLogger.fatal("Not Implemented");
-    return {};
+  public async del(key: string): Promise<void> {
+    await this.open();
+    await this.levelUp.del(key);
+    return;
   }
 
   /**
@@ -533,7 +532,8 @@ export class LevelMe {
 
       // Filter for sequences metadata
       const filter = {
-        gt: LevelMe.SEQ_META_PREFIX,
+        gt: LevelMe.SEQ_PREFIX,
+        lt: LevelMe.DOC_PREFIX,
         limit: parseInt((options.limit || 5).toString()),
         reverse:
           options.descending && options.descending.toString() === "true"
@@ -543,7 +543,7 @@ export class LevelMe {
 
       if (options.since) {
         filter.gt =
-          LevelMe.SEQ_META_PREFIX + options.since.toString().padStart(30, "0");
+          LevelMe.SEQ_PREFIX + options.since.toString().padStart(16, "0");
       }
 
       // Read / Search the database as a stream
@@ -551,21 +551,15 @@ export class LevelMe {
         .createReadStream(filter)
         .on("data", async (data: { key: string; value: any }) => {
           const doc = JSON.parse(data.value.toString());
-
+          console.log(data.key.toString());
           // Get sequence from keyname
           const seq = parseInt(
-            data.key.toString().replace(LevelMe.SEQ_META_PREFIX, "")
+            data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
           );
           if (
             options.include_docs &&
             JSON.parse(options.include_docs.toString())
           ) {
-            // Get the actual data document
-            const promise = this.seqDocFromRoot({
-              _id: doc._id,
-              winningRev: doc._rev,
-            } as any);
-            promises.push(promise);
             rows.push({
               id: doc._id,
               seq,
@@ -574,7 +568,7 @@ export class LevelMe {
                   rev: doc._rev,
                 },
               ],
-              doc: await promise,
+              doc,
             });
           } else {
             rows.push({
@@ -741,19 +735,23 @@ export class LevelMe {
     // 3. LevelMe.META_PREFIX + "_local_last_update_seq"
     // 4. LevelMe.META_PREFIX + "_local_doc_count"
     chain
-      .put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
+      //.put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
+      .put(
+        LevelMe.SEQ_PREFIX + this.docUpdateSeq.toString().padStart(16, "0"),
+        JSON.stringify(doc)
+      )
       .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
       .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
 
     // Include only data streams
     // We skip this if not stream document, about 3 less writes per stream
-    if (doc._id.indexOf(":") === -1) {
-      chain.put(
-        LevelMe.SEQ_META_PREFIX +
-          this.docUpdateSeq.toString().padStart(30, "0"),
-        `{"_id": "${doc._id}" ,"_rev": "${doc._rev}"}`
-      );
-    }
+    // if (doc._id.indexOf(":") === -1) {
+    //   chain.put(
+    //     LevelMe.SEQ_META_PREFIX +
+    //       this.docUpdateSeq.toString().padStart(30, "0"),
+    //     `{"_id": "${doc._id}" ,"_rev": "${doc._rev}"}`
+    //   );
+    // }
 
     if (newDoc) {
       chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
