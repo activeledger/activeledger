@@ -1,5 +1,27 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2018 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { promises as fs } from "fs";
-import * as path from "path";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 export class PIDHandler {
@@ -51,14 +73,38 @@ export class PIDHandler {
         }
 
       case EPIDChild.RESTORE:
-        if (pidData?.activerestore && pidData.activecore !== 0) {
+        if (pidData?.activerestore && pidData.activerestore !== 0) {
           return pidData.activerestore;
         } else {
           throw new Error("Error finding Activerestore PID");
         }
 
+      case EPIDChild.LEDGER:
+        if (pidData?.activeledger && pidData.activeledger !== 0) {
+          return pidData.activeledger;
+        } else {
+          throw new Error("Error finding Activeledger PID");
+        }
+
+      case EPIDChild.STORAGE:
+        if (pidData?.activestorage && pidData.activestorage !== 0) {
+          return pidData.activestorage;
+        } else {
+          throw new Error("Error finding Activestorage PID");
+        }
+
       default:
         throw new Error("Unkown PID requested");
+    }
+  }
+
+  public async getStatus(): Promise<boolean> {
+    try {
+      const ledgerPID = await this.getPID(EPIDChild.LEDGER);
+      process.kill(ledgerPID, 0);
+      return true;
+    } catch (error) {
+      return false;
     }
   }
 
@@ -160,7 +206,7 @@ export class PIDHandler {
     } catch (error) {
       ActiveLogger.error(
         error,
-        "Error creating the PID file, 'activeledger stop' may not function"
+        "Error creating the PID file, 'activeledger --stop' may not function"
       );
     }
   }

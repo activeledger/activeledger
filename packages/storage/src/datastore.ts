@@ -108,7 +108,10 @@ export class ActiveDataStore {
         "No Signal"})`
       );
       // As its an attached process killing activeledger will prevent this restart
-      this.launch();
+      // If killed via activeledger --stop check for SIGTERM signal and don't restart if it is
+      if (signal !== "SIGTERM") {
+        this.launch();
+      }
     });
 
     // Return running location

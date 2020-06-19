@@ -29,6 +29,9 @@ import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { CLIHandler } from "./cli/cli";
 
+// Set during build
+const version = "unset";
+
 // Initalise CLI Options
 ActiveOptions.init();
 
@@ -49,11 +52,17 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (ActiveOptions.get<boolean>("stop", false)) {
   CLIHandler.stop();
 } else if (ActiveOptions.get<boolean>("restart", false)) {
-  CLIHandler.restart();
+  if (ActiveOptions.get<boolean>("auto", false)) {
+    CLIHandler.restart(true);
+  } else {
+    CLIHandler.restart();
+  }
+} else if (ActiveOptions.get<boolean>("stats", false)) {
+  CLIHandler.getStats(version);
 } else {
   CLIHandler.start();
 }
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
   process.exit();
 });

@@ -22,7 +22,8 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/default.config.json ./lib",
     "build:es": "tsc --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
-    "build": "npm run build:commonjs && npm run build:es",
+    "build": "npm run build:commonjs && npm run build:es && npm run postBuild",
+    "postBuild": "node ./lib/post-build.js",
     "prepublishOnly": "npm run build"
   },
   "repository": {
