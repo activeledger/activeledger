@@ -57,7 +57,7 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static async stop(): Promise<void> {
+  public static async stop(isRestart?: boolean): Promise<void> {
     try {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
@@ -85,6 +85,10 @@ export class CLIHandler {
         ActiveLogger.error(error, "Error reseting PID file");
       }
 
+      if (!isRestart) {
+        await CLIHandler.resetAutoRestartCount();
+      }
+
     } catch (error) {
       ActiveLogger.error(error, "Error stopping activeledger");
     }
@@ -98,8 +102,9 @@ export class CLIHandler {
    */
   public static async restart(auto?: boolean): Promise<void> {
     ActiveLogger.info("Restarting");
-    await this.stop();
+    await this.stop(true);
     await this.start();
+    await CLIHandler.statsHandler.updateRestartCount(auto);
     ActiveLogger.info("Restart complete");
   }
 
@@ -112,8 +117,6 @@ export class CLIHandler {
 
   public static async resetAutoRestartCount(): Promise<void> {
     await CLIHandler.statsHandler.resetAutoRestartCount();
-    // CLIHandler.statsHandler.resetAutoRestartCount();
-    // return;
   }
 
   /**
