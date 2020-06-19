@@ -25,7 +25,6 @@ import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
-//import { PouchDB, leveldown } from "./pouchdb";
 
 (function () {
   // Fauxton Path
@@ -34,32 +33,12 @@ import { LevelMe } from "./levelme";
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
 
-  // PouchDB Connection Handler
-  // const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
-
   // How PouchDB wraps documents keys
   const PouchDBDocBuffer = Buffer.from("ÿdocument-storeÿ");
   const PouchDBSeqBuffer = Buffer.from("ÿby-sequenceÿ");
 
-  // PouchDB Connection Cache
-  let pDBCache: { [index: string]: LevelMe } = {};
-  //let pDBCache: any = {};
-
-  // Leveldown Cache
-  let leveldownCache: any = {};
-
-  /**
-   * Custom leveldown for Pouch (allows acceess to leveldown)
-   *
-   * @param {string} name
-   * @returns
-   */
-  // let levelupdown = (name: string) => {
-  //   if (!leveldownCache[name]) {
-  //     leveldownCache[name] = leveldown(name);
-  //   }
-  //   return leveldownCache[name];
-  // };
+  // Database Connection Cache
+  let dbCache: { [index: string]: LevelMe } = {};
 
   /**
    * Manages Pouch Connections
@@ -68,10 +47,10 @@ import { LevelMe } from "./levelme";
    * @returns
    */
   const getDB = (name: string): LevelMe => {
-    if (!pDBCache[name]) {
-      pDBCache[name] = new LevelMe(DIR_PREFIX, name);
+    if (!dbCache[name]) {
+      dbCache[name] = new LevelMe(DIR_PREFIX, name);
     }
-    return pDBCache[name];
+    return dbCache[name];
   };
 
   /**
@@ -177,9 +156,9 @@ import { LevelMe } from "./levelme";
     // Check Folder
     if (fs.existsSync(dir)) {
       // If we have this db open we need to close it
-      if (pDBCache[incoming.url[0]]) {
-        await pDBCache[incoming.url[0]].close();
-        delete pDBCache[incoming.url[0]];
+      if (dbCache[incoming.url[0]]) {
+        await dbCache[incoming.url[0]].close();
+        delete dbCache[incoming.url[0]];
       }
 
       // Delete Database
@@ -311,7 +290,7 @@ import { LevelMe } from "./levelme";
     // Get Database
     return new Promise(async (resolve, reject) => {
       // Get Database
-      let db = getDB(dbLoc);
+      const db = getDB(dbLoc);
       db.get(decodeURIComponent(path))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
@@ -330,26 +309,13 @@ import { LevelMe } from "./levelme";
    */
   const genericDelete = (dbLoc: string, docName: string): Promise<any> => {
     return new Promise(async (resolve, reject) => {
-      // Let Pouch create the connection
-      //await getPDB(dbLoc).info();
-      // Get Database as leveldown
-      let db = {} as any; //levelupdown(DIR_PREFIX + dbLoc);
-
-      // make sure the database was opened by pouch
-      if (db.status === "open") {
-        // Direct Delete
-        db.del(
-          Buffer.concat([PouchDBDocBuffer, Buffer.from(docName)]),
-          (error: unknown) => {
-            if (error) {
-              return reject(error);
-            }
-            // Return Ok
-            return resolve({ success: "ok" });
-          }
-        );
-      } else {
-        return reject("database not opened");
+      // Get Database
+      const db = getDB(dbLoc);
+      try {
+        await db.del(docName);
+        return resolve({ success: "ok" });
+      } catch (e) {
+        return reject(e);
       }
     });
   };
@@ -365,14 +331,14 @@ import { LevelMe } from "./levelme";
   });
 
   // Specific lookup path for _design database docs
-  http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
-  });
+  // http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
+  //   return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
+  // });
 
-  // Specific lookup path for _local database docs
-  http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
-  });
+  // // Specific lookup path for _local database docs
+  // http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
+  //   return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
+  // });
 
   // Gets raw unparsed document straight from leveldb
   // Document Store http://localhost:5259/activeledger/_raw/[document._id]
@@ -380,15 +346,18 @@ import { LevelMe } from "./levelme";
   http.use("*/_raw/*", "GET", async (incoming: IActiveHttpIncoming) => {
     // Getting revision?
     const [root, revision] = incoming.url[2].split("@");
-    const dbLoc = DIR_PREFIX + incoming.url[0];
-    const dbKeyPath = Buffer.concat([
-      PouchDBDocBuffer,
-      Buffer.from(decodeURIComponent(root)),
-    ]);
-    await getDB(incoming.url[0]).info();
+    // const dbLoc = DIR_PREFIX + incoming.url[0];
+    // const dbKeyPath = Buffer.concat([
+    //   PouchDBDocBuffer,
+    //   Buffer.from(decodeURIComponent(root)),
+    // ]);
+    // await getDB(incoming.url[0]).info();
+
+    // Get Database
+    const db = getDB(incoming.url[0]);
 
     // Get Main Doc
-    const rootDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+    const rootDoc = await db.get(decodeURIComponent(root), true);
 
     // If getting revision we need sequence
     if (revision) {
@@ -402,7 +371,7 @@ import { LevelMe } from "./levelme";
           Buffer.from(revSeq.toString().padStart(16, 0)),
         ]);
 
-        return await fetchRawDoc(dbLoc, dbSeqPath);
+        return await fetchRawDoc("", dbSeqPath);
       } catch (e) {
         throw new Error("Revision Fetch Failed");
       }
@@ -708,13 +677,13 @@ import { LevelMe } from "./levelme";
                 res.end();
                 cleanUp();
               };
-              
+
               // Stop listening for changes
               const cancelChanges = () => {
                 changes.off("change", listener);
                 req.connection.off("close", cancelChanges);
               };
-              
+
               // Run on close connection
               req.connection.on("close", cancelChanges);
 
