@@ -1,43 +1,103 @@
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2018 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { promises as fs } from "fs";
 import * as os from "os";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { PIDHandler } from "./pid";
+import { execSync } from "child_process";
 
+/**
+ * Stats handling
+ *
+ * @export
+ * @class StatsHandler
+ */
 export class StatsHandler {
   private statsFileExists = false;
   private path = ".STATS";
   private pidHandler: PIDHandler;
+  private version: string = "unset";
 
   constructor() {
     this.pidHandler = new PIDHandler();
   }
 
-  public async init(): Promise<void> {
+  /**
+   * Initialise the stats handler
+   * 
+   * Initialises the PID handler for restart counting
+   * Checks the stats file exists
+   *
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
+  public async init(version?: string): Promise<void> {
+    if (version) {
+      this.version = version;
+    }
     await this.pidHandler.init();
     await this.statsCheck();
   }
 
+  /**
+   * Returns a stats object
+   * 
+   * Note: Windows implementation of disk usage not currently implemented, this will return 0s
+   *
+   * @returns {Promise<IStats>}
+   * @memberof StatsHandler
+   */
   public async getStats(): Promise<IStats> {
     const { data, error } = await this.readFileStats();
     if (error) {
-      // TODO
+      throw error
+    } else {
+      const statsFileData: IStatsFile = data as IStatsFile;
+      const status = await this.pidHandler.getStatus() ? "alive" : "dead";
+      const uptime = status === "alive" ? Date.now() - statsFileData.startTime : 0;
+
+      const stats: IStats = {
+        cpu: this.getCPU(),
+        ram: this.getRAM(),
+        hdd: await this.getHDD(),
+        status,
+        restarts: statsFileData.restarts,
+        uptime,
+        version: this.version
+      };
+
+      return stats;
     }
 
-    const statsFileData: IStatsFile = data as IStatsFile;
-
-    const stats: IStats = {
-      cpu: this.getCPU(),
-      ram: this.getRAM(),
-      hdd: 1,
-      io: 1,
-      status: await this.pidHandler.getStatus() ? "alive" : "dead",
-      restarts: statsFileData.restarts,
-      uptime: Date.now() - statsFileData.startTime
-    };
-
-    return stats;
   }
 
+  /**
+   * Reset the uptime counter
+   *
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
   public async resetUptime(): Promise<void> {
     const { data, error } = await this.readFileStats();
 
@@ -47,7 +107,7 @@ export class StatsHandler {
     }
 
     if (data) {
-      data.startTime = 0;
+      data.startTime = Date.now();
       await this.writeStats(data);
     }
 
@@ -55,6 +115,15 @@ export class StatsHandler {
 
   }
 
+  /**
+   * Update the restart counter
+   * 
+   * Resets the auto counter on a manual restart
+   *
+   * @param {boolean} [auto]
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
   public async updateRestartCount(auto?: boolean): Promise<void> {
     const { data, error } = await this.readFileStats();
 
@@ -79,6 +148,12 @@ export class StatsHandler {
 
   }
 
+  /**
+   * Reset the auto restart count
+   *
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
   public async resetAutoRestartCount(): Promise<void> {
     const { data, error } = await this.readFileStats();
 
@@ -96,6 +171,13 @@ export class StatsHandler {
     return;
   }
 
+  /**
+   * Get the average CPU load
+   *
+   * @private
+   * @returns {ICPUStats}
+   * @memberof StatsHandler
+   */
   private getCPU(): ICPUStats {
 
     const average = os.loadavg();
@@ -107,18 +189,73 @@ export class StatsHandler {
     }
   }
 
-  private getRAM(): number {
-    return os.totalmem() - os.freemem();
-  }
-
-  private async getHDD(): Promise<number> {
-    if (os.type() !== "Windows_NT") {
-      return 1;
-    } else {
-      return 0;
+  /**
+   * Get the total and free memory
+   *
+   * @private
+   * @returns {IRAMStats}
+   * @memberof StatsHandler
+   */
+  private getRAM(): IRAMStats {
+    return {
+      total: os.totalmem(),
+      free: os.freemem()
     }
   }
 
+  /**
+   * Get disk stats
+   * 
+   * Returns: 
+   * * Activeledger instance size
+   * * Total disk space 
+   * * Free disk space
+   * * Used disk space
+   * 
+   * @private
+   * @returns {Promise<IDiskStats>}
+   * @memberof StatsHandler
+   */
+  private getHDD(): IDiskStats {
+    try {
+      if (os.type() !== "Windows_NT") {
+        const activeledgerUsage = execSync(`du . -s`).toString().split("\t")[0];
+        const diskUsageArray = execSync(`df / --output=size,avail,used`).toString().split("\n")[1].split(" ");
+
+        const diskStats: IDiskStats = {
+          activeledger: parseInt(activeledgerUsage),
+          diskSize: parseInt(diskUsageArray[0]),
+          diskFree: parseInt(diskUsageArray[1]),
+          diskUsed: parseInt(diskUsageArray[2])
+        }
+
+        return diskStats;
+      } else {
+        return {
+          activeledger: 0,
+          diskSize: 0,
+          diskFree: 0,
+          diskUsed: 0
+        };
+      }
+    } catch (error) {
+      ActiveLogger.error(error, "Error reading disk stats, returning 0s");
+      return {
+        activeledger: 0,
+        diskSize: 0,
+        diskFree: 0,
+        diskUsed: 0
+      };
+    }
+  }
+
+  /**
+   * Possible future extension
+   *
+   * @private
+   * @returns {Promise<number>}
+   * @memberof StatsHandler
+   */
   private async getIO(): Promise<number> {
     if (os.type() !== "Windows_NT") {
       return 1;
@@ -127,6 +264,13 @@ export class StatsHandler {
     }
   }
 
+  /**
+   * Check for the stats file
+   *
+   * @private
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
   private async statsCheck(): Promise<void> {
     try {
       await fs.access(this.path);
@@ -141,6 +285,16 @@ export class StatsHandler {
     }
   }
 
+  /**
+   * Write stats to disk
+   * 
+   * Writes restart information and startTime to stats file
+   *
+   * @private
+   * @param {IStatsFile} [data]
+   * @returns {Promise<void>}
+   * @memberof StatsHandler
+   */
   private async writeStats(data?: IStatsFile): Promise<void> {
     if (!data) {
       data = {
@@ -159,11 +313,18 @@ export class StatsHandler {
     } catch (error) {
       ActiveLogger.error(
         error,
-        "Error creating the Stats file, 'activeledger --stats' may not function correctly"
+        "Error writing the Stats file, 'activeledger --stats' may not function correctly"
       );
     }
   }
 
+  /**
+   * Read the stats file
+   *
+   * @private
+   * @returns {Promise<{ data?: IStatsFile; error?: Error }>}
+   * @memberof StatsHandler
+   */
   private async readFileStats(): Promise<{ data?: IStatsFile; error?: Error }> {
     if (!this.statsFileExists) {
       ActiveLogger.warn("Stats file doesn't exist to read");
@@ -186,12 +347,14 @@ interface ICPUStats {
 
 interface IStats {
   cpu: ICPUStats;
-  ram: number;
-  hdd: number;
-  io: number;
+  ram: IRAMStats;
+  hdd: IDiskStats;
+  // IO might be added in future
+  // io: number;
   status: "alive" | "dead";
   restarts: IRestartStats;
   uptime: number;
+  version: string;
 }
 
 interface IRestartStats {
@@ -204,4 +367,16 @@ interface IRestartStats {
 interface IStatsFile {
   restarts: IRestartStats;
   startTime: number;
+}
+
+interface IDiskStats {
+  activeledger: number;
+  diskSize: number;
+  diskFree: number;
+  diskUsed: number;
+}
+
+interface IRAMStats {
+  total: number;
+  free: number;
 }

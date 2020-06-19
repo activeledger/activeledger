@@ -35,6 +35,7 @@ import { StatsHandler } from "./stats";
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
   private static readonly statsHandler: StatsHandler = new StatsHandler();
+  private static version: string;
 
   /**
    * Start the local node
@@ -46,6 +47,7 @@ export class CLIHandler {
     this.statsHandler.init();
     await CLIHandler.pidHandler.init();
     await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
+    await CLIHandler.statsHandler.resetUptime();
     this.normalStart();
   }
 
@@ -88,10 +90,6 @@ export class CLIHandler {
     }
   }
 
-  public static resetAutoRestartCount(): void {
-    CLIHandler.statsHandler.resetAutoRestartCount();
-  }
-
   /**
    * Restart the local node
    *
@@ -103,18 +101,19 @@ export class CLIHandler {
     await this.stop();
     await this.start();
     ActiveLogger.info("Restart complete");
-
-    CLIHandler.statsHandler.updateRestartCount(auto);
   }
 
-  public static async getStats(): Promise<void> {
-    await this.statsHandler.init();
+  public static async getStats(version: string): Promise<void> {
+    CLIHandler.version = version;
+    await this.statsHandler.init(CLIHandler.version);
     const stats = await this.statsHandler.getStats();
     ActiveLogger.info(JSON.stringify(stats, null, 4));
   }
 
-  public static async resetUptime(): Promise<void> {
-    this.statsHandler.resetUptime();
+  public static async resetAutoRestartCount(): Promise<void> {
+    await CLIHandler.statsHandler.resetAutoRestartCount();
+    // CLIHandler.statsHandler.resetAutoRestartCount();
+    // return;
   }
 
   /**
