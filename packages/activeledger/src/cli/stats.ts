@@ -134,14 +134,20 @@ export class StatsHandler {
 
     if (data) {
       if (auto) {
-        data.restarts.auto++;
+        data.restarts.auto += 1;
         data.restarts.lastAuto = new Date();
       } else {
-        await this.resetAutoRestartCount();
+        data.restarts.auto = 0;
+        data.restarts.lastAuto = undefined;
         data.restarts.lastManual = new Date();
       }
       data.restarts.all++;
-      await this.writeStats(data);
+      try {
+        await this.writeStats(data);
+      } catch (error) {
+        ActiveLogger.error("Error writing restart stats");
+        ActiveLogger.error(error);
+      }
     }
 
     return;

@@ -64,6 +64,5 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 }
 
 process.on("SIGTERM", async () => {
-  await CLIHandler.resetAutoRestartCount();
   process.exit();
 });
