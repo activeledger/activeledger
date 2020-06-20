@@ -201,37 +201,37 @@ import { LevelMe } from "./levelme";
   });
 
   // Delete Index (Fauxton Way)
-  http.use(
-    "/*/_index/_bulk_delete",
-    "POST",
-    async (incoming: IActiveHttpIncoming) => {
-      // Get Db
-      let db = getDB(incoming.url[0]);
+  // http.use(
+  //   "/*/_index/_bulk_delete",
+  //   "POST",
+  //   async (incoming: IActiveHttpIncoming) => {
+  //     // Get Db
+  //     let db = getDB(incoming.url[0]);
 
-      // Get all Indexes
-      const indexes: any[] = (await db.getIndexes()).indexes;
+  //     // Get all Indexes
+  //     const indexes: any[] = (await db.getIndexes()).indexes;
 
-      // Loop all indexes Fauxton wants to delete
-      incoming.body.docids.forEach(async (docId: string) => {
-        // Do we have this as a design index
-        let index = indexes.find((index: any): boolean => {
-          return index.ddoc == docId;
-        });
+  //     // Loop all indexes Fauxton wants to delete
+  //     incoming.body.docids.forEach(async (docId: string) => {
+  //       // Do we have this as a design index
+  //       let index = indexes.find((index: any): boolean => {
+  //         return index.ddoc == docId;
+  //       });
 
-        // Did we find a match to delete?
-        if (index) {
-          // Deleta via index delete
-          await db.deleteIndex({
-            ddoc: index.ddoc,
-            type: index.type,
-            name: index.name,
-          });
-        }
-      });
+  //       // Did we find a match to delete?
+  //       if (index) {
+  //         // Deleta via index delete
+  //         await db.deleteIndex({
+  //           ddoc: index.ddoc,
+  //           type: index.type,
+  //           name: index.name,
+  //         });
+  //       }
+  //     });
 
-      return { ok: true };
-    }
-  );
+  //     return { ok: true };
+  //   }
+  // );
 
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
@@ -318,7 +318,7 @@ import { LevelMe } from "./levelme";
 
   // TODO : Verify request source
   http.use("*/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
-    return await genericDelete(incoming.url[0], incoming.url[1]);
+    return await genericDelete(incoming.url[0], decodeURIComponent(incoming.url[1]));
   });
 
   // Get specific docs from a database

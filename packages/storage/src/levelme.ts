@@ -533,7 +533,8 @@ export class LevelMe {
    */
   public async del(key: string): Promise<void> {
     await this.open();
-    await this.levelUp.del(key);
+    // For now just delete the document key (not sequence)
+    await this.levelUp.del(LevelMe.DOC_PREFIX + key);
     return;
   }
 
@@ -584,7 +585,6 @@ export class LevelMe {
         .createReadStream(filter)
         .on("data", async (data: { key: string; value: any }) => {
           const doc = JSON.parse(data.value.toString());
-          console.log(data.key.toString());
           // Get sequence from keyname
           const seq = parseInt(
             data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
@@ -653,9 +653,14 @@ export class LevelMe {
     let batch = await this.levelUp.batch();
     const changes = [];
     for (let i = docs.length; i--; ) {
+      // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
+      //if (docs[i]._deleted) {
+      //  await this.del(docs[i]._id);
+      //} else {
       const writer = await this.prepareForWrite(docs[i], batch);
       batch = writer.chain; // Do I need do do this, Reference kept?
       changes.push(writer.changes);
+      //}
     }
 
     try {
