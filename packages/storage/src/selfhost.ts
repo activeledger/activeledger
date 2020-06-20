@@ -43,6 +43,10 @@ import { LevelMe } from "./levelme";
    * @returns
    */
   const getDB = (name: string): LevelMe => {
+    // Filter out annoying name in a very forcefull way
+    if (name === "favicon.ico") {
+      throw new Error("invalid database");
+    }
     if (!dbCache[name]) {
       dbCache[name] = new LevelMe(DIR_PREFIX, name);
     }
@@ -107,7 +111,6 @@ import { LevelMe } from "./levelme";
 
   // Get Database Info
   http.use("*", "GET", async (incoming: IActiveHttpIncoming) => {
-    // if (fs.existsSync(DIR_PREFIX + incoming.url[0])) {
     // Get Database
     let db = getDB(incoming.url[0]);
     let info = await db.info();
@@ -129,7 +132,6 @@ import { LevelMe } from "./levelme";
 
     // Create Database
     await db.info();
-
     return { ok: true };
   });
 
@@ -174,64 +176,6 @@ import { LevelMe } from "./levelme";
     }
     return { uuids };
   });
-
-  // Get Index
-  http.use("/*/_index", "GET", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getDB(incoming.url[0]);
-    return await db.getIndexes();
-  });
-
-  // Create Index
-  http.use("/*/_index", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getDB(incoming.url[0]);
-    return await db.createIndex(incoming.body);
-  });
-
-  // Delete Index
-  http.use("/*/_index/*/*/*", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getDB(incoming.url[0]);
-    return await db.deleteIndex({
-      ddoc: incoming.url[2],
-      type: incoming.url[3],
-      name: incoming.url[4],
-    });
-  });
-
-  // Delete Index (Fauxton Way)
-  // http.use(
-  //   "/*/_index/_bulk_delete",
-  //   "POST",
-  //   async (incoming: IActiveHttpIncoming) => {
-  //     // Get Db
-  //     let db = getDB(incoming.url[0]);
-
-  //     // Get all Indexes
-  //     const indexes: any[] = (await db.getIndexes()).indexes;
-
-  //     // Loop all indexes Fauxton wants to delete
-  //     incoming.body.docids.forEach(async (docId: string) => {
-  //       // Do we have this as a design index
-  //       let index = indexes.find((index: any): boolean => {
-  //         return index.ddoc == docId;
-  //       });
-
-  //       // Did we find a match to delete?
-  //       if (index) {
-  //         // Deleta via index delete
-  //         await db.deleteIndex({
-  //           ddoc: index.ddoc,
-  //           type: index.type,
-  //           name: index.name,
-  //         });
-  //       }
-  //     });
-
-  //     return { ok: true };
-  //   }
-  // );
 
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
@@ -318,23 +262,16 @@ import { LevelMe } from "./levelme";
 
   // TODO : Verify request source
   http.use("*/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
-    return await genericDelete(incoming.url[0], decodeURIComponent(incoming.url[1]));
+    return await genericDelete(
+      incoming.url[0],
+      decodeURIComponent(incoming.url[1])
+    );
   });
 
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
     return await genericGet(incoming.url[0], incoming.url[1]);
   });
-
-  // Specific lookup path for _design database docs
-  // http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
-  //   return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
-  // });
-
-  // // Specific lookup path for _local database docs
-  // http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-  //   return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
-  // });
 
   // Gets raw unparsed document straight from leveldb
   // Document Store http://localhost:5259/activeledger/_raw/[document._id]
@@ -390,7 +327,7 @@ import { LevelMe } from "./levelme";
 
         // Time to modify!
         const newMetaDoc = prepareArchiveDoc(metaDoc, position);
-        
+
         // Prevent clashes
         metaDoc._id += ":" + position;
 
@@ -675,40 +612,38 @@ import { LevelMe } from "./levelme";
   });
 
   // Fauxton
-  http.use(
-    "_utils/**",
-    "ALL",
-    (
-      incoming: IActiveHttpIncoming,
-      req: http.IncomingMessage,
-      res: http.ServerResponse
-    ) => {
-      // We want to force /_utils to /_utils/ as this is the CouchDB behavior
-      if (req.url === "/_utils") {
-        res.writeHead(301, {
-          Location: "/_utils/",
-        });
-        return;
-      }
-
-      // File to send
-      let file = FAUXTON_PATH + "/index.html";
-
-      // If path is not default overwrite
-      if (req.url !== "/_utils/") {
-        file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
-      }
-
-      if (fs.existsSync(file)) {
-        res.setHeader(
-          "Content-type",
-          ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-        );
-        // Convert To Stream
-        return fs.readFileSync(file);
-      }
+  const fauxton = (
+    incoming: IActiveHttpIncoming,
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ) => {
+    // We want to force /_utils to /_utils/ as this is the CouchDB behavior
+    if (req.url === "/_utils") {
+      res.writeHead(301, {
+        Location: "/_utils/",
+      });
+      return;
     }
-  );
+
+    // File to send
+    let file = FAUXTON_PATH + "/index.html";
+
+    // If path is not default overwrite
+    if (req.url !== "/_utils/") {
+      file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
+    }
+
+    if (fs.existsSync(file)) {
+      res.setHeader(
+        "Content-type",
+        ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+      );
+      // Convert To Stream
+      return fs.readFileSync(file);
+    }
+  };
+  http.use("_utils", "GET", fauxton);
+  http.use("_utils/**", "ALL", fauxton);
 
   // Start Server
   http.listen(parseInt(process.argv[3]));
