@@ -56,7 +56,14 @@ interface branchStatus {
  *
  * @tuple tree
  */
-type branch = [[string, branchStatus, branch | []]];
+type branch = [[string, branchStatus, branch]] | [];
+
+/**
+ * Tuple of a branch trunk (not initially nested array )
+ *
+ * @tuple tree
+ */
+type branchTrunk = [string, branchStatus, branch];
 
 /**
  * Root of data tree
@@ -65,7 +72,7 @@ type branch = [[string, branchStatus, branch | []]];
  */
 interface tree {
   pos: number;
-  ids: branch;
+  ids: branchTrunk;
 }
 
 /**
@@ -120,7 +127,7 @@ export class LevelMe {
    * Database value key
    *
    * ÿ is xff unicode, Character code 255
-   * 
+   *
    * ÿby-sequenceÿ0000000000000110
    *
    * @private
@@ -217,16 +224,26 @@ export class LevelMe {
    * @memberof LevelMe
    */
   private findBranchEnd(
-    branch: branch,
+    branch: branchTrunk | branch,
     pos: number = 0
-  ): { branch: branch; pos: number } {
-    if (branch[0][2].length) {
+  ): { branch: branchTrunk; pos: number } {
+    let branchTrunk: branchTrunk;
+
+    // Find legacy branchTrunk (sometimes in 0 nested array)
+    if (Array.isArray(branch[0])) {
+      branchTrunk = branch[0] as branchTrunk;
+    } else {
+      branchTrunk = branch as branchTrunk;
+    }
+
+    // Need to search deeper?
+    if (branchTrunk[2].length) {
       // Move further along the branch
-      return this.findBranchEnd(branch[0][2], ++pos);
+      return this.findBranchEnd(branchTrunk[2], ++pos);
     } else {
       // We are at the tip! Return this branch
       return {
-        branch,
+        branch: branchTrunk,
         pos: ++pos,
       };
     }
@@ -447,11 +464,22 @@ export class LevelMe {
     // Allow errors to bubble up?
     let doc = await this.levelUp.get(LevelMe.DOC_PREFIX + key);
     if (raw) {
-      return doc;
+      return JSON.parse(doc);
     } else {
       doc = JSON.parse(doc) as schema;
       return await this.seqDocFromRoot(doc);
     }
+  }
+
+  /**
+   * Get a specific sequence document
+   *
+   * @param {string} seq
+   * @returns
+   * @memberof LevelMe
+   */
+  public async getSeq(seq: string) {
+    return this.levelUp.get(LevelMe.SEQ_PREFIX + seq);
   }
 
   /**
@@ -477,6 +505,11 @@ export class LevelMe {
       id: doc._id,
       rev: writer.rev,
     };
+  }
+
+  public async writeRaw(key: string, value: unknown) {
+    await this.open();
+    return this.levelUp.put(LevelMe.DOC_PREFIX + key, value);
   }
 
   /**
@@ -692,13 +725,19 @@ export class LevelMe {
       const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
 
       // Check incoming doc has the same revision
-      if (doc._rev !== `${twig.pos}-${twig.branch[0][0]}`) {
+      //if (doc._rev !== `${twig.pos}-${twig.branch[0]}`) {
+
+      // Replace with winning rev instead of branch crawling
+      if (doc._rev !== currentDocRoot.winningRev) {
         throw { msg: "Revision Mismatch", throw: 1 };
       }
 
+      // Get more relilable position value (crawler incorrect on auto archive)
+      const pos = parseInt(currentDocRoot.winningRev.split("-")[0]) + 1;
+
       // Update rev_* and doc
-      newRev = `${++twig.pos}-${md5}`;
-      twig.branch[0][2] = [[md5, { status: "available" }, []]];
+      newRev = `${pos}-${md5}`;
+      twig.branch[2] = [[md5, { status: "available" }, []]];
       currentDocRoot.winningRev = doc._rev = newRev;
       currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this.docUpdateSeq;
     } catch (e) {
@@ -717,7 +756,7 @@ export class LevelMe {
         rev_tree: [
           {
             pos: 1,
-            ids: [[md5, { status: "available" }, []]],
+            ids: [md5, { status: "available" }, []],
           },
         ],
         rev_map: {
