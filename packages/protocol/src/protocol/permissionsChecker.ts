@@ -75,12 +75,8 @@ export class PermissionsChecker {
     this.data = data;
 
     try {
-      const promiseHolder = this.buildPromises();
-
       // Get all streams to process from the database
-      const streams: ActiveDefinitions.LedgerStream[] = await Promise.all(
-        promiseHolder
-      );
+      const streams: ActiveDefinitions.LedgerStream[] = await this.buildPromises();
 
       return this.processStreams(streams);
     } catch (error) {
@@ -95,71 +91,101 @@ export class PermissionsChecker {
    * @returns {Promise<any>[]}
    * @memberof PermissionsChecker
    */
-  private buildPromises(): Promise<any>[] {
-    const holder: Promise<any>[] = [];
+  private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
+    // Map into a single alldocs lookup
+    const keys: string[] = [];
+    for (let i = this.data.length; i--; ) {
+      keys.push(this.data[i] + ":stream");
+      keys.push(this.data[i]);
+    }
 
-    this.data.map((id: any) => {
-      const promise = new Promise(async (resolve, reject) => {
-        try {
-          const docs = await this.db.allDocs({
-            keys: [id + ":stream", id],
-            include_docs: true
-          });
-
-          if (docs.rows.length === 2) {
-            // Get Documents
-            const [meta, state]: any = docs.rows as string[];
-
-            // Check meta
-            // Check script lock
-            let iMeta: ActiveDefinitions.IMeta = meta.doc as ActiveDefinitions.IMeta;
-
-            if (
-              iMeta.contractlock &&
-              iMeta.contractlock.length &&
-              iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
-            ) {
-              // We have a lock but not for the current contract request
-              return reject({
-                code: 1700,
-                reason: "Stream contract locked"
-              });
-            }
-
-            // Check namspace lock
-            if (
-              iMeta.namespaceLock &&
-              iMeta.namespaceLock.length &&
-              iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
-            ) {
-              // We have a lock but not for the current contract request
-              return reject({
-                code: 1710,
-                reason: "Stream namespace locked"
-              });
-            }
-
-            // Resolve the whole stream
-            resolve({
-              meta: meta.doc,
-              state: state.doc
-            });
-          } else {
-            reject({ code: 995, reason: "Stream(s) not found" });
-          }
-        } catch (error) {
-          // Add Info
-          error.code = 990;
-          error.reason = "Stream(s) not found";
-          // Rethrow
-          reject(error);
-        }
+    // Single fetch
+    try {
+      const docs = await this.db.allDocs({
+        keys,
+        include_docs: true,
       });
 
-      holder.push(promise);
-    });
+      // The docs wont be ordered as the keys said they would be need to create a reorder
+      const reorder: {
+        [index: string]: number;
+      } = {};
+      const results: ActiveDefinitions.LedgerStream[] = [];
 
-    return holder;
+      // Must be a better way to manage this, Less operations
+      for (let i = docs.rows.length; i--; ) {
+        // stream will be last so most likely need to replace
+        // Using .doc for consistancy between data engines
+        const baseDoc = docs.rows[i].doc._id.replace(":stream", "");
+        let iMeta: ActiveDefinitions.IMeta | null = null;
+        let iState: ActiveDefinitions.IFullState | null = null;
+        if (baseDoc === docs.rows[i].doc._id) {
+          // state
+          iState = docs.rows[i].doc as ActiveDefinitions.IFullState;
+        } else {
+          // Check meta
+          // Check script lock
+          iMeta = docs.rows[i].doc as ActiveDefinitions.IMeta;
+
+          if (
+            iMeta.contractlock &&
+            iMeta.contractlock.length &&
+            iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
+          ) {
+            // We have a lock but not for the current contract request
+            throw {
+              code: 1700,
+              reason: "Stream contract locked",
+            };
+          }
+
+          // Check namspace lock
+          if (
+            iMeta.namespaceLock &&
+            iMeta.namespaceLock.length &&
+            iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
+          ) {
+            // We have a lock but not for the current contract request
+            throw {
+              code: 1710,
+              reason: "Stream namespace locked",
+            };
+          }
+        }
+
+        // Manage the reorder object
+        if (!reorder[baseDoc]) {
+          reorder[baseDoc] = results.push({
+            state: iState as any,
+            meta: iMeta as any,
+          });
+        } else {
+          // Update missing
+          const result = results[reorder[baseDoc] - 1];
+          if (result.state) {
+            if (iMeta) result.meta = iMeta;
+          } else {
+            if (iState) result.state = iState;
+          }
+        }
+      }
+
+      // lengths should match then have all streams and meta data
+      if (results.length === (keys.length / 2)) {
+        return results;
+      } else {
+        throw {
+          code: 990,
+          reason: "Stream(s) not found",
+        };
+      }
+    } catch (error) {
+      // Add Info
+      error.code = 990;
+      error.reason = "Stream(s) not found";
+      // Rethrow
+      throw error;
+    }
   }
 
   /**
@@ -192,7 +218,7 @@ export class PermissionsChecker {
               code: 1200,
               reason:
                 (this.inputs ? "Input" : "Output") +
-                " Stream Position Incorrect"
+                " Stream Position Incorrect",
             });
           }
         } else {
@@ -221,7 +247,7 @@ export class PermissionsChecker {
                 code: 1230,
                 reason:
                   (this.inputs ? "Inputs" : "Output") +
-                  " Security Hardened Key Transactions Only"
+                  " Security Hardened Key Transactions Only",
               });
             } else {
               nhpkCheck = true;
@@ -257,7 +283,7 @@ export class PermissionsChecker {
               return reject({
                 code: 1220,
                 reason:
-                  (this.inputs ? "Input" : "Output") + " Signature Incorrect"
+                  (this.inputs ? "Input" : "Output") + " Signature Incorrect",
               });
             }
           }
@@ -310,7 +336,7 @@ export class PermissionsChecker {
           code: 1225,
           reason:
             (this.inputs ? "Input" : "Output") +
-            " Incorrect Signature List Length"
+            " Incorrect Signature List Length",
         });
       }
 
@@ -333,7 +359,7 @@ export class PermissionsChecker {
               code: 1230,
               reason:
                 (this.inputs ? "Input" : "Output") +
-                " Security Hardened Key Transactions Only"
+                " Security Hardened Key Transactions Only",
             });
           }
         } else {
@@ -374,7 +400,7 @@ export class PermissionsChecker {
               code: 1230,
               reason:
                 (this.inputs ? "Input" : "Output") +
-                " Security Hardened Key Transactions Only"
+                " Security Hardened Key Transactions Only",
             });
           }
 
@@ -382,7 +408,7 @@ export class PermissionsChecker {
             // Remap $sigs for later consumption
 
             this.entry.$sigs[streamId] = {
-              [authority.hash]: this.entry.$sigs[streamId] as string
+              [authority.hash]: this.entry.$sigs[streamId] as string,
             };
             return true;
           } else {
@@ -395,7 +421,7 @@ export class PermissionsChecker {
         // Break loop and reject
         return reject({
           code: 1220,
-          reason: (this.inputs ? "Input" : "Output") + " Signature Incorrect"
+          reason: (this.inputs ? "Input" : "Output") + " Signature Incorrect",
         });
       }
     }
