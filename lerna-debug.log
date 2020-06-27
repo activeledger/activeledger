@@ -1,0 +1,6 @@
+82 error Error: Command failed: git tag v2.3.1 -m v2.3.1
+82 error fatal: tag 'v2.3.1' already exists
+82 error
+82 error     at makeError (/home/adamw/git/activeledger/activeledger/node_modules/execa/index.js:174:9)
+82 error     at /home/adamw/git/activeledger/activeledger/node_modules/execa/index.js:278:16
+82 error     at processTicksAndRejections (internal/process/task_queues.js:93:5)

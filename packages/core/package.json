@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",
@@ -39,10 +39,10 @@
   "dependencies": {
     "@activeledger/activecrypto": "^2.2.0",
     "@activeledger/activelogger": "^2.2.0",
-    "@activeledger/activenetwork": "^2.3.1",
+    "@activeledger/activenetwork": "^2.4.0",
     "@activeledger/activeoptions": "^2.3.0",
     "@activeledger/activequery": "^2.2.0",
-    "@activeledger/activestorage": "^2.3.0",
+    "@activeledger/activestorage": "^2.4.0",
     "@activeledger/activeutilities": "^2.2.0",
     "@activeledger/httpd": "^2.2.0"
   },

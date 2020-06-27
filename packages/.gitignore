@@ -9,6 +9,7 @@ es
 # Activeledger Specifics
 .identity
 testnet*
+!testnet.ts
 config.json
 config.*.json
 instance*/*
