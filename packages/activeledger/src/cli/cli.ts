@@ -207,13 +207,13 @@ export class CLIHandler {
     ActiveOptions.parseConfig();
 
     // Check for local contracts folder
-    if (!fs.existsSync("../contracts")) fs.mkdirSync("../contracts");
+    if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
     // Check for modules link for running contracts
-    if (!fs.existsSync("../contracts/node_modules"))
+    if (!fs.existsSync("contracts/node_modules"))
       fs.symlinkSync(
         fs.realpathSync(`${__dirname}/../../node_modules`),
-        fs.realpathSync("../contracts") + "/node_modules",
+        fs.realpathSync("contracts") + "/node_modules",
         "dir"
       );
 
@@ -349,7 +349,7 @@ export class CLIHandler {
   private static async boot(): Promise<void> {
     try {
       // Set Base Path
-      ActiveOptions.set("__base", __dirname);
+      ActiveOptions.set("__base", __dirname + "/..");
       // Maintain Network Neighbourhood & Let Workers know
       ActiveNetwork.Maintain.init(new ActiveNetwork.Host());
 
@@ -419,7 +419,7 @@ export class CLIHandler {
    */
   private static checkConfig() {
     if (
-      !fs.existsSync(ActiveOptions.get<string>("config", "/../config.json"))
+      !fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))
     ) {
       // Read default config so we can add our identity to the neighbourhood
       let defConfig: any = JSON.parse(
