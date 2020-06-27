@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.4.0]
+
+### Features
+* **Activeledger:** CLI Controls Start / Stop / Restart.
+* **Activeledger:** CLI Stats.
+
+### Bug Fixes
+* **Protocol:** Transaction I/O Streams are no longer multiple fetches instead a single fetch returns all streams (Read Performance Increase).
+
 ## [2.3.1]
 
 ### Bug Fixes
