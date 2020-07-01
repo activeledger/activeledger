@@ -33,6 +33,12 @@ import { LevelMe } from "./levelme";
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
 
+  // Listening Port
+  const PORT = process.argv[3];
+
+  // Data Storage Engine Provider, level provides backwards compatiblility
+  const DS_PROVIDER = process.argv[4] || "level";
+
   // Database Connection Cache
   let dbCache: { [index: string]: LevelMe } = {};
 
@@ -48,7 +54,7 @@ import { LevelMe } from "./levelme";
       throw new Error("invalid database");
     }
     if (!dbCache[name]) {
-      dbCache[name] = new LevelMe(DIR_PREFIX, name);
+      dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
     }
     return dbCache[name];
   };
@@ -87,6 +93,7 @@ import { LevelMe } from "./levelme";
     return {
       activeledger: "Welcome to Activeledger data!",
       adapters: ["levelme"],
+      engine: DS_PROVIDER,
     };
   });
 
@@ -646,5 +653,5 @@ import { LevelMe } from "./levelme";
   http.use("_utils/**", "ALL", fauxton);
 
   // Start Server
-  http.listen(parseInt(process.argv[3]));
+  http.listen(parseInt(PORT));
 })();

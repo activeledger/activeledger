@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import RocksDB from "rocksdb";
 import { LevelUp, default as levelup, LevelUpChain } from "levelup";
+import LevelDOWN from "leveldown";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 
@@ -184,8 +185,13 @@ export class LevelMe {
    */
   private docUpdateSeq = 0;
 
-  constructor(location: string, private name: string) {
-    this.levelUp = levelup(RocksDB(location + name));
+  constructor(location: string, private name: string, provider: string) {
+    if (provider === "rocks") {
+      this.levelUp = levelup(RocksDB(location + name));
+    } else {
+      const ldb = LevelDOWN(location + name) as any;      
+      this.levelUp = levelup(ldb);
+    }
   }
 
   /**
