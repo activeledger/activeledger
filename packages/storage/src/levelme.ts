@@ -189,8 +189,7 @@ export class LevelMe {
     if (provider === "rocks") {
       this.levelUp = levelup(RocksDB(location + name));
     } else {
-      const ldb = LevelDOWN(location + name) as any;      
-      this.levelUp = levelup(ldb);
+      this.levelUp = levelup(LevelDOWN(location + name));
     }
   }
 
