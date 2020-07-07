@@ -22,7 +22,7 @@
  */
 
 import * as fs from "fs";
-import { Query, Activity } from "@activeledger/activecontracts";
+import { Standard, Activity } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -31,7 +31,7 @@ import { Query, Activity } from "@activeledger/activecontracts";
  * @class Onboard
  * @extends {Standard}
  */
-export default class Namespace extends Query {
+export default class Namespace extends Standard {
   /**
    * Requested Namespace
    *

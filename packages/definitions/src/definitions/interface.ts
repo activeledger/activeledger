@@ -57,11 +57,12 @@ export interface IActiveDSConnect {
   /**
    * Query the data store
    *
+   * @deprecated
    * @param {*} options
    * @returns {Promise<any>}
    * @memberof IActiveDSConnect
    */
-  find(options: any): Promise<any>;
+  // find(options: any): Promise<any>;
 
   /**
    * Create / Append multiple documents at the same time

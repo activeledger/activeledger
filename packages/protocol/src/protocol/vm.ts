@@ -25,7 +25,7 @@ import * as events from "events";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity } from "@activeledger/activecontracts";
-import { QueryEngine, EventEngine } from "@activeledger/activequery";
+import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { setTimeout } from "timers";
@@ -337,7 +337,6 @@ export class VirtualMachine extends events.EventEmitter
         // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
         this.virtualInstance.initialiseContract(
           payload,
-          new QueryEngine(this.db, true),
           this.event,
           this.emitter
         );

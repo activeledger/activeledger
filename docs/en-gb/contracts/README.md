@@ -15,7 +15,7 @@ Activeledger supplies multiple classes to inherit from to help you develop your 
 
 * [Standard](./standard.md) - Provides the basic abstract functions to code to.
 * [Post Process](./postprocess.md) - Abstract functions to hook into post commit phase logic.
-* [Query](./query.md) - Allows you to query the ledger at contract runtime.
+* [Query](./query.md) - Allows you to query the ledger at contract runtime. ⚠️Deprecated⚠️
 * [Event](./event.md) - Allows you to emit events from the contract to trigger external processes.
 
 Smart contracts are promised based allowing you to run long running tasks without causing the rest of the ledger to have any slow downs. This is achieved by how Activeledger manages the data on the ledger and having the sandboxed virtual machines.
