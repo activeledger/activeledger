@@ -62,7 +62,7 @@ class ContractControl implements IVMObject {
    */
   public initialiseContract(
     payload: IVMDataPayload,
-    query: any,
+    // query: any,
     event: EventEngine,
     emitter: EventEmitter
   ): void {
@@ -83,11 +83,11 @@ class ContractControl implements IVMObject {
       emitter
     );
 
-    if ("setQuery" in this.smartContracts[payload.umid]) {
-      (this.smartContracts[payload.umid] as PostProcessQueryEvent).setQuery(
-        query
-      );
-    }
+    // if ("setQuery" in this.smartContracts[payload.umid]) {
+    //   (this.smartContracts[payload.umid] as PostProcessQueryEvent).setQuery(
+    //     query
+    //   );
+    // }
 
     if ("setEvent" in this.smartContracts[payload.umid]) {
       (this.smartContracts[payload.umid] as PostProcessQueryEvent).setEvent(

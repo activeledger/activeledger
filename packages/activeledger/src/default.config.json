@@ -9,7 +9,8 @@
   "db": {
     "selfhost": {
       "host": "127.0.0.1",
-      "port": "5259"
+      "port": "5259",
+      "engine": "rocks"
     },
     "url": "http://[user]:[pass]@[host]:[port]",
     "database": "activeledger",
