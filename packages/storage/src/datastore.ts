@@ -80,21 +80,25 @@ export class ActiveDataStore {
    * @memberof DataStore
    */
   public launch(): string {
+    const dbInfo = ActiveOptions.get<any>("db", {});
     // Launch Background Database Process
     this.process = child.spawn(
       "node",
       [
         __dirname + "/selfhost.js",
         this.dsLocation,
-        `${ActiveOptions.get<any>("db", {}).selfhost.port}`
+        `${dbInfo.selfhost.port}`,
+        `${dbInfo.selfhost.engine || "level"}`,
       ],
       {
-        stdio: "inherit"
+        stdio: "inherit",
       }
     );
 
     ActiveLogger.info(
-      `Self-hosted data engine : Starting Up (${this.process.pid})`
+      `Self-hosted data engine (${
+        dbInfo.selfhost.engine || "level"
+      })  : Starting Up (${this.process.pid})`
     );
 
     // Store the PID for stop command
@@ -104,8 +108,9 @@ export class ActiveDataStore {
     this.process.on("exit", (code: number, signal: string) => {
       // Just restart as we need the database up
       ActiveLogger.error(
-        `Self-hosted data engine has shutdown (${code} : ${signal ||
-        "No Signal"})`
+        `Self-hosted data engine has shutdown (${code} : ${
+          signal || "No Signal"
+        })`
       );
       // As its an attached process killing activeledger will prevent this restart
       // If killed via activeledger --stop check for SIGTERM signal and don't restart if it is
