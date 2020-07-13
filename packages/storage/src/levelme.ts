@@ -431,15 +431,18 @@ export class LevelMe {
 
             // Don't realy need this but the quickest switch for needing "id" for database viewer
             // Only viewer should call, So want the doc
-            //if (options.include_docs) {
-            // Get the actual data document
-            const promise = this.seqDocFromRoot(doc);
-            promises.push(promise);
-            rows.push(await promise);
-            // } else {
-            //   doc.id = doc._id;
-            //   rows.push(doc);
-            // }
+            if (options.include_docs) {
+              // Get the actual data document
+              const promise = this.seqDocFromRoot(doc);
+              promises.push(promise);
+              rows.push(await promise);
+            } else {
+              rows.push({
+                _id: doc.id, // Compatibility Trick
+                id: doc.id,
+                key: doc.id,
+              });
+            }
           })
           .on("error", (err: unknown) => {
             reject(err);
