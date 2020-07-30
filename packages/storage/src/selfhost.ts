@@ -24,7 +24,7 @@ import * as http from "http";
 import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
-import { PouchDB, leveldown } from "./pouchdb";
+import { LevelMe } from "./levelme";
 
 (function () {
   // Fauxton Path
@@ -33,31 +33,14 @@ import { PouchDB, leveldown } from "./pouchdb";
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
 
-  // PouchDB Connection Handler
-  const PouchDb = PouchDB.defaults({ prefix: DIR_PREFIX });
+  // Listening Port
+  const PORT = process.argv[3];
 
-  // How PouchDB wraps documents keys
-  const PouchDBDocBuffer = Buffer.from("ÿdocument-storeÿ");
-  const PouchDBSeqBuffer = Buffer.from("ÿby-sequenceÿ");
+  // Data Storage Engine Provider, level provides backwards compatiblility
+  const DS_PROVIDER = process.argv[4] || "level";
 
-  // PouchDB Connection Cache
-  let pDBCache: any = {};
-
-  // Leveldown Cache
-  let leveldownCache: any = {};
-
-  /**
-   * Custom leveldown for Pouch (allows acceess to leveldown)
-   *
-   * @param {string} name
-   * @returns
-   */
-  let levelupdown = (name: string) => {
-    if (!leveldownCache[name]) {
-      leveldownCache[name] = leveldown(name);
-    }
-    return leveldownCache[name];
-  };
+  // Database Connection Cache
+  let dbCache: { [index: string]: LevelMe } = {};
 
   /**
    * Manages Pouch Connections
@@ -65,13 +48,15 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  const getPDB = (name: string) => {
-    if (!pDBCache[name]) {
-      pDBCache[name] = new PouchDb(name, {
-        db: levelupdown,
-      });
+  const getDB = (name: string): LevelMe => {
+    // Filter out annoying name in a very forcefull way
+    if (name === "favicon.ico") {
+      throw new Error("invalid database");
     }
-    return pDBCache[name];
+    if (!dbCache[name]) {
+      dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+    }
+    return dbCache[name];
   };
 
   /**
@@ -107,7 +92,8 @@ import { PouchDB, leveldown } from "./pouchdb";
   http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
-      adapters: ["leveldb"],
+      adapters: ["levelme"],
+      engine: DS_PROVIDER,
     };
   });
 
@@ -132,9 +118,8 @@ import { PouchDB, leveldown } from "./pouchdb";
 
   // Get Database Info
   http.use("*", "GET", async (incoming: IActiveHttpIncoming) => {
-    // if (fs.existsSync(DIR_PREFIX + incoming.url[0])) {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     let info = await db.info();
 
     // Now add data_size
@@ -150,11 +135,10 @@ import { PouchDB, leveldown } from "./pouchdb";
   // Create Database
   http.use("*", "PUT", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.body.name);
+    let db = getDB(incoming.body.name);
 
     // Create Database
     await db.info();
-
     return { ok: true };
   });
 
@@ -177,9 +161,9 @@ import { PouchDB, leveldown } from "./pouchdb";
     // Check Folder
     if (fs.existsSync(dir)) {
       // If we have this db open we need to close it
-      if (pDBCache[incoming.url[0]]) {
-        await pDBCache[incoming.url[0]].close();
-        pDBCache[incoming.url[0]] = null;
+      if (dbCache[incoming.url[0]]) {
+        await dbCache[incoming.url[0]].close();
+        delete dbCache[incoming.url[0]];
       }
 
       // Delete Database
@@ -200,75 +184,17 @@ import { PouchDB, leveldown } from "./pouchdb";
     return { uuids };
   });
 
-  // Get Index
-  http.use("/*/_index", "GET", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getPDB(incoming.url[0]);
-    return await db.getIndexes();
-  });
-
-  // Create Index
-  http.use("/*/_index", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getPDB(incoming.url[0]);
-    return await db.createIndex(incoming.body);
-  });
-
-  // Delete Index
-  http.use("/*/_index/*/*/*", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Db
-    let db = getPDB(incoming.url[0]);
-    return await db.deleteIndex({
-      ddoc: incoming.url[2],
-      type: incoming.url[3],
-      name: incoming.url[4],
-    });
-  });
-
-  // Delete Index (Fauxton Way)
-  http.use(
-    "/*/_index/_bulk_delete",
-    "POST",
-    async (incoming: IActiveHttpIncoming) => {
-      // Get Db
-      let db = getPDB(incoming.url[0]);
-
-      // Get all Indexes
-      const indexes: any[] = (await db.getIndexes()).indexes;
-
-      // Loop all indexes Fauxton wants to delete
-      incoming.body.docids.forEach(async (docId: string) => {
-        // Do we have this as a design index
-        let index = indexes.find((index: any): boolean => {
-          return index.ddoc == docId;
-        });
-
-        // Did we find a match to delete?
-        if (index) {
-          // Deleta via index delete
-          await db.deleteIndex({
-            ddoc: index.ddoc,
-            type: index.type,
-            name: index.name,
-          });
-        }
-      });
-
-      return { ok: true };
-    }
-  );
-
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.allDocs(prepareAllDocs(incoming.query));
   });
 
   // Get all docs filtered from a database
   http.use("*/_all_docs", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.allDocs(
       prepareAllDocs(Object.assign(incoming.query, incoming.body))
     );
@@ -311,7 +237,7 @@ import { PouchDB, leveldown } from "./pouchdb";
     // Get Database
     return new Promise(async (resolve, reject) => {
       // Get Database
-      let db = getPDB(dbLoc);
+      const db = getDB(dbLoc);
       db.get(decodeURIComponent(path))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
@@ -330,48 +256,28 @@ import { PouchDB, leveldown } from "./pouchdb";
    */
   const genericDelete = (dbLoc: string, docName: string): Promise<any> => {
     return new Promise(async (resolve, reject) => {
-      // Let Pouch create the connection
-      await getPDB(dbLoc).info();
-      // Get Database as leveldown
-      let db = levelupdown(DIR_PREFIX + dbLoc);
-
-      // make sure the database was opened by pouch
-      if (db.status === "open") {
-        // Direct Delete
-        db.del(
-          Buffer.concat([PouchDBDocBuffer, Buffer.from(docName)]),
-          (error: unknown) => {
-            if (error) {
-              return reject(error);
-            }
-            // Return Ok
-            return resolve({ success: "ok" });
-          }
-        );
-      } else {
-        return reject("database not opened");
+      // Get Database
+      const db = getDB(dbLoc);
+      try {
+        await db.del(docName);
+        return resolve({ success: "ok" });
+      } catch (e) {
+        return reject(e);
       }
     });
   };
 
   // TODO : Verify request source
   http.use("*/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
-    return await genericDelete(incoming.url[0], incoming.url[1]);
+    return await genericDelete(
+      incoming.url[0],
+      decodeURIComponent(incoming.url[1])
+    );
   });
 
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
     return await genericGet(incoming.url[0], incoming.url[1]);
-  });
-
-  // Specific lookup path for _design database docs
-  http.use("*/_design/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    return await genericGet(incoming.url[0], `_design/${incoming.url[2]}`);
-  });
-
-  // Specific lookup path for _local database docs
-  http.use("*/_local/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    return await genericGet(incoming.url[0], `_local/${incoming.url[2]}`);
   });
 
   // Gets raw unparsed document straight from leveldb
@@ -380,32 +286,18 @@ import { PouchDB, leveldown } from "./pouchdb";
   http.use("*/_raw/*", "GET", async (incoming: IActiveHttpIncoming) => {
     // Getting revision?
     const [root, revision] = incoming.url[2].split("@");
-    const dbLoc = DIR_PREFIX + incoming.url[0];
-    const dbKeyPath = Buffer.concat([
-      PouchDBDocBuffer,
-      Buffer.from(decodeURIComponent(root)),
-    ]);
-    await getPDB(incoming.url[0]).info();
+
+    // Get Database
+    const db = getDB(incoming.url[0]);
 
     // Get Main Doc
-    const rootDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+    const rootDoc = await db.get(decodeURIComponent(root), true);
 
     // If getting revision we need sequence
     if (revision) {
       try {
-        //ÿby-sequenceÿ0000000000000109
-        //ÿby-sequenceÿ0000000000000110
-        const revSeq = rootDoc.rev_map[revision];
-        console.log(revSeq);
-
-        const dbSeqPath = Buffer.concat([
-          PouchDBSeqBuffer,
-          Buffer.from(revSeq.toString().padStart(16, 0)),
-        ]);
-
-        return await fetchRawDoc(dbLoc, dbSeqPath);
+        return await db.getSeq(rootDoc.rev_map[revision]);
       } catch (e) {
-        console.log(e);
         throw new Error("Revision Fetch Failed");
       }
     }
@@ -431,12 +323,11 @@ import { PouchDB, leveldown } from "./pouchdb";
     const position = isArchivable(incoming.body._rev);
     if (position) {
       try {
-        const dbLoc = DIR_PREFIX + incoming.url[0];
-        const dbKeyPath = Buffer.concat([
-          PouchDBDocBuffer,
-          Buffer.from(decodeURIComponent(incoming.url[1])),
-        ]);
-        const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+        // Get Database
+        const db = getDB(incoming.url[0]);
+
+        // Raw meta doc
+        const metaDoc = await db.get(decodeURIComponent(incoming.url[1]), true);
 
         // Make sure archive database exists
         const archDb = await getCreateArchiveDb(incoming.url[0]);
@@ -445,15 +336,14 @@ import { PouchDB, leveldown } from "./pouchdb";
         const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
         // Prevent clashes
-        metaDoc.stream = metaDoc.id;
-        delete metaDoc.id, metaDoc._id;
+        metaDoc._id += ":" + position;
 
         // We could add to existing but then we would archive the archive
         // Write document to archive
         await archDb.post(checkDoc(metaDoc));
 
-        // Rewrite pouchdb meta root document
-        await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+        // Rewrite meta root document
+        await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
         return true;
       } catch (e) {
         // Any errors continue
@@ -473,8 +363,7 @@ import { PouchDB, leveldown } from "./pouchdb";
   const prepareArchiveDoc = (metaDoc: any, position: number) => {
     // Time to modify!
     const newMetaDoc = {
-      id: metaDoc.id,
-      rev: metaDoc.rev,
+      _id: metaDoc._id,
       rev_tree: [
         {
           // pos: metaDoc.rev_tree[0].pos,
@@ -483,7 +372,7 @@ import { PouchDB, leveldown } from "./pouchdb";
         },
       ],
       rev_map: {
-        [metaDoc.rev]: metaDoc.rev_map[metaDoc.rev],
+        [metaDoc.winningRev]: metaDoc.rev_map[metaDoc.winningRev],
       },
       winningRev: metaDoc.winningRev,
       deleted: metaDoc.deleted,
@@ -498,17 +387,9 @@ import { PouchDB, leveldown } from "./pouchdb";
    * @param {string} name
    * @returns
    */
-  const getCreateArchiveDb = async (name: string): Promise<any> => {
-    const archDb = getPDB(name + "_archive");
+  const getCreateArchiveDb = async (name: string): Promise<LevelMe> => {
+    const archDb = getDB(name + "_archive");
     await archDb.info();
-
-    // Add index on id column that matches streams
-    await archDb.createIndex({
-      index: {
-        fields: ["stream"],
-      },
-    });
-
     return archDb;
   };
 
@@ -540,73 +421,10 @@ import { PouchDB, leveldown } from "./pouchdb";
       // packages/storage/src/pouchdb/pouchdb-adapter-utils/lib/index.js:361
       // packages/storage/src/pouchdb/pouchdb-adapter-utils/src/processDocs.js:18
       // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
-      return position % 300 === 0 ? position : 0;
+      //return position % 300 === 0 ? position : 0;
+      return position % 3 === 0 ? position : 0;
     }
     return 0;
-  };
-
-  /**
-   * Writes document directly to leveldb bypasses pouch
-   *
-   * @param {string} dbLoc
-   * @param {Buffer} path
-   * @param {string} data
-   * @returns {Promise<boolean>}
-   */
-  const writeRawDoc = (
-    dbLoc: string,
-    path: Buffer,
-    data: string
-  ): Promise<boolean> => {
-    return new Promise((resolve, reject) => {
-      // Get raw level access
-      const dbl = levelupdown(dbLoc);
-      if (dbl.status === "open") {
-        dbl.put(path, data, (error: Error) => {
-          if (error) {
-            return reject(error);
-          } else {
-            try {
-              return resolve(true);
-            } catch (e) {
-              return reject(e);
-            }
-          }
-        });
-      } else {
-        // dbl.close();
-        return reject("failed to open");
-      }
-    });
-  };
-
-  /**
-   * Reads document directly from leveldb bypasses pouch
-   *
-   * @param {string} dbLoc
-   * @param {Buffer} path
-   * @returns {Promise<any>}
-   */
-  const fetchRawDoc = (dbLoc: string, path: Buffer): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      // Get raw level access
-      const dbl = levelupdown(dbLoc);
-      if (dbl.status === "open") {
-        dbl.get(path, { asBuffer: false }, (error: Error, doc: string) => {
-          if (error) {
-            return reject(error);
-          } else {
-            try {
-              return resolve(JSON.parse(doc));
-            } catch (e) {
-              return reject(e);
-            }
-          }
-        });
-      } else {
-        return reject("failed to open");
-      }
-    });
   };
 
   /**
@@ -618,18 +436,19 @@ import { PouchDB, leveldown } from "./pouchdb";
    */
   const genericPut = async (dbLoc: string, body: string): Promise<any> => {
     // Get Database
-    let db = getPDB(dbLoc);
+    let db = getDB(dbLoc);
     try {
       return await db.put(body);
     } catch (e) {
-      return "";
+      e.reason = e.message;
+      throw e;
     }
   };
 
   // Add new / updated document to the database with auto id
   http.use("*", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
 
     // Archive Document?
     await markAsArchived(incoming);
@@ -637,7 +456,8 @@ import { PouchDB, leveldown } from "./pouchdb";
     try {
       return await db.post(checkDoc(incoming.body));
     } catch (e) {
-      return "";
+      e.reason = e.message;
+      throw e;
     }
   });
 
@@ -651,7 +471,7 @@ import { PouchDB, leveldown } from "./pouchdb";
       res: http.ServerResponse
     ) => {
       // Get Database
-      let db = getPDB(incoming.url[0]);
+      let db = getDB(incoming.url[0]);
 
       // Limit check
       if (incoming.query.limit < 1) {
@@ -688,7 +508,7 @@ import { PouchDB, leveldown } from "./pouchdb";
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
 
-          db.changes(incoming.query).then((complete: any) => {
+          db.changesFromSeq(incoming.query).then((complete: any) => {
             if (complete.results.length) {
               res.write(JSON.stringify(complete));
               res.end();
@@ -698,38 +518,35 @@ import { PouchDB, leveldown } from "./pouchdb";
               // mimicking CouchDB, start sending the JSON immediately
               res.write('{"results":[\n');
               incoming.query.live = incoming.query.continuous = true;
-              let changes = db
-                .changes(incoming.query)
-                .on("change", (change: any) => {
+
+              // Listener Process event (to turn off)
+              const listener = (change: any) => {
+                if (!req.connection.destroyed) {
                   res.write(JSON.stringify(change));
                   res.write('],\n"last_seq":' + change.seq + "}\n");
-                  changes.cancel();
-                })
-                .on("error", (e: any) => {
-                  req.connection.removeListener("close", cancelChanges);
-                  res.end();
-                  cleanUp();
-                })
-                .on("complete", () => {
-                  req.connection.removeListener("close", cancelChanges);
-                  res.end();
-                  cleanUp();
-                });
+                }
+                res.end();
+                cleanUp();
+              };
 
               // Stop listening for changes
-              let cancelChanges = () => {
-                changes.cancel();
+              const cancelChanges = () => {
+                changes.off("change", listener);
+                req.connection.off("close", cancelChanges);
               };
 
               // Run on close connection
               req.connection.on("close", cancelChanges);
+
+              // Listening for changes
+              let changes = db.changes().on("change", listener);
             }
           });
         }
         return "handled";
       } else {
         // Just get the latest
-        return await db.changes(incoming.query);
+        return await db.changesFromSeq(incoming.query);
       }
     }
   );
@@ -740,30 +557,12 @@ import { PouchDB, leveldown } from "./pouchdb";
     if (!Array.isArray(incoming.body)) {
       // Must have docs
       if (incoming.body.docs) {
-        // Options for new_edits
-        let opts = {
-          new_edits:
-            incoming.body.new_edits ||
-            (incoming.body.options && incoming.body.options.new_edits),
-        };
-
-        // Protect from being empty or bad value
-        if (
-          typeof opts.new_edits === "undefined" ||
-          typeof opts.new_edits !== "boolean"
-        ) {
-          opts.new_edits = true;
-        }
-
         // Get Database
-        let db = getPDB(incoming.url[0]);
+        let db = getDB(incoming.url[0]);
 
         // Prepare Archive database
         // Make sure archive database exists
         const archDb = await getCreateArchiveDb(incoming.url[0]);
-
-        // Cache database Location
-        const dbLoc = DIR_PREFIX + incoming.url[0];
 
         // We need to see if the docs need archiving
         for (let i = incoming.body.docs.length; i--; ) {
@@ -771,28 +570,21 @@ import { PouchDB, leveldown } from "./pouchdb";
           const position = isArchivable(doc._rev);
           if (position) {
             try {
-              // Raw LevelDB Path
-              const dbKeyPath = Buffer.concat([
-                PouchDBDocBuffer,
-                Buffer.from(doc._id),
-              ]);
-
-              // This may cause a problem re-opening? Or does c++ binding it re-use underneath?
-              const metaDoc = await fetchRawDoc(dbLoc, dbKeyPath);
+              // Raw meta doc
+              const metaDoc = await db.get(doc._id, true);
 
               // Time to modify!
               const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
               // Prevent clashes
-              metaDoc.stream = metaDoc.id;
-              delete metaDoc.id, metaDoc._id;
+              metaDoc._id += ":" + position;
 
               // We could add to existing but then we would archive the archive
               // Write document to archive
               await archDb.post(checkDoc(metaDoc));
 
-              // Rewrite pouchdb meta root document
-              await writeRawDoc(dbLoc, dbKeyPath, JSON.stringify(newMetaDoc));
+              // Rewrite meta root document
+              await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
             } catch (e) {
               // Ignore errors and continue
             }
@@ -800,7 +592,15 @@ import { PouchDB, leveldown } from "./pouchdb";
         }
 
         // Bulk Insert
-        return await db.bulkDocs(incoming.body.docs, opts);
+        if (await db.bulkDocs(incoming.body.docs)) {
+          return {
+            ok: true,
+          };
+        } else {
+          return {
+            ok: false,
+          };
+        }
       }
     }
   });
@@ -808,52 +608,50 @@ import { PouchDB, leveldown } from "./pouchdb";
   // Find API
   http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
     // Get Database
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.find(incoming.body);
   });
 
   // Explain
   http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
-    let db = getPDB(incoming.url[0]);
+    let db = getDB(incoming.url[0]);
     return await db.explain(incoming.body);
   });
 
   // Fauxton
-  http.use(
-    "_utils/**",
-    "ALL",
-    (
-      incoming: IActiveHttpIncoming,
-      req: http.IncomingMessage,
-      res: http.ServerResponse
-    ) => {
-      // We want to force /_utils to /_utils/ as this is the CouchDB behavior
-      if (req.url === "/_utils") {
-        res.writeHead(301, {
-          Location: "/_utils/",
-        });
-        return;
-      }
-
-      // File to send
-      let file = FAUXTON_PATH + "/index.html";
-
-      // If path is not default overwrite
-      if (req.url !== "/_utils/") {
-        file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
-      }
-
-      if (fs.existsSync(file)) {
-        res.setHeader(
-          "Content-type",
-          ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-        );
-        // Convert To Stream
-        return fs.readFileSync(file);
-      }
+  const fauxton = (
+    incoming: IActiveHttpIncoming,
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ) => {
+    // We want to force /_utils to /_utils/ as this is the CouchDB behavior
+    if (req.url === "/_utils") {
+      res.writeHead(301, {
+        Location: "/_utils/",
+      });
+      return;
     }
-  );
+
+    // File to send
+    let file = FAUXTON_PATH + "/index.html";
+
+    // If path is not default overwrite
+    if (req.url !== "/_utils/") {
+      file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
+    }
+
+    if (fs.existsSync(file)) {
+      res.setHeader(
+        "Content-type",
+        ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+      );
+      // Convert To Stream
+      return fs.readFileSync(file);
+    }
+  };
+  http.use("_utils", "GET", fauxton);
+  http.use("_utils/**", "ALL", fauxton);
 
   // Start Server
-  http.listen(parseInt(process.argv[3]));
+  http.listen(parseInt(PORT));
 })();

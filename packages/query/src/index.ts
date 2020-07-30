@@ -21,11 +21,12 @@
  * SOFTWARE.
  */
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { SQL } from "./sql";
+// import { SQL } from "./sql";
 
 /**
  *  Query Engine used to look up data on Activeledger
  *
+ * @deprecated
  * @export
  * @class QueryEngine
  */
@@ -61,7 +62,8 @@ export class QueryEngine {
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
     // Convert to json query
-    return this.mango(new SQL(sql).parse());
+    return this.mango("");
+    //return this.mango(new SQL(sql).parse());
   }
 
   /**
@@ -74,54 +76,55 @@ export class QueryEngine {
    */
   public mango(query: any): Promise<ActiveDefinitions.IState> {
     return new Promise((resolve, reject) => {
-      // Limit Restrictions
-      if (this.limit > 0) {
-        query.limit = this.limit;
-      }
+      return reject("Query Deprecated");
+      //   // Limit Restrictions
+      //   if (this.limit > 0) {
+      //     query.limit = this.limit;
+      //   }
 
-      // Submit Query
-      this.db
-        .find(query)
-        .then((results: any) => {
-          // Compatibility fix
-          let docs: any[] = results.docs;
+      //   // Submit Query
+      //   this.db
+      //     .find(query)
+      //     .then((results: any) => {
+      //       // Compatibility fix
+      //       let docs: any[] = results.docs;
 
-          // Warning (Such as index?)
-          if (results.warning) {
-            // Update Warning
-            this.warning = {
-              query: query,
-              message: results.warning
-            };
-          } else {
-            // Clear warning
-            this.warning = undefined;
-          }
+      //       // Warning (Such as index?)
+      //       if (results.warning) {
+      //         // Update Warning
+      //         this.warning = {
+      //           query: query,
+      //           message: results.warning,
+      //         };
+      //       } else {
+      //         // Clear warning
+      //         this.warning = undefined;
+      //       }
 
-          // Filter documents if inside a contract
-          if (this.isContract || docs.length == 0) {
-            let filteredDocs: ActiveDefinitions.IState[] = [];
-            let i = docs.length;
-            while (i--) {
-              // Make sure it isn't a stream document
-              // Maybe using a property within this document will be faster
-              if (
-                (docs[i]._id as string).substring(
-                  (docs[i]._id as string).length - 6
-                ) != "stream"
-              ) {
-                filteredDocs.push(docs[i]);
-              }
-            }
-            resolve(filteredDocs);
-          } else {
-            // Return Raw (Or empty array)
-            resolve(docs as ActiveDefinitions.IState);
-          }
-        })
-        .catch(() => {
-          reject("Query Failed");
-        });
+      //       // Filter documents if inside a contract
+      //       if (this.isContract || docs.length == 0) {
+      //         let filteredDocs: ActiveDefinitions.IState[] = [];
+      //         let i = docs.length;
+      //         while (i--) {
+      //           // Make sure it isn't a stream document
+      //           // Maybe using a property within this document will be faster
+      //           if (
+      //             (docs[i]._id as string).substring(
+      //               (docs[i]._id as string).length - 6
+      //             ) != "stream"
+      //           ) {
+      //             filteredDocs.push(docs[i]);
+      //           }
+      //         }
+      //         resolve(filteredDocs);
+      //       } else {
+      //         // Return Raw (Or empty array)
+      //         resolve(docs as ActiveDefinitions.IState);
+      //       }
+      //     })
+      //     .catch(() => {
+      //       reject("Query Failed");
+      //     });
     });
   }
 
@@ -174,7 +177,7 @@ export class EventEngine {
       name: name,
       data: data,
       phase: this.phase,
-      contract: this.contract
+      contract: this.contract,
     };
 
     // Fix for pDB

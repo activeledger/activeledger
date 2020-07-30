@@ -33,7 +33,7 @@ import { EventEmitter } from "events";
 export interface IVMObject {
   initialiseContract(
     payload: IVMDataPayload,
-    query: any,
+    //query: any,
     event: EventEngine,
     emitter: EventEmitter
   ): void;

@@ -20,8 +20,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { IActiveHttpIncoming } from "@activeledger/httpd";
-import { ActiveledgerDatasource } from "./../datasource";
+// import { IActiveHttpIncoming } from "@activeledger/httpd";
+// import { ActiveledgerDatasource } from "./../datasource";
 
 /**
  * Query Activeledger Datastore via sql / mango
@@ -30,44 +30,44 @@ import { ActiveledgerDatasource } from "./../datasource";
  * @param {IActiveHttpIncoming} incoming
  * @returns {Promise<object>}
  */
-export async function search(incoming: IActiveHttpIncoming): Promise<object> {
-  let results;
+// export async function search(incoming: IActiveHttpIncoming): Promise<object> {
+//   let results;
 
-  // POST
-  if (incoming.body) {
-    if (incoming.body.sql && incoming.body.sql.length > 15) {
-      results = await ActiveledgerDatasource.getQuery().sql(incoming.body.sql);
-    }
+//   // POST
+//   if (incoming.body) {
+//     if (incoming.body.sql && incoming.body.sql.length > 15) {
+//       results = await ActiveledgerDatasource.getQuery().sql(incoming.body.sql);
+//     }
 
-    if (incoming.body.mango && Object.keys(incoming.body.mango).length > 0) {
-      results = await ActiveledgerDatasource.getQuery().mango(
-        incoming.body.mango
-      );
-    }
-  } else {
-    // Query
-    results = await ActiveledgerDatasource.getQuery().sql(incoming.query.sql);
-  }
+//     if (incoming.body.mango && Object.keys(incoming.body.mango).length > 0) {
+//       results = await ActiveledgerDatasource.getQuery().mango(
+//         incoming.body.mango
+//       );
+//     }
+//   } else {
+//     // Query
+//     results = await ActiveledgerDatasource.getQuery().sql(incoming.query.sql);
+//   }
 
-  if (results) {
-    let warning = ActiveledgerDatasource.getQuery().getLastWarning();
-    if (warning) {
-      return {
-        streams: results,
-        warning: warning
-      };
-    } else {
-      return {
-        streams: results
-      };
-    }
-  } else {
-    return {
-      streams: [],
-      warning: {
-        query: "N/A",
-        message: "No SQL or Mango query found"
-      }
-    };
-  }
-}
+//   if (results) {
+//     let warning = ActiveledgerDatasource.getQuery().getLastWarning();
+//     if (warning) {
+//       return {
+//         streams: results,
+//         warning: warning
+//       };
+//     } else {
+//       return {
+//         streams: results
+//       };
+//     }
+//   } else {
+//     return {
+//       streams: [],
+//       warning: {
+//         query: "N/A",
+//         message: "No SQL or Mango query found"
+//       }
+//     };
+//   }
+// }

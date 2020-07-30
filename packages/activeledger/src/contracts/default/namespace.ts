@@ -21,7 +21,8 @@
  * SOFTWARE.
  */
 
-import { Query, Activity } from "@activeledger/activecontracts";
+import * as fs from "fs";
+import { Standard, Activity } from "@activeledger/activecontracts";
 
 /**
  * Default Onboarding (New Account) contract
@@ -30,7 +31,7 @@ import { Query, Activity } from "@activeledger/activecontracts";
  * @class Onboard
  * @extends {Standard}
  */
-export default class Namespace extends Query {
+export default class Namespace extends Standard {
   /**
    * Requested Namespace
    *
@@ -48,6 +49,14 @@ export default class Namespace extends Query {
    * @memberof Namespace
    */
   private identity: Activity;
+
+  /**
+   * The Root for contract files
+   *
+   * @type {string}
+   * @memberof Contract
+   */
+  readonly rootDir: string = "./contracts/";
 
   /**
    * Quick Check, Allow all data but make sure it is signatureless
@@ -87,23 +96,11 @@ export default class Namespace extends Query {
       // Default already protected
       if (this.namespace == "default") return reject("Namespace Reserved");
 
-      // Does the namespace exist
-      // Changed to contract typing
-      this.query
-        .sql(
-          `SELECT * FROM X WHERE _id > "" AND namespace = '${
-            this.namespace
-          }' AND type = '${this.transactions.$namespace}.activeledger.identity'`
-        )
-        .then(doc => {
-          if (doc.length > 0) {
-            return reject("Namespace Reserved");
-          }
-          return resolve(true);
-        })
-        .catch(() => {
-          reject("Query Error");
-        });
+      // Does the namespace exist type 2
+      if (fs.existsSync(this.rootDir + this.namespace)) {
+        return reject("Namespace Reserved");
+      }
+      resolve(true);
     });
   }
 
@@ -115,6 +112,14 @@ export default class Namespace extends Query {
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
+      // Lets assign to this identity
+      // Note: Old method didn't create folders so migration tool needed or can use first come
+      fs.mkdirSync(this.rootDir + this.namespace);
+      fs.writeFileSync(
+        `${this.rootDir}${this.namespace}/.identity`,
+        this.identity.getId()
+      );
+
       // Update Identity to own namespace
       this.identity.setState({ namespace: this.namespace });
 
