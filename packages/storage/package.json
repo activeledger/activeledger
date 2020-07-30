@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
@@ -35,7 +35,10 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
+    "@types/leveldown": "^4.0.2",
+    "@types/levelup": "^4.3.0",
     "@types/node": "^11.13.7",
+    "@types/rocksdb": "^3.0.0",
     "copyfiles": "^2.1.0",
     "typescript": "^3.4.4"
   },
@@ -48,17 +51,11 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.2.0",
-    "@activeledger/activeoptions": "^2.3.0",
-    "@activeledger/activeutilities": "^2.2.0",
-    "@activeledger/httpd": "^2.2.0",
-    "double-ended-queue": "2.1.0-0",
-    "level": "5.0.1",
-    "level-codec": "9.0.1",
-    "level-write-stream": "1.0.0",
-    "leveldown": "5.1.1",
-    "levelup": "4.1.0",
-    "ltgt": "2.2.1",
-    "readable-stream": "3.4.0",
-    "through2": "3.0.1"
+    "@activeledger/activeoptions": "^2.5.0",
+    "@activeledger/activeutilities": "^2.5.0",
+    "@activeledger/httpd": "^2.5.0",
+    "leveldown": "^5.6.0",
+    "levelup": "^4.4.0",
+    "rocksdb": "^4.1.0"
   }
 }
