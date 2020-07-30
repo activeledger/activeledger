@@ -31,30 +31,13 @@ import { ActiveledgerDatasource } from "./../datasource";
  * @returns {Promise<object>}
  */
 export async function changes(incoming: IActiveHttpIncoming): Promise<object> {
-  const changes = await ActiveledgerDatasource.getDb().changes({
+  return await ActiveledgerDatasource.getDb().changes({
     descending: true,
     include_docs:
       (incoming.query.include_docs || false) == "true" ? true : false,
-    limit: (incoming.query.limit || 10) * 3
+    //limit: (incoming.query.limit || 10) * 4,
+    limit: incoming.query.limit || 10,
   });
-  if (changes) {
-    // Filter in only the stream data documents
-    let dataDocs = [];
-    let i = changes.results.length;
-    while (i--) {
-      if (
-        changes.results[i].id.indexOf(":") === -1 &&
-        changes.results[i].id.indexOf("_design") === -1
-      ) {
-        dataDocs.push(changes.results[i]);
-      }
-    }
-    return {
-      changes: dataDocs
-    };
-  } else {
-    return changes;
-  }
 }
 
 /**
@@ -73,7 +56,7 @@ export async function getVolatile(
   if (results) {
     delete results._id, results._rev;
     return {
-      stream: results
+      stream: results,
     };
   } else {
     return results;
@@ -106,7 +89,7 @@ export async function setVolatile(
       console.log(error);
     }
     return {
-      success: results.ok
+      success: results.ok,
     };
   } else {
     return results;
@@ -127,7 +110,7 @@ export async function getStream(
   if (results) {
     delete results._id, results._rev;
     return {
-      stream: results
+      stream: results,
     };
   } else {
     return results;
@@ -146,7 +129,7 @@ export async function getStreams(
 ): Promise<object> {
   const results = await ActiveledgerDatasource.getDb().allDocs({
     include_docs: true,
-    keys: incoming.body
+    keys: incoming.body,
   });
   if (results) {
     // Normalise the data from rows[].doc
@@ -156,7 +139,7 @@ export async function getStreams(
       streams.push(results.rows[i].doc);
     }
     return {
-      streams
+      streams,
     };
   } else {
     return results;

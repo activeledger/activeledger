@@ -37,7 +37,7 @@ import {
   specificActivityStream,
   multipleActivityStreams
 } from "./controllers/subscriptions";
-import { search } from "./controllers/query";
+// import { search } from "./controllers/query";
 import { encrypt, decrypt } from "./controllers/encryption";
 import {
   changes,
@@ -83,9 +83,9 @@ if (ActiveOptions.get("db", false)) {
   http.use("/api/secured/encrypt", "POST", encrypt);
   http.use("/api/secured/decrypt", "POST", decrypt);
 
-  // Query Activeledger
-  http.use("/api/stream/search", "POST", search);
-  http.use("/api/stream/search", "GET", search);
+  // Query Activeledger ⚠️Deprecated⚠️
+  // http.use("/api/stream/search", "POST", search);
+  // http.use("/api/stream/search", "GET", search);
 
   // Streams
   http.use("/api/stream/changes", "GET", changes);
