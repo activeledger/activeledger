@@ -1,4 +1,4 @@
-# Query Support
+# Query Support ⚠️Deprecated⚠️
 
 Query allows you to run almost SQL style lookups against the data sitting on the ledger. These query only support the SELECT lookup. 
 
