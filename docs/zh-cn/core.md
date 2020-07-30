@@ -56,6 +56,6 @@ Set the volatile data object for the specific data stream.
 
 Returns a list of the latest data object changes. This is to pull the changes where /activity/subscribe pushes these changes to you.
 
-#### POST /search
+#### POST /search ⚠️Deprecated⚠️
 
 Allows you to run a "SQL like" query against the ledger to search for data objects.
