@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [2.5.0]
+
+### Features
+* **Storage:** New data storage layer has been created. It is backwards comptible with data structure and endpoints. For new ledger installations it will use RocksDB and for existing ledgers it will use LevelDB.
+
+### Deprecated
+* **Query:** All query support (SQL, Indexes, Contracts, API) has been dropped. A new Query language is being designed and more control given to contract developers which wont impact transaction performance. This new query support is planned to support sub-queries after developer assigned streams have been indexed in real-time. 
+
 ## [2.4.0]
 
 ### Features
