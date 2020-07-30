@@ -153,11 +153,11 @@ export class ActiveledgerDatasource {
       );
 
       // Add Query Engine
-      this.query = new QueryEngine(
-        this.db,
-        false,
-        ActiveOptions.get<number>("queryLimit", 0)
-      );
+      // this.query = new QueryEngine(
+      //   this.db,
+      //   false,
+      //   ActiveOptions.get<number>("queryLimit", 0)
+      // );
 
       // Add Changes Watcher
       this.changes = new ActiveChanges("Activities", this.db);
@@ -171,17 +171,18 @@ export class ActiveledgerDatasource {
   /**
    * Returns Query Engine
    *
+   * @deprecated
    * @static
    * @returns {QueryEngine}
    * @memberof ActiveledgerDatasource
    */
-  public static getQuery(): QueryEngine {
-    // Make sure we have db connection
-    this.getDb();
+  // public static getQuery(): QueryEngine {
+  //   // Make sure we have db connection
+  //   this.getDb();
 
-    // Return Query Object
-    return this.query;
-  }
+  //   // Return Query Object
+  //   return this.query;
+  // }
 
   /**
    * Returns Change Object
@@ -197,7 +198,7 @@ export class ActiveledgerDatasource {
     // Make sure we are listening
     this.changes.start(lastEventId);
 
-    // Return Query Object
+    // Return Changes Object
     return this.changes;
   }
 
@@ -215,7 +216,7 @@ export class ActiveledgerDatasource {
     // Make sure we are listening
     this.events.start(lastEventId);
 
-    // Return Query Object
+    // Return Events Object
     return this.events;
   }
 
