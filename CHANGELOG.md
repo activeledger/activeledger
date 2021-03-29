@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.5.1]
+
+### Bug Fixes
+* **Contracts:** getActivityStreams now detects an object with a property called $stream and fetches.
+* **Protocol:** Deterministic Activity Streams no longer crash on collision detection.
+
 ## [2.5.0]
 
 ### Features
