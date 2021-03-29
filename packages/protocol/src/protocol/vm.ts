@@ -207,7 +207,7 @@ export class VirtualMachine extends events.EventEmitter
     );
 
     // Initialise the virtual object using the VMScript
-    this.virtualInstance = this.virtual.run(script, "avm.js");
+    this.virtualInstance = this.virtual.run(script);
   }
 
   /**
