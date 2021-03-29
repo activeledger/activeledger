@@ -438,7 +438,7 @@ export class StreamUpdater {
     }
   }
 
-  private detectCollisions() {
+  private async detectCollisions() {
     if (this.collisions.length) {
       ActiveLogger.info("Deterministic streams to be checked");
 
@@ -455,7 +455,7 @@ export class StreamUpdater {
 
       // Wait for all the checks
       try {
-        const streams = Promise.all(streamColCheck);
+        const streams = await Promise.all(streamColCheck);
 
         // Problem streams exist
         ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
