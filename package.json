@@ -23,9 +23,9 @@
     "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
-    "@types/node": "^12.6.8",
     "@types/chai": "^4.1.7",
     "@types/mocha": "^5.2.7",
+    "@types/node": "^12.6.8",
     "chai": "^4.2.0",
     "lerna": "^3.16.4",
     "mocha": "^6.2.0",
