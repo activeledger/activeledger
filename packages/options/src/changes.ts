@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { promises as fs } from "fs";
 import * as events from "events";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDSConnect, ActiveDSChanges } from "./dsconnect";
@@ -82,6 +83,7 @@ export class ActiveChanges extends events.EventEmitter {
    * @memberof ActiveChanges
    */
   public start(since: string | number = "now"): void {
+    this.addPid();
     // Have we already got the object
     if (!this.dbChanges) {
       ActiveLogger.info("Starting Change Feed - " + this.name);
@@ -96,7 +98,7 @@ export class ActiveChanges extends events.EventEmitter {
         live: true,
         include_docs: true,
         timeout: false,
-        limit: this.limit || 25
+        limit: this.limit || 25,
       }) as ActiveDSChanges;
 
       // Listen to changes
@@ -181,5 +183,29 @@ export class ActiveChanges extends events.EventEmitter {
     this.lastSequence = undefined;
     this.dbChanges.cancel();
     this.dbChanges = (null as unknown) as ActiveDSChanges;
+  }
+
+  private async addPid(): Promise<void> {
+    try {
+      const pidData: { activechanges: number } = JSON.parse(
+        (await fs.readFile(".PID")).toString()
+      );
+
+      pidData.activechanges = process.pid;
+
+      await fs.writeFile(".PID", JSON.stringify(pidData));
+    } catch (error) {
+      ActiveLogger.warn(error, "Error writing ActiveChanges PID");
+    }
+
+    this.listenForKill();
+  }
+
+  private listenForKill(): void {
+    process.on("SIGTERM", () => {
+      ActiveLogger.info("Killing changes");
+      this.stop();
+      process.exit();
+    });
   }
 }

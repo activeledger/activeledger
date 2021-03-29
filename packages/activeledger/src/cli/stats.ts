@@ -45,7 +45,7 @@ export class StatsHandler {
 
   /**
    * Initialise the stats handler
-   * 
+   *
    * Initialises the PID handler for restart counting
    * Checks the stats file exists
    *
@@ -62,7 +62,7 @@ export class StatsHandler {
 
   /**
    * Returns a stats object
-   * 
+   *
    * Note: Windows implementation of disk usage not currently implemented, this will return 0s
    *
    * @returns {Promise<IStats>}
@@ -71,11 +71,12 @@ export class StatsHandler {
   public async getStats(): Promise<IStats> {
     const { data, error } = await this.readFileStats();
     if (error) {
-      throw error
+      throw error;
     } else {
       const statsFileData: IStatsFile = data as IStatsFile;
-      const status = await this.pidHandler.getStatus() ? "alive" : "dead";
-      const uptime = status === "alive" ? Date.now() - statsFileData.startTime : 0;
+      const status = (await this.pidHandler.getStatus()) ? "alive" : "dead";
+      const uptime =
+        status === "alive" ? Date.now() - statsFileData.startTime : 0;
 
       const stats: IStats = {
         cpu: this.getCPU(),
@@ -84,12 +85,11 @@ export class StatsHandler {
         status,
         restarts: statsFileData.restarts,
         uptime,
-        version: this.version
+        version: this.version,
       };
 
       return stats;
     }
-
   }
 
   /**
@@ -102,7 +102,10 @@ export class StatsHandler {
     const { data, error } = await this.readFileStats();
 
     if (error) {
-      ActiveLogger.warn(error, "Error reseting uptime, data may be inaccurate.");
+      ActiveLogger.warn(
+        error,
+        "Error reseting uptime, data may be inaccurate."
+      );
       return;
     }
 
@@ -112,12 +115,11 @@ export class StatsHandler {
     }
 
     return;
-
   }
 
   /**
    * Update the restart counter
-   * 
+   *
    * Resets the auto counter on a manual restart
    *
    * @param {boolean} [auto]
@@ -128,7 +130,10 @@ export class StatsHandler {
     const { data, error } = await this.readFileStats();
 
     if (error) {
-      ActiveLogger.warn(error, "Error updating restart count, data may be inaccurate.");
+      ActiveLogger.warn(
+        error,
+        "Error updating restart count, data may be inaccurate."
+      );
       return;
     }
 
@@ -151,7 +156,6 @@ export class StatsHandler {
     }
 
     return;
-
   }
 
   /**
@@ -164,7 +168,10 @@ export class StatsHandler {
     const { data, error } = await this.readFileStats();
 
     if (error) {
-      ActiveLogger.warn(error, "Error updating restart count, data may be inaccurate.");
+      ActiveLogger.warn(
+        error,
+        "Error updating restart count, data may be inaccurate."
+      );
       return;
     }
 
@@ -185,14 +192,14 @@ export class StatsHandler {
    * @memberof StatsHandler
    */
   private getCPU(): ICPUStats {
-
     const average = os.loadavg();
 
     return {
+      cores: os.cpus().length,
       one: average[0],
       five: average[1],
       fifteen: average[2],
-    }
+    };
   }
 
   /**
@@ -205,19 +212,19 @@ export class StatsHandler {
   private getRAM(): IRAMStats {
     return {
       total: os.totalmem(),
-      free: os.freemem()
-    }
+      free: os.freemem(),
+    };
   }
 
   /**
    * Get disk stats
-   * 
-   * Returns: 
+   *
+   * Returns:
    * * Activeledger instance size
-   * * Total disk space 
+   * * Total disk space
    * * Free disk space
    * * Used disk space
-   * 
+   *
    * @private
    * @returns {Promise<IDiskStats>}
    * @memberof StatsHandler
@@ -226,14 +233,17 @@ export class StatsHandler {
     try {
       if (os.type() !== "Windows_NT") {
         const activeledgerUsage = execSync(`du . -s`).toString().split("\t")[0];
-        const diskUsageArray = execSync(`df / --output=size,avail,used`).toString().split("\n")[1].split(" ");
+        const diskUsageArray = execSync(`df / --output=size,avail,used`)
+          .toString()
+          .split("\n")[1]
+          .split(" ");
 
         const diskStats: IDiskStats = {
           activeledger: parseInt(activeledgerUsage),
           diskSize: parseInt(diskUsageArray[0]),
           diskFree: parseInt(diskUsageArray[1]),
-          diskUsed: parseInt(diskUsageArray[2])
-        }
+          diskUsed: parseInt(diskUsageArray[2]),
+        };
 
         return diskStats;
       } else {
@@ -241,7 +251,7 @@ export class StatsHandler {
           activeledger: 0,
           diskSize: 0,
           diskFree: 0,
-          diskUsed: 0
+          diskUsed: 0,
         };
       }
     } catch (error) {
@@ -250,7 +260,7 @@ export class StatsHandler {
         activeledger: 0,
         diskSize: 0,
         diskFree: 0,
-        diskUsed: 0
+        diskUsed: 0,
       };
     }
   }
@@ -293,7 +303,7 @@ export class StatsHandler {
 
   /**
    * Write stats to disk
-   * 
+   *
    * Writes restart information and startTime to stats file
    *
    * @private
@@ -310,7 +320,7 @@ export class StatsHandler {
           lastManual: undefined,
           lastAuto: undefined,
         },
-        startTime: Date.now()
+        startTime: Date.now(),
       };
     }
 
@@ -337,7 +347,9 @@ export class StatsHandler {
     }
 
     try {
-      const data: IStatsFile = JSON.parse((await fs.readFile(this.path)).toString());
+      const data: IStatsFile = JSON.parse(
+        (await fs.readFile(this.path)).toString()
+      );
       return { data };
     } catch (error) {
       return { data: undefined, error };
@@ -346,6 +358,7 @@ export class StatsHandler {
 }
 
 interface ICPUStats {
+  cores: number;
   one: number;
   five: number;
   fifteen: number;

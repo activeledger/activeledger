@@ -68,7 +68,7 @@ export class ActiveDataStore {
     // Start Server, Can't block as server wont return
     ActiveLogger.info(
       "Self-hosted data engine @ http://127.0.0.1:" +
-        ActiveOptions.get<any>("db", {}).selfhost.port
+      ActiveOptions.get<any>("db", {}).selfhost.port
     );
   }
 
@@ -126,10 +126,10 @@ export class ActiveDataStore {
   private async storePid(pid: number): Promise<void> {
     const pidPath = ".PID";
     let pidData: {
-      activeledger: number;
-      activestorage: number;
-      activecore: number;
-      activerestore: number;
+      activeledger: number,
+      activestorage: number,
+      activecore: number,
+      activerestore: number,
     };
 
     try {
@@ -138,10 +138,9 @@ export class ActiveDataStore {
 
       await fsPromises.writeFile(pidPath, JSON.stringify(pidData));
     } catch (error) {
-      ActiveLogger.warn(
-        "Error storing PID, activeledger --stop may not work correctly"
-      );
+      ActiveLogger.warn("Error storing PID, activeledger --stop may not work correctly");
       ActiveLogger.warn(error.message);
     }
+
   }
 }

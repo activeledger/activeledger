@@ -52,7 +52,7 @@ export class ActiveOptions {
    * @static
    * @memberof ActiveOptions
    */
-  public static init() {
+  public static init(): void {
     // Process Passed Arguments
     ActiveOptions.argv = minimist(process.argv.slice(2));
   }
