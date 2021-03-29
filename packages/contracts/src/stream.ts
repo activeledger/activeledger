@@ -244,8 +244,10 @@ export class Stream {
   public getActivityStreams(stream: any): Activity;
   public getActivityStreams(stream?: any): any {
     if (stream) {
+      // Auto detect $stream on passed object
+      const streamLookup = stream.$stream ? stream.$stream : stream;
       // Return Existing Stream
-      if (this.activities[stream]) return this.activities[stream];
+      if (this.activities[streamLookup]) return this.activities[streamLookup];
       // Return New
       return this.newActivityStream(stream);
     }
