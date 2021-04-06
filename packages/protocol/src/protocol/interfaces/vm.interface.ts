@@ -112,7 +112,7 @@ export interface IVirtualMachine {
 
   verify(sigless: boolean, umid: string): Promise<boolean>;
 
-  vote(umid: string): Promise<boolean>;
+  vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
 
   commit(
     nodes: ActiveDefinitions.INodes,
