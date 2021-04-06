@@ -80,7 +80,8 @@ class ContractControl implements IVMObject {
       payload.readonly,
       payload.signatures,
       payload.key,
-      emitter
+      emitter,
+      (global as any).self
     );
 
     // if ("setQuery" in this.smartContracts[payload.umid]) {
