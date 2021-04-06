@@ -22,8 +22,7 @@
  */
 
 //@ts-ignore
-import * as pdfmake from "./external/pdfmake.js";
-import { EventEmitter } from "events";
+import pdfmake from "./external/pdfmake.js";
 import { TDocumentDefinitions, PDFKit } from "./interfaces";
 
 /**
@@ -33,7 +32,7 @@ import { TDocumentDefinitions, PDFKit } from "./interfaces";
  * @class PDF
  * @extends {EventEmitter}
  */
-export class PDF extends EventEmitter {
+export class PDF {
   /**
    * PDFKit Object
    *
@@ -60,33 +59,15 @@ export class PDF extends EventEmitter {
    */
   private data: Buffer;
 
+  private printer: any;
+
   /**
    *Creates an instance of PDF.
    * @memberof PDF
    */
-  constructor(pdfMake: TDocumentDefinitions) {
-    super();
-
-    // Make sure the font is one of the supported
-    const supportedFonts = [
-      "Courier",
-      "Helvetica",
-      "Times",
-      "Symbol",
-      "ZapfDingbats"
-    ];
-    if (
-      !pdfMake.defaultStyle ||
-      !pdfMake.defaultStyle.font ||
-      supportedFonts.indexOf(pdfMake.defaultStyle.font) !== -1
-    ) {
-      pdfMake.defaultStyle = {
-        font: "Helvetica"
-      };
-    }
-
+  constructor() {
     // Get PdfMake Printer
-    const printer: any = new (pdfmake as any)({
+    this.printer = new (pdfmake as any)({
       Courier: {
         normal: "Courier",
         bold: "Courier-Bold",
@@ -113,8 +94,33 @@ export class PDF extends EventEmitter {
       }
     });
 
+
+
+
+  }
+
+  public async write(pdfMake: TDocumentDefinitions): Promise<boolean> {
+
+    // Make sure the font is one of the supported
+    const supportedFonts = [
+      "Courier",
+      "Helvetica",
+      "Times",
+      "Symbol",
+      "ZapfDingbats"
+    ];
+    if (
+      !pdfMake.defaultStyle ||
+      !pdfMake.defaultStyle.font ||
+      supportedFonts.indexOf(pdfMake.defaultStyle.font) !== -1
+    ) {
+      pdfMake.defaultStyle = {
+        font: "Helvetica"
+      };
+    }
+
     // Create Document Object from PdfMake Definitions
-    this.document = printer.createPdfKitDocument(pdfMake);
+    this.document = await this.printer.createPdfKitDocument(pdfMake);
 
     // Listen on data out to build buffers
     this.document.on("data", ui8a => {
@@ -126,9 +132,10 @@ export class PDF extends EventEmitter {
     // Finalise buffer event
     this.document.on("end", () => {
       this.data = Buffer.concat(this.buffers);
-      // emit own ready event
-      this.emit("ready");
     });
+
+    return true;
+
   }
 
   /**
@@ -174,10 +181,11 @@ export class PDF extends EventEmitter {
     return new Promise((resolve, reject) => {
       // Make sure the document has been finalised
       if (!this.data) {
-        this.on("ready", () => {
-          resolve(this.data);
-        });
         this.document.end();
+        // Move to back of the stack
+        setTimeout(() => {
+          resolve(this.data);
+        }, 100);
       } else {
         resolve(this.data);
       }
