@@ -307,7 +307,8 @@ class Processor {
     // Pass back to host to respond
     this.send("broadcast", {
       umid: entry.$umid,
-      nodes: entry.$nodes
+      nodes: entry.$nodes,
+      revs: entry.$revs,
     });
   }
 
