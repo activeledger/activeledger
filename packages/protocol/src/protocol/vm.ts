@@ -172,7 +172,7 @@ export class VirtualMachine extends events.EventEmitter
         "@activeledger/activeutilities",
         "@activeledger/activetoolkits"
       );
-      builtin.push("events", "http", "https", "url", "zlib");
+      builtin.push("http", "https", "url", "zlib");
     }
 
     // Add additional External & builtin by namespace if provided
@@ -684,9 +684,9 @@ export class VirtualMachine extends events.EventEmitter
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-            timedout()
+          timedout()
           : // Check again later
-            this.checkTimeout(type, timedout, umid);
+          this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
