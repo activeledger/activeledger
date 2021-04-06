@@ -219,7 +219,7 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--; ) {
+      for (let i = this.hybridHosts.length; i--;) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
@@ -258,7 +258,7 @@ export class Host extends Home {
             this,
             data.toString(),
             ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-              false
+            false
           )
             .then((body) => {
               // Post Converted, Continue processing
@@ -288,40 +288,40 @@ export class Host extends Home {
     //     },
     //   })
     //   .then(() => {
-        // How many threads (Cache so we can check on ready)
-        const cpuTotal = PhysicalCores.count();
+    // How many threads (Cache so we can check on ready)
+    const cpuTotal = PhysicalCores.count();
 
-        // Processor Setup Values
-        const setup: setup = {
-          type: "setup",
-          data: {
-            self: Home.host,
-            reference: Home.reference,
-            right: Home.right,
-            neighbourhood: this.neighbourhood.get(),
-            pubPem: Home.publicPem,
-            privPem: Home.identity.pem,
-            db: ActiveOptions.get<any>("db", {}),
-            __base: ActiveOptions.get("__base", __dirname),
-          },
-        };
+    // Processor Setup Values
+    const setup: setup = {
+      type: "setup",
+      data: {
+        self: Home.host,
+        reference: Home.reference,
+        right: Home.right,
+        neighbourhood: this.neighbourhood.get(),
+        pubPem: Home.publicPem,
+        privPem: Home.identity.pem,
+        db: ActiveOptions.get<any>("db", {}),
+        __base: ActiveOptions.get("__base", __dirname),
+      },
+    };
 
-        // Setup Processors
-        for (let i = 0; i < cpuTotal; i++) {
-          // Add process into array
-          const processor = this.createProcessor(setup, cpuTotal);
-          // Add to list
-          this.processors.push(processor);
-          // Setup
-          processor.send(setup);
-        }
+    // Setup Processors
+    for (let i = 0; i < cpuTotal; i++) {
+      // Add process into array
+      const processor = this.createProcessor(setup, cpuTotal);
+      // Add to list
+      this.processors.push(processor);
+      // Setup
+      processor.send(setup);
+    }
 
-        // Setup Iterator
-        this.processorIterator = this.processors[Symbol.iterator]();
-      //})
-      // .catch((e) => {
-      //   throw new Error("Couldn't create default index");
-      // });
+    // Setup Iterator
+    this.processorIterator = this.processors[Symbol.iterator]();
+    //})
+    // .catch((e) => {
+    //   throw new Error("Couldn't create default index");
+    // });
   }
 
   /**
@@ -350,6 +350,14 @@ export class Host extends Home {
           ...pending.entry.$nodes,
           ...m.data.nodes,
         };
+      }
+
+      // Check for revisions if they have been added
+      if (m.data.revs && !pending.entry.$revs) {
+        pending.entry.$revs = {
+          $i: m.data.revs.$i || {},
+          $o: m.data.revs.$o || {}
+        }
       }
 
       // Switch on type of messages from processors
@@ -386,7 +394,7 @@ export class Host extends Home {
           }
           break;
         case "broadcast":
-          ActiveLogger.debug("Broadcasting TX : " + m.data.$umid);
+          ActiveLogger.debug("Broadcasting TX : " + m.data.umid);
           this.broadcast(m.data.umid);
           break;
         case "reload":
@@ -405,7 +413,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                      ActiveInterfaces.getBindingDetails("port")
+                    ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -638,7 +646,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       // Stream label or self
       out.push(txIO[keys[i]].$stream || keys[i]);
     }
@@ -828,9 +836,8 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${
-                        tx.$tx.$namespace
-                      }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
+                        }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -842,7 +849,7 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--; ) {
+                    for (let i = keys.length; i--;) {
                       tmp.push(keys[i] + ":stream");
                     }
 
@@ -923,7 +930,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -1028,7 +1035,7 @@ export class Host extends Home {
               this,
               body,
               ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-                false,
+              false,
               this.dbConnection
             );
             // Pass db conntection
@@ -1140,7 +1147,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-          (req.connection.remoteAddress as string)
+        (req.connection.remoteAddress as string)
       )
     );
   }
