@@ -76,7 +76,7 @@ export class Process extends EventEmitter {
    * @type {IVMContractHolder}
    * @memberof Process
    */
-  private static singleContractVMHolder: IVMContractHolder;
+  private static singleContractVMHolder: IVMContractHolder = {};
 
   /**
    * Is this instance of Process dealing with a default contract
@@ -329,16 +329,14 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Default Contract Location
-      this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
-        this.entry.$tx.$namespace
+      this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${this.entry.$tx.$namespace
         }/${this.entry.$tx.$contract}.js`;
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () =>
-      (this.contractLocation = `${process.cwd()}/contracts/${
-        this.entry.$tx.$namespace
-        }/${this.entry.$tx.$contract}.js`);
+    (this.contractLocation = `${process.cwd()}/contracts/${this.entry.$tx.$namespace
+      }/${this.entry.$tx.$contract}.js`);
 
     // Is this a default contract
     this.entry.$tx.$namespace === "default"
@@ -572,9 +570,12 @@ export class Process extends EventEmitter {
     payload: IVMDataPayload,
     namespace: string,
     contractName: string,
-    extraBuiltins: string[]
+    extraBuiltins: string[],
+    extraExternals: string[]
   ) {
     this.contractRef = namespace;
+
+
 
     // If we have initialised an instance for this namespace reuse it
     // Otherwise we should create an instance for it
@@ -589,7 +590,7 @@ export class Process extends EventEmitter {
 
         Process.singleContractVMHolder[
           this.contractRef
-        ].initialiseVirtualMachine(extraBuiltins);
+        ].initialiseVirtualMachine(extraBuiltins, extraExternals);
       } catch (error) {
         throw new Error(error);
       }
@@ -754,19 +755,35 @@ export class Process extends EventEmitter {
           this.securityCache.namespace[payload.transaction.$namespace]
         ) {
           const builtin: string[] = [];
+          const external: string[] = [];
           // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-          this.securityCache.namespace[
+          const namespaceExtras = this.securityCache.namespace[
             payload.transaction.$namespace
-          ].std.forEach((item: string) => {
-            builtin.push(item);
-          });
+          ];
+
+          if (namespaceExtras) {
+            // Built in
+            if (namespaceExtras.std) {
+              namespaceExtras.std.forEach((item: string) => {
+                builtin.push(item);
+              });
+            }
+
+            // Now for any approved external
+            if (namespaceExtras.external) {
+              namespaceExtras.external.forEach((item: string) => {
+                external.push(item);
+              });
+            }
+          }
 
           // Initialise the unsafe contract VM
           this.processUnsafeContracts(
             payload,
             payload.transaction.$namespace,
             contractName,
-            builtin
+            builtin,
+            external
           );
         } else {
           // Use the General contract VM

@@ -23,6 +23,7 @@
 
 interface ISecurityNamespaceData {
   std: string[];
+  external: string[];
 }
 
 interface ISecurityNamespaces {
