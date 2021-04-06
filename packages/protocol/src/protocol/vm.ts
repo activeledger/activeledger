@@ -415,8 +415,11 @@ export class VirtualMachine extends events.EventEmitter
    * @returns {boolean}
    * @memberof VirtualMachine
    */
-  public vote(umid: string): Promise<boolean> {
+  public vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean> {
     return new Promise<boolean>(async (resolve, reject) => {
+      // Manage INC
+      this.incMarshel(nodes, umid);
+
       // Script running flag
       this.scriptFinishedExec = false;
 

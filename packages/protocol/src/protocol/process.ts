@@ -663,7 +663,7 @@ export class Process extends EventEmitter {
 
     // Run the vote round
     try {
-      if (continueProcessing) await virtualMachine.vote(this.entry.$umid);
+      if (continueProcessing) await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
     } catch (error) {
       // Do something with the error
       handleVoteError(error);
