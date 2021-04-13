@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "2.5.1",
+  "version": "2.5.4",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
@@ -50,10 +50,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.5.1",
-    "@activeledger/activeoptions": "^2.5.1",
-    "@activeledger/activeutilities": "^2.5.1",
-    "@activeledger/httpd": "^2.5.1",
+    "@activeledger/activelogger": "^2.5.4",
+    "@activeledger/activeoptions": "^2.5.4",
+    "@activeledger/activeutilities": "^2.5.4",
+    "@activeledger/httpd": "^2.5.4",
     "leveldown": "^5.6.0",
     "levelup": "^4.4.0",
     "rocksdb": "^4.1.0"

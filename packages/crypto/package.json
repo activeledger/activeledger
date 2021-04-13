@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecrypto",
-  "version": "2.5.1",
+  "version": "2.5.4",
   "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
   "keywords": [
     "blockchain",
@@ -32,7 +32,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.5.1",
+    "@activeledger/activedefinitions": "^2.5.4",
     "@types/node": "^10.12.23",
     "typescript": "^3.3.3"
   },
@@ -44,7 +44,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "^2.5.1",
+    "@activeledger/activelogger": "^2.5.4",
     "asn1.js": "5.0.1"
   }
 }
