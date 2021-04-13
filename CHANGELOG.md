@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [2.5.4]
+
+### Bug Fixes
+* **Restore:** Await error document confirmation.
+* **Storage:** Support new_edits.
+* **Utilities:** Request now sends data as a buffer instead of string to imrpvoe UTF8 support.
+
+
 ## [2.5.3]
 
 ### Bug Fixes
