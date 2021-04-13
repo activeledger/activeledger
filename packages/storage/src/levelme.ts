@@ -392,7 +392,7 @@ export class LevelMe {
       const promises: Promise<document>[] = [];
 
       if (options.keys) {
-        for (let i = options.keys.length; i--; ) {
+        for (let i = options.keys.length; i--;) {
           rows.push({ doc: await this.get(options.keys[i]) });
         }
 
@@ -447,7 +447,7 @@ export class LevelMe {
           .on("error", (err: unknown) => {
             reject(err);
           })
-          .on("close", () => {})
+          .on("close", () => { })
           .on("end", async () => {
             await Promise.all(promises);
             resolve({
@@ -626,7 +626,7 @@ export class LevelMe {
         .on("error", (err: unknown) => {
           reject(err);
         })
-        .on("close", () => {})
+        .on("close", () => { })
         .on("end", async () => {
           await Promise.all(promises);
           resolve({
@@ -656,16 +656,16 @@ export class LevelMe {
    * @returns
    * @memberof LevelMe
    */
-  public async bulkDocs(docs: document[]): Promise<boolean> {
+  public async bulkDocs(docs: document[], options: { new_edits: boolean }): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
     const changes = [];
-    for (let i = docs.length; i--; ) {
+    for (let i = docs.length; i--;) {
       // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
       //if (docs[i]._deleted) {
       //  await this.del(docs[i]._id);
       //} else {
-      const writer = await this.prepareForWrite(docs[i], batch);
+      const writer = await this.prepareForWrite(docs[i], batch, options);
       batch = writer.chain; // Do I need do do this, Reference kept?
       changes.push(writer.changes);
       //}
@@ -694,7 +694,8 @@ export class LevelMe {
    */
   private async prepareForWrite(
     doc: document,
-    chain: LevelUpChain<any, any>
+    chain: LevelUpChain<any, any>,
+    options: { new_edits: boolean } = { new_edits: true }
   ): Promise<{
     chain: LevelUpChain<any, any>;
     rev: string;
@@ -761,7 +762,12 @@ export class LevelMe {
       newDoc = true;
       // Sequence cache after increase
       const seq = ++this.docUpdateSeq;
-      newRev = doc._rev = `1-${md5}`;
+
+      if (!options.new_edits && doc._rev) {
+        newRev = doc._rev;
+      } else {
+        newRev = doc._rev = `1-${md5}`;
+      }
 
       // New Doc
       currentDocRoot = {

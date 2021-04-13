@@ -592,7 +592,7 @@ import { LevelMe } from "./levelme";
         }
 
         // Bulk Insert
-        if (await db.bulkDocs(incoming.body.docs)) {
+        if (await db.bulkDocs(incoming.body.docs, incoming.body.options)) {
           return {
             ok: true,
           };

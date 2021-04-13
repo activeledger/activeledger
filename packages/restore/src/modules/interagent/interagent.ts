@@ -779,7 +779,7 @@ export class Interagent {
       document.processedAt = new Date();
 
       try {
-        Provider.errorDatabase.put(document);
+        await Provider.errorDatabase.put(document);
 
         Helper.output("Document updated");
         resolve();
