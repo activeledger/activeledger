@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeutilities",
-  "version": "2.5.1",
+  "version": "2.5.4",
   "description": "This package manages shared classes between Activeledger and Activetoolkits",
   "publishConfig": {
     "access": "public"
@@ -35,7 +35,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.5.1",
+    "@activeledger/activedefinitions": "^2.5.4",
     "@types/minimist": "^1.2.0",
     "@types/node": "^10.12.23",
     "typescript": "^3.3.3"
