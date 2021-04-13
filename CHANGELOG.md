@@ -1,5 +1,19 @@
 # Activeledger Changelog
 
+## [2.5.3]
+
+### Bug Fixes
+* **Protocol:** INC (Internode Communication) now included in the voting round
+
+## [2.5.2]
+
+### Bug Fixes
+* **Toolkits:** PDF Toolkit implementation fixed.
+* **Protocol:** Enable external NPM libraries for specific contract namespaces using the configuration file.
+* **Protocol:** IsExecutingOn contract code fixed.
+* **Protocol:** Events no longer exposed to the VM.
+* **Network:** Improves revision detection when P2P is in broadcast mode.
+
 ## [2.5.1]
 
 ### Bug Fixes
