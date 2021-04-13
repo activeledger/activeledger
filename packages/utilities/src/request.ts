@@ -99,7 +99,7 @@ export class ActiveRequest {
       if (data && (options.method == "POST" || options.method == "PUT")) {
         // convert data to string if object
         if (typeof data === "object") {
-          data = JSON.stringify(data);
+          data = Buffer.from(JSON.stringify(data), "utf8");
           (options.headers as any)["Content-Type"] = "application/json";
         }
 
