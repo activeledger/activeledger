@@ -59,7 +59,7 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 ### IDE Download
 
-Register at our [Developer Portal](https://developers.activeledger.io/) to download the latest version of the IDE
+Visit [Release section](https://github.com/activeledger/ide/releases)
 
 ## Building from source
 
