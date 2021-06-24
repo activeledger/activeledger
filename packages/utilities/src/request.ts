@@ -76,7 +76,7 @@ export class ActiveRequest {
         path: urlParsed.path,
         port: urlParsed.port,
         method: type.toUpperCase(),
-        headers: {}
+        headers: {},
       };
 
       // Compressable?
@@ -118,14 +118,6 @@ export class ActiveRequest {
       const request: http.ClientRequest = (lib as any).request(
         options,
         (response: http.IncomingMessage) => {
-          // handle http errors
-          if (
-            response.statusCode &&
-            (response.statusCode < 200 || response.statusCode > 299)
-          ) {
-            reject(new Error("URL Request Failed" + response.statusCode));
-          }
-
           // Hold response data
           const body: Buffer[] = [];
 
@@ -155,28 +147,60 @@ export class ActiveRequest {
                 // Raw Response Data
                 let raw = (gdata || bodyBuffer).toString();
 
+                if (
+                  response.statusCode &&
+                  (response.statusCode < 200 || response.statusCode > 299)
+                ) {
+                  throw {
+                    name: "ActiveError",
+                    message: "URL Request Failed " + response.statusCode,
+                    body: raw,
+                    stack: new Error().stack
+                  };
+                }
+
                 // JSON response?
-                if (response.headers["content-type"] == "application/json") {
-                  resolve({
+                if (
+                  response.headers["content-type"]?.indexOf(
+                    "application/json"
+                  ) !== -1
+                ) {
+                  return resolve({
                     raw,
-                    data: JSON.parse(raw)
+                    data: JSON.parse(raw),
                   });
                 } else {
-                  resolve({
-                    raw
+                  return resolve({
+                    raw,
                   });
                 }
               } catch (error) {
-                reject(new Error("Failed to parse body"));
+                if (error.name && error.message) {
+                  return reject(error);
+                } else {
+                  return reject(new Error("Failed to parse body"));
+                }
               }
             } else {
-              resolve();
+              // Error may not have a body
+              if (
+                response.statusCode &&
+                (response.statusCode < 200 || response.statusCode > 299)
+              ) {
+                return reject({
+                  name: "ActiveError",
+                  message: "URL Request Failed " + response.statusCode,
+                  body: "",
+                  stack: new Error().stack
+                });
+              }
+              return resolve({ raw: "" });
             }
           });
         }
       );
       // handle connection errors of the request
-      request.on("error", err => reject(err));
+      request.on("error", (err) => reject(err));
 
       // Write data if sending
       if (data && (options.method == "POST" || options.method == "PUT")) {
