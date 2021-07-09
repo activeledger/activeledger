@@ -311,7 +311,9 @@ export class Process extends EventEmitter {
         ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
         : Process.generalContractVM.destroy(umid);
     }
-    delete this.entry;
+
+    // Quick solution to delete rules
+    delete (this as any).entry;
   }
 
   /**

@@ -187,7 +187,7 @@ export class KeyPair {
    * @memberof KeyPair
    */
   private isFullNodeEnv(): boolean {
-    return crypto.generateKeyPairSync ? true : false;
+    return (typeof crypto.generateKeyPairSync === "function") ? true : false;
   }
 
   /**

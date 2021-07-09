@@ -23,14 +23,14 @@
     "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts -- --no-warnings"
   },
   "devDependencies": {
-    "@types/chai": "^4.1.7",
-    "@types/mocha": "^5.2.7",
-    "@types/node": "^12.6.8",
-    "chai": "^4.2.0",
-    "lerna": "^3.16.4",
-    "mocha": "^6.2.0",
-    "nyc": "^14.1.1",
-    "ts-node": "^8.3.0",
-    "typescript": "^3.5.3"
+    "@types/chai": "4.2.21",
+    "@types/mocha": "8.2.3",
+    "@types/node": "16.3.0",
+    "chai": "4.3.4",
+    "lerna": "4.0.0",
+    "mocha": "9.0.2",
+    "nyc": "15.1.0",
+    "ts-node": "10.0.0",
+    "typescript": "4.3.5"
   }
 }

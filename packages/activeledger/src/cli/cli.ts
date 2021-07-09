@@ -374,7 +374,7 @@ export class CLIHandler {
 
           await CLIHandler.pidHandler.addPid(
             EPIDChild.CORE,
-            activecoreChild.pid
+            activecoreChild.pid || 0
           );
         }
 
@@ -399,7 +399,7 @@ export class CLIHandler {
 
           await CLIHandler.pidHandler.addPid(
             EPIDChild.RESTORE,
-            activerestoreChild.pid
+            activerestoreChild.pid || 0
           );
         }
       }

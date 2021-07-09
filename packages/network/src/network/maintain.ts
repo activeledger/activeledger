@@ -198,7 +198,7 @@ export class Maintain {
     // Get All Status
     await Promise.all(
       Maintain.neighbourOrder.map((neighbour: Neighbour) => {
-        return new Promise(async (resolve, reject) => {
+        return new Promise<void>(async (resolve, reject) => {
           neighbour
             .knock("status")
             .then(() => {
