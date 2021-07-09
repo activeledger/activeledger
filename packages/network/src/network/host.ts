@@ -339,7 +339,7 @@ export class Host extends Home {
     });
 
     // Listen for message to respond to waiting http
-    pFork.on("message", (m) => {
+    pFork.on("message", (m: any) => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -685,7 +685,7 @@ export class Host extends Home {
       };
 
       // Remember who got selected
-      this.processPending[v.$umid].pid = robin.pid;
+      this.processPending[v.$umid].pid = robin.pid || 0;
 
       // Pass transaction to sub processor
       robin.send({

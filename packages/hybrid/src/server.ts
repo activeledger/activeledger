@@ -157,7 +157,7 @@ export class HybridNode {
         // The reason to using the same endpoint is that it will work with all existing code
         if (this.isUpStream(incoming.ip)) {
           // Token Check
-          if (!this.authTokenCheck(req.headers)) return resolve();
+          if (!this.authTokenCheck(req.headers)) return resolve({});
 
           // Create new Protocol and process transaction
           this.contractProcessor(tx)

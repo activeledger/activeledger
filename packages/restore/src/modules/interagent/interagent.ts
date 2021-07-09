@@ -449,7 +449,7 @@ export class Interagent {
     reducedStreamData: any,
     document: IChangeDocument
   ): Promise<any> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise<void>(async (resolve, reject) => {
       const streams = Object.keys(reducedStreamData);
       const promiseHolder = [];
 
@@ -572,8 +572,8 @@ export class Interagent {
     streamId: string,
     revision: string,
     volatile: boolean
-  ): Promise<boolean> {
-    return new Promise(async (resolve, reject) => {
+  ): Promise<void> {
+    return new Promise<void>(async (resolve, reject) => {
       Helper.output("Fixing document");
       await this.rebuildData(document, streamId, revision, volatile);
 
@@ -597,8 +597,8 @@ export class Interagent {
     $stream: string,
     $rev: string,
     volatile: boolean
-  ): Promise<any> {
-    return new Promise(async (resolve) => {
+  ): Promise<boolean> {
+    return new Promise<boolean>(async (resolve) => {
       Helper.output(
         "Fetching neighbourhood stream data, beginning door duty..."
       );
@@ -641,7 +641,7 @@ export class Interagent {
         // Wait for all the promises to finish
         await Promise.all(promises);
         Helper.output("Rebuild complete");
-        resolve();
+        resolve(true);
       } catch (error) {
         ActiveLogger.error(error, "Error Message");
         ActiveLogger.warn(document, "Document");

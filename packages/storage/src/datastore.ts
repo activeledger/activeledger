@@ -102,7 +102,7 @@ export class ActiveDataStore {
     );
 
     // Store the PID for stop command
-    this.storePid(this.process.pid);
+    this.storePid(this.process.pid || 0);
 
     // Listen for possible exits
     this.process.on("exit", (code: number, signal: string) => {

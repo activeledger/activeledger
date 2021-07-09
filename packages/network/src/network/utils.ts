@@ -109,31 +109,7 @@ export class ActiveInterfaces {
           }
         }
       } else {
-        // Get Local IP address
-        let interfaces = os.networkInterfaces();
-
-        let ifname = Object.keys(interfaces);
-        let ifs = ifname.length;
-
-        // Loop Network Interfaces, Find first ip4 external
-        networkLoop: while (ifs--) {
-          let ifaces = interfaces[ifname[ifs]].length;
-          while (ifaces--) {
-            const iface = interfaces[ifname[ifs]][ifaces];
-            // Skip internal or none ip4 address.
-            if (!iface.internal || iface.family !== "IPv4") {
-              break;
-            }
-            if (argv.port) {
-              this.bindingHost = iface.address;
-              this.bindingPort = argv.port;
-            } else {
-              this.bindingHost = iface.address;
-              this.bindingPort = 5260;
-            }
-            break networkLoop;
-          }
-        }
+        throw new Error("IP:Port Binding not found");
       }
     }
   }

@@ -33,8 +33,8 @@
   "license": "MIT",
   "devDependencies": {
     "@activeledger/activedefinitions": "^2.5.5",
-    "@types/node": "^10.12.23",
-    "typescript": "^3.3.3"
+    "@types/node": "16.3.0",
+    "typescript": "4.3.5"
   },
   "files": [
     "es",
@@ -45,6 +45,6 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.5.5",
-    "asn1.js": "5.0.1"
+    "asn1.js": "5.4.1"
   }
 }

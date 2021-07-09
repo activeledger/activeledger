@@ -40,8 +40,8 @@ export interface IState {
  */
 export interface IFullState extends IState {
   [reference: string]: any
-  _id: string | null;
-  _rev: string | null;
+  _id?: string | null;
+  _rev?: string | null;
 }
 
 /**

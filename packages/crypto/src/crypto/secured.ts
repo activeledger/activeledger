@@ -119,7 +119,8 @@ export class Secured {
       decipher.setAuthTag(tag);
 
       // Get Decryption
-      resolve(decipher.update(text, "binary", "utf8") + decipher.final("utf8"));
+      // resolve(decipher.update(text, "binary", "utf8") + decipher.final("utf8"));
+      resolve(decipher.update(text, undefined, "utf8") + decipher.final("utf8"));
     });
   }
 
