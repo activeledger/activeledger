@@ -26,7 +26,7 @@ import { Provider } from "../provider/provider";
 import {
   IChange,
   IChangeDocument,
-  IResponse
+  IResponse,
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ErrorCodes } from "./error-codes.enum";
@@ -47,7 +47,7 @@ export class Interagent {
     ErrorCodes.NodeFinalReject,
     ErrorCodes.FailedToSave,
     ErrorCodes.Unknown,
-    ErrorCodes.FailedToGetResponse
+    ErrorCodes.FailedToGetResponse,
   ];
 
   /**
@@ -66,6 +66,8 @@ export class Interagent {
    * @memberof Interagent
    */
   private umidDoc: any;
+
+  private skippedErrorInterval: NodeJS.Timer;
 
   /**
    * Creates an instance of Interagent.
@@ -101,9 +103,46 @@ export class Interagent {
           ActiveLogger.error(error);
         }
       } else {
+        // Move to archive (Bulk Docs creates archive)
+        await Provider.errorArchive.put(changeDoc);
+        await Provider.errorDatabase.purge(changeDoc);
         Provider.errorFeed.resume();
       }
     });
+
+    // Routine check for any documents missed due to restarts
+    this.skippedErrorInterval = setInterval(() => {
+      this.skippedChecker();
+    }, 300000);
+  }
+
+  /**
+   * Get documents that are pending to be checked 
+   *
+   * @private
+   * @memberof Interagent
+   */
+  private async skippedChecker() {
+    // Get any existing documents
+    const docs = await Provider.errorDatabase.allDocs({
+      include_docs: true,
+      limit: 10,
+    });
+
+    if (docs.rows.length) {
+      Provider.errorFeed.pause();
+      for (let i = docs.rows.length; i--; ) {
+        const doc = docs.rows[i];
+        // If doc has been processed just move
+        if (doc.processed) {
+          await Provider.errorArchive.put(doc);
+          await Provider.errorDatabase.purge(doc);
+        } else {
+          await this.processDocument(doc);
+        }
+      }
+      Provider.errorFeed.resume();
+    }
   }
 
   // #region Micro functions
@@ -308,7 +347,7 @@ export class Interagent {
         try {
           // Did the nodes error together?
           Helper.output("Error Mismatch finder");
-          if(!this.errorMismatchFinder(document)) {
+          if (!this.errorMismatchFinder(document)) {
             return resolve();
           }
 
@@ -335,26 +374,27 @@ export class Interagent {
   /**
    * Process the document error messages if 1505 to see if all nodes "agreed with the error"
    * If a single node was different to myself continue
-   * 
+   *
    * @private
    * @param {IChangeDocument} document
    * @returns
    * @memberof Interagent
    */
   private errorMismatchFinder(document: IChangeDocument) {
-    if(document.code === ErrorCodes.NodeFinalReject){
+    if (document.code === ErrorCodes.NodeFinalReject) {
       const nodeErrors = Object.keys(document.transaction.$nodes);
-      const myError = document.transaction.$nodes[document.transaction.$origin].error;
+      const myError =
+        document.transaction.$nodes[document.transaction.$origin].error;
       // Loop nodes and search for different error
       for (let i = nodeErrors.length; i--; ) {
-        if(document.transaction.$nodes[nodeErrors[i]].error !== myError) {
+        if (document.transaction.$nodes[nodeErrors[i]].error !== myError) {
           // Only verify 1 error is different instead of a conensus %
           // Continue processing
           return true;
         }
       }
       // Don't continue, All nodes should have failed together
-      return false
+      return false;
     }
     // Incorrect error code
     return true;
@@ -376,17 +416,18 @@ export class Interagent {
       const revisions: string[] = [
         ...(Object.keys(transaction.$revs.$i || {}) as string[]),
         ...(Object.keys(transaction.$revs.$o || {}) as string[]),
-        ...(Object.values(transaction.$tx.$r || {}) as string[])
+        ...(Object.values(transaction.$tx.$r || {}) as string[]),
       ];
 
       Helper.output(`Getting data from network. Using UMID:`, document.umid);
 
       try {
-        const responses: IResponse[] = await Provider.network.neighbourhood.knockAll(
-          `umid/${document.umid}`,
-          null,
-          true
-        );
+        const responses: IResponse[] =
+          await Provider.network.neighbourhood.knockAll(
+            `umid/${document.umid}`,
+            null,
+            true
+          );
 
         let streamCache: any[] = [];
 
@@ -779,7 +820,9 @@ export class Interagent {
       document.processedAt = new Date();
 
       try {
-        await Provider.errorDatabase.put(document);
+        // Move to archive
+        await Provider.errorDatabase.purge(document);
+        await Provider.errorArchive.put(document);
 
         Helper.output("Document updated");
         resolve();
