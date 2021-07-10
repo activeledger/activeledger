@@ -25,7 +25,7 @@ import { Helper } from "../helper/helper";
 import {
   ActiveOptions,
   ActiveDSConnect,
-  ActiveChanges
+  ActiveChanges,
 } from "@activeledger/activeoptions";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -55,6 +55,8 @@ export class Provider {
   public static consensusReachedAmount: number;
 
   public static database: ActiveDSConnect;
+
+  public static errorArchive: ActiveDSConnect;
 
   /**
    * Begin initialisation process
@@ -198,6 +200,11 @@ export class Provider {
     // Get error database connection
     this.errorDatabase = new ActiveDSConnect(
       `${dbConfig.url}/${dbConfig.error}`
+    );
+
+    // Get error archive connection
+    this.errorArchive = new ActiveDSConnect(
+      `${dbConfig.url}/${dbConfig.error}_archive`
     );
 
     // Initialise Error feed
