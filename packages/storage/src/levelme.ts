@@ -392,7 +392,7 @@ export class LevelMe {
       const promises: Promise<document>[] = [];
 
       if (options.keys) {
-        for (let i = options.keys.length; i--;) {
+        for (let i = options.keys.length; i--; ) {
           rows.push({ doc: await this.get(options.keys[i]) });
         }
 
@@ -408,7 +408,7 @@ export class LevelMe {
         let limit = options.limit || -1;
         if (options.skip && limit !== -1) {
           // Convert to int
-          options.skip = parseInt((options.skip as unknown) as string);
+          options.skip = parseInt(options.skip as unknown as string);
           limit += options.skip;
         }
 
@@ -447,7 +447,7 @@ export class LevelMe {
           .on("error", (err: unknown) => {
             reject(err);
           })
-          .on("close", () => { })
+          .on("close", () => {})
           .on("end", async () => {
             await Promise.all(promises);
             resolve({
@@ -541,8 +541,16 @@ export class LevelMe {
    */
   public async del(key: string): Promise<void> {
     await this.open();
+    const batch = await this.levelUp.batch();
+
     // For now just delete the document key (not sequence)
-    await this.levelUp.del(LevelMe.DOC_PREFIX + key);
+    // _local_doc_count need to reduce count
+    batch
+      .put(LevelMe.META_PREFIX + "_local_doc_count", --this.docCount)
+      .del(LevelMe.DOC_PREFIX + key);
+
+    await batch.write();
+
     return;
   }
 
@@ -553,9 +561,7 @@ export class LevelMe {
    * @returns {*}
    * @memberof LevelMe
    */
-  public changesFromSeq(
-    options: changesOptions
-  ): Promise<{
+  public changesFromSeq(options: changesOptions): Promise<{
     results: {
       id: string;
       changes: { rev: string }[];
@@ -626,7 +632,7 @@ export class LevelMe {
         .on("error", (err: unknown) => {
           reject(err);
         })
-        .on("close", () => { })
+        .on("close", () => {})
         .on("end", async () => {
           await Promise.all(promises);
           resolve({
@@ -656,11 +662,14 @@ export class LevelMe {
    * @returns
    * @memberof LevelMe
    */
-  public async bulkDocs(docs: document[], options: { new_edits: boolean }): Promise<boolean> {
+  public async bulkDocs(
+    docs: document[],
+    options: { new_edits: boolean }
+  ): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
     const changes = [];
-    for (let i = docs.length; i--;) {
+    for (let i = docs.length; i--; ) {
       // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
       //if (docs[i]._deleted) {
       //  await this.del(docs[i]._id);
