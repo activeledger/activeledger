@@ -145,7 +145,7 @@ export class PDF {
    * @returns {Promise<string>}
    * @memberof PDF
    */
-  public getData(encoding = "base64"): Promise<string> {
+  public getData(encoding: BufferEncoding = "base64"): Promise<string> {
     return new Promise((resolve, reject) => {
       this.getDataBuffer()
         .then(buffer => {
