@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [2.6.0]
+
+### Features
+* **Restore:** Archives processed errors and continues to monitor for new & missed errors.
+
+### Bug Fixes
+* **Storage:** Search now handles autocomplete lookups.
+* **Storage:** On first load now displays data instead of being blank rows.
+* **Storage:** Improved accuracy on document / stream counts.
+
+This release also has all dependencies upgraded. 
+
 ## [2.5.5]
 
 ### Bug Fixes
