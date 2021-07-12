@@ -438,9 +438,9 @@ export class LevelMe {
               rows.push(await promise);
             } else {
               rows.push({
-                _id: doc.id, // Compatibility Trick
-                id: doc.id,
-                key: doc.id,
+                _id: doc._id, // Compatibility Trick
+                id: doc._id,
+                key: doc._id,
               });
             }
           })
