@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.6.1]
+
+### Bug Fixes
+* **Restore:** No longer attempts UMID processing when not formatted correctly.
+* **Restore:** Network matching errors now get marked as processed.
+
 ## [2.6.0]
 
 ### Features
