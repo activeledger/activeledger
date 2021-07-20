@@ -215,7 +215,10 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private createStreamCache = (data: any) => {
-    this.umidDoc = data;
+    if(data.umid) {
+      // Check valid umid document as been passed
+      this.umidDoc = data;
+    }
     let concatArray: any;
 
     data.streams
@@ -348,6 +351,7 @@ export class Interagent {
           // Did the nodes error together?
           Helper.output("Error Mismatch finder");
           if (!this.errorMismatchFinder(document)) {
+            await this.setProcessed(document);
             return resolve();
           }
 
