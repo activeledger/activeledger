@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.6.2]
+
+### Bug Fixes
+* **Storage:** In Memory stream count no longer goes negative.
+* **Restore:** No longer loops on document being archieved.
+
 ## [2.6.1]
 
 ### Bug Fixes
