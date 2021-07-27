@@ -546,7 +546,10 @@ export class LevelMe {
     // For now just delete the document key (not sequence)
     // _local_doc_count need to reduce count
     batch
-      .put(LevelMe.META_PREFIX + "_local_doc_count", --this.docCount)
+      .put(
+        LevelMe.META_PREFIX + "_local_doc_count",
+        this.docCount > 0 ? --this.docCount : (this.docCount = 0)
+      )
       .del(LevelMe.DOC_PREFIX + key);
 
     await batch.write();
