@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "2.6.0",
+  "version": "2.6.2",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
