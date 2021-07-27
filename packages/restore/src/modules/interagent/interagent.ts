@@ -75,6 +75,11 @@ export class Interagent {
    */
   constructor() {
     this.listener();
+
+    // Routine check for any documents missed due to restarts
+    this.skippedErrorInterval = setInterval(() => {
+      this.skippedChecker();
+    }, 60000); //300000
   }
 
   /**
@@ -86,8 +91,14 @@ export class Interagent {
   private listener(): void {
     Provider.errorFeed.on("change", async (change: IChange) => {
       Helper.output("Change event received, pausing error feed.");
-      // Pause error feed to process
-      Provider.errorFeed.pause();
+
+      // Temporary solution while resolving resequencing to purges
+      Provider.errorFeed.stop();
+      await this.skippedChecker();
+      Provider.errorFeed.start();
+      return;
+
+      /*
 
       const changeDoc = change.doc;
 
@@ -96,28 +107,31 @@ export class Interagent {
       // Has the document been processed?
       if (!changeDoc.processed) {
         try {
-          this.processDocument(changeDoc);
-          Provider.errorFeed.resume();
-          Helper.output("Restoration complete.");
+          if (await Provider.errorDatabase.exists(changeDoc._id)) {
+            // Pause error feed to process
+            Provider.errorFeed.pause();
+            this.processDocument(changeDoc);
+            Provider.errorFeed.resume();
+            Helper.output("Restoration complete.");
+          } else {
+            // Stop Start listener to adjust for forced sequence change
+            Provider.errorFeed.stop();
+            Provider.errorFeed.start();
+          }
         } catch (error) {
           ActiveLogger.error(error);
         }
       } else {
-        // Move to archive (Bulk Docs creates archive)
-        await Provider.errorArchive.put(changeDoc);
-        await Provider.errorDatabase.purge(changeDoc);
+        // Move to archive
+        await this.archive(changeDoc)
         Provider.errorFeed.resume();
       }
+      */
     });
-
-    // Routine check for any documents missed due to restarts
-    this.skippedErrorInterval = setInterval(() => {
-      this.skippedChecker();
-    }, 300000);
   }
 
   /**
-   * Get documents that are pending to be checked 
+   * Get documents that are pending to be checked
    *
    * @private
    * @memberof Interagent
@@ -135,8 +149,7 @@ export class Interagent {
         const doc = docs.rows[i];
         // If doc has been processed just move
         if (doc.processed) {
-          await Provider.errorArchive.put(doc);
-          await Provider.errorDatabase.purge(doc);
+          await this.archive(doc);
         } else {
           await this.processDocument(doc);
         }
@@ -215,7 +228,7 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private createStreamCache = (data: any) => {
-    if(data.umid) {
+    if (data.umid) {
       // Check valid umid document as been passed
       this.umidDoc = data;
     }
@@ -825,8 +838,7 @@ export class Interagent {
 
       try {
         // Move to archive
-        await Provider.errorDatabase.purge(document);
-        await Provider.errorArchive.put(document);
+        await this.archive(document);
 
         Helper.output("Document updated");
         resolve();
@@ -838,5 +850,23 @@ export class Interagent {
         reject(error);
       }
     });
+  }
+
+  /**
+   * Move document to archives
+   *
+   * @private
+   * @param {IChangeDocument} document
+   * @returns {Promise<void>}
+   * @memberof Interagent
+   */
+  private async archive(document: IChangeDocument): Promise<void> {
+    await Provider.errorDatabase.purge(document);
+
+    // Sometimes there is similair auto id with revision collisions
+    // Instead of rewrite revision (as this data is not important) we will create a new
+    // timestamped document everytime so we can track all errors which have processed.
+    document._id = Date.now() + ":" + document._id;
+    await Provider.errorArchive.put(document);
   }
 }
