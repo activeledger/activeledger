@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.6.3]
+
+### Bug Fixes
+* **Restore:** Improved write performance and avoid local data corruption.
+
 ## [2.6.2]
 
 ### Bug Fixes
