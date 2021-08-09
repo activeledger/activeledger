@@ -30,6 +30,7 @@ import {
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ErrorCodes } from "./error-codes.enum";
+import { ActiveCrypto } from "@activeledger/activecrypto";
 
 /**
  * Interagent that listens for error events and attempts to fix them
@@ -587,6 +588,8 @@ export class Interagent {
     return new Promise(async (resolve) => {
       try {
         const document: any = await Provider.database.get(streamId);
+        // Prevent self harm by malformed id being returned
+        document._id = streamId;
         if (document._rev === revision) {
           resolve(false);
         } else {
@@ -669,26 +672,37 @@ export class Interagent {
         Helper.output("Received the following data: ", streams);
 
         const promises: Promise<boolean>[] = [];
+        const docProcessed: string[] = [];
 
         for (let i = streams.length; i--; ) {
           const stream = streams[i];
-          if (!stream.error) {
+          if (stream && !stream.error) {
             if (this.isDocMissing(document)) {
               document._id = document.docId;
             }
-
             Helper.output(
               "Checking stream correct: " +
                 this.isStreamDefinedAndNotEmptyArray(stream),
               stream ? stream : "No stream data"
             );
             if (this.isStreamDefinedAndNotEmptyArray(stream)) {
-              if (Provider.isSelfhost) {
-                Helper.output("Self host enabled, rebuilding self.");
-                promises.push(this.rebuildSelf(document, stream));
-              } else {
-                Helper.output("Rebuilding remote.");
-                promises.push(this.rebuildRemote(document, stream, volatile));
+              // We Only need to run this once, All returns "should" be the same
+              // however they may not be so hashing each one and updating only once
+              // of course the one we update maybe wrong but then it will just error again and
+              // the whole procress starts of again.
+              const docContent = ActiveCrypto.Hash.getHash(
+                JSON.stringify(stream)
+              );
+
+              if (docProcessed.indexOf(docContent) === -1) {
+                docProcessed.push(docContent);
+                if (Provider.isSelfhost) {
+                  Helper.output("Self host enabled, rebuilding self.");
+                  promises.push(this.rebuildSelf(document, stream));
+                } else {
+                  Helper.output("Rebuilding remote.");
+                  promises.push(this.rebuildRemote(document, stream, volatile));
+                }
               }
             }
           } else {
