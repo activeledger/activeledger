@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.6.0",
+  "version": "2.6.3",
   "description": "Underlying protocol which handles consensus and the smart contract virtual machine of Activeledger",
   "keywords": [
     "blockchain",
@@ -39,13 +39,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.6.0",
-    "@activeledger/activecrypto": "^2.6.0",
-    "@activeledger/activedefinitions": "^2.6.0",
-    "@activeledger/activelogger": "^2.6.0",
-    "@activeledger/activeoptions": "^2.6.0",
-    "@activeledger/activequery": "^2.6.0",
-    "@activeledger/activetoolkits": "^2.6.0",
+    "@activeledger/activecontracts": "^2.6.3",
+    "@activeledger/activecrypto": "^2.6.3",
+    "@activeledger/activedefinitions": "^2.6.3",
+    "@activeledger/activelogger": "^2.6.3",
+    "@activeledger/activeoptions": "^2.6.3",
+    "@activeledger/activequery": "^2.6.3",
+    "@activeledger/activetoolkits": "^2.6.3",
     "@types/node": "16.3.0",
     "typescript": "4.3.5",
     "vm2": "3.9.3"
