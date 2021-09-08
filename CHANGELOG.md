@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.6.4]
+
+### Features
+* **Protocol:** Third party packages can now be mocked by namespace if are a required but unused dependency.
+
+### Bug Fixes
+* **Storage:** Correctly returns error for a stream that cannot be found.
+* **Restore:** Attempts to recover the not found stream from the network if is exists.
+
 ## [2.6.3]
 
 ### Bug Fixes
