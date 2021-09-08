@@ -31,7 +31,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import {
   IVMDataPayload,
   IVMContractHolder,
-  IVirtualMachine
+  IVirtualMachine,
 } from "./interfaces/vm.interface";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -175,7 +175,7 @@ export class Process extends EventEmitter {
   private errorOut = {
     code: 0,
     reason: "",
-    priority: 0
+    priority: 0,
   };
 
   /**
@@ -331,13 +331,15 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Default Contract Location
-      this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${this.entry.$tx.$namespace
-        }/${this.entry.$tx.$contract}.js`;
+      this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
+        this.entry.$tx.$namespace
+      }/${this.entry.$tx.$contract}.js`;
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () =>
-    (this.contractLocation = `${process.cwd()}/contracts/${this.entry.$tx.$namespace
+      (this.contractLocation = `${process.cwd()}/contracts/${
+        this.entry.$tx.$namespace
       }/${this.entry.$tx.$contract}.js`);
 
     // Is this a default contract
@@ -349,8 +351,8 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = this.isDefault
       ? Process.defaultContractsVM
       : this.contractRef
-        ? Process.singleContractVMHolder[this.contractRef]
-        : Process.generalContractVM;
+      ? Process.singleContractVMHolder[this.contractRef]
+      : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -384,7 +386,7 @@ export class Process extends EventEmitter {
         this.checkRevs = false;
         this.entry.$revs = {
           $i: {},
-          $o: {}
+          $o: {},
         };
       }
 
@@ -397,15 +399,12 @@ export class Process extends EventEmitter {
 
         try {
           // Check the input revisions
-          const inputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
-            this.inputs
-          );
+          const inputStreams: ActiveDefinitions.LedgerStream[] =
+            await this.permissionChecker.process(this.inputs);
 
           // Check the output revisions
-          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
-            this.outputs,
-            false
-          );
+          const outputStreams: ActiveDefinitions.LedgerStream[] =
+            await this.permissionChecker.process(this.outputs, false);
 
           this.process(inputStreams, outputStreams);
         } catch (error) {
@@ -413,7 +412,7 @@ export class Process extends EventEmitter {
           // We may not have the output stream, So we need to pass over the knocks
           this.postVote(virtualMachine, {
             code: error.code,
-            reason: error.reason || error.message
+            reason: error.reason || error.message,
           });
         }
       } else {
@@ -462,17 +461,15 @@ export class Process extends EventEmitter {
 
         try {
           // No input streams, Maybe Output
-          const outputStreams: ActiveDefinitions.LedgerStream[] = await this.permissionChecker.process(
-            this.outputs,
-            false
-          );
+          const outputStreams: ActiveDefinitions.LedgerStream[] =
+            await this.permissionChecker.process(this.outputs, false);
 
           this.process([], outputStreams);
         } catch (error) {
           // Forward Error On
           this.postVote(virtualMachine, {
             code: error.code,
-            reason: error.reason || error.message
+            reason: error.reason || error.message,
           });
         }
       }
@@ -480,7 +477,7 @@ export class Process extends EventEmitter {
       // Contract not found
       this.postVote(virtualMachine, {
         code: 1401,
-        reason: "Contract Not Found"
+        reason: "Contract Not Found",
       });
     }
   }
@@ -505,8 +502,8 @@ export class Process extends EventEmitter {
       this.isDefault
         ? this.commit(Process.defaultContractsVM)
         : this.contractRef
-          ? this.commit(Process.singleContractVMHolder[this.contractRef])
-          : this.commit(Process.generalContractVM);
+        ? this.commit(Process.singleContractVMHolder[this.contractRef])
+        : this.commit(Process.generalContractVM);
     }
 
     return this.nodeResponse;
@@ -573,11 +570,10 @@ export class Process extends EventEmitter {
     namespace: string,
     contractName: string,
     extraBuiltins: string[],
-    extraExternals: string[]
+    extraExternals: string[],
+    extraMocks: string[]
   ) {
     this.contractRef = namespace;
-
-
 
     // If we have initialised an instance for this namespace reuse it
     // Otherwise we should create an instance for it
@@ -592,7 +588,7 @@ export class Process extends EventEmitter {
 
         Process.singleContractVMHolder[
           this.contractRef
-        ].initialiseVirtualMachine(extraBuiltins, extraExternals);
+        ].initialiseVirtualMachine(extraBuiltins, extraExternals, extraMocks);
       } catch (error) {
         throw new Error(error);
       }
@@ -665,7 +661,8 @@ export class Process extends EventEmitter {
 
     // Run the vote round
     try {
-      if (continueProcessing) await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
+      if (continueProcessing)
+        await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
     } catch (error) {
       // Do something with the error
       handleVoteError(error);
@@ -737,7 +734,7 @@ export class Process extends EventEmitter {
         inputs,
         outputs,
         readonly,
-        key: Math.floor(Math.random() * 100)
+        key: Math.floor(Math.random() * 100),
       };
 
       // Check if the security data has been cached
@@ -758,10 +755,10 @@ export class Process extends EventEmitter {
         ) {
           const builtin: string[] = [];
           const external: string[] = [];
+          const mocks: string[] = [];
           // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-          const namespaceExtras = this.securityCache.namespace[
-            payload.transaction.$namespace
-          ];
+          const namespaceExtras =
+            this.securityCache.namespace[payload.transaction.$namespace];
 
           if (namespaceExtras) {
             // Built in
@@ -777,6 +774,13 @@ export class Process extends EventEmitter {
                 external.push(item);
               });
             }
+
+            // Now for any pakcages needing mocking
+            if (namespaceExtras.mock) {
+              namespaceExtras.mock.forEach((item: string) => {
+                mocks.push(item);
+              });
+            }
           }
 
           // Initialise the unsafe contract VM
@@ -785,7 +789,8 @@ export class Process extends EventEmitter {
             payload.transaction.$namespace,
             contractName,
             builtin,
-            external
+            external,
+            mocks
           );
         } else {
           // Use the General contract VM
@@ -841,10 +846,14 @@ export class Process extends EventEmitter {
             // Check we didn't commit early
             if (!this.nodeResponse.commit) {
               // Territoriality set?
-              this.entry.$territoriality = (response.data as ActiveDefinitions.LedgerEntry).$territoriality;
+              this.entry.$territoriality = (
+                response.data as ActiveDefinitions.LedgerEntry
+              ).$territoriality;
 
               // Append new $nodes
-              this.entry.$nodes = (response.data as ActiveDefinitions.LedgerEntry).$nodes;
+              this.entry.$nodes = (
+                response.data as ActiveDefinitions.LedgerEntry
+              ).$nodes;
 
               // Reset Reference node response
               this.nodeResponse = this.entry.$nodes[this.reference];
@@ -870,13 +879,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                error.status || 1502,
-                new Error(error.error)
-              ) // rethrow same error
+                  error.status || 1502,
+                  new Error(error.error)
+                ) // rethrow same error
               : this.shared.raiseLedgerError(
-                1501,
-                new Error("Bad Knock Transaction")
-              ); // Generic error 404/ 500
+                  1501,
+                  new Error("Bad Knock Transaction")
+                ); // Generic error 404/ 500
           }
         });
       } else {
@@ -915,8 +924,8 @@ export class Process extends EventEmitter {
       ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-        100 >=
-        ActiveOptions.get<any>("consensus", {}).reached) ||
+          100 >=
+          ActiveOptions.get<any>("consensus", {}).reached) ||
       false
     );
   }
@@ -999,15 +1008,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-              1302,
-              new Error(
-                "Commit Failure - " + JSON.stringify(error.message || error)
+                1302,
+                new Error(
+                  "Commit Failure - " + JSON.stringify(error.message || error)
+                )
               )
-            )
             : this.shared.raiseLedgerError(
-              1301,
-              new Error("Failed Commit Transaction")
-            );
+                1301,
+                new Error("Failed Commit Transaction")
+              );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1103,8 +1112,10 @@ export class Process extends EventEmitter {
               "neighbourhood",
               []
             ).length;
-            const consensusNeeded = ActiveOptions.get<any>("consensus", {})
-              .reached;
+            const consensusNeeded = ActiveOptions.get<any>(
+              "consensus",
+              {}
+            ).reached;
             const outstandingVoters =
               neighbours - Object.keys(this.entry.$nodes).length;
 
@@ -1202,7 +1213,7 @@ export class Process extends EventEmitter {
 
         // Map all the objects to get their promises
         // Create promise to manage all revisions at once
-        const promiseCache = keyRefs.map(reference =>
+        const promiseCache = keyRefs.map((reference) =>
           manageRevisions(readOnly, reference)
         );
 
@@ -1237,7 +1248,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
