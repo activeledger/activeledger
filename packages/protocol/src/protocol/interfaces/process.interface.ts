@@ -24,6 +24,7 @@
 interface ISecurityNamespaceData {
   std: string[];
   external: string[];
+  mock: string[];
 }
 
 interface ISecurityNamespaces {

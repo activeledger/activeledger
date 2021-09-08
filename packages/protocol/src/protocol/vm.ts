@@ -35,7 +35,7 @@ import { EventEmitter } from "events";
 import {
   IVMDataPayload,
   IVMContractReferences,
-  IVirtualMachine
+  IVirtualMachine,
 } from "./interfaces/vm.interface";
 
 /**
@@ -44,8 +44,10 @@ import {
  * @export
  * @class VirtualMachine
  */
-export class VirtualMachine extends events.EventEmitter
-  implements IVirtualMachine {
+export class VirtualMachine
+  extends events.EventEmitter
+  implements IVirtualMachine
+{
   /**
    * Virtual Machine Object
    *
@@ -147,24 +149,24 @@ export class VirtualMachine extends events.EventEmitter
    */
   public initialiseVirtualMachine(
     extraBuiltins?: string[],
-    extraExternals?: string[]
+    extraExternals?: string[],
+    extraMocks?: string[]
   ): void {
     // Toolkit Availability Check
     let toolkitAvailable = true;
     try {
       // Keep this check for backward compatibility
-      // to prevent any corrupt / mix install bases from crashing 
+      // to prevent any corrupt / mix install bases from crashing
       require.resolve("@activeledger/activetoolkits");
     } catch (error) {
       // Toolkits not installed
       toolkitAvailable = false;
     }
 
-    // Manage Externals & buildit
-    let external: string[] = [
-      "@activeledger/activecontracts"
-    ];
+    // Manage Externals & builtin & mocks
+    let external: string[] = ["@activeledger/activecontracts"];
     let builtin: string[] = ["buffer"];
+    let mock: { [index: string]: MockBuiltinSecurity } = {};
 
     // With toolkit allow additional externals & builtin
     if (toolkitAvailable) {
@@ -184,6 +186,13 @@ export class VirtualMachine extends events.EventEmitter
       builtin = [...builtin, ...extraBuiltins];
     }
 
+    // Create Mocks
+    if(extraMocks) {
+      extraMocks.forEach(libPackage => {
+        mock[libPackage] = MockBuiltinSecurity;
+      })
+    }
+
     // Create limited VM
     this.virtual = new NodeVM({
       // This prevents data return using the new code, but might turn out to be needed after some testing
@@ -192,13 +201,14 @@ export class VirtualMachine extends events.EventEmitter
         logger: ActiveLogger,
         crypto: ActiveCrypto,
         secured: this.secured,
-        self: this.selfHost
+        self: this.selfHost,
       },
       require: {
         context: "sandbox",
         builtin,
-        external
-      }
+        external,
+        mock
+      },
     });
 
     // Pull in the code to use for the VMScript
@@ -327,7 +337,7 @@ export class VirtualMachine extends events.EventEmitter
         contractName,
         inputs: payload.inputs,
         tx: payload.transaction,
-        key: payload.key
+        key: payload.key,
       };
 
       // Setup Event Engine
@@ -687,9 +697,9 @@ export class VirtualMachine extends events.EventEmitter
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-          timedout()
+            timedout()
           : // Check again later
-          this.checkTimeout(type, timedout, umid);
+            this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
@@ -757,7 +767,7 @@ export class VirtualMachine extends events.EventEmitter
 
         return {
           error: e.message,
-          at: contractErrorInfo
+          at: contractErrorInfo,
         };
       } else {
         // Degrade to first line from the trace
@@ -774,7 +784,7 @@ export class VirtualMachine extends events.EventEmitter
         //return reject(e.message + "@" + msg);
         return {
           error: e.message,
-          at: msg
+          at: msg,
         };
       }
     } else {
@@ -782,3 +792,12 @@ export class VirtualMachine extends events.EventEmitter
     }
   }
 }
+
+/**
+ * This empty class is used to mock builtins that externals may require but are not needed.
+ * This is to keep security and performance high not having to load in unknown and unnecessary code into
+ * your Activeledger network.
+ *
+ * @class MockBuiltinSecurity
+ */
+class MockBuiltinSecurity {}

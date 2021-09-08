@@ -91,7 +91,8 @@ export interface IVMContractHolder {
 export interface IVirtualMachine {
   initialiseVirtualMachine(
     extraBuiltins?: string[],
-    extraExternals?: string[]
+    extraExternals?: string[],
+    extraMocks?: string[]
   ): void;
 
   getActivityStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
