@@ -177,9 +177,17 @@ export class Interagent {
    */
   private handleConsensusNotMet(changeDoc: any): Promise<void> {
     Helper.output("Conensus not met.");
-    return changeDoc.code === ErrorCodes.StreamPositionIncorrect // 1200
-      ? this.dataIntegrityCheck(changeDoc)
-      : this.setProcessed(changeDoc);
+    if (
+      changeDoc.code === ErrorCodes.StreamPositionIncorrect ||
+      changeDoc.code === ErrorCodes.StreamNotFound
+    ) {
+      return this.dataIntegrityCheck(changeDoc);
+    } else {
+      return this.setProcessed(changeDoc);
+    }
+    // return changeDoc.code === ErrorCodes.StreamPositionIncorrect // 1200
+    //   ? this.dataIntegrityCheck(changeDoc)
+    //   : this.setProcessed(changeDoc);
   }
 
   /**

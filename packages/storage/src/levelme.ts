@@ -383,79 +383,83 @@ export class LevelMe {
    */
   public allDocs(options: allDocOptions): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
-      await this.open();
+      try {
+        await this.open();
 
-      // Cache rows to be returned
-      const rows: any[] = [];
+        // Cache rows to be returned
+        const rows: any[] = [];
 
-      // For checking on end
-      const promises: Promise<document>[] = [];
+        // For checking on end
+        const promises: Promise<document>[] = [];
 
-      if (options.keys) {
-        for (let i = options.keys.length; i--; ) {
-          rows.push({ doc: await this.get(options.keys[i]) });
-        }
+        if (options.keys) {
+          for (let i = options.keys.length; i--; ) {
+            rows.push({ doc: await this.get(options.keys[i]) });
+          }
 
-        // Don't think much perfomance gain by a single await vs multi
-        //await Promise.all(promises);
-        return resolve({
-          total_rows: rows.length,
-          offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
-          rows,
-        });
-      } else {
-        // No offset built in, Create one by skip + limit and counter on skip;
-        let limit = options.limit || -1;
-        if (options.skip && limit !== -1) {
-          // Convert to int
-          options.skip = parseInt(options.skip as unknown as string);
-          limit += options.skip;
-        }
-
-        // Read / Search the database as a stream
-        this.levelUp
-          .createReadStream({
-            gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
-            lt: options.endkey
-              ? LevelMe.DOC_PREFIX + options.endkey
-              : LevelMe.META_PREFIX,
-            limit,
-          })
-          .on("data", async (data: { key: string; value: any }) => {
-            // Filter out the "skipped" keys
-            if (options.skip) {
-              options.skip--;
-              return;
-            }
-            const doc = JSON.parse(data.value.toString());
-
-            // Don't realy need this but the quickest switch for needing "id" for database viewer
-            // Only viewer should call, So want the doc
-            if (options.include_docs) {
-              // Get the actual data document
-              const promise = this.seqDocFromRoot(doc);
-              promises.push(promise);
-              rows.push(await promise);
-            } else {
-              rows.push({
-                _id: doc._id, // Compatibility Trick
-                id: doc._id,
-                key: doc._id,
-              });
-            }
-          })
-          .on("error", (err: unknown) => {
-            reject(err);
-          })
-          .on("close", () => {})
-          .on("end", async () => {
-            await Promise.all(promises);
-            resolve({
-              total_rows: this.docCount,
-              offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
-              rows,
-            });
+          // Don't think much perfomance gain by a single await vs multi
+          //await Promise.all(promises);
+          return resolve({
+            total_rows: rows.length,
+            offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+            rows,
           });
+        } else {
+          // No offset built in, Create one by skip + limit and counter on skip;
+          let limit = options.limit || -1;
+          if (options.skip && limit !== -1) {
+            // Convert to int
+            options.skip = parseInt(options.skip as unknown as string);
+            limit += options.skip;
+          }
+
+          // Read / Search the database as a stream
+          this.levelUp
+            .createReadStream({
+              gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
+              lt: options.endkey
+                ? LevelMe.DOC_PREFIX + options.endkey
+                : LevelMe.META_PREFIX,
+              limit,
+            })
+            .on("data", async (data: { key: string; value: any }) => {
+              // Filter out the "skipped" keys
+              if (options.skip) {
+                options.skip--;
+                return;
+              }
+              const doc = JSON.parse(data.value.toString());
+
+              // Don't realy need this but the quickest switch for needing "id" for database viewer
+              // Only viewer should call, So want the doc
+              if (options.include_docs) {
+                // Get the actual data document
+                const promise = this.seqDocFromRoot(doc);
+                promises.push(promise);
+                rows.push(await promise);
+              } else {
+                rows.push({
+                  _id: doc._id, // Compatibility Trick
+                  id: doc._id,
+                  key: doc._id,
+                });
+              }
+            })
+            .on("error", (err: unknown) => {
+              reject(err);
+            })
+            .on("close", () => {})
+            .on("end", async () => {
+              await Promise.all(promises);
+              resolve({
+                total_rows: this.docCount,
+                offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+                rows,
+              });
+            });
+        }
+      } catch (e) {
+        reject(e);
       }
     });
   }

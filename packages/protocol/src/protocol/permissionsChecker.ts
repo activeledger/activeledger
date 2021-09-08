@@ -175,13 +175,13 @@ export class PermissionsChecker {
         return results;
       } else {
         throw {
-          code: 990,
+          code: 950,
           reason: "Stream(s) not found",
         };
       }
     } catch (error) {
       // Add Info
-      error.code = 990;
+      error.code = 950;
       error.reason = "Stream(s) not found";
       // Rethrow
       throw error;
