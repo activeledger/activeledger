@@ -54,8 +54,8 @@
     "@activeledger/activeoptions": "^2.6.4",
     "@activeledger/activeutilities": "^2.6.4",
     "@activeledger/httpd": "^2.6.4",
-    "leveldown": "6.0.0",
+    "leveldown": "6.0.2",
     "levelup": "5.0.1",
-    "rocksdb": "5.0.0"
+    "rocksdb": "5.1.0"
   }
 }
