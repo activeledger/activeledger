@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.6.5]
+
+### Bug Fixes
+* **Restore:** 950 error codes now processing correctly and creating streams when they do not exist.
+
 ## [2.6.4]
 
 ### Features
