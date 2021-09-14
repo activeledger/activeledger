@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activedefinitions",
-  "version": "2.6.4",
+  "version": "2.6.5",
   "description": "This package contains definition files used within Activeledger.",
   "keywords": [
     "blockchain",
