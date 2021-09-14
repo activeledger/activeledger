@@ -439,7 +439,7 @@ export class Interagent {
       Helper.output("Getting revisions");
       const transaction = document.transaction;
 
-      const revisions: string[] = [
+      let revisions: string[] = [
         ...(Object.keys(transaction.$revs.$i || {}) as string[]),
         ...(Object.keys(transaction.$revs.$o || {}) as string[]),
         ...(Object.values(transaction.$tx.$r || {}) as string[]),
@@ -463,7 +463,7 @@ export class Interagent {
         for (let i = responses.length; i--; ) {
           const response = responses[i];
 
-          this.responseHasError(response)
+          !this.responseHasError(response)
             ? streamCache.push(...this.createStreamCache(response))
             : !this.attemptUmidDoc
             ? // The error could be on this node
@@ -488,7 +488,8 @@ export class Interagent {
 
         const streamIds: string[] = streamCache.filter(revNotStored).map(getId);
 
-        revisions.concat(...streamIds);
+        // Make sure revisions are imported from umid
+        revisions = revisions.concat(...streamIds);
 
         // Need to add :stream as well
         // As revs is prepopulated we need to go through the revs array and add :stream
