@@ -56,7 +56,7 @@ export class Shared {
   } = {
     code: 0,
     reason: "",
-    priority: 0
+    priority: 0,
   };
 
   constructor(
@@ -111,18 +111,24 @@ export class Shared {
   /**
    * Clears all Internode Communication if contract requests
    *
-   * @private
-   * @memberof Process
+   * @param {IVirtualMachine} virtualMachine
+   * @param {*} preserveComms
+   * @returns {ActiveDefinitions.LedgerEntry}
+   * @memberof Shared
    */
   public clearAllComms(
-    virtualMachine: IVirtualMachine
+    virtualMachine: IVirtualMachine,
+    preserveComms: any
   ): ActiveDefinitions.LedgerEntry {
     if (virtualMachine.clearingInternodeCommsFromVM(this.entry.$umid)) {
       const nodes = Object.values(this.entry.$nodes);
 
       let i = nodes.length;
       while (i--) {
-        nodes[i].incomms = null;
+        // Allow the clearning node to preserve a specific output
+        if(nodes[i].incomms !== preserveComms) {
+          nodes[i].incomms = null;
+        }
       }
     }
 
@@ -152,7 +158,7 @@ export class Shared {
       if (!stop) {
         this.emitter.emit("failed", {
           status: this._errorOut.code,
-          error: this._errorOut.reason
+          error: this._errorOut.reason,
         });
       }
     } catch (error) {
@@ -164,7 +170,7 @@ export class Shared {
       if (!stop) {
         this.emitter.emit("failed", {
           status: code,
-          error: error
+          error: error,
         });
       }
     }
@@ -204,7 +210,7 @@ export class Shared {
         processed: this._storeSingleError,
         umid: this.entry.$umid,
         transaction: this.entry,
-        reason: getReason()
+        reason: getReason(),
       };
 
       // Now if we store another error it won't be processed

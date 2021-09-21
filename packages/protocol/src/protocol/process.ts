@@ -688,7 +688,10 @@ export class Process extends EventEmitter {
       );
 
       // Clearing All node comms?
-      this.entry = this.shared.clearAllComms(virtualMachine);
+      this.entry = this.shared.clearAllComms(
+        virtualMachine,
+        this.nodeResponse.incomms
+      );
 
       // Continue to next nodes vote
       this.postVote(virtualMachine);
@@ -975,7 +978,10 @@ export class Process extends EventEmitter {
           );
 
           // Clearing All node comms?
-          this.entry = this.shared.clearAllComms(virtualMachine);
+          this.entry = this.shared.clearAllComms(
+            virtualMachine,
+            this.nodeResponse.incomms
+          );
 
           // Are we throwing to another ledger(s)?
           let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
