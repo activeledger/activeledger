@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.6.6]
+
+### Features
+* **Contracts:** When clearing INC you can now preserve the next value set by that node.
+
 ## [2.6.5]
 
 ### Bug Fixes
