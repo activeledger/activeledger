@@ -129,7 +129,7 @@ export class StreamUpdater {
     // Setup refStreams
     this.refStreams = {
       new: [] as any[],
-      updated: [] as any[]
+      updated: [] as any[],
     };
     // Get the changed data streams
     this.streams = this.virtualMachine.getActivityStreamsFromVM(
@@ -172,7 +172,10 @@ export class StreamUpdater {
       );
 
       // Clearing All node comms?
-      this.entry = this.shared.clearAllComms(this.virtualMachine);
+      this.entry = this.shared.clearAllComms(
+        this.virtualMachine,
+        this.nodeResponse.incomms
+      );
 
       // Remember to let other nodes know
       if (this.earlyCommit) this.earlyCommit();
@@ -200,7 +203,7 @@ export class StreamUpdater {
     this.docs.push({
       _id: this.entry.$umid + ":umid",
       umid: this.compactTxEntry(),
-      streams: this.refStreams
+      streams: this.refStreams,
     });
 
     this.detectCollisions();
@@ -220,7 +223,7 @@ export class StreamUpdater {
       $tx: this.entry.$tx,
       $sigs: this.entry.$sigs,
       $revs: this.entry.$revs,
-      $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false
+      $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false,
     };
   }
 
@@ -250,8 +253,10 @@ export class StreamUpdater {
   }
 
   private handleNHPK(input: any) {
-    const inputLabel = this.shared.getLabelIOMap(true, input.state
-      ._id as string);
+    const inputLabel = this.shared.getLabelIOMap(
+      true,
+      input.state._id as string
+    );
     const nhpk = this.entry.$tx.$i[inputLabel].$nhpk;
 
     // Loop Signatures as they should be rewritten with authoritied nested
@@ -318,7 +323,7 @@ export class StreamUpdater {
         // Add to reference
         this.refStreams.new.push({
           id: this.streams[i].state._id,
-          name: this.streams[i].meta.name
+          name: this.streams[i].meta.name,
         });
       } else {
         // Updated Streams, These could be inputs
@@ -331,9 +336,13 @@ export class StreamUpdater {
         // Hardened Keys?
         if (this.streams[i].state._id && this.nhkpCheck) {
           // Get nhpk
-          let nhpk = this.entry.$tx.$i[
-            this.shared.getLabelIOMap(true, this.streams[i].state._id as string)
-          ].$nhpk;
+          let nhpk =
+            this.entry.$tx.$i[
+              this.shared.getLabelIOMap(
+                true,
+                this.streams[i].state._id as string
+              )
+            ].$nhpk;
 
           // Loop Signatures as they should be rewritten with authoritied nested
           // That way if any new auths were added they will be skipped
@@ -358,7 +367,7 @@ export class StreamUpdater {
         // Add to reference
         this.refStreams.updated.push({
           id: this.streams[i].state._id,
-          name: this.streams[i].meta.name
+          name: this.streams[i].meta.name,
         });
       }
 
@@ -423,7 +432,10 @@ export class StreamUpdater {
         );
 
         // Clearing All node comms?
-        this.entry = this.shared.clearAllComms(this.virtualMachine);
+        this.entry = this.shared.clearAllComms(
+          this.virtualMachine,
+          this.nodeResponse.incomms
+        );
       } catch (error) {
         continueProcessing = false;
       }
