@@ -205,7 +205,7 @@ export class LevelMe {
    */
   private async levelUpGet<T>(document: string, defaultvalue: T) {
     try {
-      return await this.levelUp.get(document) as T
+      return (await this.levelUp.get(document)) as T;
     } catch {
       return defaultvalue;
     }
@@ -229,7 +229,10 @@ export class LevelMe {
       );
       this.docUpdateSeq = parseInt(
         (
-          await this.levelUpGet(LevelMe.META_PREFIX + "_local_last_update_seq", 0)
+          await this.levelUpGet(
+            LevelMe.META_PREFIX + "_local_last_update_seq",
+            0
+          )
         ).toString()
       );
     }
@@ -575,8 +578,24 @@ export class LevelMe {
       .del(LevelMe.DOC_PREFIX + key);
 
     await batch.write();
+  }
 
-    return;
+  /**
+   * Deletes sequences as a batch
+   *
+   * @param {string[]} keys
+   * @returns {Promise<void>}
+   * @memberof LevelMe
+   */
+  public async delSeq(keys: string[]): Promise<void> {
+    await this.open();
+    const batch = await this.levelUp.batch();
+
+    for (let i = keys.length; i--; ) {
+      batch.del(LevelMe.SEQ_PREFIX + keys[i]);
+    }
+
+    await batch.write();
   }
 
   /**

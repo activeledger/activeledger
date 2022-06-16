@@ -338,6 +338,27 @@ import { LevelMe } from "./levelme";
         // Prevent clashes
         metaDoc._id += ":" + position;
 
+        const keepSeq = newMetaDoc.rev_tree[0].ids;
+
+        // Loop metaDoc rev_tree skipping the one in newMetadoc
+        const seqDelete = [];
+        for (let i = metaDoc.rev_tree.length; i--; ) {
+          const seq = metaDoc.rev_tree[i].ids;
+          if (seq !== keepSeq) {
+            // Fetch and write
+            await archDb.post({
+              _id: "SEQ-" + seq,
+              data: await db.getSeq(seq),
+            });
+            seqDelete.push(seq);
+          }
+        }
+
+        // Delete from main database
+        if (seqDelete.length) {
+          await db.delSeq(seqDelete);
+        }
+
         // We could add to existing but then we would archive the archive
         // Write document to archive
         await archDb.post(checkDoc(metaDoc));
