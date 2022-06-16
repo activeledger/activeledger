@@ -47,7 +47,7 @@
     "@activeledger/httpd": "^2.6.6"
   },
   "devDependencies": {
-    "@types/node": "16.3.0",
+    "@types/node": "18.0.0",
     "copyfiles": "2.4.1"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
