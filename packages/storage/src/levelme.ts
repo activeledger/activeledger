@@ -194,6 +194,24 @@ export class LevelMe {
   }
 
   /**
+   * Attempts to fetch document, If fails returns default
+   *
+   * @private
+   * @template T
+   * @param {string} document
+   * @param {T} defaultvalue
+   * @returns
+   * @memberof LevelMe
+   */
+  private async levelUpGet<T>(document: string, defaultvalue: T) {
+    try {
+      return await this.levelUp.get(document) as T
+    } catch {
+      return defaultvalue;
+    }
+  }
+
+  /**
    * Opens the database and caches the metadata
    *
    * @private
@@ -206,12 +224,12 @@ export class LevelMe {
       // Cache Values
       this.docCount = parseInt(
         (
-          await this.levelUp.get(LevelMe.META_PREFIX + "_local_doc_count")
+          await this.levelUpGet(LevelMe.META_PREFIX + "_local_doc_count", 0)
         ).toString()
       );
       this.docUpdateSeq = parseInt(
         (
-          await this.levelUp.get(LevelMe.META_PREFIX + "_local_last_update_seq")
+          await this.levelUpGet(LevelMe.META_PREFIX + "_local_last_update_seq", 0)
         ).toString()
       );
     }
@@ -280,7 +298,7 @@ export class LevelMe {
 
     // Get the actual data document
     return JSON.parse(
-      (await this.levelUp.get(LevelMe.SEQ_PREFIX + twig)).toString()
+      (await this.levelUpGet(LevelMe.SEQ_PREFIX + twig, "{}")).toString()
     );
   }
 
