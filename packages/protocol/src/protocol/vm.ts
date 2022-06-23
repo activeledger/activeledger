@@ -187,10 +187,10 @@ export class VirtualMachine
     }
 
     // Create Mocks
-    if(extraMocks) {
-      extraMocks.forEach(libPackage => {
+    if (extraMocks) {
+      extraMocks.forEach((libPackage) => {
         mock[libPackage] = MockBuiltinSecurity;
-      })
+      });
     }
 
     // Create limited VM
@@ -207,7 +207,7 @@ export class VirtualMachine
         context: "sandbox",
         builtin,
         external,
-        mock
+        mock,
       },
     });
 
@@ -527,25 +527,25 @@ export class VirtualMachine
     umid: string
   ): Promise<boolean> {
     return new Promise(async (resolve, reject) => {
-      // Manage INC
-      this.incMarshel(nodes, umid);
-
-      // Script running flag
-      this.scriptFinishedExec = false;
-
-      // Upgrade Phase
-      this.event.setPhase("reconcile");
-
-      // Manage Timeout
-      this.checkTimeout(
-        "reconcile",
-        () => {
-          reject("VM Error : Reconcile phase timeout");
-        },
-        umid
-      );
-
       try {
+        // Manage INC
+        this.incMarshel(nodes, umid);
+
+        // Script running flag
+        this.scriptFinishedExec = false;
+
+        // Upgrade Phase
+        this.event.setPhase("reconcile");
+
+        // Manage Timeout
+        this.checkTimeout(
+          "reconcile",
+          () => {
+            reject("VM Error : Reconcile phase timeout");
+          },
+          umid
+        );
+
         // Get Commit
         await this.virtualInstance.reconcile(umid);
         // Here we may update the database from the objects (commit should return)
@@ -742,7 +742,7 @@ export class VirtualMachine
    */
   private catchException(e: Error, umid: string): any {
     // Exception
-    if (e.stack) {
+    if (e.stack && umid && this.contractReferences[umid]?.contractName) {
       // Get Current Contract Filename only
       const contract = this.contractReferences[umid].contractName;
 
