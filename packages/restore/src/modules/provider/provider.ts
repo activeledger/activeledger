@@ -46,6 +46,8 @@ export class Provider {
 
   public static errorFeed: ActiveChanges;
 
+  public static archiveFeed: ActiveChanges;
+
   public static network: ActiveNetwork.Home;
 
   public static isQuickFullRestore = false;
@@ -56,7 +58,11 @@ export class Provider {
 
   public static database: ActiveDSConnect;
 
+  public static archiveDatabase: ActiveDSConnect;
+
   public static errorArchive: ActiveDSConnect;
+
+  public static archiveArchive: ActiveDSConnect;
 
   /**
    * Begin initialisation process
@@ -189,6 +195,19 @@ export class Provider {
   }
 
   /**
+   *  Setup database connections
+   *
+   * @private
+   * @static
+   * @param {*} dbConfig
+   * @memberof Provider
+   */
+  private static setupDB(dbConfig: any) {
+    this.setupErrorDB(dbConfig);
+    this.setupArchiveDB(dbConfig);
+  }
+
+  /**
    * Setup a connection to the error database
    *
    * @private
@@ -209,6 +228,31 @@ export class Provider {
 
     // Initialise Error feed
     this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
+  }
+
+  /**
+   * Setup a connection to the archive database
+   *
+   * @private
+   * @static
+   * @param {*} dbConfig
+   * @memberof Provider
+   */
+  private static setupArchiveDB(dbConfig: any) {
+    // Get error database connection
+    this.archiveDatabase = new ActiveDSConnect(
+      `${dbConfig.url}/${dbConfig.database}_archive`
+    );
+    this.archiveDatabase.info();
+
+    // Get error archive connection
+    this.archiveArchive = new ActiveDSConnect(
+      `${dbConfig.url}/${dbConfig.database}_archived`
+    );
+    this.archiveArchive.info();
+
+    // Initialise Error feed
+    this.archiveFeed = new ActiveChanges("Archive", this.archiveDatabase, 1);
   }
 
   /**
@@ -239,7 +283,7 @@ export class Provider {
       );
 
       !ActiveOptions.get<boolean>("full", false)
-        ? this.setupErrorDB(dbConfig)
+        ? this.setupDB(dbConfig)
         : (this.isQuickFullRestore = true);
 
       resolve();

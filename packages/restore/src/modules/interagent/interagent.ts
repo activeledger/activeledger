@@ -68,7 +68,7 @@ export class Interagent {
    */
   private umidDoc: any;
 
-  private skippedErrorInterval: NodeJS.Timer;
+  private skippedErrorInterval: Function;
 
   /**
    * Creates an instance of Interagent.
@@ -78,9 +78,20 @@ export class Interagent {
     this.listener();
 
     // Routine check for any documents missed due to restarts
-    this.skippedErrorInterval = setInterval(() => {
-      this.skippedChecker();
-    }, 60000); //300000
+    this.skippedErrorInterval = async () => {
+      await this.skippedChecker();
+      await this.skippedArchieveChecker();
+
+      // Next loop delay
+      setTimeout(() => {
+        this.skippedErrorInterval();
+      }, 60000);
+    }; //300000
+
+    // Start up delay
+    setTimeout(() => {
+      this.skippedErrorInterval();
+    }, 60000);
   }
 
   /**
@@ -129,6 +140,16 @@ export class Interagent {
       }
       */
     });
+
+    Provider.archiveFeed.on("change", async (change: IChange) => {
+      Helper.output("Change event received, pausing error feed.");
+
+      // Temporary solution while resolving resequencing to purges
+      Provider.archiveFeed.stop();
+      await this.skippedArchieveChecker();
+      Provider.archiveFeed.start();
+      return;
+    });
   }
 
   /**
@@ -138,7 +159,7 @@ export class Interagent {
    * @memberof Interagent
    */
   private async skippedChecker() {
-    // Get any existing documents
+    // Get any existing error documents
     const docs = await Provider.errorDatabase.allDocs({
       include_docs: true,
       limit: 10,
@@ -156,6 +177,57 @@ export class Interagent {
         }
       }
       Provider.errorFeed.resume();
+    }
+  }
+
+  /**
+   * Get documents that are pending to be checked
+   *
+   * @private
+   * @memberof Interagent
+   */
+  private async skippedArchieveChecker() {
+    // Get any existing archive documents
+    const docs = await Provider.archiveDatabase.allDocs({
+      include_docs: true,
+      limit: 10,
+    });
+
+    if (docs.rows.length) {
+      Provider.archiveFeed.pause();
+      for (let i = docs.rows.length; i--; ) {
+        const doc = docs.rows[i];
+        // Loop the map to find sequences
+        const revMap = Object.keys(doc.rev_map);
+        ActiveLogger.info(
+          `Archiving ${doc._id} sequences total ${revMap.length}`
+        );
+        for (let ii = revMap.length; ii--; ) {
+          // convert to sequence key name
+          const seq = doc.rev_map[revMap[ii]].toString().padStart(16, "0");
+          try {
+            // Fetch sequence
+            const data = ((await Provider.database.seqGet(seq)) as any).data;
+            // Archive sequence
+            await Provider.archiveArchive.post({
+              _id: "SEQ-" + seq,
+              stream: doc._id,
+              data,
+            });
+            // Delete orignal sequence
+            await Provider.database.seqDelete(seq);
+          } catch (e) {
+            ActiveLogger.info(`Sequence ${seq} not found`);
+          }
+        }
+        // Move from archive to archived
+        await Provider.archiveDatabase.purge(doc);
+
+        // Collision prevention
+        doc._id = Date.now() + ":" + doc._id;
+        await Provider.archiveArchive.post(doc);
+      }
+      Provider.archiveFeed.resume();
     }
   }
 
