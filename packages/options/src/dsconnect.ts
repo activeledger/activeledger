@@ -118,7 +118,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @memberof ActiveDSConnect
    */
   public createget(id: string, options: any = {}): Promise<any> {
-    return new Promise(resolve => {
+    return new Promise((resolve) => {
       ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
         .then((response: any) => resolve(response.data))
         .catch(() => {
@@ -135,7 +135,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @memberof ActiveDSConnect
    */
   public exists(id: string): Promise<{} | Boolean> {
-    return new Promise<Boolean>(resolve => {
+    return new Promise<Boolean>((resolve) => {
       ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, {})
         .then((response: any) => resolve(response.data))
         .catch(() => {
@@ -233,6 +233,42 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
+   * Delete a sequence file
+   *
+   * @param {string} sequence
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public async seqDelete(sequence: string): Promise<any> {
+    if (ActiveOptions.get<any>("db", {}).selfhost) {
+      return await ActiveRequest.send(
+        `${this.location}/_seq/${sequence}`,
+        "DELETE"
+      );
+    } else {
+      // Not supported, Fail quietly.
+    }
+  }
+
+  /**
+   * Get a sequence file
+   *
+   * @param {string} sequence
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public async seqGet(sequence: string): Promise<any> {
+    if (ActiveOptions.get<any>("db", {}).selfhost) {
+      return await ActiveRequest.send(
+        `${this.location}/_seq/${sequence}`,
+        "GET"
+      );
+    } else {
+      // Not supported, Fail quietly.
+    }
+  }
+
+  /**
    * Fetch latest changes
    *
    * @param {{}} opts
@@ -266,8 +302,10 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
  * @extends {EventEmitter}
  * @implements {ActiveDefinitions.IActiveDSChanges}
  */
-export class ActiveDSChanges extends EventEmitter
-  implements ActiveDefinitions.IActiveDSChanges {
+export class ActiveDSChanges
+  extends EventEmitter
+  implements ActiveDefinitions.IActiveDSChanges
+{
   /**
    * Flag for cancelling the next listeing round
    *
@@ -335,7 +373,7 @@ export class ActiveDSChanges extends EventEmitter
           this.listen();
         }
       })
-      .catch(error => this.emit("error", error));
+      .catch((error) => this.emit("error", error));
   }
 
   /**

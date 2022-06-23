@@ -275,6 +275,23 @@ import { LevelMe } from "./levelme";
     );
   });
 
+  // Direct sequence get
+  http.use("*/_seq/*", "GET", async (incoming: IActiveHttpIncoming) => {
+    const db = getDB(incoming.url[0]);
+    return await db.getSeq(incoming.url[2]);
+  });
+
+  // Direct sequence delete
+  http.use("*/_seq/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
+    const db = getDB(incoming.url[0]);
+    try {
+      await db.delSeq([incoming.url[2]]);
+      return { success: "ok" };
+    } catch {
+      throw new Error("Seq Delete Failed");
+    }
+  });
+
   // Get specific docs from a database
   http.use("*/*", "GET", async (incoming: IActiveHttpIncoming) => {
     return await genericGet(incoming.url[0], incoming.url[1]);
@@ -337,27 +354,6 @@ import { LevelMe } from "./levelme";
 
         // Prevent clashes
         metaDoc._id += ":" + position;
-
-        const keepSeq = newMetaDoc.rev_tree[0].ids;
-
-        // Loop metaDoc rev_tree skipping the one in newMetadoc
-        const seqDelete = [];
-        for (let i = metaDoc.rev_tree.length; i--; ) {
-          const seq = metaDoc.rev_tree[i].ids;
-          if (seq !== keepSeq) {
-            // Fetch and write
-            await archDb.post({
-              _id: "SEQ-" + seq,
-              data: await db.getSeq(seq),
-            });
-            seqDelete.push(seq);
-          }
-        }
-
-        // Delete from main database
-        if (seqDelete.length) {
-          await db.delSeq(seqDelete);
-        }
 
         // We could add to existing but then we would archive the archive
         // Write document to archive
@@ -438,12 +434,9 @@ import { LevelMe } from "./levelme";
     if (revString) {
       const position = parseInt(revString.split("-")[0]);
 
-      // If we want to go for more (1000+) these files need updating :
-      // packages/storage/src/pouchdb/pouchdb-adapter-utils/lib/index.js:361
-      // packages/storage/src/pouchdb/pouchdb-adapter-utils/src/processDocs.js:18
       // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
       //return position % 300 === 0 ? position : 0;
-      return position % 3 === 0 ? position : 0;
+      return position % 15 === 0 ? position : 0;
     }
     return 0;
   };

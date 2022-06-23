@@ -40,7 +40,10 @@ class ActiveRestore {
   private async initialise(): Promise<void> {
     const normalRestore = () => {
       new Interagent();
+      // Error Watcher
       Provider.errorFeed.start();
+      // Archive Watcher
+      Provider.archiveFeed.start();
     };
 
     await Provider.initialise();
