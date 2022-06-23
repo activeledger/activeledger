@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [2.7.0]
+
+### Features
+* **Restore:** Archiving now deals with old sequence files. This will reduce the disk storage requirement by Activeledger. 
+
+### Bug Fixes
+* **Protocol:** When a contract tries to reconcile a stream which doesn't exists the error is now caught and handled.
+
 ## [2.6.6]
 
 ### Features
