@@ -59,6 +59,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   }
 } else if (ActiveOptions.get<boolean>("stats", false)) {
   CLIHandler.getStats(version);
+} else if (ActiveOptions.get<boolean>("compact", false)) {
+  CLIHandler.startCompact();
 } else {
   CLIHandler.start();
 }

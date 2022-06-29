@@ -275,6 +275,12 @@ import { LevelMe } from "./levelme";
     );
   });
 
+  // Start compacting process
+  http.use("*/_compact", "GET", async (incoming: IActiveHttpIncoming) => {
+    const db = getDB(incoming.url[0]);
+    return await db.compact();
+  });
+
   // Direct sequence get
   http.use("*/_seq/*", "GET", async (incoming: IActiveHttpIncoming) => {
     const db = getDB(incoming.url[0]);

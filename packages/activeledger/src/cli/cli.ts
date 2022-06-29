@@ -27,7 +27,11 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDataStore } from "@activeledger/activestorage";
 import { ActiveNetwork } from "@activeledger/activenetwork";
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import {
+  ActiveDSConnect,
+  ActiveOptions,
+  ActiveRequest,
+} from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
 import { PIDHandler, EPIDChild } from "./pid";
 import { StatsHandler } from "./stats";
@@ -62,20 +66,20 @@ export class CLIHandler {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
 
-      pids.activeledger && pids.activeledger !== 0 ?
-        process.kill(pids.activeledger)
+      pids.activeledger && pids.activeledger !== 0
+        ? process.kill(pids.activeledger)
         : ActiveLogger.warn("No PID for Activeledger process");
 
-      pids.activestorage && pids.activestorage !== 0 ?
-        process.kill(pids.activestorage)
+      pids.activestorage && pids.activestorage !== 0
+        ? process.kill(pids.activestorage)
         : ActiveLogger.warn("No PID for Activestorage process");
 
-      pids.activecore && pids.activecore !== 0 ?
-        process.kill(pids.activecore)
+      pids.activecore && pids.activecore !== 0
+        ? process.kill(pids.activecore)
         : ActiveLogger.warn("No PID for Activecore process");
 
-      pids.activerestore && pids.activerestore !== 0 ?
-        process.kill(pids.activerestore)
+      pids.activerestore && pids.activerestore !== 0
+        ? process.kill(pids.activerestore)
         : ActiveLogger.warn("No PID for Activerestore process");
 
       ActiveLogger.info("Shutdown complete, reseting PID file");
@@ -88,7 +92,6 @@ export class CLIHandler {
       if (!isRestart) {
         await CLIHandler.resetAutoRestartCount();
       }
-
     } catch (error) {
       ActiveLogger.error(error, "Error stopping activeledger");
     }
@@ -188,6 +191,40 @@ export class CLIHandler {
     //#endregion
   }
 
+  /**
+   * Start the compacting process, Will assume activeledger is running
+   *
+   * @static
+   * @memberof CLIHandler
+   */
+  public static async startCompact(): Promise<void> {
+    this.checkConfig();
+
+    // Now we can parse configuration
+    ActiveOptions.parseConfig();
+
+    const dbConfig = ActiveOptions.get<any>("db", {});
+
+    if (dbConfig.selfhost) {
+      const compactDb = new ActiveDSConnect(
+        `http://${dbConfig.selfhost.host}:${dbConfig.selfhost.port}/${dbConfig.database}`
+      );
+
+      try {
+        ActiveLogger.info("Starting Compacting Process");
+        await compactDb.compact();
+        ActiveLogger.info("Compacting Finished");
+      } catch (e) {
+        ActiveLogger.error(
+          e,
+          "Compacting Error Occured - Most likely timeout and process is still continuing"
+        );
+      }
+    } else {
+      ActiveLogger.fatal("Compacting only works using self hosted database");
+    }
+  }
+
   // #region Startup handling
   /**
    * Run startup code
@@ -198,10 +235,7 @@ export class CLIHandler {
    */
   private static normalStart(): void {
     // Continue Normal Boot
-
-    //#region Check & Manage Configuration File
     this.checkConfig();
-    //#endregion
 
     // Now we can parse configuration
     ActiveOptions.parseConfig();
@@ -418,9 +452,7 @@ export class CLIHandler {
    * @memberof CLIHandler
    */
   private static checkConfig() {
-    if (
-      !fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))
-    ) {
+    if (!fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))) {
       // Read default config so we can add our identity to the neighbourhood
       let defConfig: any = JSON.parse(
         fs.readFileSync(

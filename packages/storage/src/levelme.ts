@@ -516,6 +516,34 @@ export class LevelMe {
   }
 
   /**
+   * Compact the database to reduce storage space
+   *
+   * @returns
+   * @memberof LevelMe
+   */
+  public compact(): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      // No definition as of yet, So lets check it exists
+      //@ts-ignore
+      if (this.levelUp.compactRange) {
+        // We could range everything with null, null but only the sequence files create the mass storage
+        // so as a performance trade off we will only compact across that range
+
+        //@ts-ignore
+        this.levelUp.compactRange(
+          `${LevelMe.SEQ_PREFIX}0000000000000000`,
+          `${LevelMe.SEQ_PREFIX}9999999999999999`,
+          (args: unknown) => {
+            resolve(args);
+          }
+        );
+      } else {
+        reject("Compact Range not found");
+      }
+    });
+  }
+
+  /**
    * Writes a data document (following sequences and revision information)
    *
    * @param {document} doc
