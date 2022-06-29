@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.7.1]
+
+### Features
+* **Activeledger:** Manually Compact Database --compact flag will start the process. Make sure Activeledger is running and that you have more than 50% disk space. 
+
 ## [2.7.0]
 
 ### Features
