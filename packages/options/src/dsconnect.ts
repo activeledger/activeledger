@@ -269,6 +269,23 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
+   * Compacts the database
+   *
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public async compact(): Promise<any> {
+    if (ActiveOptions.get<any>("db", {}).selfhost) {
+      return await ActiveRequest.send(
+        `${this.location}/_compact`,
+        "GET"
+      );
+    } else {
+      // Not supported, Fail quietly.
+    }
+  }
+
+  /**
    * Fetch latest changes
    *
    * @param {{}} opts
