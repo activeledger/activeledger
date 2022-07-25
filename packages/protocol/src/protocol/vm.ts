@@ -742,7 +742,7 @@ export class VirtualMachine
    */
   private catchException(e: Error, umid: string): any {
     // Exception
-    if (e.stack && umid && this.contractReferences[umid]?.contractName) {
+    if (e.stack && umid && this.contractReferences && this.contractReferences[umid]?.contractName) {
       // Get Current Contract Filename only
       const contract = this.contractReferences[umid].contractName;
 

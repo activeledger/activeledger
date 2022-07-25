@@ -442,7 +442,7 @@ export class Host extends Home {
       const pendings = Object.keys(this.processPending);
       pendings.forEach((key) => {
         // Get Transaction
-        const pending = this.processPending[key];
+        let pending = this.processPending[key];
         // Was this transaction in the broken processor
         if (pending.pid === pFork.pid) {
           // Resolve to return oprhened transactions
@@ -450,10 +450,10 @@ export class Host extends Home {
             status: 200,
             data: pending.entry,
           });
-
-          // Clear Internal
-          (pending as any).entry = null;
-          (pending as any) = null;
+          
+          // Clear Internal (any safe to remove entry, As it is handling a graceful shutdown)
+          (pending as any).entry = null;                    
+          (pending as any) = null;                   
         }
       });
       // find from processors list
