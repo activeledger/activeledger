@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.7.2]
+
+### Bug Fixes
+* **Network:** Bad error checking and casting caused exceptions from being handled correctly.
+* **Protocol:** Bad error checking and casting caused exceptions from being handled correctly.
+
 ## [2.7.1]
 
 ### Features
