@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.7.3]
+
+### Bug Fixes
+* **Restore:** Engine now uses a schedule to check on errors, No longer holds connections open for real-time detection.
+
 ## [2.7.2]
 
 ### Bug Fixes
