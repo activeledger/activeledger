@@ -101,14 +101,14 @@ export class Interagent {
    * @memberof Interagent
    */
   private listener(): void {
-    Provider.errorFeed.on("change", async (change: IChange) => {
-      Helper.output("Change event received, pausing error feed.");
+    // Provider.errorFeed.on("change", async (change: IChange) => {
+    //   Helper.output("Change event received, pausing error feed.");
 
-      // Temporary solution while resolving resequencing to purges
-      Provider.errorFeed.stop();
-      await this.skippedChecker();
-      Provider.errorFeed.start();
-      return;
+    //   // Temporary solution while resolving resequencing to purges
+    //   Provider.errorFeed.stop();
+    //   await this.skippedChecker();
+    //   Provider.errorFeed.start();
+    //   return;
 
       /*
 
@@ -139,17 +139,17 @@ export class Interagent {
         Provider.errorFeed.resume();
       }
       */
-    });
+    //});
 
-    Provider.archiveFeed.on("change", async (change: IChange) => {
-      Helper.output("Change event received, pausing error feed.");
+    // Provider.archiveFeed.on("change", async (change: IChange) => {
+    //   Helper.output("Change event received, pausing error feed.");
 
-      // Temporary solution while resolving resequencing to purges
-      Provider.archiveFeed.stop();
-      await this.skippedArchieveChecker();
-      Provider.archiveFeed.start();
-      return;
-    });
+    //   // Temporary solution while resolving resequencing to purges
+    //   Provider.archiveFeed.stop();
+    //   await this.skippedArchieveChecker();
+    //   Provider.archiveFeed.start();
+    //   return;
+    // });
   }
 
   /**
@@ -166,7 +166,7 @@ export class Interagent {
     });
 
     if (docs.rows.length) {
-      Provider.errorFeed.pause();
+      // Provider.errorFeed.pause();
       for (let i = docs.rows.length; i--; ) {
         const doc = docs.rows[i];
         // If doc has been processed just move
@@ -176,7 +176,7 @@ export class Interagent {
           await this.processDocument(doc);
         }
       }
-      Provider.errorFeed.resume();
+      // Provider.errorFeed.resume();
     }
   }
 
@@ -194,7 +194,7 @@ export class Interagent {
     });
 
     if (docs.rows.length) {
-      Provider.archiveFeed.pause();
+      // Provider.archiveFeed.pause();
       for (let i = docs.rows.length; i--; ) {
         const doc = docs.rows[i];
         // Loop the map to find sequences
@@ -227,7 +227,7 @@ export class Interagent {
         doc._id = Date.now() + ":" + doc._id;
         await Provider.archiveArchive.post(doc);
       }
-      Provider.archiveFeed.resume();
+      // Provider.archiveFeed.resume();
     }
   }
 

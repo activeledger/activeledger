@@ -44,9 +44,9 @@ export class Provider {
 
   public static errorDatabase: ActiveDSConnect;
 
-  public static errorFeed: ActiveChanges;
+  // public static errorFeed: ActiveChanges;
 
-  public static archiveFeed: ActiveChanges;
+  // public static archiveFeed: ActiveChanges;
 
   public static network: ActiveNetwork.Home;
 
@@ -227,7 +227,7 @@ export class Provider {
     );
 
     // Initialise Error feed
-    this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
+    // this.errorFeed = new ActiveChanges("Restore", this.errorDatabase, 1);
   }
 
   /**
@@ -252,7 +252,7 @@ export class Provider {
     this.archiveArchive.info();
 
     // Initialise Error feed
-    this.archiveFeed = new ActiveChanges("Archive", this.archiveDatabase, 1);
+    // this.archiveFeed = new ActiveChanges("Archive", this.archiveDatabase, 1);
   }
 
   /**

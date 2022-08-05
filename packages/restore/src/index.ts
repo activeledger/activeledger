@@ -41,9 +41,9 @@ class ActiveRestore {
     const normalRestore = () => {
       new Interagent();
       // Error Watcher
-      Provider.errorFeed.start();
+      // Provider.errorFeed.start();
       // Archive Watcher
-      Provider.archiveFeed.start();
+      // Provider.archiveFeed.start();
     };
 
     await Provider.initialise();
