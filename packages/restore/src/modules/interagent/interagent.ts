@@ -85,13 +85,13 @@ export class Interagent {
       // Next loop delay
       setTimeout(() => {
         this.skippedErrorInterval();
-      }, 60000);
+      }, 30000);
     }; //300000
 
     // Start up delay
     setTimeout(() => {
       this.skippedErrorInterval();
-    }, 60000);
+    }, 30000);
   }
 
   /**
@@ -162,7 +162,7 @@ export class Interagent {
     // Get any existing error documents
     const docs = await Provider.errorDatabase.allDocs({
       include_docs: true,
-      limit: 10,
+      limit: 200,
     });
 
     if (docs.rows.length) {
@@ -190,7 +190,7 @@ export class Interagent {
     // Get any existing archive documents
     const docs = await Provider.archiveDatabase.allDocs({
       include_docs: true,
-      limit: 10,
+      limit: 500,
     });
 
     if (docs.rows.length) {
