@@ -72,6 +72,15 @@ export class KeyPair {
    */
   private compatMode = false;
 
+
+  /**
+   * Prevents webpack throwing not found, We are checking for it.
+   *
+   * @private
+   * @memberof KeyPair
+   */
+  private readonly webpackBypassCheck = "generateKeyPairSync"
+
   /**
    * Creates an instance of KeyPair.
    * @param {*} [type="rsa"]
@@ -186,8 +195,8 @@ export class KeyPair {
    * @returns {boolean}
    * @memberof KeyPair
    */
-  private isFullNodeEnv(): boolean {
-    return (typeof crypto.generateKeyPairSync === "function") ? true : false;
+  private isFullNodeEnv(): boolean {    
+    return (typeof crypto[this.webpackBypassCheck] === "function") ? true : false;
   }
 
   /**
@@ -256,9 +265,8 @@ export class KeyPair {
             rsa.exportKey("pkcs8-private-pem").toString(),
             rsa.exportKey("pkcs8-public-pem").toString()
           );
-        } else {
-          //@ts-ignore
-          let rsa = crypto.generateKeyPairSync("rsa", {
+        } else {          
+          let rsa = crypto[this.webpackBypassCheck]("rsa", {
             modulusLength: bits,
             publicKeyEncoding: {
               type: "spki",
