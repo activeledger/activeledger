@@ -164,7 +164,7 @@ export class VirtualMachine
     }
 
     // Manage Externals & builtin & mocks
-    let external: string[] = ["@activeledger/activecontracts"];
+    let external: string[] = ["@activeledger/activecontracts", "typescript"];
     let builtin: string[] = ["buffer"];
     let mock: { [index: string]: MockBuiltinSecurity } = {};
 
