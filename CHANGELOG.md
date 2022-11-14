@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.7.7]
+
+### Features
+* **Restore** : Archiving & Error backlog processing faster
+
+### Bug Fix
+* **Crypto** : No longer causes webpack building error
+* **Protocol** : Default contracts are now installation location relative. (Improves Security)
+
 ## [2.7.3]
 
 ### Bug Fixes
