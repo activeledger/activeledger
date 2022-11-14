@@ -331,9 +331,9 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Default Contract Location
-      this.contractLocation = `${ActiveOptions.get("__base", "./")}/contracts/${
-        this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`;
+      this.contractLocation = `${process.cwd()}/default_contracts/${
+        this.entry.$tx.$contract
+      }.js`;
     };
 
     // Ledger Transpiled Contract Location

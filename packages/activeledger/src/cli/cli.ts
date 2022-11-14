@@ -243,6 +243,25 @@ export class CLIHandler {
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
+    // Check for default contracts and recreate for updates
+    if (!fs.existsSync("default_contracts")) fs.mkdirSync("default_contracts");
+
+    // Specific files to copy, So we don't copy any unknown ones that found their way.
+    const defaultFileSrc = `${ __dirname + "/.."}/contracts/default/`;
+    const defaultFiles = [
+      "contract.js",
+      "namespace.js",
+      "onboard.js",
+      "setup.js",
+    ];
+    for (let i = 0; i < defaultFiles.length; i++) {
+      const file = defaultFiles[i];
+      fs.copyFileSync(
+        `${defaultFileSrc}${file}`,
+        `./default_contracts/${file}`
+      );
+    }
+
     // Check for modules link for running contracts
     if (!fs.existsSync("contracts/node_modules"))
       fs.symlinkSync(
