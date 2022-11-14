@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",
@@ -47,7 +47,7 @@
     "@activeledger/activedefinitions": "^2.7.0",
     "@activeledger/activelogger": "^2.7.0",
     "@activeledger/activeoptions": "^2.7.1",
-    "@activeledger/activeprotocol": "^2.7.6",
+    "@activeledger/activeprotocol": "^2.7.7",
     "@activeledger/activequery": "^2.7.4"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
