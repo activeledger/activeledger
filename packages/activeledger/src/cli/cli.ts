@@ -247,7 +247,7 @@ export class CLIHandler {
     if (!fs.existsSync("default_contracts")) fs.mkdirSync("default_contracts");
 
     // Specific files to copy, So we don't copy any unknown ones that found their way.
-    const defaultFileSrc = `${ __dirname + "/.."}/contracts/default/`;
+    const defaultFileSrc = `${__dirname + "/.."}/contracts/default/`;
     const defaultFiles = [
       "contract.js",
       "namespace.js",
@@ -267,6 +267,13 @@ export class CLIHandler {
       fs.symlinkSync(
         fs.realpathSync(`${__dirname}/../../node_modules`),
         fs.realpathSync("contracts") + "/node_modules",
+        "dir"
+      );
+
+    if (!fs.existsSync("default_contracts/node_modules"))
+      fs.symlinkSync(
+        fs.realpathSync(`${__dirname}/../../node_modules`),
+        fs.realpathSync("default_contracts") + "/node_modules",
         "dir"
       );
 
