@@ -4,7 +4,7 @@
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 
 
-<img src="https://www.activeledger.io/wp-content/uploads/2018/09/Asset-23.png" alt="Activeledger" width="300"/>
+<img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 
 Activeledger is a powerful distributed ledger technology. Consider it as a single ledger updated simultaneously in multiple locations. As the data is written to a ledger, it is approved and confirmed by all other locations.
 
@@ -34,7 +34,7 @@ Run the following command to create a 3 node local testnet.
 activeledger --testnet
 ```
 
-![Activeledger Create Testnet](https://www.activeledger.io/wp-content/uploads/2018/10/testnet-create.png)
+![Activeledger Create Testnet](docs/assets/testnet-create.png)
 
 When the testnet has been created you can run all of them at once but running
 
@@ -47,7 +47,7 @@ Alternatively you can run each instance of Activeledger independantly by navigat
 ```bash
 activeledger
 ```
-![Activeledger Launch Testnet](https://www.activeledger.io/wp-content/uploads/2018/10/testnet-run.png)
+![Activeledger Launch Testnet](docs/assets/testnet-run.png)
 
 ## Developer Tools
 
@@ -55,7 +55,7 @@ We have created an IDE for developers to create and manage Activeledger smart co
 
 [IDE User Guide](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md) | [用户指南](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/ide/README.md)
 
-![Activeledger IDE](https://activeledger.io/wp-content/uploads/2018/10/developer-tools-demo.gif)
+![Activeledger IDE](docs/assets/developer-tools-demo.gif)
 
 ### IDE Download
 
