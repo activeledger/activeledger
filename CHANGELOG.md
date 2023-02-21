@@ -1,5 +1,12 @@
 # Activeledger Changelog
 
+## [2.7.8]
+
+### Bug Fix
+* **Restore** : Prevent an expected but unknown error from killing the entire process
+* **Protocol** : Remove INC from error logs to protect contract data privacy
+
+
 ## [2.7.7]
 
 ### Features
