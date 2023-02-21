@@ -126,7 +126,7 @@ export class Shared {
       let i = nodes.length;
       while (i--) {
         // Allow the clearning node to preserve a specific output
-        if(nodes[i].incomms !== preserveComms) {
+        if (nodes[i].incomms !== preserveComms) {
           nodes[i].incomms = null;
         }
       }
@@ -204,12 +204,21 @@ export class Shared {
     }
 
     if (!this._storeSingleError && this.entry) {
+      // Take a copy of entry, To manipulate the $nodes incomms
+      // Reason for copy is this node maybe the one that errors and the incomms maybe useful elsewhere
+      const tmpEntry = JSON.parse(
+        JSON.stringify(this.entry)
+      ) as ActiveDefinitions.LedgerEntry;
+      const nodeErrors = Object.keys(tmpEntry.$nodes);
+      for (let i = nodeErrors.length; i--; ) {
+        tmpEntry.$nodes[nodeErrors[i]].incomms = null;
+      }
       // Build document for database
       const doc = {
         code,
         processed: this._storeSingleError,
         umid: this.entry.$umid,
-        transaction: this.entry,
+        transaction: tmpEntry, // Need to clear this.entry.$nodes["sss"].incomms
         reason: getReason(),
       };
 
