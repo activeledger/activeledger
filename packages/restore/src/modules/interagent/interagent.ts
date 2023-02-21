@@ -626,7 +626,11 @@ export class Interagent {
         resolve();
       } catch (error) {
         ActiveLogger.error(error, "All Datafix processes errored");
-        reject(error);
+        // While this is an error, It shouldn't stop the entire processing of the next record
+        // This error is most likely a false negative that only this node raised so nothing to compare to.
+        // Resolving here just moves onto the next error to be managed while rejecting prevented that
+        resolve();
+        //reject(error);
       }
     });
   }
