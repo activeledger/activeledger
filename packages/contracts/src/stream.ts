@@ -279,8 +279,8 @@ export class Stream {
     let total = 0;
     // Get Authority signatures as array
     let authSigs = Object.keys(this.sigs[activity.getId()]);
-    activity.getAuthorities().map(authority => {
-      authSigs.some(authHash => {
+    activity.getAuthorities().map((authority) => {
+      authSigs.some((authHash) => {
         // Signature already verified in procss.ts (Reject Code 1228)
         if (authHash == authority.hash) {
           total += authority.stake;
@@ -411,7 +411,7 @@ export class Stream {
       return matches === this.remoteAddr;
     } else {
       return Boolean(
-        matches.find(ip => {
+        matches.find((ip) => {
           return ip === this.remoteAddr;
         })
       );
@@ -569,7 +569,7 @@ export class Activity {
     if (this.key == secret) {
       const stream: ActiveDefinitions.LedgerStream = {
         meta: this.meta,
-        state: this.state as ActiveDefinitions.IFullState
+        state: this.state as ActiveDefinitions.IFullState,
       };
 
       // Have we loaded in a volatile to return
@@ -651,8 +651,8 @@ export class Activity {
             public: pubKey,
             type,
             stake: 100,
-            hash: ActiveCrypto.Hash.getHash(pubKey, "sha256")
-          }
+            hash: ActiveCrypto.Hash.getHash(pubKey, "sha256"),
+          },
         ];
         // Set Update Flag
         this.updated = true;
@@ -688,7 +688,7 @@ export class Activity {
         }
 
         // Check we have a hash
-        authority.forEach(auth => {
+        authority.forEach((auth) => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
@@ -707,7 +707,7 @@ export class Activity {
             value: ActiveDefinitions.ILedgerAuthority,
             i: number,
             self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map(x => x.hash).indexOf(value.hash) == i
+          ) => self.map((x) => x.hash).indexOf(value.hash) == i
         );
 
         // Set Update Flag
@@ -753,8 +753,9 @@ export class Activity {
         // Make sure we still have an authority over the stream
         if (filteredAuthorities.length) {
           this.meta.authorities = filteredAuthorities;
+        } else {
+          throw new Error("Operation denied this will delete all authorities");
         }
-        throw new Error("Operation denied this will delete all authorities");
       } else {
         throw new Error("Cannot delete authorities on output stream");
       }
@@ -903,7 +904,8 @@ export class Activity {
       throw new Error("Cannot create set state in Safe Mode");
     } else {
       // Cast to full state to manage
-      let fState: ActiveDefinitions.IFullState = state as ActiveDefinitions.IFullState;
+      let fState: ActiveDefinitions.IFullState =
+        state as ActiveDefinitions.IFullState;
 
       // Remove _id & _rev
       delete fState._id;
@@ -981,7 +983,8 @@ export class Activity {
    */
   public setVolatile(volatile: ActiveDefinitions.IVolatile): void {
     // Cast to full state to manage
-    let fVolatile: ActiveDefinitions.IFullState = volatile as ActiveDefinitions.IFullState;
+    let fVolatile: ActiveDefinitions.IFullState =
+      volatile as ActiveDefinitions.IFullState;
 
     // Remove _id & _rev
     if (fVolatile._id) delete fVolatile._id;
@@ -990,7 +993,7 @@ export class Activity {
     // Merge Objects
     this.volatile = {
       ...this.volatile,
-      ...fVolatile
+      ...fVolatile,
     } as ActiveDefinitions.IFullState;
 
     // Set Update Flag
@@ -1033,7 +1036,7 @@ export class ActiveCrypto {
    * @static
    * @memberof ActiveLogger
    */
-  private static reference = ((global as unknown) as any).crypto;
+  private static reference = (global as unknown as any).crypto;
 
   public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
   public static KeyPair: DefaultActiveCrypto.KeyPair =
@@ -1056,7 +1059,7 @@ export class ActiveLogger {
    * @static
    * @memberof ActiveLogger
    */
-  private static reference = ((global as unknown) as any)
+  private static reference = (global as unknown as any)
     .logger as DefaultActiveLogger;
 
   public static trace(msg: string): void;
