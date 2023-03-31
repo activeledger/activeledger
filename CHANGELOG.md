@@ -1,20 +1,25 @@
 # Activeledger Changelog
 
+## [2.7.9]
+
+### Bug Fix
+* **Contract** : Delete Authorities now only throws when empty.
+
 ## [2.7.8]
 
 ### Bug Fix
-* **Restore** : Prevent an expected but unknown error from killing the entire process
-* **Protocol** : Remove INC from error logs to protect contract data privacy
+* **Restore** : Prevent an expected but unknown error from killing the entire process.
+* **Protocol** : Remove INC from error logs to protect contract data privacy.
 
 
 ## [2.7.7]
 
 ### Features
-* **Restore** : Archiving & Error backlog processing faster
+* **Restore** : Archiving & Error backlog processing faster.
 
 ### Bug Fix
-* **Crypto** : No longer causes webpack building error
-* **Protocol** : Default contracts are now installation location relative. (Improves Security)
+* **Crypto** : No longer causes webpack building error.
+* **Protocol** : Default contracts are now installation location relative. (Improves Security).
 
 ## [2.7.3]
 
