@@ -297,6 +297,7 @@ export class Stream {
   /**
    * Gets read only stream data defined by $r of the transactions
    *
+   * @deprecated Use getAnyStreamReadOnly
    * @param {string} name
    * @returns {*}
    * @memberof Stream
@@ -304,6 +305,32 @@ export class Stream {
   public getReadOnlyStream(name: string): any {
     if (this.reads[name]) return this.reads[name];
     return false;
+  }
+
+  /**
+   * Get the volatile state from the activity stream
+   *
+   * @returns {ActiveDefinitions.IStream}
+   * @memberof Stream
+   */
+  public getAnyStreamReadOnly(
+    streamId: string
+  ): Promise<ActiveDefinitions.IStream> {
+    return new Promise((resolve, reject) => {
+      const umid = this.umid;
+      this.eventEmitter.emit("getStreamData", umid, streamId);
+
+      this.eventEmitter.on(
+        `getStreamDataFetched-${umid}${streamId}`,
+        (err: Error, data: ActiveDefinitions.IStream) => {
+          if (err) {
+            ActiveLogger.debug(err, "Event error");
+            reject(err);
+          }
+          resolve(data);
+        }
+      );
+    });
   }
 
   /**

@@ -139,6 +139,8 @@ export class VirtualMachine
     this.emitter = new EventEmitter();
     // Start volatile event listener
     this.listenForVolatile();
+    // start all stream fetching
+    this.listenForFetch();
   }
 
   /**
@@ -682,6 +684,28 @@ export class VirtualMachine
   }
 
   /**
+   * Allow for any stream data to be fetched during contract execution
+   *
+   * @private
+   * @memberof VirtualMachine
+   */
+  private listenForFetch(): void {
+    this.emitter.on("getStreamData", async (umid: string, streamId: string) => {
+      // Check that the UMID matches the transactions Stream ID
+      ActiveLogger.debug(this.contractReferences[umid], "TX");
+
+      try {
+        const data: ActiveDefinitions.IStream = await this.db.get(
+          streamId
+        );
+        this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, null, data);
+      } catch (error) {
+        this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
+      }
+    });
+  }
+
+  /**
    * Check the VM has or hasn't timedout
    *
    * @private
@@ -742,7 +766,12 @@ export class VirtualMachine
    */
   private catchException(e: Error, umid: string): any {
     // Exception
-    if (e.stack && umid && this.contractReferences && this.contractReferences[umid]?.contractName) {
+    if (
+      e.stack &&
+      umid &&
+      this.contractReferences &&
+      this.contractReferences[umid]?.contractName
+    ) {
       // Get Current Contract Filename only
       const contract = this.contractReferences[umid].contractName;
 
