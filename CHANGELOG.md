@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.7.10]
+
+### Features
+* **Protcol** : VM now supports "getAnyStreamReadOnly" from within the context of the smart contract, This function is awaitable.
+
 ## [2.7.9]
 
 ### Bug Fix
