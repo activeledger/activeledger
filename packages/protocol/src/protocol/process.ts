@@ -363,12 +363,14 @@ export class Process extends EventEmitter {
       this.inputs = Object.keys(this.entry.$tx.$i || {});
 
       // We must have inputs (New Inputs can create brand new unknown outputs)
-      if (!this.inputs.length) {
-        this.shared.raiseLedgerError(1101, new Error("Inputs cannot be null"));
-      }
 
-      // Which $i lookup are we using. Are they labelled or stream names
-      this.labelOrKey();
+      // Now allowing for read only transactions inputs can be empty
+      if (this.inputs.length) {
+        //this.shared.raiseLedgerError(1101, new Error("Inputs cannot be null"));
+        
+        // Which $i lookup are we using. Are they labelled or stream names
+        this.labelOrKey();
+      }
 
       // Build Outputs Key Maps (Reference is Stream)
       ActiveLogger.debug("Fetching Outputs");
