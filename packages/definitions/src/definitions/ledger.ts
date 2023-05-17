@@ -210,48 +210,19 @@ export class LedgerTypeChecks {
    * Is object of type LedgerEntry
    *
    * @static
-   * @param {*} object
+   * @param {*} tx
    * @returns {object is LedgerEntry}
    * @memberof LedgerTypeChecks
    */
-  public static isEntry(object: any): object is LedgerEntry {
-    return "$tx" in object && "$sigs" in object;
-  }
-
-  /**
-   * Is object of type LedgerTransaction
-   *
-   * @static
-   * @param {*} object
-   * @returns {object is LedgerTransaction}
-   * @memberof LedgerTypeChecks
-   */
-  public static isTransaction(object: any): object is LedgerTransaction {
-    return "$contract" in object;
-  }
-
-  /**
-   * Is object of type LedgerIOputs
-   *
-   * @static
-   * @param {*} object
-   * @returns {object is LedgerIOputs}
-   * @memberof LedgerTypeChecks
-   */
-  public static isIOputs(object: any): object is LedgerIORputs {
-    return "$data" in object;
-  }
-
-  /**
-   * Is object of type LedgerSignatures
-   *
-   * @static
-   * @param {*} object
-   * @returns {object is LedgerSignatures}
-   * @memberof LedgerTypeChecks
-   */
-  public static isSignature(object: any): object is LedgerSignatures {
-    return "$sig" in object;
+  public static isEntry(tx: LedgerEntry): tx is LedgerEntry {
+    if (
+      tx.$tx &&
+      ((tx.$tx.$i && tx.$sigs) ||
+        (tx.$tx.$namespace && tx.$tx.$contract))
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
