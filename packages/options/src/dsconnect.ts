@@ -58,6 +58,20 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
+   * Drops database table
+   *
+   * @returns {Promise<any>}
+   * @memberof ActiveDSConnect
+   */
+  public drop(): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}`, "DELETE")
+        .then((response: any) => resolve(response.data))
+        .catch(reject);
+    });
+  }
+
+  /**
    * Create an index
    *
    * @param {*} [options={}]
