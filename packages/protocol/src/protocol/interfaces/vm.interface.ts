@@ -25,7 +25,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import {
   Standard,
   PostProcessQueryEvent,
-  Activity
+  Activity,
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { EventEmitter } from "events";
@@ -110,6 +110,8 @@ export interface IVirtualMachine {
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
 
   initialise(payload: IVMDataPayload, contractName: string): Promise<void>;
+
+  read(umid: string, readMethod: string): Promise<unknown>;
 
   verify(sigless: boolean, umid: string): Promise<boolean>;
 

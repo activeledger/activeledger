@@ -381,6 +381,47 @@ export class VirtualMachine
   }
 
   /**
+   * Contract transaction read methods
+   *
+   * @param {ActiveDefinitions.INodes} nodes
+   * @returns {Promise<boolean>}
+   * @memberof VirtualMachine
+   */
+  public read(umid: string, readMethod: string): Promise<unknown> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Script running flag
+        this.scriptFinishedExec = false;
+
+        // Upgrade Phase
+        this.event.setPhase("read");
+
+        // Manage Timeout
+        this.checkTimeout(
+          readMethod,
+          () => {
+            reject("VM Error : Read phase timeout");
+          },
+          umid
+        );
+
+        // Get Commit
+        resolve(await this.virtualInstance.runRead(umid, readMethod));
+      } catch (error) {
+        if (error instanceof Error) {
+          // Exception
+          reject(this.catchException(error, umid));
+        } else {
+          // Rejected by contract
+          reject(error);
+        }
+      } finally {
+        this.scriptFinishedExec = true;
+      }
+    });
+  }
+
+  /**
    * Run verify part of the smart contract
    *
    * @returns {boolean}
@@ -695,10 +736,12 @@ export class VirtualMachine
       ActiveLogger.debug(this.contractReferences[umid], "TX");
 
       try {
-        const data: ActiveDefinitions.IStream = await this.db.get(
-          streamId
+        const data: ActiveDefinitions.IStream = await this.db.get(streamId);
+        this.emitter.emit(
+          `getStreamDataFetched-${umid}${streamId}`,
+          null,
+          data
         );
-        this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, null, data);
       } catch (error) {
         this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
       }
