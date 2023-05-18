@@ -1,9 +1,31 @@
 # Activeledger Changelog
 
+## [2.8.0]
+
+### Features
+* **Activeledger:** Flush old archives with --flush flag this will reduce space. Best to setup and run periodically.
+* **Activeledger:** Read Only transaction support. These transactions do not require any signatures and are invoked by having no $i provided. By default it will call read() but this can be changed with the $entry of the transaction payload.
+* **Protocol** : Upgraded contracts are removed from resolver cache.
+* **Contract** : Verify phase is now optional.
+
+#### Example Read-only transaction
+```json
+{
+    "$tx": {
+        "$namespace": "namespace",
+        "$contract": "contract id",
+        "$entry":"readMe" // Will call the method readMe() found in the contract
+    }
+}
+```
+
+### Bug Fix
+* **Definitions** : Faster transaction schema validation.
+
 ## [2.7.10]
 
 ### Features
-* **Protcol** : VM now supports "getAnyStreamReadOnly" from within the context of the smart contract, This function is awaitable.
+* **Protocol** : VM now supports "getAnyStreamReadOnly" from within the context of the smart contract, This function is awaitable.
 
 ## [2.7.9]
 
