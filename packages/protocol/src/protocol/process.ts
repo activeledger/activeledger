@@ -306,6 +306,29 @@ export class Process extends EventEmitter {
     if (this.isDefault) {
       // DefaultVM created?
       if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+
+      // If contract may need to reload the contract
+      if (
+        this.entry.$tx.$contract == "contract" &&
+        this.entry.$tx.$entry == "update"
+      ) {
+        // Get input (To get namespace)
+        const input = this.entry.$tx.$i[Object.keys(this.entry.$tx.$i)[0]];
+        // Get Output (contract id)
+        const output = Object.keys(this.entry.$tx.$o)[0];
+        const module = `${process.cwd()}/contracts/${
+          input.namespace
+        }/${output}.js`;
+
+        // Clear from sandboxes
+        if (Process.singleContractVMHolder[input.namespace])
+          Process.singleContractVMHolder[input.namespace].clearCache(module);
+
+        // Clear from general as it could exist in both
+        Process.generalContractVM.clearCache(module);
+
+        // TODO: Do we need to delete labels from the cache or do these resolve
+      }
     } else {
       this.contractRef
         ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
