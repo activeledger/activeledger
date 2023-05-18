@@ -367,7 +367,7 @@ export class Process extends EventEmitter {
       // Now allowing for read only transactions inputs can be empty
       if (this.inputs.length) {
         //this.shared.raiseLedgerError(1101, new Error("Inputs cannot be null"));
-        
+
         // Which $i lookup are we using. Are they labelled or stream names
         this.labelOrKey();
       }
@@ -661,42 +661,60 @@ export class Process extends EventEmitter {
       continueProcessing = false;
     }
 
-    // Run the vote round
-    try {
-      if (continueProcessing)
-        await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
-    } catch (error) {
-      // Do something with the error
-      handleVoteError(error);
+    // If no $i or $sigs (only need to check on 1 as they're required)
+    if (this.entry.$tx.$i) {
+      // Run the vote round
+      try {
+        if (continueProcessing)
+          await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
+      } catch (error) {
+        // Do something with the error
+        handleVoteError(error);
 
-      // Stop processing
-      continueProcessing = false;
-    }
+        // Stop processing
+        continueProcessing = false;
+      }
 
-    // All previous rounds successful continue processing
-    if (continueProcessing) {
-      // Update Vote Entry
-      this.nodeResponse.vote = true;
+      // All previous rounds successful continue processing
+      if (continueProcessing) {
+        // Update Vote Entry
+        this.nodeResponse.vote = true;
 
-      // Internode Communication picked up here, Doesn't mean every node
-      // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
-      this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-        this.entry.$umid
+        // Internode Communication picked up here, Doesn't mean every node
+        // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+        this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
+          this.entry.$umid
+        );
+
+        // Return Data for this nodes contract run (Useful for $instant request expected id's)
+        this.nodeResponse.return = virtualMachine.getReturnContractData(
+          this.entry.$umid
+        );
+
+        // Clearing All node comms?
+        this.entry = this.shared.clearAllComms(
+          virtualMachine,
+          this.nodeResponse.incomms
+        );
+
+        // Continue to next nodes vote
+        this.postVote(virtualMachine);
+      }
+    } else {
+      // Read only so lets call the $entry (or default which is read())
+      this.nodeResponse.return = await virtualMachine.read(
+        this.entry.$umid,
+        this.entry.$tx.$entry || "read"
       );
 
-      // Return Data for this nodes contract run (Useful for $instant request expected id's)
-      this.nodeResponse.return = virtualMachine.getReturnContractData(
-        this.entry.$umid
-      );
+      // Continue to next nodes vote, We may just want to return
+      // however using $instant allows this and we could also have multiple node
+      // returned data for reliability and in the future use it to data check for the restore engine
+      // for postVote to work we need to skip a lot of checks as it assume the v/v/c routine
+      //this.postVote(virtualMachine);
 
-      // Clearing All node comms?
-      this.entry = this.shared.clearAllComms(
-        virtualMachine,
-        this.nodeResponse.incomms
-      );
-
-      // Continue to next nodes vote
-      this.postVote(virtualMachine);
+      // Not really commited but does what we need
+      this.emit("commited");
     }
   }
 

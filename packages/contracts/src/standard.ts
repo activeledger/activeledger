@@ -36,12 +36,13 @@ export default abstract class Standard extends Stream {
    * Developer required to create a verify command for their contract.
    * Verify is to deterimine if this contract can understand this transaction
    *
+   * @Optional
    * @abstract
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
    * @memberof Standard
    */
-  public abstract verify(signatureless: boolean): Promise<boolean>;
+  public verify?(signatureless: boolean): Promise<boolean>;  
 
   /**
    * Developer required to create a vote command for their contract.

@@ -26,7 +26,7 @@ import { EventEngine } from "@activeledger/activequery";
 import {
   IVMDataPayload,
   IVMObject,
-  IVMInternalCache
+  IVMInternalCache,
 } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { EventEmitter } from "events";
@@ -68,21 +68,20 @@ class ContractControl implements IVMObject {
   ): void {
     // We don't need to verify the code unless we suspect server has been
     // comprimised. We will verify with the "install" routine
-    this.smartContracts[
-      payload.umid
-    ] = new (require(payload.contractLocation)).default(
-      payload.date,
-      payload.remoteAddress,
-      payload.umid,
-      payload.transaction,
-      payload.inputs,
-      payload.outputs,
-      payload.readonly,
-      payload.signatures,
-      payload.key,
-      emitter,
-      (global as any).self
-    );
+    this.smartContracts[payload.umid] =
+      new (require(payload.contractLocation).default)(
+        payload.date,
+        payload.remoteAddress,
+        payload.umid,
+        payload.transaction,
+        payload.inputs,
+        payload.outputs,
+        payload.readonly,
+        payload.signatures,
+        payload.key,
+        emitter,
+        (global as any).self
+      );
 
     // if ("setQuery" in this.smartContracts[payload.umid]) {
     //   (this.smartContracts[payload.umid] as PostProcessQueryEvent).setQuery(
@@ -164,14 +163,27 @@ class ContractControl implements IVMObject {
   }
 
   /**
+   * Run the voting round of the contract
+   *
+   * @returns {Promise<boolean>}
+   * @memberof ContractControl
+   */
+  public runRead(umid: string, readMethod: string): Promise<unknown> {    
+    const read = (this.smartContracts[umid] as any)[readMethod]?.();
+    return read ? read : false;
+  }
+
+  /**
    * Run the verification round of the contract
    *
    * @param {boolean} sigless
    * @returns {Promise<boolean>}
    * @memberof ContractControl
    */
-  public runVerify(umid: string, sigless: boolean): Promise<boolean> {
-    return this.smartContracts[umid].verify(sigless);
+  public async runVerify(umid: string, sigless: boolean): Promise<boolean> {
+    // Skip verify if doesn't exist
+    const verify = this.smartContracts[umid].verify?.(sigless);
+    return verify ? verify : true;
   }
 
   /**
@@ -274,7 +286,7 @@ class ContractControl implements IVMObject {
    */
   public setSysConfig(umid: string, sysConfig: any): void {
     if ("sysConfig" in this.smartContracts[umid]) {
-      ((this.smartContracts[umid] as unknown) as any).sysConfig(sysConfig);
+      (this.smartContracts[umid] as unknown as any).sysConfig(sysConfig);
     }
   }
 
@@ -286,7 +298,7 @@ class ContractControl implements IVMObject {
    */
   public reloadSysConfig(umid: string): boolean {
     if ("sysConfig" in this.smartContracts[umid]) {
-      return ((this.smartContracts[umid] as unknown) as any).configReload();
+      return (this.smartContracts[umid] as unknown as any).configReload();
     } else {
       return false;
     }
@@ -295,6 +307,6 @@ class ContractControl implements IVMObject {
   // #endregion
 }
 
-module.exports = (function() {
+module.exports = (function () {
   return new ContractControl();
 })();
