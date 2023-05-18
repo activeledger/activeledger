@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activetoolkits",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",
@@ -34,7 +34,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "^2.7.0",
+    "@activeledger/activedefinitions": "^2.8.0",
     "@types/node": "18.0.0",
     "typescript": "4.7.3"
   },
