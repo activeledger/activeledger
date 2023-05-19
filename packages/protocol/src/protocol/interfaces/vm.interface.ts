@@ -126,6 +126,4 @@ export interface IVirtualMachine {
   postProcess(territoriality: boolean, who: string, umid: string): Promise<any>;
 
   reconcile(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
-
-  clearCache(module: string): void;
 }

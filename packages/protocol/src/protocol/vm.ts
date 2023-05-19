@@ -270,16 +270,6 @@ export class VirtualMachine
   }
 
   /**
-   * Clear contract from VM require cache
-   *
-   * @param {string} module
-   * @memberof VirtualMachine
-   */
-  public clearCache(module: string): void {
-    this.virtualInstance.clearCache(module);        
-  }
-
-  /**
    * Gets any internode communication to pass to other nodes.
    *
    * @returns {any}
