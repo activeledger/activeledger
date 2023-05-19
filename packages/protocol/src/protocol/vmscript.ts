@@ -263,17 +263,6 @@ class ContractControl implements IVMObject {
   }
 
   /**
-   * Clears contract from the cache
-   *
-   * @param {string} contract
-   * @memberof ContractControl
-   */
-  public clearCache(contract: string): void {
-    // Clear from cache if exists
-    if(require.cache) delete require.cache[contract];
-  }
-
-  /**
    * Get the current timeout of the contract
    *
    * @returns {Date}

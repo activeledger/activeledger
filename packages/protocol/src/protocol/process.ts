@@ -316,18 +316,13 @@ export class Process extends EventEmitter {
         const input = this.entry.$tx.$i[Object.keys(this.entry.$tx.$i)[0]];
         // Get Output (contract id)
         const output = Object.keys(this.entry.$tx.$o)[0];
-        const module = `${process.cwd()}/contracts/${
-          input.namespace
-        }/${output}.js`;
+        // Update parent processor cache
+        this.emit("contractLatestVersion", {
+          contract: output,
+          file: `${output}@${input.version}`,
+        });
 
-        // Clear from sandboxes
-        if (Process.singleContractVMHolder[input.namespace])
-          Process.singleContractVMHolder[input.namespace].clearCache(module);
-
-        // Clear from general as it could exist in both
-        Process.generalContractVM.clearCache(module);
-
-        // TODO: Do we need to delete labels from the cache or do these resolve
+        // Implement for labels?
       }
     } else {
       this.contractRef
@@ -340,11 +335,33 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Semver sorting for latest file detection
+   *
+   * @private
+   * @param {string} a
+   * @param {string} b
+   * @returns
+   * @memberof Process
+   */
+  private sortVersions(a: string, b: string) {
+    const padSorting = (v: string) => {
+      return v
+        .split(".")
+        .map((p: string) => {
+          return "00000000".substring(0, 8 - p.length) + p;
+        })
+        .join(".");
+    };
+
+    return padSorting(a).localeCompare(padSorting(b));
+  }
+
+  /**
    * Starts the consensus and commit phase processing
    *
    * @memberof Process
    */
-  public async start() {
+  public async start(contractVersion?: string) {
     ActiveLogger.debug("New TX : " + this.entry.$umid);
     ActiveLogger.debug(this.entry, "Starting TX");
 
@@ -360,10 +377,34 @@ export class Process extends EventEmitter {
     };
 
     // Ledger Transpiled Contract Location
-    const setupLocation = () =>
-      (this.contractLocation = `${process.cwd()}/contracts/${
-        this.entry.$tx.$namespace
-      }/${this.entry.$tx.$contract}.js`);
+    const setupLocation = () => {
+      let contract = this.entry.$tx.$contract;
+      let path = `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`;
+      // Does the string contain @ then we leave it alone
+      if (this.entry.$tx.$contract.indexOf("@") === -1) {
+        if (contractVersion) {
+          contract = contractVersion;
+        } else {
+          // Now we find the latest @ in the file system and include
+          // need to remember to update it upon upgrades. This way we don't nned to manage cache
+          // Or the VMs
+          contract =
+            fs
+              .readdirSync(path)
+              .filter((fn) => fn.includes(`${contract}@`))
+              .sort(this.sortVersions)
+              .pop()
+              ?.replace(".js", "") || contract;
+
+          // Cache it to parent process handler
+          this.emit("contractLatestVersion", {
+            contract: this.entry.$tx.$contract,
+            file: contract,
+          });
+        }
+      }
+      this.contractLocation = `${path}${contract}.js`;
+    };
 
     // Is this a default contract
     this.entry.$tx.$namespace === "default"

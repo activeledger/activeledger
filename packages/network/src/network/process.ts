@@ -24,7 +24,7 @@
 import {
   ActiveDSConnect,
   ActiveOptions,
-  ActiveRequest
+  ActiveRequest,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -55,6 +55,10 @@ interface ISetup extends IMakeHome {
   right: any;
   neighbours: { [reference: string]: Neighbour };
   db: any;
+}
+
+interface IContractVersions {
+  [contractName: string]: string;
 }
 
 /**
@@ -134,6 +138,15 @@ class Processor {
     [umid: string]: ActiveProtocol.Process;
   } = {};
 
+  /**
+   * Holds the latest version number for a generic contract request
+   *
+   * @private
+   * @type {IContractVersions}
+   * @memberof Process
+   */
+  private latestContractVersion: IContractVersions = {};
+
   constructor() {
     // Initalise CLI Options
     ActiveOptions.init();
@@ -158,7 +171,7 @@ class Processor {
               // Setup Processor
               this.setup(m.data);
             })
-            .catch(e => {
+            .catch((e) => {
               ActiveLogger.fatal(e, "Config Extension Issues");
             });
           break;
@@ -218,8 +231,20 @@ class Processor {
             this.throw(m.entry, response);
           });
 
+          // Event: Latest Contract Version
+          this.protocols[m.entry.$umid].on(
+            "contractLatestVersion",
+            (response: { contract: string; file: string }) => {
+              if (response) {
+                this.latestContractVersion[response.contract] = response.file;
+              }
+            }
+          );
+
           // Start the process
-          this.protocols[m.entry.$umid].start();
+          this.protocols[m.entry.$umid].start(
+            this.latestContractVersion[m.entry.$tx.$contract]
+          );
           break;
         case "broadcast":
           if (this.protocols[m.data.umid]) {
@@ -262,8 +287,8 @@ class Processor {
       entry: {
         $streams: entry.$streams,
         $territoriality: entry.$territoriality,
-        response: entry.response
-      }
+        response: entry.response,
+      },
     });
 
     // Clear Early?
@@ -288,7 +313,7 @@ class Processor {
     // Pass back to host to respond
     this.send("commited", {
       umid: entry.$umid,
-      nodes: entry.$nodes
+      nodes: entry.$nodes,
     });
 
     if (!entry.$broadcast) {
@@ -321,7 +346,7 @@ class Processor {
    */
   private reloadUp(umid: string): void {
     this.send("reload", {
-      umid
+      umid,
     });
   }
 
@@ -373,7 +398,7 @@ class Processor {
         ActiveRequest.send(location, "POST", [], {
           $tx: entry.$tx,
           $selfsign: entry.$selfsign,
-          $sigs: entry.$sigs
+          $sigs: entry.$sigs,
         })
           .then((resp: any) => {
             // Emit Event of successful connection to the ledger (May still have failed on the ledger)
@@ -382,7 +407,7 @@ class Processor {
               sentFrom: Home.host,
               sentTo: location,
               $umid: entry.$umid,
-              response: resp.data
+              response: resp.data,
             });
           })
           .catch((error: any) => {
@@ -392,7 +417,7 @@ class Processor {
               sentFrom: Home.host,
               sentTo: location,
               $umid: entry.$umid,
-              response: error.toString()
+              response: error.toString(),
             });
           });
       }
@@ -416,7 +441,7 @@ class Processor {
 
     // Pass back to host to respond
     this.send("unhandledrejection", {
-      umid: entry.$umid
+      umid: entry.$umid,
     });
 
     if (!entry.$broadcast) {
@@ -435,7 +460,7 @@ class Processor {
   private send(type: string, data: unknown): void {
     (process as any).send({
       type,
-      data
+      data,
     });
   }
 
@@ -450,8 +475,8 @@ class Processor {
     ActiveLogger.debug("Removing from memory : " + umid);
     // Clear Listners & Destory Early
     if (this.protocols[umid]) {
-      this.protocols[umid].removeAllListeners();
       this.protocols[umid].destroy(umid);
+      this.protocols[umid].removeAllListeners();
       // Clear
       delete this.protocols[umid];
     }
@@ -493,7 +518,7 @@ class Processor {
 
     // Let main thread know we are ready
     this.send("ready", {
-      pid: process.pid
+      pid: process.pid,
     });
   }
 
@@ -523,7 +548,6 @@ class Processor {
     right: any,
     neighbours?: { [reference: string]: Neighbour }
   ) {
-
     // Create new right neighbour with identity if known
     Home.right = new Neighbour(
       right.host,
@@ -541,7 +565,7 @@ class Processor {
       this.secured = new ActiveCrypto.Secured(this.db, this.neighbourhood, {
         reference: Home.reference,
         public: Home.publicPem,
-        private: Home.identity.pem
+        private: Home.identity.pem,
       });
     }
   }
