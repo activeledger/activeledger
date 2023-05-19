@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.8.1]
+
+### Bug Fix
+* **Protocol** : New method to select latest version by targeting and tracking semver. Can be overidden by transaction $contract targetting itself with contractid@version.
+
 ## [2.8.0]
 
 ### Features
