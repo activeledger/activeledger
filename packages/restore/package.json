@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activerestore",
-  "version": "2.8.1",
+  "version": "2.9.0",
   "description": "This pakacage contains the application which handles the network healing and rebuilding from an empty Activeledger node.",
   "keywords": [
     "blockchain",
@@ -47,7 +47,7 @@
   "dependencies": {
     "@activeledger/activecrypto": "^2.8.0",
     "@activeledger/activelogger": "^2.7.0",
-    "@activeledger/activenetwork": "^2.8.1",
+    "@activeledger/activenetwork": "^2.9.0",
     "@activeledger/activeoptions": "^2.8.0",
     "typescript": "4.7.3"
   },
