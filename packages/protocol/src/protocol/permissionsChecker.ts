@@ -95,8 +95,9 @@ export class PermissionsChecker {
     // Map into a single alldocs lookup
     const keys: string[] = [];
     for (let i = this.data.length; i--; ) {
-      keys.push(this.data[i] + ":stream");
-      keys.push(this.data[i]);
+      const filteredPrefix = this.shared.filterPrefix(this.data[i]);
+      keys.push(filteredPrefix + ":stream");
+      keys.push(filteredPrefix);
     }
 
     // Single fetch
@@ -274,7 +275,7 @@ export class PermissionsChecker {
             const type = stream[i].meta.type ? stream[i].meta.type : "rsa";
             const sigCheck = this.shared.signatureCheck(
               stream[i].meta.public as string,
-              this.entry.$sigs[streamId] as string,
+              this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
               type
             );
 
@@ -317,19 +318,19 @@ export class PermissionsChecker {
     const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
       this.shared.signatureCheck(
         authority.public,
-        this.entry.$sigs[streamId] as string,
+        this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
         authority.type
       );
 
     const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
-      this.entry.$sigs[streamId]
+      this.entry.$sigs[this.shared.filterPrefix(streamId)]
     );
 
     if (isLedgerAuthSignatures) {
       // Multiple signatures passed
       // Check that they haven't sent more signatures than we have authorities
 
-      const sigStreamKeys = Object.keys(this.entry.$sigs[streamId]);
+      const sigStreamKeys = Object.keys(this.entry.$sigs[this.shared.filterPrefix(streamId)]);
       const authorities = stream.meta.authorities.length;
       if (sigStreamKeys.length > authorities) {
         return reject({
@@ -365,7 +366,7 @@ export class PermissionsChecker {
         } else {
           // Get signature from tx object
           const signature = (this.entry.$sigs[
-            streamId
+            this.shared.filterPrefix(streamId)
           ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
           const authCheck = stream.meta.authorities.some(
             (authority: ActiveDefinitions.ILedgerAuthority) => {
@@ -407,8 +408,8 @@ export class PermissionsChecker {
           if (authority.hash && sigCheck(authority)) {
             // Remap $sigs for later consumption
 
-            this.entry.$sigs[streamId] = {
-              [authority.hash]: this.entry.$sigs[streamId] as string,
+            this.entry.$sigs[this.shared.filterPrefix(streamId)] = {
+              [authority.hash]: this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
             };
             return true;
           } else {

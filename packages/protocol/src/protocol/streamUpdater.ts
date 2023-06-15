@@ -322,7 +322,7 @@ export class StreamUpdater {
 
         // Add to reference
         this.refStreams.new.push({
-          id: this.streams[i].state._id,
+          id: this.shared.assumedVirtualPrefix + this.streams[i].state._id,
           name: this.streams[i].meta.name,
         });
       } else {
@@ -366,7 +366,7 @@ export class StreamUpdater {
 
         // Add to reference
         this.refStreams.updated.push({
-          id: this.streams[i].state._id,
+          id: this.shared.filterPrefix(this.streams[i].state._id as string),
           name: this.streams[i].meta.name,
         });
       }
