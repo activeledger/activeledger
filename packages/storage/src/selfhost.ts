@@ -223,6 +223,12 @@ import { LevelMe } from "./levelme";
       options.endkey = options.endkey.slice(0, -1) + "\u9999";
     }
 
+    // Filter prefixes
+    // Leaving this in even though filtering in permissionsChecker as well
+    if (options.keys) {
+      options.keys = options.keys.map((id: string) => filterPrefix(id));
+    }
+
     return options;
   };
 
@@ -238,7 +244,8 @@ import { LevelMe } from "./levelme";
     return new Promise(async (resolve, reject) => {
       // Get Database
       const db = getDB(dbLoc);
-      db.get(decodeURIComponent(path))
+      // Filter
+      db.get(filterPrefix(decodeURIComponent(path)))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
           reject(e);
@@ -259,7 +266,7 @@ import { LevelMe } from "./levelme";
       // Get Database
       const db = getDB(dbLoc);
       try {
-        await db.del(docName);
+        await db.del(filterPrefix(docName));
         return resolve({ success: "ok" });
       } catch (e) {
         return reject(e);
@@ -463,6 +470,25 @@ import { LevelMe } from "./levelme";
       e.reason = e.message;
       throw e;
     }
+  };
+
+  // Filters any prefix (so they're virtual) (: reserved character) to real stream id
+  const filterPrefix = (stream: string): string => {
+    // Remove any suffix like :volatile :stream :umid
+    let [streamId, suffix] = stream.split(":");
+
+    // If id length more than 64 trim the start
+    if (streamId.length > 64) {
+      streamId = streamId.slice(-64);
+    }
+
+    // If suffix add it back to return
+    if (suffix) {
+      return streamId + ":" + suffix;
+    }
+
+    // Return just the id
+    return streamId;
   };
 
   // Add new / updated document to the database with auto id

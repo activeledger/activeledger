@@ -171,6 +171,32 @@ export class Stream {
     }
   }
 
+    /**
+   * Filter out unknown prefixes (copied from selhost.ts)
+   *
+   * @private
+   * @param {string} stream
+   * @returns {string}
+   * @memberof PermissionsChecker
+   */
+    private filterPrefix(stream: string): string {
+      // Remove any suffix like :volatile :stream :umid
+      let [streamId, suffix] = stream.split(":");
+  
+      // If id length more than 64 trim the start
+      if (streamId.length > 64) {
+        streamId = streamId.slice(-64);
+      }
+  
+      // If suffix add it back to return
+      if (suffix) {
+        return streamId + ":" + suffix;
+      }
+  
+      // Return just the id
+      return streamId;
+    };
+
   /**
    * Attempts to decrypt data with possible known private keys
    *
@@ -245,7 +271,7 @@ export class Stream {
   public getActivityStreams(stream?: any): any {
     if (stream) {
       // Auto detect $stream on passed object
-      const streamLookup = stream.$stream ? stream.$stream : stream;
+      const streamLookup = this.filterPrefix(stream.$stream ? stream.$stream : stream);
       // Return Existing Stream
       if (this.activities[streamLookup]) return this.activities[streamLookup];
       // Return New

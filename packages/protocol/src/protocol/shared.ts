@@ -103,9 +103,67 @@ export class Shared {
 
     // If map empty default to key stream
     if (!Object.keys(checkIOMap).length) {
-      return streamId;
+      return this.filterMap[streamId] ? this.filterMap[streamId] : streamId;
     }
-    return checkIOMap[streamId];
+    return checkIOMap[this.filterMap[streamId]]
+      ? checkIOMap[this.filterMap[streamId]]
+      : checkIOMap[streamId];
+  }
+
+  /**
+   * Maps virtual prefix to no prefix and no prefix to virtual
+   *
+   * @private
+   * @type {{ [name: string]: string }}
+   * @memberof Shared
+   */
+  private filterMap: { [name: string]: string } = {};
+
+  /**
+   * While the filter does everything, First one encountered we will assume as the standard
+   *
+   * @private
+   * @type {string}
+   * @memberof Shared
+   */
+  public assumedVirtualPrefix: string = "";
+
+  /**
+   * Filter out unknown prefixes (copied from selhost.ts)
+   *
+   * @private
+   * @param {string} stream
+   * @returns {string}
+   * @memberof PermissionsChecker
+   */
+  public filterPrefix(stream: string): string {
+    if (this.filterMap[stream]) {
+      return this.filterMap[stream];
+    }
+
+    // Remove any suffix like :volatile :stream :umid
+    let [streamId, suffix] = stream.split(":");
+
+    // If id length more than 64 trim the start
+    if (streamId.length > 64) {
+      if (!this.assumedVirtualPrefix) {
+        this.assumedVirtualPrefix = streamId.slice(0, 2);
+      }
+
+      streamId = streamId.slice(-64);
+
+      // Need 2 way mapping, Try to avoid circular calls!
+      this.filterMap[streamId] = stream;
+      this.filterMap[stream] = streamId;
+    }
+
+    // If suffix add it back to return
+    if (suffix) {
+      return streamId + ":" + suffix;
+    }
+
+    // Return just the id
+    return streamId;
   }
 
   /**
