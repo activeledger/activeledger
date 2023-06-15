@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.9.0]
+
+### Features
+* **Activeledger:** Virtual prefixes for Activity Streams (Identities). These are managed at the transaction level. If a new stream is created it will use the first found virtual prefix. It will keep the same prefixes upon updates.
+
 ## [2.8.1]
 
 ### Bug Fix
