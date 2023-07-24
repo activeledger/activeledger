@@ -45,8 +45,16 @@ interface IRevisionData {
   $o: {};
 }
 
+interface ITransactionInputData {
+  context?: {
+    $stream: string;
+  }
+}
+
 interface ITransactionData {
+  contract: string;
   $r: {};
+  $i: ITransactionInputData;
 }
 
 interface IChangeDocumentTransaction {

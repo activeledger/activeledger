@@ -131,10 +131,17 @@ export class StreamUpdater {
       new: [] as any[],
       updated: [] as any[],
     };
+
     // Get the changed data streams
     this.streams = this.virtualMachine.getActivityStreamsFromVM(
       this.entry.$umid
     );
+
+    const contextStreams = this.virtualMachine.getContextStreamsFromVM(
+      this.entry.$umid
+    );
+
+    this.streams.push(...contextStreams);
 
     // Get current working inputs to compare and update if not modified above
     this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
