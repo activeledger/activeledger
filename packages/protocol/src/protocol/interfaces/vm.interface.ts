@@ -97,6 +97,8 @@ export interface IVirtualMachine {
 
   getActivityStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
 
+  getContextStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
+
   getInternodeCommsFromVM(umid: string): any;
 
   clearingInternodeCommsFromVM(umid: string): boolean;

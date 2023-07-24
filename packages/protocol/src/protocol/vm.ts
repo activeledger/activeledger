@@ -46,8 +46,7 @@ import {
  */
 export class VirtualMachine
   extends events.EventEmitter
-  implements IVirtualMachine
-{
+  implements IVirtualMachine {
   /**
    * Virtual Machine Object
    *
@@ -139,7 +138,7 @@ export class VirtualMachine
     this.emitter = new EventEmitter();
     // Start volatile event listener
     this.listenForVolatile();
-    // start all stream fetching
+    // Listen for fetch requests (readonly, context)
     this.listenForFetch();
   }
 
@@ -252,6 +251,23 @@ export class VirtualMachine
       }
     }
     return exported;
+  }
+
+  /**
+   * Extract changed contexts
+   *
+   * @returns {ActiveDefinitions.LedgerStream[]}
+   * @memberof VirtualMachine
+   */
+  public getContextStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[] {
+
+    if (!this.virtualInstance.updatedContexts) {
+      return [];
+    }
+
+    let context: ActiveDefinitions.LedgerStream = this.virtualInstance.getContextStream(umid);
+
+    return [context];
   }
 
   /**
@@ -725,27 +741,60 @@ export class VirtualMachine
   }
 
   /**
-   * Allow for any stream data to be fetched during contract execution
+   * Listen for fetch events
    *
    * @private
    * @memberof VirtualMachine
    */
   private listenForFetch(): void {
     this.emitter.on("getStreamData", async (umid: string, streamId: string) => {
-      // Check that the UMID matches the transactions Stream ID
-      ActiveLogger.debug(this.contractReferences[umid], "TX");
-
-      try {
-        const data: ActiveDefinitions.IStream = await this.db.get(streamId);
-        this.emitter.emit(
-          `getStreamDataFetched-${umid}${streamId}`,
-          null,
-          data
-        );
-      } catch (error) {
-        this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
-      }
+      await this.handleGetStreamData(umid, streamId);
     });
+
+    this.emitter.on("getContextData", async (contextID: string) => {
+      await this.handleGetContextData(contextID);
+    });
+  }
+
+  /**
+   * Allow for any stream data to be fetched during contract execution
+   *
+   * @private
+   * @memberof VirtualMachine
+   */
+  private async handleGetStreamData(umid: string, streamId: string): Promise<void> {
+    // Check that the UMID matches the transactions Stream ID
+    ActiveLogger.debug(this.contractReferences[umid], "TX");
+
+    try {
+      const data: ActiveDefinitions.IStream = await this.db.get(streamId);
+      this.emitter.emit(
+        `getStreamDataFetched-${umid}${streamId}`,
+        null,
+        data
+      );
+    } catch (error) {
+      this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
+    }
+  }
+
+  /**
+   * Allow for context data to be fetched during contract execution
+   *
+   * @private
+   * @memberof VirtualMachine
+   */
+  private async handleGetContextData(contextID: string): Promise<void> {
+    try {
+      const data: ActiveDefinitions.IContext = await this.db.get(contextID);
+      this.emitter.emit(
+        `getContextDataFetched-${contextID}`,
+        null,
+        data
+      );
+    } catch (error) {
+      this.emitter.emit(`getContextDataFetched-${contextID}`, error);
+    }
   }
 
   /**
@@ -764,9 +813,9 @@ export class VirtualMachine
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-            timedout()
+          timedout()
           : // Check again later
-            this.checkTimeout(type, timedout, umid);
+          this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
@@ -872,4 +921,4 @@ export class VirtualMachine
  *
  * @class MockBuiltinSecurity
  */
-class MockBuiltinSecurity {}
+class MockBuiltinSecurity { }

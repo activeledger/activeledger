@@ -42,6 +42,10 @@ export class Stream {
    */
   private activities: { [reference: string]: Activity } = {};
 
+  private context: ActiveDefinitions.IContext;
+
+  public contextUpdated: boolean = false;
+
   /**
    *  Storage of inbounc INC data
    *
@@ -136,7 +140,7 @@ export class Stream {
     private sigs: ActiveDefinitions.LedgerSignatures,
     private key: number,
     private eventEmitter: EventEmitter,
-    private selfHost: string
+    private selfHost: string,
   ) {
     // Input Steam Activities
     let i: number = this.inputs.length;
@@ -171,31 +175,31 @@ export class Stream {
     }
   }
 
-    /**
-   * Filter out unknown prefixes (copied from selhost.ts)
-   *
-   * @private
-   * @param {string} stream
-   * @returns {string}
-   * @memberof PermissionsChecker
-   */
-    private filterPrefix(stream: string): string {
-      // Remove any suffix like :volatile :stream :umid
-      let [streamId, suffix] = stream.split(":");
-  
-      // If id length more than 64 trim the start
-      if (streamId.length > 64) {
-        streamId = streamId.slice(-64);
-      }
-  
-      // If suffix add it back to return
-      if (suffix) {
-        return streamId + ":" + suffix;
-      }
-  
-      // Return just the id
-      return streamId;
-    };
+  /**
+ * Filter out unknown prefixes (copied from selhost.ts)
+ *
+ * @private
+ * @param {string} stream
+ * @returns {string}
+ * @memberof PermissionsChecker
+ */
+  private filterPrefix(stream: string): string {
+    // Remove any suffix like :volatile :stream :umid
+    let [streamId, suffix] = stream.split(":");
+
+    // If id length more than 64 trim the start
+    if (streamId.length > 64) {
+      streamId = streamId.slice(-64);
+    }
+
+    // If suffix add it back to return
+    if (suffix) {
+      return streamId + ":" + suffix;
+    }
+
+    // Return just the id
+    return streamId;
+  };
 
   /**
    * Attempts to decrypt data with possible known private keys
@@ -331,6 +335,99 @@ export class Stream {
   public getReadOnlyStream(name: string): any {
     if (this.reads[name]) return this.reads[name];
     return false;
+  }
+
+  /**
+   * Get context data linked to this contract
+   *
+   * @returns {ActiveDefinitions.IContext}
+   * @memberof Stream
+   */
+  public getContextData(): Promise<ActiveDefinitions.IContext> {
+    return new Promise((resolve, reject) => {
+      const context = this.transactions.$i?.context?.$stream;
+      if (!context) {
+        const noContextErr = new Error("Context not set");
+        ActiveLogger.debug(noContextErr, "Context error")
+        return reject(noContextErr);
+      }
+
+      let contract = this.transactions.$contract;
+      contract = contract.split("@")[0];
+
+      const contextDataId = `${contract}:${context}`;
+
+      this.eventEmitter.emit("getContextData", contextDataId);
+
+      this.eventEmitter.on(
+        `getContextDataFetched-${contextDataId}`,
+        (err: Error, data: ActiveDefinitions.IContext) => {
+          if (err) {
+            ActiveLogger.debug(err, "Event error");
+            reject(err);
+          }
+
+          resolve(data);
+        }
+      );
+    });
+  }
+
+  /**
+   * Set context data linked to this contract
+   *
+   * @param {any} contextData
+   * @returns {void}
+   * @memberof Stream
+   */
+  public setContextData(contextData: any): Promise<void> {
+
+    return new Promise((resolve, reject) => {
+
+      const context = this.transactions.$i?.context?.$stream;
+      if (!context) {
+        const noContextErr = new Error("Context not set");
+        ActiveLogger.debug(noContextErr, "Context error")
+        return reject(noContextErr);
+      }
+
+      let contract = this.transactions.$contract;
+      contract = contract.split("@")[0];
+
+      const contextDataId = `${contract}:${context}`;
+
+      this.context = {
+        id: contextDataId,
+        data: contextData,
+      }
+
+      this.contextUpdated = true;
+
+      resolve();
+
+    });
+
+  }
+
+  /**
+   * Get the context data for storing
+   *
+   * @returns {ActiveDefinitions.LedgerStream}
+   * @memberof Stream
+   */
+  public getContextStream(umid: string): ActiveDefinitions.LedgerStream {
+    const contextStream: ActiveDefinitions.LedgerStream = {
+      meta: {
+        _id: `${this.context.id}:context`,
+        umid: umid,
+      },
+      state: {
+        [this.context.id]: this.context,
+        _id: this.context.id
+      }
+    }
+
+    return contextStream;
   }
 
   /**

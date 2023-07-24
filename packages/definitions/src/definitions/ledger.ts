@@ -74,6 +74,11 @@ export interface IStream {
   name: string;
 }
 
+export interface IContext {
+  id: string;
+  data: any;
+}
+
 export interface INodes {
   [reference: string]: INodeResponse;
 }
@@ -121,12 +126,18 @@ export interface LedgerIORputs {
  * If hardenedKeys security enabled inputs will need a new key
  * nhpk = New Hardened Public Key
  *
+ * Optional context for contract context data
+ * context = Stream ID to use for context data
+ * contexts = Multiple Stream IDs
+ *
  * @export
  * @interface LedgerInputs
  * @extends {LedgerIOputs}
  */
 export interface LedgerInputs extends LedgerIORputs {
   $nhpk?: string;
+  $context?: string;
+  $contexts?: string[];
 }
 
 /**

@@ -42,7 +42,7 @@ export default abstract class Standard extends Stream {
    * @returns {Promise<boolean>}
    * @memberof Standard
    */
-  public verify?(signatureless: boolean): Promise<boolean>;  
+  public verify?(signatureless: boolean): Promise<boolean>;
 
   /**
    * Developer required to create a vote command for their contract.
