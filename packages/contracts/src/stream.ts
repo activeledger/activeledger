@@ -34,7 +34,7 @@ import { EventEmitter } from "events";
  */
 export class Stream {
   /**
-   * Holds all the activity streams in this trasnaction
+   * Holds all the activity streams in this transaction
    *
    * @private
    * @type {{ [reference: string]: Activity }}
@@ -42,9 +42,23 @@ export class Stream {
    */
   private activities: { [reference: string]: Activity } = {};
 
+  /**
+   * Holds context data if set
+   *
+   * @private
+   * @type {ActiveDefinitions.IContext}
+   * @memberof Stream
+   */
   private context: ActiveDefinitions.IContext;
 
-  public contextUpdated: boolean = false;
+  /**
+   * Flag dictating if there is a new/updated context
+   *
+   * @public
+   * @type {ActiveDefinitions.IContext}
+   * @memberof Stream
+   */
+  public updatedContexts: boolean = false;
 
   /**
    *  Storage of inbounc INC data
@@ -363,6 +377,7 @@ export class Stream {
         `getContextDataFetched-${contextDataId}`,
         (err: Error, data: ActiveDefinitions.IContext) => {
           if (err) {
+            ActiveLogger.debug(context, "Error getting context data")
             ActiveLogger.debug(err, "Event error");
             reject(err);
           }
@@ -401,7 +416,7 @@ export class Stream {
         data: contextData,
       }
 
-      this.contextUpdated = true;
+      this.updatedContexts = true;
 
       resolve();
 
@@ -415,7 +430,11 @@ export class Stream {
    * @returns {ActiveDefinitions.LedgerStream}
    * @memberof Stream
    */
-  public getContextStream(umid: string): ActiveDefinitions.LedgerStream {
+  public getContextStream(umid: string): ActiveDefinitions.LedgerStream[] {
+    if (!this.updatedContexts) {
+      return [];
+    }
+
     const contextStream: ActiveDefinitions.LedgerStream = {
       meta: {
         _id: `${this.context.id}:context`,
@@ -424,10 +443,13 @@ export class Stream {
       state: {
         [this.context.id]: this.context,
         _id: this.context.id
+      },
+      volatile: {
+        _id: `${this.context.id}:context`
       }
     }
 
-    return contextStream;
+    return [contextStream];
   }
 
   /**
