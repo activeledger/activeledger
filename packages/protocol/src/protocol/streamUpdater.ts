@@ -141,7 +141,7 @@ export class StreamUpdater {
       this.entry.$umid
     );
 
-    this.streams.push(...contextStreams);
+    this.streams = [...this.streams, ...contextStreams];
 
     // Get current working inputs to compare and update if not modified above
     this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
