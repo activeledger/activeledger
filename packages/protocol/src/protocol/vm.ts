@@ -260,14 +260,9 @@ export class VirtualMachine
    * @memberof VirtualMachine
    */
   public getContextStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[] {
+    let context: ActiveDefinitions.LedgerStream[] = this.virtualInstance.getContextStream(umid);
 
-    if (!this.virtualInstance.updatedContexts) {
-      return [];
-    }
-
-    let context: ActiveDefinitions.LedgerStream = this.virtualInstance.getContextStream(umid);
-
-    return [context];
+    return context;
   }
 
   /**
