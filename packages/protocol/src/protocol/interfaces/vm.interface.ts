@@ -38,6 +38,7 @@ export interface IVMObject {
     emitter: EventEmitter
   ): void;
   getActivityStreams(umid: string): { [reference: string]: Activity };
+  getContextStream(umid: string): ActiveDefinitions.LedgerStream[];
   getInternodeComms(umid: string): any;
   clearInternodeComms(umid: string): boolean;
   returnContractData(umid: string): unknown;
