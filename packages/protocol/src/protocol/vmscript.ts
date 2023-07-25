@@ -107,6 +107,16 @@ class ContractControl implements IVMObject {
   }
 
   /**
+   * Get the context stream data
+   *
+   * @returns {ActiveDefinitions.LedgerStream}
+   * @memberof ContractControl
+   */
+  public getContextStream(umid: string): ActiveDefinitions.LedgerStream[] {
+    return this.smartContracts[umid].getContextStream(umid);
+  }
+
+  /**
    * Set the internode communications
    *
    * @param {string} umid
@@ -168,7 +178,7 @@ class ContractControl implements IVMObject {
    * @returns {Promise<boolean>}
    * @memberof ContractControl
    */
-  public runRead(umid: string, readMethod: string): Promise<unknown> {    
+  public runRead(umid: string, readMethod: string): Promise<unknown> {
     const read = (this.smartContracts[umid] as any)[readMethod]?.();
     return read ? read : false;
   }
@@ -307,6 +317,6 @@ class ContractControl implements IVMObject {
   // #endregion
 }
 
-module.exports = (function () {
+module.exports = (function() {
   return new ContractControl();
 })();
