@@ -397,7 +397,7 @@ export class Stream {
    */
   public setContextData(contextData: any): Promise<void> {
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
 
       const context = this.transactions.$i?.context?.$stream;
       if (!context) {
@@ -414,6 +414,17 @@ export class Stream {
       this.context = {
         id: contextDataId,
         data: contextData,
+      }
+
+      try {
+        const storedData = await this.getContextData();
+        const castData = storedData as unknown as { _rev: string }
+
+        if (castData._rev) {
+          this.context.rev = castData._rev
+        }
+      } catch (e) {
+        ActiveLogger.debug(e, "No stored data")
       }
 
       this.updatedContexts = true;
@@ -435,18 +446,33 @@ export class Stream {
       return [];
     }
 
+    const id = this.context.id;
+    const stream = `${umid}${id}`
+    const streamHash = ActiveCrypto
+      .Hash
+      .getHash(stream, "sha256")
+
+    const state: ActiveDefinitions.IFullState = {
+      data: this.context.data,
+      _id: id,
+    };
+
+    const meta: ActiveDefinitions.IMeta = {
+      _id: `${streamHash}:context`,
+      umid: umid,
+      name: this.context.id,
+      $stream: true,
+    };
+
+    if (this.context.rev) {
+      state._rev = this.context.rev;
+      meta._rev = this.context.rev;
+    }
+
     const contextStream: ActiveDefinitions.LedgerStream = {
-      meta: {
-        _id: `${this.context.id}:context`,
-        umid: umid,
-      },
-      state: {
-        [this.context.id]: this.context,
-        _id: this.context.id
-      },
-      volatile: {
-        _id: `${this.context.id}:context`
-      }
+      meta: meta,
+      state: state,
+      volatile: {}
     }
 
     return [contextStream];

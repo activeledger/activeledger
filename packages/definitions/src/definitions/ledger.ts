@@ -76,6 +76,7 @@ export interface IStream {
 
 export interface IContext {
   id: string;
+  rev?: string;
   data: any;
 }
 
