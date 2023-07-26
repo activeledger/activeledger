@@ -399,7 +399,7 @@ export class StreamUpdater {
     } catch (error) {
       continueProcessing = emit = false;
 
-      ActiveLogger.debug(error, "Datatore Failure");
+      ActiveLogger.debug(error, "Datastore Failure");
       // TODO: Put in shared
       this.shared.raiseLedgerError(1510, new Error("Failed to save"));
     }
