@@ -357,9 +357,15 @@ export class Stream {
    * @returns {ActiveDefinitions.IContext}
    * @memberof Stream
    */
-  public getContextData(): Promise<ActiveDefinitions.IContext> {
+  public getContextData(stream?: string): Promise<ActiveDefinitions.IContext> {
     return new Promise((resolve, reject) => {
-      const context = this.transactions.$i?.context?.$stream;
+
+      let context = this.transactions.$i?.context?.$stream;
+
+      if (stream) {
+        context = stream;
+      }
+
       if (!context) {
         const noContextErr = new Error("Context not set");
         ActiveLogger.debug(noContextErr, "Context error")
