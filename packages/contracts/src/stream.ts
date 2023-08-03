@@ -537,6 +537,14 @@ export class Activity {
   public updated: boolean = false;
 
   /**
+   * Has the activity had a volatile data change
+   *
+   * @type {boolean}
+   * @memberof Activity
+   */
+  public volatileUpdated: boolean = false;
+
+  /**
    * Key to prevent VM access to export routine
    *
    * @private
@@ -626,7 +634,7 @@ export class Activity {
       };
 
       // Have we loaded in a volatile to return
-      if (this.volatile) {
+      if (this.volatile && this.volatileUpdated) {
         stream.volatile = this.volatile;
       }
 
@@ -1051,6 +1059,7 @@ export class Activity {
 
     // Set Update Flag
     this.updated = true;
+    this.volatileUpdated = true;
   }
 
   /**
