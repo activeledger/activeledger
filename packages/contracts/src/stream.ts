@@ -598,6 +598,7 @@ export class Activity {
 
       // Create default Volatile
       this.volatile = { _id: stream + ":volatile", _rev: null };
+      this.volatileUpdated = true;
 
       // Flag for search filtering
       // $ notation should be treated like a reservation for Activelegder
