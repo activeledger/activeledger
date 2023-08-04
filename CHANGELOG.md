@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.9.1]
+
+### Bug Fix
+* **Contract** : Volatile data only gets saved when a change is detected.
+
 ## [2.9.0]
 
 ### Features
