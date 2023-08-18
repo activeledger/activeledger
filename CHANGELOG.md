@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.10.0]
+
+### Feature
+* **Storage** : Removed the Btree revision history in the storage engine. This change is backwards compatible for the read and upgrades on write. This feature will increase overall system performance and also improve the reliability of the written data. History is still preserved due to the :umid records and the :stream transaction array list.
+
 ## [2.9.1]
 
 ### Bug Fix
