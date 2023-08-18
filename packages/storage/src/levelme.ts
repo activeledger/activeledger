@@ -296,13 +296,20 @@ export class LevelMe {
    * @memberof LevelMe
    */
   private async seqDocFromRoot(doc: schema): Promise<document> {
-    // Fetch data document from twig (Performance boost could be found here)
-    const twig = this.findCachedBranchEnd(doc);
+    // Backwards Compatible Check
+    // If winningRev, rev_map, rev_tree, seq exist we know its the old system
+    if (doc.winningRev && doc.rev_map && doc.rev_tree && doc.seq) {
+      // Fetch data document from twig (Performance boost could be found here)
+      const twig = this.findCachedBranchEnd(doc);
 
-    // Get the actual data document
-    return JSON.parse(
-      (await this.levelUpGet(LevelMe.SEQ_PREFIX + twig, "{}")).toString()
-    );
+      // Get the actual data document
+      return JSON.parse(
+        (await this.levelUpGet(LevelMe.SEQ_PREFIX + twig, "{}")).toString()
+      );
+    } else {
+      // Now it is just the raw document which we build up on from umid and txs
+      return doc as document;
+    }
   }
 
   /**
@@ -517,6 +524,8 @@ export class LevelMe {
 
   /**
    * Compact the database to reduce storage space
+   * 
+   * Will keep compact for now, Will later update to compact direct written files no more sequence
    *
    * @returns
    * @memberof LevelMe
@@ -784,7 +793,7 @@ export class LevelMe {
       id: string;
       changes: { rev: string }[];
       doc: document;
-      seq: number;
+      //seq: number;
     };
   }> {
     await this.open();
@@ -793,13 +802,13 @@ export class LevelMe {
     const incomingDoc = JSON.stringify(doc);
 
     // Changes that will be written
-    const changes = {};
+    //const changes = {};
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
 
     // Current Document root schema
-    let currentDocRoot: schema;
+    let currentDocRoot: document;
 
     // Current head revision with position
     let newRev: string;
@@ -817,24 +826,33 @@ export class LevelMe {
 
       // find the end of the branch
       // will only have 1 branch which will be first
-      const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
+      //const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
 
       // Check incoming doc has the same revision
       //if (doc._rev !== `${twig.pos}-${twig.branch[0]}`) {
 
+      // We need to pull out the right revision
+      const currentRev = currentDocRoot._rev || currentDocRoot.winningRev as string
+
       // Replace with winning rev instead of branch crawling
-      if (doc._rev !== currentDocRoot.winningRev) {
-        throw { msg: "Revision Mismatch", throw: 1 };
+      if (currentRev) {
+        if (doc._rev !== currentRev) {
+          throw { msg: "Revision Mismatch", throw: 1 };
+        }
+
+        // Get more relilable position value (crawler incorrect on auto archive)
+        const pos = parseInt(currentRev.split("-")[0]) + 1;
+
+        // Update rev_* and doc
+        newRev = `${pos}-${md5}`;
+        //twig.branch[2] = [[md5, { status: "available" }, []]];
+        //currentDocRoot.winningRev = doc._rev = newRev;
+        doc._rev = newRev;
+        //currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this
+        //  .docUpdateSeq;
+      }else{
+        throw { msg: "Revision Mismatch Type 2", throw: 1 };
       }
-
-      // Get more relilable position value (crawler incorrect on auto archive)
-      const pos = parseInt(currentDocRoot.winningRev.split("-")[0]) + 1;
-
-      // Update rev_* and doc
-      newRev = `${pos}-${md5}`;
-      twig.branch[2] = [[md5, { status: "available" }, []]];
-      currentDocRoot.winningRev = doc._rev = newRev;
-      currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this.docUpdateSeq;
     } catch (e) {
       if (e?.throw) {
         throw new Error(e.msg);
@@ -842,7 +860,7 @@ export class LevelMe {
 
       newDoc = true;
       // Sequence cache after increase
-      const seq = ++this.docUpdateSeq;
+      //const seq = ++this.docUpdateSeq;
 
       if (!options.new_edits && doc._rev) {
         newRev = doc._rev;
@@ -851,21 +869,21 @@ export class LevelMe {
       }
 
       // New Doc
-      currentDocRoot = {
-        _id: doc._id,
-        rev_tree: [
-          {
-            pos: 1,
-            ids: [md5, { status: "available" }, []],
-          },
-        ],
-        rev_map: {
-          [newRev]: seq,
-        },
-        winningRev: newRev,
-        deleted: false,
-        seq,
-      };
+      // currentDocRoot = {
+      //   _id: doc._id,
+      //   rev_tree: [
+      //     {
+      //       pos: 1,
+      //       ids: [md5, { status: "available" }, []],
+      //     },
+      //   ],
+      //   rev_map: {
+      //     [newRev]: seq,
+      //   },
+      //   winningRev: newRev,
+      //   deleted: false,
+      //   seq,
+      // };
     }
 
     // submit as bulk
@@ -875,12 +893,13 @@ export class LevelMe {
     // 4. LevelMe.META_PREFIX + "_local_doc_count"
     chain
       //.put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
-      .put(
-        LevelMe.SEQ_PREFIX + this.docUpdateSeq.toString().padStart(16, "0"),
-        JSON.stringify(doc)
-      )
-      .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot))
-      .put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
+      //.put(
+      //  LevelMe.SEQ_PREFIX + this.docUpdateSeq.toString().padStart(16, "0"),
+      //  JSON.stringify(doc)
+      //)
+      //.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot));
+      .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+    //.put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
 
     // Include only data streams
     // We skip this if not stream document, about 3 less writes per stream
@@ -907,7 +926,7 @@ export class LevelMe {
           },
         ],
         doc,
-        seq: this.docUpdateSeq,
+        //seq: this.docUpdateSeq,
       },
     };
   }

@@ -337,7 +337,7 @@ import { LevelMe } from "./levelme";
   // Add new / updated document to the database
   http.use("*/**", "PUT", async (incoming: IActiveHttpIncoming) => {
     // Archive Document?
-    await markAsArchived(incoming);
+    //await markAsArchived(incoming);
     return genericPut(incoming.url[0], incoming.body);
   });
 
@@ -350,6 +350,9 @@ import { LevelMe } from "./levelme";
   const markAsArchived = async (
     incoming: IActiveHttpIncoming
   ): Promise<boolean> => {
+    // No more btree archives, return false for now
+    return false;
+
     const position = isArchivable(incoming.body._rev);
     if (position) {
       try {
@@ -497,7 +500,7 @@ import { LevelMe } from "./levelme";
     let db = getDB(incoming.url[0]);
 
     // Archive Document?
-    await markAsArchived(incoming);
+    //await markAsArchived(incoming);
 
     try {
       return await db.post(checkDoc(incoming.body));
