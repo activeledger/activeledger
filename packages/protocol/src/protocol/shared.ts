@@ -54,17 +54,17 @@ export class Shared {
     reason: string | Error;
     priority: number;
   } = {
-    code: 0,
-    reason: "",
-    priority: 0,
-  };
+      code: 0,
+      reason: "",
+      priority: 0,
+    };
 
   constructor(
     private _storeSingleError: boolean,
     private entry: ActiveDefinitions.LedgerEntry,
     private dbe: ActiveDSConnect,
     private emitter: EventEmitter
-  ) {}
+  ) { }
 
   /**
    * Set the value of errorOut
@@ -137,6 +137,13 @@ export class Shared {
    * @memberof PermissionsChecker
    */
   public filterPrefix(stream: string): string {
+    ActiveLogger.debug("protocol filterPrefix stream is");
+    ActiveLogger.debug(stream);
+
+    if (typeof stream !== "string") {
+      throw new Error(`Given stream is not a string, got ${typeof stream}`);
+    }
+
     if (this.filterMap[stream]) {
       return this.filterMap[stream];
     }
@@ -268,7 +275,7 @@ export class Shared {
         JSON.stringify(this.entry)
       ) as ActiveDefinitions.LedgerEntry;
       const nodeErrors = Object.keys(tmpEntry.$nodes);
-      for (let i = nodeErrors.length; i--; ) {
+      for (let i = nodeErrors.length; i--;) {
         tmpEntry.$nodes[nodeErrors[i]].incomms = null;
       }
       // Build document for database

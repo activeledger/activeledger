@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveDefinitions, IContext } from "@activeledger/activedefinitions";
 import { ActiveLogger as DefaultActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto as DefaultActiveCrypto } from "@activeledger/activecrypto";
 import { EventEmitter } from "events";
@@ -198,6 +198,14 @@ export class Stream {
  * @memberof PermissionsChecker
  */
   private filterPrefix(stream: string): string {
+    if (!stream) {
+      throw new Error("Stream undefined");
+    }
+
+    if (typeof stream !== "string") {
+      throw new Error(`Given stream is not a string, got ${typeof stream}`);
+    }
+
     // Remove any suffix like :volatile :stream :umid
     let [streamId, suffix] = stream.split(":");
 
@@ -360,13 +368,17 @@ export class Stream {
   public getContextData(stream?: string): Promise<ActiveDefinitions.IContext> {
     return new Promise((resolve, reject) => {
 
-      let context = this.transactions.$i?.context?.$stream;
+      let context = "";
 
-      if (stream) {
+      if (this.transactions.$i?.context?.$stream) {
+        context = this.transactions.$i?.context?.$stream;
+      } else if (stream) {
         context = stream;
       }
 
-      if (!context) {
+      ActiveLogger.debug(`Attempting to get context: ${context}`);
+
+      if (context === "") {
         const noContextErr = new Error("Context not set");
         ActiveLogger.debug(noContextErr, "Context error")
         return reject(noContextErr);
@@ -383,7 +395,7 @@ export class Stream {
         `getContextDataFetched-${contextDataId}`,
         (err: Error, data: ActiveDefinitions.IContext) => {
           if (err) {
-            ActiveLogger.debug(context, "Error getting context data")
+            ActiveLogger.debug({ context }, "Error getting context data")
             ActiveLogger.debug(err, "Event error");
             reject(err);
           }
@@ -401,7 +413,7 @@ export class Stream {
    * @returns {void}
    * @memberof Stream
    */
-  public setContextData(contextData: any): Promise<void> {
+  public setContextData(contextData: IContext): Promise<void> {
 
     return new Promise(async (resolve, reject) => {
 
@@ -419,7 +431,7 @@ export class Stream {
 
       this.context = {
         id: contextDataId,
-        data: contextData,
+        data: contextData.data,
       }
 
       try {
