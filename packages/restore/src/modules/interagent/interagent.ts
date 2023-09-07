@@ -481,8 +481,10 @@ export class Interagent {
   private errorMismatchFinder(document: IChangeDocument) {
     if (document.code === ErrorCodes.NodeFinalReject) {
       const nodeErrors = Object.keys(document.transaction.$nodes);
+      // Sometimes a node doesn't attach correctly, Defaulting to unknown should trigger this to
+      // still be checked as a last resort.
       const myError =
-        document.transaction.$nodes[document.transaction.$origin].error;
+        document.transaction.$nodes[document.transaction.$origin]?.error || "unknown";
       // Loop nodes and search for different error
       for (let i = nodeErrors.length; i--; ) {
         if (document.transaction.$nodes[nodeErrors[i]].error !== myError) {
