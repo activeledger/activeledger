@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecontracts",
-  "version": "2.10.0",
+  "version": "2.10.1",
   "description": "This package contains the base classes that smart contracts must inherit from for use with Activeledger",
   "keywords": [
     "blockchain",
