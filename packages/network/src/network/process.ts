@@ -237,6 +237,7 @@ class Processor {
             (response: { contract: string; file: string }) => {
               if (response) {
                 this.latestContractVersion[response.contract] = response.file;
+                this.send("contractLatestVersion", response);
               }
             }
           );
@@ -258,6 +259,12 @@ class Processor {
           break;
         case "reload":
           this.reloadDown(m.data);
+          break;
+        case "contractLatestVersion":
+          // Only change if different. (Maybe check semver?)
+          if (this.latestContractVersion[m.data.contract] != m.data.file) {
+            this.latestContractVersion[m.data.contract] = m.data.file;
+          }
           break;
         default:
           ActiveLogger.fatal(m, "Unknown Processor Call");
