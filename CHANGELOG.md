@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.10.1]
+
+### Bug Fix
+* **Protocol** : Upgrade contracts now refresh all processor caches to always run the latest (If selected as default)
+* **Restore** : Sometimes an error is raised incorrectly and the restore engine fails to handle it, Now has default values instead of crashes. 
+
 ## [2.10.0]
 
 ### Feature
