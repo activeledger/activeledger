@@ -429,6 +429,12 @@ export class Host extends Home {
           // Remove Locks
           this.release(pending);
           break;
+        case "contractLatestVersion":
+          // Let other processes know of new version
+          this.processors.forEach((processor) => {
+            processor.send(m);
+          });
+          break;
         default:
           ActiveLogger.fatal(m, "Unknown IPC Call");
           break;
