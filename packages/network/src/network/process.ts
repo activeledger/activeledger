@@ -287,6 +287,20 @@ class Processor {
       ActiveLogger.debug(entry, "Transaction Processed");
     }
 
+    // Was it a contract upgrade? (Moved here to not delay cache updates)
+    if (entry.$tx.$contract == "contract" && entry.$tx.$entry == "update") {
+      // Get input (To get namespace)
+      const input = entry.$tx.$i[Object.keys(entry.$tx.$i)[0]];
+      // Get Output (contract id)
+      const output = Object.keys(entry.$tx.$o)[0];
+      // Update parent processor cache
+      this.send("contractLatestVersion", {
+        contract: output,
+        file: `${output}@${input.version}`,
+      });
+      // Implement for labels?
+    }
+
     // Pass back to host to respond.
     this.send("commited", {
       umid: entry.$umid,
