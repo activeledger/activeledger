@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.10.2]
+
+### Bug Fix
+* **Protocol / Network** : Upgrade contracts refreshes cache asap. (No longer waits for timeouts)
+
 ## [2.10.1]
 
 ### Bug Fix
