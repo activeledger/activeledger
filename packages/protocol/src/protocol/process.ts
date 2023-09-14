@@ -306,24 +306,6 @@ export class Process extends EventEmitter {
     if (this.isDefault) {
       // DefaultVM created?
       if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
-
-      // If contract may need to reload the contract
-      if (
-        this.entry.$tx.$contract == "contract" &&
-        this.entry.$tx.$entry == "update"
-      ) {
-        // Get input (To get namespace)
-        const input = this.entry.$tx.$i[Object.keys(this.entry.$tx.$i)[0]];
-        // Get Output (contract id)
-        const output = Object.keys(this.entry.$tx.$o)[0];
-        // Update parent processor cache
-        this.emit("contractLatestVersion", {
-          contract: output,
-          file: `${output}@${input.version}`,
-        });
-
-        // Implement for labels?
-      }
     } else {
       this.contractRef
         ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
