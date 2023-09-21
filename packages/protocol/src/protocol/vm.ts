@@ -28,8 +28,8 @@ import { Activity } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { NodeVM, VMScript } from "@activeledger/vm2";
 import { setTimeout } from "timers";
-import { NodeVM, VMScript } from "vm2";
 import * as fs from "fs";
 import { EventEmitter } from "events";
 import {
@@ -211,6 +211,8 @@ export class VirtualMachine
         external,
         mock,
       },
+      // Disable Wasm to avoid sandbox escapes
+      wasm: false
     });
 
     // Pull in the code to use for the VMScript
