@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.0]
+
+### Security Fix
+* **Protocol** : vm2 security dependency updated. Resolves published security issues that doesn't impact Activeledger contract runtime.
+
 ## [2.10.2]
 
 ### Bug Fix
