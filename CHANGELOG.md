@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.1]
+
+### Storage Fix
+* **Storage** : Self host database now has internal counters preventing runaway restarts for unexpected errors.
+
 ## [2.11.0]
 
 ### Security Fix
