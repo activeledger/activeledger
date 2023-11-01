@@ -27,6 +27,12 @@ import * as child from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 
+// Maximum restarts allowed
+const MAX_RESTARTS = 5;
+
+// How long until the restart counter is allowed to be reset.
+const MAX_RESTART_RESET_HOURS = 24;
+
 /**
  * Manage the self hosted data storage engine
  *
@@ -53,6 +59,26 @@ export class ActiveDataStore {
   private process: child.ChildProcess;
 
   /**
+   * Keeps track how many time database restart has occured
+   * This wont solve the restart problem just reduce the logs
+   *
+   * @private
+   * @memberof ActiveDataStore
+   */
+  private restartCounter = 0;
+
+  /**
+   * Keeps track the last time it has restarted. This is used
+   * as part of the counter and max retries so long running instances are not
+   * effected by this new restriction
+   *
+   * @private
+   * @type {Date}
+   * @memberof ActiveDataStore
+   */
+  private lastRestart: number = Date.now();
+
+  /**
    * Creates an instance of DataStore.
    * @memberof DataStore
    */
@@ -68,7 +94,7 @@ export class ActiveDataStore {
     // Start Server, Can't block as server wont return
     ActiveLogger.info(
       "Self-hosted data engine @ http://127.0.0.1:" +
-      ActiveOptions.get<any>("db", {}).selfhost.port
+        ActiveOptions.get<any>("db", {}).selfhost.port
     );
   }
 
@@ -114,8 +140,19 @@ export class ActiveDataStore {
       );
       // As its an attached process killing activeledger will prevent this restart
       // If killed via activeledger --stop check for SIGTERM signal and don't restart if it is
-      if (signal !== "SIGTERM") {
+      if (signal !== "SIGTERM" && MAX_RESTARTS >= this.restartCounter) {
+        this.restartCounter++;
         this.launch();
+
+        // Can we reset the counter?
+        if (
+          Date.now() >
+          this.lastRestart + MAX_RESTART_RESET_HOURS * 60 * 60 * 1000
+        ) {
+          this.restartCounter = 0;
+        }
+      }else{
+        ActiveLogger.error("Not attempting to restart either due to signal or counters reached");
       }
     });
 
@@ -126,10 +163,10 @@ export class ActiveDataStore {
   private async storePid(pid: number): Promise<void> {
     const pidPath = ".PID";
     let pidData: {
-      activeledger: number,
-      activestorage: number,
-      activecore: number,
-      activerestore: number,
+      activeledger: number;
+      activestorage: number;
+      activecore: number;
+      activerestore: number;
     };
 
     try {
@@ -138,9 +175,10 @@ export class ActiveDataStore {
 
       await fsPromises.writeFile(pidPath, JSON.stringify(pidData));
     } catch (error) {
-      ActiveLogger.warn("Error storing PID, activeledger --stop may not work correctly");
+      ActiveLogger.warn(
+        "Error storing PID, activeledger --stop may not work correctly"
+      );
       ActiveLogger.warn(error.message);
     }
-
   }
 }
