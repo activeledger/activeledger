@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.2]
+
+### Prefix Fix
+* **Protocol** : Converts any siganture references with prefixes to normal size so access to authorities is working again.
+
 ## [2.11.1]
 
 ### Storage Fix
