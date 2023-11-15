@@ -792,6 +792,18 @@ export class Process extends EventEmitter {
         this.contractLocation.lastIndexOf("/") + 1
       );
 
+      // Need to filter the signature key name
+      const $sigs: ActiveDefinitions.LedgerSignatures = {
+        $sig: "",
+      };
+      const sigKeys = Object.keys(this.entry.$sigs);
+      for (let i = sigKeys.length; i--; ) {
+        $sigs[this.shared.filterPrefix(sigKeys[i])] =
+          this.entry.$sigs[sigKeys[i]];
+        // Not going to add unfiltered (even though it would ovewrite)
+        // As from this point we shouldn't need any prefixes.
+      }
+
       // Build the contract payload
       const payload: IVMDataPayload = {
         contractLocation: this.contractLocation,
@@ -799,7 +811,7 @@ export class Process extends EventEmitter {
         date: this.entry.$datetime,
         remoteAddress: this.entry.$remoteAddr,
         transaction: this.entry.$tx,
-        signatures: this.entry.$sigs,
+        signatures: $sigs,
         inputs,
         outputs,
         readonly,
