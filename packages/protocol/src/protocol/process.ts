@@ -796,12 +796,15 @@ export class Process extends EventEmitter {
       const $sigs: ActiveDefinitions.LedgerSignatures = {
         $sig: "",
       };
-      const sigKeys = Object.keys(this.entry.$sigs);
-      for (let i = sigKeys.length; i--; ) {
-        $sigs[this.shared.filterPrefix(sigKeys[i])] =
-          this.entry.$sigs[sigKeys[i]];
-        // Not going to add unfiltered (even though it would ovewrite)
-        // As from this point we shouldn't need any prefixes.
+
+      if (this.entry.$sigs) {
+        const sigKeys = Object.keys(this.entry.$sigs);
+        for (let i = sigKeys.length; i--; ) {
+          $sigs[this.shared.filterPrefix(sigKeys[i])] =
+            this.entry.$sigs[sigKeys[i]];
+          // Not going to add unfiltered (even though it would ovewrite)
+          // As from this point we shouldn't need any prefixes.
+        }
       }
 
       // Build the contract payload
