@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.3]
+
+### Read Only Fix
+* **Protocol** : Read Only doesn't require signatures and this resolves the issue of assumed signatures exist.
+
 ## [2.11.2]
 
 ### Prefix Fix
