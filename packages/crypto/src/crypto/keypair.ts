@@ -72,14 +72,13 @@ export class KeyPair {
    */
   private compatMode = false;
 
-
   /**
    * Prevents webpack throwing not found, We are checking for it.
    *
    * @private
    * @memberof KeyPair
    */
-  private readonly webpackBypassCheck = "generateKeyPairSync"
+  private readonly webpackBypassCheck = "generateKeyPairSync";
 
   /**
    * Creates an instance of KeyPair.
@@ -96,10 +95,33 @@ export class KeyPair {
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
-          if (pem.indexOf("PRIVATE") == -1) {
-            this.createHandler("", pem);
+          if (pem.startsWith("0x")) {
+            // Import as hex 3rd character will type of key
+            if (pem.length < 80) {
+              // Private
+              this.createHandler(
+                AsnParser.encodeECPrivateKey(
+                  Buffer.from(pem.replace("0x", ""), "hex"),
+                  Buffer.from("")
+                ),
+                ""
+              );
+            } else {
+              // Public
+              this.createHandler(
+                "",
+                AsnParser.encodeECPublicKey(
+                  Buffer.from(pem.replace("0x", ""), "hex")
+                )
+              );
+            }
           } else {
-            this.createHandler(pem);
+            // Original Method
+            if (pem.indexOf("PRIVATE") == -1) {
+              this.createHandler("", pem);
+            } else {
+              this.createHandler(pem);
+            }
           }
           break;
         default:
@@ -119,11 +141,11 @@ export class KeyPair {
   private createHandler(prv: string, pub: string = ""): void {
     this.handler = {
       pub: {
-        pkcs8pem: pub
+        pkcs8pem: pub,
       },
       prv: {
-        pkcs8pem: prv
-      }
+        pkcs8pem: prv,
+      },
     };
   }
 
@@ -195,8 +217,8 @@ export class KeyPair {
    * @returns {boolean}
    * @memberof KeyPair
    */
-  private isFullNodeEnv(): boolean {    
-    return (typeof crypto[this.webpackBypassCheck] === "function") ? true : false;
+  private isFullNodeEnv(): boolean {
+    return typeof crypto[this.webpackBypassCheck] === "function" ? true : false;
   }
 
   /**
@@ -247,10 +269,11 @@ export class KeyPair {
    * Generate Key Pair
    *
    * @param {number} [bits=2048]
+   * @param {boolean} [pem] ASN encoded PEM or HEX (EC Only)
    * @returns {KeyHandler}
    * @memberof KeyPair
    */
-  public generate(bits: number = 2048): KeyHandler {
+  public generate(bits: number = 2048, pem?: boolean): KeyHandler {
     switch (this.type) {
       case "rsa":
         // Node or Browser (Webpack doesn't have this yet)
@@ -265,17 +288,17 @@ export class KeyPair {
             rsa.exportKey("pkcs8-private-pem").toString(),
             rsa.exportKey("pkcs8-public-pem").toString()
           );
-        } else {          
+        } else {
           let rsa = crypto[this.webpackBypassCheck]("rsa", {
             modulusLength: bits,
             publicKeyEncoding: {
               type: "spki",
-              format: "pem"
+              format: "pem",
             },
             privateKeyEncoding: {
               type: "pkcs8",
-              format: "pem"
-            }
+              format: "pem",
+            },
           });
 
           // Create Return Object
@@ -293,14 +316,21 @@ export class KeyPair {
         let curve: crypto.ECDH = crypto.createECDH("secp256k1");
         curve.generateKeys();
 
-        // Create Return Object
-        this.createHandler(
-          AsnParser.encodeECPrivateKey(
-            curve.getPrivateKey(),
-            curve.getPublicKey()
-          ),
-          AsnParser.encodeECPublicKey(curve.getPublicKey())
-        );
+        if (pem) {
+          // Create Return Object
+          this.createHandler(
+            AsnParser.encodeECPrivateKey(
+              curve.getPrivateKey(),
+              curve.getPublicKey()
+            ),
+            AsnParser.encodeECPublicKey(curve.getPublicKey())
+          );
+        } else {
+          this.createHandler(
+            "0x" + curve.getPrivateKey().toString("hex"),
+            "0x" + curve.getPublicKey().toString("hex")
+          );
+        }
 
         // Update Hashes
         this.handler.pub.hash = Hash.getHash(this.handler.pub.pkcs8pem);
@@ -382,7 +412,7 @@ export class KeyPair {
         let decrypted = "";
 
         // Loop and decrypt
-        chunked.forEach(chunk => {
+        chunked.forEach((chunk) => {
           decrypted += crypto
             .privateDecrypt(
               this.handler.prv.pkcs8pem,
