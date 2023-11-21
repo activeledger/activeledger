@@ -52,7 +52,7 @@ describe("Cryptographic Test (Activecrypto)", () => {
   }).timeout(5000);
 
   it("should create a new elliptic key", () => {
-    elliptic = new ActiveCrypto.KeyPair("secp256k1").generate();
+    elliptic = new ActiveCrypto.KeyPair("secp256k1").generate(2048, true);
     expect(elliptic)
       .to.be.an("object")
       .and.property("prv")
@@ -72,6 +72,17 @@ describe("Cryptographic Test (Activecrypto)", () => {
     expect(signature).to.be.an("string");
     let verify = keyPublic.verify(random, signature);
     expect(verify).to.be.an("boolean");
+  }).timeout(5000);
+
+  it("should create a new elliptic key compressed hex base", () => {
+    elliptic = new ActiveCrypto.KeyPair("secp256k1").generate(2048, false, true);
+    expect(elliptic)
+      .to.be.an("object")
+      .and.property("prv")
+      .that.is.an("object")
+      .and.has.property("pkcs8pem")
+      .that.is.a("string")
+      .to.have.length.lessThanOrEqual(66);
   }).timeout(5000);
 
   it("Should encrypt with nested permissions", () => {
