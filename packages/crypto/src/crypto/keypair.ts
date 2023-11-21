@@ -96,8 +96,21 @@ export class KeyPair {
         case "ethereum":
         case "secp256k1":
           if (pem.startsWith("0x")) {
-            // Import as hex 3rd character will type of key
-            if (pem.length < 80) {
+            // Raw Hex based key
+            if (
+              pem.startsWith("0x02") || // compressed y point even
+              pem.startsWith("0x03") || // compressed y point odd
+              pem.startsWith("0x04") || // Uncompressed Public key
+              pem.length > 66 // Default to uncompressed Public Key with 0x accounted for if over 64 characters long
+            ) {
+              // Public
+              this.createHandler(
+                "",
+                AsnParser.encodeECPublicKey(
+                  Buffer.from(pem.replace("0x", ""), "hex")
+                )
+              );
+            } else {
               // Private
               this.createHandler(
                 AsnParser.encodeECPrivateKey(
@@ -105,14 +118,6 @@ export class KeyPair {
                   Buffer.from("")
                 ),
                 ""
-              );
-            } else {
-              // Public
-              this.createHandler(
-                "",
-                AsnParser.encodeECPublicKey(
-                  Buffer.from(pem.replace("0x", ""), "hex")
-                )
               );
             }
           } else {
@@ -270,10 +275,15 @@ export class KeyPair {
    *
    * @param {number} [bits=2048]
    * @param {boolean} [pem] ASN encoded PEM or HEX (EC Only)
+   * @param {boolean} [compressed] return compressed public key (EC Only)
    * @returns {KeyHandler}
    * @memberof KeyPair
    */
-  public generate(bits: number = 2048, pem?: boolean): KeyHandler {
+  public generate(
+    bits: number = 2048,
+    pem?: boolean,
+    compressed?: boolean
+  ): KeyHandler {
     switch (this.type) {
       case "rsa":
         // Node or Browser (Webpack doesn't have this yet)
@@ -328,7 +338,9 @@ export class KeyPair {
         } else {
           this.createHandler(
             "0x" + curve.getPrivateKey().toString("hex"),
-            "0x" + curve.getPublicKey().toString("hex")
+            "0x" + compressed
+              ? curve.getPublicKey("hex", "compressed")
+              : curve.getPublicKey("hex", "uncompressed")
           );
         }
 
