@@ -1,9 +1,9 @@
 # Activeledger Changelog
 
-## [2.11.4]
+## [2.11.5]
 
-### Features
-* **Crypto** : Key padding reduced by default, Stored as string base hex instead of PEM. This change is backwards compatible but newer DSK installs require Activeledger being up to date as it defaults to this compact format.
+### Fix
+* **Crypto** : Add compressed Public EC Support
 
 ## [2.11.3]
 
