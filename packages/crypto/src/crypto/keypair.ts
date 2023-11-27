@@ -338,9 +338,9 @@ export class KeyPair {
         } else {
           this.createHandler(
             "0x" + curve.getPrivateKey().toString("hex"),
-            "0x" + compressed
-              ? curve.getPublicKey("hex", "compressed")
-              : curve.getPublicKey("hex", "uncompressed")
+            compressed
+              ? "0x" + curve.getPublicKey("hex", "compressed")
+              : "0x" + curve.getPublicKey("hex", "uncompressed")
           );
         }
 
