@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.6]
+
+### Fix
+* **Crypto** : 0x prefix adding correctly to all public key instances.
+
 ## [2.11.5]
 
 ### Fix
