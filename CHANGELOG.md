@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.7]
+
+### Feature
+* **Core** : Allow Core to create Volatile Memory.
+
 ## [2.11.6]
 
 ### Fix
