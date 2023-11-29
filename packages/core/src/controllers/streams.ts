@@ -64,7 +64,8 @@ export async function getVolatile(
 }
 
 /**
- * Set an Activity Stream Volatile Data
+ * Set an Activity Stream Volatile Data.
+ * Now will create volatile memory if not foudd
  *
  * @export
  * @param {IActiveHttpIncoming} incoming
@@ -74,25 +75,35 @@ export async function setVolatile(
   incoming: IActiveHttpIncoming
 ): Promise<object> {
   // Get Latest Version
-  let results = await ActiveledgerDatasource.getDb().get(
-    incoming.url[2] + ":volatile"
-  );
-  if (results) {
-    // Update _id and _rev
-    incoming.body._id = results._id;
-    incoming.body._rev = results._rev;
+  try {
+    let results = await ActiveledgerDatasource.getDb().get(
+      incoming.url[2] + ":volatile"
+    );
+    if (results) {
+      // Update _id and _rev
+      incoming.body._id = results._id;
+      incoming.body._rev = results._rev;
 
-    // Commit changes
-    try {
-      results = await ActiveledgerDatasource.getDb().put(incoming.body);
-    } catch (error) {
-      console.log(error);
+      // Commit changes
+      try {
+        results = await ActiveledgerDatasource.getDb().put(incoming.body);
+      } catch (error) {
+        console.log(error);
+      }
+      return {
+        success: results.ok,
+      };
+    } else {
+      return results;
     }
+  } catch (error) {
+    // Most likely it doesn't exist
+    // Update _id
+    incoming.body._id = incoming.url[2] + ":volatile";
+    const results = await ActiveledgerDatasource.getDb().put(incoming.body);
     return {
       success: results.ok,
     };
-  } else {
-    return results;
   }
 }
 
