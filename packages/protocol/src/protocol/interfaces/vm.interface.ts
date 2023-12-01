@@ -23,107 +23,108 @@
 
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import {
-  Standard,
-  PostProcessQueryEvent,
-  Activity,
+    Standard,
+    PostProcessQueryEvent,
+    Activity,
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { EventEmitter } from "events";
 
 export interface IVMObject {
-  initialiseContract(
-    payload: IVMDataPayload,
-    //query: any,
-    event: EventEngine,
-    emitter: EventEmitter
-  ): void;
-  getActivityStreams(umid: string): { [reference: string]: Activity };
-  getInternodeComms(umid: string): any;
-  clearInternodeComms(umid: string): boolean;
-  returnContractData(umid: string): unknown;
-  throwFrom(umid: string): string[];
-  runVerify(umid: string, sigless: boolean): Promise<boolean>;
-  runVote(umid: string): Promise<boolean>;
-  runCommit(umid: string, possibleTerritoriality: boolean): Promise<boolean>;
-  postProcess(umid: string, territoriality: boolean, who: string): Promise<any>;
-  destroy(umid: string): void;
-  getTimeout(umid: string): Date | null;
-  setSysConfig(umid: string, sysConfig: any): void;
-  reloadSysConfig(umid: string): boolean;
+    initialiseContract(
+        payload: IVMDataPayload,
+        //query: any,
+        event: EventEngine,
+        emitter: EventEmitter
+    ): void;
+    getActivityStreams(umid: string): { [reference: string]: Activity };
+    getInternodeComms(umid: string): any;
+    clearInternodeComms(umid: string): boolean;
+    returnContractData(umid: string): unknown;
+    throwFrom(umid: string): string[];
+    runVerify(umid: string, sigless: boolean): Promise<boolean>;
+    runVote(umid: string): Promise<boolean>;
+    runCommit(umid: string, possibleTerritoriality: boolean): Promise<boolean>;
+    postProcess(umid: string, territoriality: boolean, who: string): Promise<any>;
+    destroy(umid: string): void;
+    getTimeout(umid: string): Date | null;
+    setSysConfig(umid: string, sysConfig: any): void;
+    reloadSysConfig(umid: string): boolean;
 }
 
 export interface IVMDataPayload {
-  contractLocation: string;
-  umid: string;
-  date: Date;
-  remoteAddress: string;
-  transaction: ActiveDefinitions.LedgerTransaction;
-  signatures: ActiveDefinitions.LedgerSignatures;
-  inputs: ActiveDefinitions.LedgerStream[];
-  outputs: ActiveDefinitions.LedgerStream[];
-  readonly: ActiveDefinitions.LedgerIORputs;
-  key: number;
+    contractLocation: string;
+    umid: string;
+    date: Date;
+    remoteAddress: string;
+    transaction: ActiveDefinitions.LedgerTransaction;
+    signatures: ActiveDefinitions.LedgerSignatures;
+    inputs: ActiveDefinitions.LedgerStream[];
+    outputs: ActiveDefinitions.LedgerStream[];
+    contractData: ActiveDefinitions.LedgerStream[];
+    readonly: ActiveDefinitions.LedgerIORputs;
+    key: number;
 }
 
 export interface IVMInternalCache {
-  [umid: string]: PostProcessQueryEvent | Standard;
+    [umid: string]: PostProcessQueryEvent | Standard;
 }
 
 export interface IContractKeyHolder {
-  [umid: string]: number;
+    [umid: string]: number;
 }
 
 interface IVMContractReferenceData {
-  contractName: string;
-  inputs: ActiveDefinitions.LedgerStream[];
-  tx: ActiveDefinitions.LedgerTransaction;
-  key: number;
+    contractName: string;
+    inputs: ActiveDefinitions.LedgerStream[];
+    tx: ActiveDefinitions.LedgerTransaction;
+    key: number;
 }
 
 export interface IVMContractReferences {
-  [umid: string]: IVMContractReferenceData;
+    [umid: string]: IVMContractReferenceData;
 }
 
 export interface IVMContractHolder {
-  [namespace: string]: IVirtualMachine;
+    [namespace: string]: IVirtualMachine;
 }
 
 export interface IVirtualMachine {
-  initialiseVirtualMachine(
-    extraBuiltins?: string[],
-    extraExternals?: string[],
-    extraMocks?: string[]
-  ): void;
+    initialiseVirtualMachine(
+        extraBuiltins?: string[],
+        extraExternals?: string[],
+        extraMocks?: string[]
+    ): void;
 
-  getActivityStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
+    getActivityStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
 
-  getInternodeCommsFromVM(umid: string): any;
+    getInternodeCommsFromVM(umid: string): any;
 
-  clearingInternodeCommsFromVM(umid: string): boolean;
+    clearingInternodeCommsFromVM(umid: string): boolean;
 
-  getReturnContractData(umid: string): unknown;
+    getReturnContractData(umid: string): unknown;
 
-  getThrowsFromVM(umid: string): string[];
+    getThrowsFromVM(umid: string): string[];
 
-  destroy(umid: string): void;
+    destroy(umid: string): void;
 
-  getInputs(umid: string): ActiveDefinitions.LedgerStream[];
+    getInputs(umid: string): ActiveDefinitions.LedgerStream[];
 
-  initialise(payload: IVMDataPayload, contractName: string): Promise<void>;
+    initialise(payload: IVMDataPayload, contractName: string): Promise<void>;
 
-  read(umid: string, readMethod: string): Promise<unknown>;
+    read(umid: string, readMethod: string): Promise<unknown>;
 
-  verify(sigless: boolean, umid: string): Promise<boolean>;
+    verify(sigless: boolean, umid: string): Promise<boolean>;
 
-  vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
+    vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
 
-  commit(
-    nodes: ActiveDefinitions.INodes,
-    possibleTerritoriality: boolean,
-    umid: string
-  ): Promise<boolean>;
+    commit(
+        nodes: ActiveDefinitions.INodes,
+        possibleTerritoriality: boolean,
+        umid: string
+    ): Promise<boolean>;
 
-  postProcess(territoriality: boolean, who: string, umid: string): Promise<any>;
+    postProcess(territoriality: boolean, who: string, umid: string): Promise<any>;
 
-  reconcile(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
+    reconcile(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean>;
 }

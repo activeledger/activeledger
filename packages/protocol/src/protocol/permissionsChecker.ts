@@ -33,398 +33,424 @@ import { Shared } from "./shared";
  * @class PermissionsChecker
  */
 export class PermissionsChecker {
-  /**
-   * Input flag, true if we are processing inputs
-   *
-   * @private
-   * @type {boolean}
-   * @memberof PermissionsChecker
-   */
-  private inputs: boolean;
+    /**
+     * Input flag, true if we are processing inputs
+     *
+     * @private
+     * @type {boolean}
+     * @memberof PermissionsChecker
+     */
+    private inputs: boolean;
 
-  /**
-   * The inputs or outputs to be processed
-   *
-   * @private
-   * @type {*}
-   * @memberof PermissionsChecker
-   */
-  private data: string[];
+    /**
+     * The inputs or outputs to be processed
+     *
+     * @private
+     * @type {*}
+     * @memberof PermissionsChecker
+     */
+    private data: string[];
 
-  constructor(
-    private entry: ActiveDefinitions.LedgerEntry,
-    private db: ActiveDSConnect,
-    private checkRevs: boolean,
-    private securityCache: ISecurityCache,
-    private shared: Shared
-  ) {}
+    constructor(
+        private entry: ActiveDefinitions.LedgerEntry,
+        private db: ActiveDSConnect,
+        private checkRevs: boolean,
+        private securityCache: ISecurityCache,
+        private shared: Shared
+    ) { }
 
-  /**
-   * Entry point for processing stream data
-   *
-   * @param {*} data
-   * @param {boolean} [inputs=true]
-   * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
-   * @memberof PermissionsChecker
-   */
-  public async process(
-    data: string[],
-    inputs: boolean = true
-  ): Promise<ActiveDefinitions.LedgerStream[]> {
-    this.inputs = inputs;
-    this.data = data;
+    /**
+     * Entry point for processing stream data
+     *
+     * @param {*} data
+     * @param {boolean} [inputs=true]
+     * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
+     * @memberof PermissionsChecker
+     */
+    public async process(
+        data: string[],
+        inputs: boolean = true
+    ): Promise<ActiveDefinitions.LedgerStream[]> {
+        this.inputs = inputs;
+        this.data = data;
 
-    try {
-      // Get all streams to process from the database
-      const streams: ActiveDefinitions.LedgerStream[] = await this.buildPromises();
+        try {
+            // Get all streams to process from the database
+            const streams: ActiveDefinitions.LedgerStream[] = await this.buildPromises();
 
-      return this.processStreams(streams);
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  /**
-   * Build an array of promises that are used to generate and check streams
-   *
-   * @private
-   * @returns {Promise<any>[]}
-   * @memberof PermissionsChecker
-   */
-  private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
-    // Map into a single alldocs lookup
-    const keys: string[] = [];
-    for (let i = this.data.length; i--; ) {
-      const filteredPrefix = this.shared.filterPrefix(this.data[i]);
-      keys.push(filteredPrefix + ":stream");
-      keys.push(filteredPrefix);
+            return this.processStreams(streams);
+        } catch (error) {
+            return Promise.reject(error);
+        }
     }
 
-    // Single fetch
-    try {
-      const docs = await this.db.allDocs({
-        keys,
-        include_docs: true,
-      });
+    /**
+     * Build an array of promises that are used to generate and check streams
+     *
+     * @private
+     * @returns {Promise<any>[]}
+     * @memberof PermissionsChecker
+     */
+    private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
+        // Map into a single alldocs lookup
+        const keys: string[] = [];
+        // Handle this separately to a "normal" stream
+        let isContractData = false;
 
-      // The docs wont be ordered as the keys said they would be need to create a reorder
-      const reorder: {
-        [index: string]: number;
-      } = {};
-      const results: ActiveDefinitions.LedgerStream[] = [];
+        for (let i = this.data.length; i--;) {
+            const filteredPrefix = this.shared.filterPrefix(this.data[i]);
 
-      // Must be a better way to manage this, Less operations
-      for (let i = docs.rows.length; i--; ) {
+            // Check if this streamid already has a suffix (e.g :data for contracts)
+            const [_, suffix] = this.data[i].split(":");
+            if (!suffix) {
+                keys.push(filteredPrefix + ":stream");
+            } else if (suffix === "data") {
+                isContractData = true;
+            }
+            keys.push(filteredPrefix);
+        }
+
+        // Single fetch
+        try {
+            const docs = await this.db.allDocs({
+                keys,
+                include_docs: true,
+            });
+
+            // The docs wont be ordered as the keys said they would be need to create a reorder
+            let reorder: {
+                [index: string]: number;
+            } = {};
+            let results: ActiveDefinitions.LedgerStream[] = [];
+
+            // Must be a better way to manage this, Less operations
+            for (let i = docs.rows.length; i--;) {
+                if (isContractData) {
+                    return results
+                } else {
+                    [reorder, results] = this.processStandardStreamDoc(docs, reorder, results);
+                }
+
+            }
+
+            // lengths should match then have all streams and meta data
+            if (results.length === (keys.length / 2)) {
+                return results;
+            } else {
+                throw {
+                    code: 950,
+                    reason: "Stream(s) not found",
+                };
+            }
+        } catch (error) {
+            // Add Info
+            error.code = 950;
+            error.reason = "Stream(s) not found";
+            // Rethrow
+            throw error;
+        }
+    }
+
+    private processStandardStreamDoc(
+        row: any,
+        reorder: { [index: string]: number },
+        results: ActiveDefinitions.LedgerStream[]
+    ): [{ [index: string]: number }, ActiveDefinitions.LedgerStream[]] {
+
         // stream will be last so most likely need to replace
         // Using .doc for consistancy between data engines
-        const baseDoc = docs.rows[i].doc._id.replace(":stream", "");
+        const baseDoc = row.doc._id.replace(":stream", "");
         let iMeta: ActiveDefinitions.IMeta | null = null;
         let iState: ActiveDefinitions.IFullState | null = null;
-        if (baseDoc === docs.rows[i].doc._id) {
-          // state
-          iState = docs.rows[i].doc as ActiveDefinitions.IFullState;
+        if (baseDoc === row.doc._id) {
+            // state
+            iState = row.doc as ActiveDefinitions.IFullState;
         } else {
-          // Check meta
-          // Check script lock
-          iMeta = docs.rows[i].doc as ActiveDefinitions.IMeta;
+            // Check meta
+            // Check script lock
+            iMeta = row.doc as ActiveDefinitions.IMeta;
 
-          if (
-            iMeta.contractlock &&
-            iMeta.contractlock.length &&
-            iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
-          ) {
-            // We have a lock but not for the current contract request
-            throw {
-              code: 1700,
-              reason: "Stream contract locked",
-            };
-          }
+            if (
+                iMeta.contractlock &&
+                iMeta.contractlock.length &&
+                iMeta.contractlock.indexOf(this.entry.$tx.$contract) === -1
+            ) {
+                // We have a lock but not for the current contract request
+                throw {
+                    code: 1700,
+                    reason: "Stream contract locked",
+                };
+            }
 
-          // Check namspace lock
-          if (
-            iMeta.namespaceLock &&
-            iMeta.namespaceLock.length &&
-            iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
-          ) {
-            // We have a lock but not for the current contract request
-            throw {
-              code: 1710,
-              reason: "Stream namespace locked",
-            };
-          }
+            // Check namspace lock
+            if (
+                iMeta.namespaceLock &&
+                iMeta.namespaceLock.length &&
+                iMeta.namespaceLock.indexOf(this.entry.$tx.$namespace) === -1
+            ) {
+                // We have a lock but not for the current contract request
+                throw {
+                    code: 1710,
+                    reason: "Stream namespace locked",
+                };
+            }
         }
 
         // Manage the reorder object
         if (!reorder[baseDoc]) {
-          reorder[baseDoc] = results.push({
-            state: iState as any,
-            meta: iMeta as any,
-          });
-        } else {
-          // Update missing
-          const result = results[reorder[baseDoc] - 1];
-          if (result.state) {
-            if (iMeta) result.meta = iMeta;
-          } else {
-            if (iState) result.state = iState;
-          }
-        }
-      }
-
-      // lengths should match then have all streams and meta data
-      if (results.length === (keys.length / 2)) {
-        return results;
-      } else {
-        throw {
-          code: 950,
-          reason: "Stream(s) not found",
-        };
-      }
-    } catch (error) {
-      // Add Info
-      error.code = 950;
-      error.reason = "Stream(s) not found";
-      // Rethrow
-      throw error;
-    }
-  }
-
-  /**
-   * Process the passed streams
-   *
-   * @private
-   * @param {ActiveDefinitions.LedgerStream[]} stream
-   * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
-   * @memberof PermissionsChecker
-   */
-  private processStreams(
-    stream: ActiveDefinitions.LedgerStream[]
-  ): Promise<ActiveDefinitions.LedgerStream[]> {
-    return new Promise((resolve, reject) => {
-      let i = stream.length;
-      while (i--) {
-        // Quick Reference
-        let streamId: string = stream[i].state._id as string;
-
-        // Get revision type
-        const revType = this.inputs ? this.entry.$revs.$i : this.entry.$revs.$o;
-        // Build comparison ID from metadata
-        const currentRevision =
-          stream[i].meta._rev + ":" + stream[i].state._rev;
-
-        // Check that the revisions match between nodes
-        if (revType && revType[streamId]) {
-          if (revType[streamId] !== currentRevision) {
-            return reject({
-              code: 1200,
-              reason:
-                (this.inputs ? "Input" : "Output") +
-                " Stream Position Incorrect",
+            reorder[baseDoc] = results.push({
+                state: iState as any,
+                meta: iMeta as any,
             });
-          }
         } else {
-          revType[streamId] = currentRevision;
+            // Update missing
+            const result = results[reorder[baseDoc] - 1];
+            if (result.state) {
+                if (iMeta) result.meta = iMeta;
+            } else {
+                if (iState) result.state = iState;
+            }
         }
 
-        // Signature Check & Hardened Keys (Inputs and maybe Outputs based on configuration)
-        if (this.inputs || this.securityCache.signedOutputs) {
-          // Authorities need to be checked flag
-          let nhpkCheck = false;
+        return [reorder, results]
+    }
 
-          // Label of Key support
-          let nhpkCheckIO = this.inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
+    /**
+     * Process the passed streams
+     *
+     * @private
+     * @param {ActiveDefinitions.LedgerStream[]} stream
+     * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
+     * @memberof PermissionsChecker
+     */
+    private processStreams(
+        stream: ActiveDefinitions.LedgerStream[]
+    ): Promise<ActiveDefinitions.LedgerStream[]> {
+        return new Promise((resolve, reject) => {
+            let i = stream.length;
+            while (i--) {
+                // Quick Reference
+                let streamId: string = stream[i].state._id as string;
 
-          // Check to see if key hardening is enabled and done
-          if (this.securityCache.hardenedKeys) {
-            // Maybe specific authority of the stream now, $nhpk could be string or object of strings
-            // Need to map over because it may not be stream id!
+                // Get revision type
+                const revType = this.inputs ? this.entry.$revs.$i : this.entry.$revs.$o;
+                // Build comparison ID from metadata
+                const currentRevision =
+                    stream[i].meta._rev + ":" + stream[i].state._rev;
 
-            const nhpkDataCheck =
-              nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)]
-                .$nhpk;
+                // Check that the revisions match between nodes
+                if (revType && revType[streamId]) {
+                    if (revType[streamId] !== currentRevision) {
+                        return reject({
+                            code: 1200,
+                            reason:
+                                (this.inputs ? "Input" : "Output") +
+                                " Stream Position Incorrect",
+                        });
+                    }
+                } else {
+                    revType[streamId] = currentRevision;
+                }
 
-            if (!nhpkDataCheck) {
-              return reject({
-                code: 1230,
-                reason:
-                  (this.inputs ? "Inputs" : "Output") +
-                  " Security Hardened Key Transactions Only",
-              });
-            } else {
-              nhpkCheck = true;
+                // Signature Check & Hardened Keys (Inputs and maybe Outputs based on configuration)
+                if (this.inputs || this.securityCache.signedOutputs) {
+                    // Authorities need to be checked flag
+                    let nhpkCheck = false;
+
+                    // Label of Key support
+                    let nhpkCheckIO = this.inputs ? this.entry.$tx.$i : this.entry.$tx.$o;
+
+                    // Check to see if key hardening is enabled and done
+                    if (this.securityCache.hardenedKeys) {
+                        // Maybe specific authority of the stream now, $nhpk could be string or object of strings
+                        // Need to map over because it may not be stream id!
+
+                        const nhpkDataCheck =
+                            nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)]
+                                .$nhpk;
+
+                        if (!nhpkDataCheck) {
+                            return reject({
+                                code: 1230,
+                                reason:
+                                    (this.inputs ? "Inputs" : "Output") +
+                                    " Security Hardened Key Transactions Only",
+                            });
+                        } else {
+                            nhpkCheck = true;
+                        }
+                    }
+
+                    // Check signature
+                    if (stream[i].meta.authorities) {
+                        /*
+                         * Some will return true early, at this stage we only need 1.
+                         * The Smart contract developer can use the other signatures
+                         * to create a mini consensus within their own application (such as ownership)
+                         */
+
+                        this.signatureCheck(
+                            streamId,
+                            stream[i],
+                            nhpkCheck,
+                            nhpkCheckIO,
+                            reject
+                        );
+                    } else {
+                        // Backwards compatible check
+                        const type = stream[i].meta.type ? stream[i].meta.type : "rsa";
+                        const sigCheck = this.shared.signatureCheck(
+                            stream[i].meta.public as string,
+                            this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+                            type
+                        );
+
+                        if (!sigCheck) {
+                            // Break loop and reject
+                            return reject({
+                                code: 1220,
+                                reason:
+                                    (this.inputs ? "Input" : "Output") + " Signature Incorrect",
+                            });
+                        }
+                    }
+                }
             }
-          }
 
-          // Check signature
-          if (stream[i].meta.authorities) {
-            /*
-             * Some will return true early, at this stage we only need 1.
-             * The Smart contract developer can use the other signatures
-             * to create a mini consensus within their own application (such as ownership)
-             */
+            // Everything is good
+            resolve(stream);
+        });
+    }
 
-            this.signatureCheck(
-              streamId,
-              stream[i],
-              nhpkCheck,
-              nhpkCheckIO,
-              reject
+    /**
+     * Check the signature of a stream
+     *
+     * @private
+     * @param {string} streamId
+     * @param {ActiveDefinitions.LedgerStream} stream
+     * @param {boolean} nhpkCheck
+     * @param {ActiveDefinitions.LedgerIORputs} nhpkCheckIO
+     * @param {(value?: any) => void} reject
+     * @returns {void}
+     * @memberof PermissionsChecker
+     */
+    private signatureCheck(
+        streamId: string,
+        stream: ActiveDefinitions.LedgerStream,
+        nhpkCheck: boolean,
+        nhpkCheckIO: ActiveDefinitions.LedgerIORputs,
+        reject: (value?: any) => void
+    ): void {
+        const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
+            this.shared.signatureCheck(
+                authority.public,
+                this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+                authority.type
             );
-          } else {
-            // Backwards compatible check
-            const type = stream[i].meta.type ? stream[i].meta.type : "rsa";
-            const sigCheck = this.shared.signatureCheck(
-              stream[i].meta.public as string,
-              this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
-              type
-            );
+
+        const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
+            this.entry.$sigs[this.shared.filterPrefix(streamId)]
+        );
+
+        if (isLedgerAuthSignatures) {
+            // Multiple signatures passed
+            // Check that they haven't sent more signatures than we have authorities
+
+            const sigStreamKeys = Object.keys(this.entry.$sigs[this.shared.filterPrefix(streamId)]);
+            const authorities = stream.meta.authorities.length;
+            if (sigStreamKeys.length > authorities) {
+                return reject({
+                    code: 1225,
+                    reason:
+                        (this.inputs ? "Input" : "Output") +
+                        " Incorrect Signature List Length",
+                });
+            }
+
+            // Loop over signatures
+            // Every supplied signature should exist and pass
+            const sigCheck = sigStreamKeys.every((sigStream: string) => {
+                if (nhpkCheck) {
+                    const nhpk = false;
+                    /* let nhpk, nhpkIO; // Undefined if other data not found
+          
+                    // Build up with checks to prevenr undefined errors
+                    const ioLabelMap = this.shared.getLabelIOMap(this.inputs, streamId);
+          
+                    if (ioLabelMap) nhpkIO = nhpkCheckIO[ioLabelMap];
+          
+                    if (nhpkIO) nhpk = nhpkIO.$nhpk[sigStream]; */
+
+                    if (!nhpk) {
+                        return reject({
+                            code: 1230,
+                            reason:
+                                (this.inputs ? "Input" : "Output") +
+                                " Security Hardened Key Transactions Only",
+                        });
+                    }
+                } else {
+                    // Get signature from tx object
+                    const signature = (this.entry.$sigs[
+                        this.shared.filterPrefix(streamId)
+                    ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
+                    const authCheck = stream.meta.authorities.some(
+                        (authority: ActiveDefinitions.ILedgerAuthority) => {
+                            // If matching hash do sig check
+                            if (authority.hash === sigStream) {
+                                return this.shared.signatureCheck(
+                                    authority.public,
+                                    signature,
+                                    authority.type
+                                );
+                            } else {
+                                return false;
+                            }
+                        }
+                    );
+
+                    return authCheck;
+                }
+            });
 
             if (!sigCheck) {
-              // Break loop and reject
-              return reject({
-                code: 1220,
-                reason:
-                  (this.inputs ? "Input" : "Output") + " Signature Incorrect",
-              });
             }
-          }
-        }
-      }
-
-      // Everything is good
-      resolve(stream);
-    });
-  }
-
-  /**
-   * Check the signature of a stream
-   *
-   * @private
-   * @param {string} streamId
-   * @param {ActiveDefinitions.LedgerStream} stream
-   * @param {boolean} nhpkCheck
-   * @param {ActiveDefinitions.LedgerIORputs} nhpkCheckIO
-   * @param {(value?: any) => void} reject
-   * @returns {void}
-   * @memberof PermissionsChecker
-   */
-  private signatureCheck(
-    streamId: string,
-    stream: ActiveDefinitions.LedgerStream,
-    nhpkCheck: boolean,
-    nhpkCheckIO: ActiveDefinitions.LedgerIORputs,
-    reject: (value?: any) => void
-  ): void {
-    const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
-      this.shared.signatureCheck(
-        authority.public,
-        this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
-        authority.type
-      );
-
-    const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
-      this.entry.$sigs[this.shared.filterPrefix(streamId)]
-    );
-
-    if (isLedgerAuthSignatures) {
-      // Multiple signatures passed
-      // Check that they haven't sent more signatures than we have authorities
-
-      const sigStreamKeys = Object.keys(this.entry.$sigs[this.shared.filterPrefix(streamId)]);
-      const authorities = stream.meta.authorities.length;
-      if (sigStreamKeys.length > authorities) {
-        return reject({
-          code: 1225,
-          reason:
-            (this.inputs ? "Input" : "Output") +
-            " Incorrect Signature List Length",
-        });
-      }
-
-      // Loop over signatures
-      // Every supplied signature should exist and pass
-      const sigCheck = sigStreamKeys.every((sigStream: string) => {
-        if (nhpkCheck) {
-          const nhpk = false;
-          /* let nhpk, nhpkIO; // Undefined if other data not found
-
-          // Build up with checks to prevenr undefined errors
-          const ioLabelMap = this.shared.getLabelIOMap(this.inputs, streamId);
-
-          if (ioLabelMap) nhpkIO = nhpkCheckIO[ioLabelMap];
-
-          if (nhpkIO) nhpk = nhpkIO.$nhpk[sigStream]; */
-
-          if (!nhpk) {
-            return reject({
-              code: 1230,
-              reason:
-                (this.inputs ? "Input" : "Output") +
-                " Security Hardened Key Transactions Only",
-            });
-          }
         } else {
-          // Get signature from tx object
-          const signature = (this.entry.$sigs[
-            this.shared.filterPrefix(streamId)
-          ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
-          const authCheck = stream.meta.authorities.some(
-            (authority: ActiveDefinitions.ILedgerAuthority) => {
-              // If matching hash do sig check
-              if (authority.hash === sigStream) {
-                return this.shared.signatureCheck(
-                  authority.public,
-                  signature,
-                  authority.type
-                );
-              } else {
-                return false;
-              }
+            const authorityCheck = stream.meta.authorities.some(
+                (authority: ActiveDefinitions.ILedgerAuthority) => {
+                    const nhpk =
+                        nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk;
+
+                    // Check if this authority has new keys
+                    if (nhpkCheck && !nhpk) {
+                        return reject({
+                            code: 1230,
+                            reason:
+                                (this.inputs ? "Input" : "Output") +
+                                " Security Hardened Key Transactions Only",
+                        });
+                    }
+
+                    if (authority.hash && sigCheck(authority)) {
+                        // Remap $sigs for later consumption
+
+                        this.entry.$sigs[this.shared.filterPrefix(streamId)] = {
+                            [authority.hash]: this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+                        };
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            );
+
+            if (!authorityCheck) {
+                // Break loop and reject
+                return reject({
+                    code: 1220,
+                    reason: (this.inputs ? "Input" : "Output") + " Signature Incorrect",
+                });
             }
-          );
-
-          return authCheck;
         }
-      });
-
-      if (!sigCheck) {
-      }
-    } else {
-      const authorityCheck = stream.meta.authorities.some(
-        (authority: ActiveDefinitions.ILedgerAuthority) => {
-          const nhpk =
-            nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk;
-
-          // Check if this authority has new keys
-          if (nhpkCheck && !nhpk) {
-            return reject({
-              code: 1230,
-              reason:
-                (this.inputs ? "Input" : "Output") +
-                " Security Hardened Key Transactions Only",
-            });
-          }
-
-          if (authority.hash && sigCheck(authority)) {
-            // Remap $sigs for later consumption
-
-            this.entry.$sigs[this.shared.filterPrefix(streamId)] = {
-              [authority.hash]: this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
-            };
-            return true;
-          } else {
-            return false;
-          }
-        }
-      );
-
-      if (!authorityCheck) {
-        // Break loop and reject
-        return reject({
-          code: 1220,
-          reason: (this.inputs ? "Input" : "Output") + " Signature Incorrect",
-        });
-      }
     }
-  }
 }
