@@ -37,6 +37,7 @@ import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
+import path from "path";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -140,6 +141,16 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private contractLocation: string;
+
+  /**
+   * The ID of the contract being called
+   * Used for contract:data hanlding
+   *
+   * @private
+   * @type {string}
+   * @memberof Process
+   */
+  private contractId: string;
 
   /**
    * Commiting State
@@ -353,15 +364,29 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Default Contract Location
-      this.contractLocation = `${process.cwd()}/default_contracts/${
-        this.entry.$tx.$contract
-      }.js`;
+      // Wrapped in realpathSync to resolve symbolic links
+      // This prevents issues with cached contracts
+      this.contractLocation = fs.realpathSync(`${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`);
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () => {
       let contract = this.entry.$tx.$contract;
-      let path = `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`;
+
+      let namespacePath = fs.realpathSync(`${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`);
+
+      // Make sure the path is not a symlink
+      const trueContractPath = fs.realpathSync(`${namespacePath}/${contract}.js`);
+
+      let contractId = path.basename(trueContractPath, path.extname(trueContractPath));
+
+      // We don't want the version number if the contract has one
+      if (contractId.indexOf("@") > -1) {
+        contractId = contractId.split("@")[0];
+      }
+
+      this.contractId = contractId;
+
       // Does the string contain @ then we leave it alone
       if (this.entry.$tx.$contract.indexOf("@") === -1) {
         if (contractVersion) {
@@ -372,11 +397,11 @@ export class Process extends EventEmitter {
           // Or the VMs
           contract =
             fs
-              .readdirSync(path)
-              .filter((fn) => fn.includes(`${contract}@`))
+              .readdirSync(namespacePath)
+              .filter((fn) => fn.includes(`${this.contractId}@`))
               .sort(this.sortVersions)
               .pop()
-              ?.replace(".js", "") || contract;
+              ?.replace(".js", "") || this.contractId;
 
           // Cache it to parent process handler
           this.emit("contractLatestVersion", {
@@ -385,7 +410,13 @@ export class Process extends EventEmitter {
           });
         }
       }
-      this.contractLocation = `${path}${contract}.js`;
+
+      // Wrapped in realpathSync to avoid issues with cached contracts
+      // And to allow us to get the ID of the contract if a label (symlink) was
+      // used in the transaction
+      // This needs to be here rather than where trueConrtractPath is as
+      // we need the contract ID at that point to look up the latest version
+      this.contractLocation = fs.realpathSync(`${namespacePath}/${contract}.js`);
     };
 
     // Is this a default contract
@@ -397,8 +428,8 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = this.isDefault
       ? Process.defaultContractsVM
       : this.contractRef
-      ? Process.singleContractVMHolder[this.contractRef]
-      : Process.generalContractVM;
+        ? Process.singleContractVMHolder[this.contractRef]
+        : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -550,8 +581,8 @@ export class Process extends EventEmitter {
       this.isDefault
         ? this.commit(Process.defaultContractsVM)
         : this.contractRef
-        ? this.commit(Process.singleContractVMHolder[this.contractRef])
-        : this.commit(Process.generalContractVM);
+          ? this.commit(Process.singleContractVMHolder[this.contractRef])
+          : this.commit(Process.generalContractVM);
     }
 
     return this.nodeResponse;
@@ -799,7 +830,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--; ) {
+        for (let i = sigKeys.length; i--;) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -819,6 +850,7 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: Math.floor(Math.random() * 100),
+        contractData: undefined,
       };
 
       // Check if the security data has been cached
@@ -963,13 +995,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                  error.status || 1502,
-                  new Error(error.error)
-                ) // rethrow same error
+                error.status || 1502,
+                new Error(error.error)
+              ) // rethrow same error
               : this.shared.raiseLedgerError(
-                  1501,
-                  new Error("Bad Knock Transaction")
-                ); // Generic error 404/ 500
+                1501,
+                new Error("Bad Knock Transaction")
+              ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1008,8 +1040,8 @@ export class Process extends EventEmitter {
       ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-          100 >=
-          ActiveOptions.get<any>("consensus", {}).reached) ||
+        100 >=
+        ActiveOptions.get<any>("consensus", {}).reached) ||
       false
     );
   }
@@ -1080,7 +1112,8 @@ export class Process extends EventEmitter {
             this.nodeResponse,
             this.db,
             this,
-            this.shared
+            this.shared,
+            this.contractId
           );
 
           earlyCommit
@@ -1095,15 +1128,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-                1302,
-                new Error(
-                  "Commit Failure - " + JSON.stringify(error.message || error)
-                )
+              1302,
+              new Error(
+                "Commit Failure - " + JSON.stringify(error.message || error)
               )
+            )
             : this.shared.raiseLedgerError(
-                1301,
-                new Error("Failed Commit Transaction")
-              );
+              1301,
+              new Error("Failed Commit Transaction")
+            );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1149,7 +1182,8 @@ export class Process extends EventEmitter {
                     this.nodeResponse,
                     this.db,
                     this,
-                    this.shared
+                    this.shared,
+                    this.contractId
                   );
                   streamUpdater.updateStreams();
                 } else {
@@ -1335,7 +1369,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
