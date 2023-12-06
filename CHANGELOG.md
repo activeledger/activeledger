@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.11.8]
+
+### Feature
+* **Protocol** : Transaction level enforce 100% node coverage. Use $unanimous at the transaction root.
+
 ## [2.11.7]
 
 ### Feature
