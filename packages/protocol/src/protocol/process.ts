@@ -249,6 +249,8 @@ export class Process extends EventEmitter {
         private secured: ActiveCrypto.Secured
     ) {
         super();
+        ActiveLogger.enableDebug = true;
+        ActiveLogger.debug(entry, "Entry passed to Protocol Process");
 
         this.shared = new Shared(this.storeSingleError, this.entry, this.dbe, this);
 
@@ -930,6 +932,7 @@ export class Process extends EventEmitter {
         } else {
             // Knock our right neighbour with this trasnaction if they are not the origin
             if (this.right.reference != this.entry.$origin) {
+                ActiveLogger.debug("Are we giving commit the earlyCommit func here?")
                 // Send back early if consensus has been reached and not the end of the network
                 // (Early commit, Then Forward to network)
                 this.commit(virtualMachine, async () => {
@@ -1036,6 +1039,7 @@ export class Process extends EventEmitter {
         virtualMachine: IVirtualMachine,
         earlyCommit?: Function
     ): Promise<void> {
+        ActiveLogger.debug(JSON.stringify(this.nodeResponse, null, 2), "What is nodeResponse");
         // If we haven't commited process as normal
         if (!this.nodeResponse.commit) {
             // check we can commit still
@@ -1095,6 +1099,7 @@ export class Process extends EventEmitter {
                     earlyCommit
                         ? streamUpdater.updateStreams(earlyCommit)
                         : streamUpdater.updateStreams();
+
                 } catch (error) {
                     // Don't let local error stop other nodes
                     if (earlyCommit) earlyCommit();
@@ -1200,7 +1205,7 @@ export class Process extends EventEmitter {
                         ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
                         this.shared.raiseLedgerError(
                             1510,
-                            new Error("Failed Network Voting Round")
+                            new Error("Failed Network Voting Round - 1510-1")
                         );
                     } else {
                         // Are there any outstanding node responses which could mean consensus can still be reached
@@ -1223,7 +1228,7 @@ export class Process extends EventEmitter {
                             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
                             return this.shared.raiseLedgerError(
                                 1510,
-                                new Error("Failed Network Voting Round")
+                                new Error("Failed Network Voting Round - 1510-2")
                             );
                         } else {
                             // Clear current timeout to prevent it from running
@@ -1243,7 +1248,7 @@ export class Process extends EventEmitter {
                                     ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
                                     return this.shared.raiseLedgerError(
                                         1510,
-                                        new Error("Failed Network Voting Timeout")
+                                        new Error("Failed Network Voting Timeout - 1510-3")
                                     );
                                 }, 20000);
                             } else {
@@ -1251,7 +1256,7 @@ export class Process extends EventEmitter {
                                 ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
                                 return this.shared.raiseLedgerError(
                                     1510,
-                                    new Error("Failed Network Voting Round")
+                                    new Error("Failed Network Voting Round - 1510-4")
                                 );
                             }
                         }

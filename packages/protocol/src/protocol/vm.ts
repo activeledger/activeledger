@@ -239,11 +239,15 @@ export class VirtualMachine
         let streams: string[] = Object.keys(activities);
         let i = streams.length;
 
-        let contractData = this.virtualInstance.getContractData(umid);
+        const contractData: ActiveDefinitions.IContractData = this.virtualInstance.getContractData(umid);
+
+        ActiveLogger.debug(JSON.stringify(contractData, null, 2), "Debug 1")
 
         // The exported streams with changes
         let exported: ActiveDefinitions.LedgerStream[] = [];
-        exported.push(contractData);
+        if (contractData) {
+            exported.push(contractData as unknown as ActiveDefinitions.LedgerStream);
+        }
 
         // Loop each stream and find the marked ones
         while (i--) {

@@ -31,65 +31,71 @@ import { IFullState, IMeta, IVolatile } from "./document";
  * @interface LedgerEntry
  */
 export interface LedgerEntry {
-  $origin: string;
-  $datetime: Date;
-  $umid: string;
-  $tx: LedgerTransaction; // | LedgerTransaction[];
-  $sigs: LedgerSignatures; // | LedgerSignatures[];
-  $selfsign: boolean;
-  $revs: LedgerRevs;
-  $multi: boolean;
-  $instant: boolean;
-  $nodes: INodes;
-  $streams: IStreams;
-  $remoteAddr: string;
-  $broadcast?: boolean;
-  $territoriality?: string;
-  $encrypt?: boolean;
+    $origin: string;
+    $datetime: Date;
+    $umid: string;
+    $tx: LedgerTransaction; // | LedgerTransaction[];
+    $sigs: LedgerSignatures; // | LedgerSignatures[];
+    $selfsign: boolean;
+    $revs: LedgerRevs;
+    $multi: boolean;
+    $instant: boolean;
+    $nodes: INodes;
+    $streams: IStreams;
+    $remoteAddr: string;
+    $broadcast?: boolean;
+    $territoriality?: string;
+    $encrypt?: boolean;
 }
 
 export interface LedgerResponse {
-  $umid: string;
-  $summary: ISummary;
-  $streams: IStreams;
-  $responses?: unknown[];
-  $territoriality?: string;
-  $debug?: LedgerEntry;
+    $umid: string;
+    $summary: ISummary;
+    $streams: IStreams;
+    $responses?: unknown[];
+    $territoriality?: string;
+    $debug?: LedgerEntry;
 }
 
 export interface ISummary {
-  total: number;
-  vote: number;
-  commit: number;
-  errors?: string[];
+    total: number;
+    vote: number;
+    commit: number;
+    errors?: string[];
 }
 
 export interface IStreams {
-  new: IStream[];
-  updated: IStream[];
+    new: IStream[];
+    updated: IStream[];
 }
 
 export interface IStream {
-  id: string;
-  name: string;
+    id: string;
+    name: string;
 }
 
 export interface INodes {
-  [reference: string]: INodeResponse;
+    [reference: string]: INodeResponse;
 }
 
 export interface INodeResponse {
-  vote: boolean;
-  commit: boolean;
-  post?: any;
-  incomms?: any;
-  datetime?: Date;
-  error?: string;
-  return?: unknown;
+    vote: boolean;
+    commit: boolean;
+    post?: any;
+    incomms?: any;
+    datetime?: Date;
+    error?: string;
+    return?: unknown;
 }
 
 export interface ICommunications {
-  [reference: string]: Object;
+    [reference: string]: Object;
+}
+
+export interface IContractData {
+    _id: string;
+    _rev?: string;
+    data: any;
 }
 
 /**
@@ -99,12 +105,12 @@ export interface ICommunications {
  * @interface LedgerTransaction
  */
 export interface LedgerTransaction {
-  $namespace: string;
-  $contract: string;
-  $entry?: string;
-  $i: LedgerInputs;
-  $o: LedgerIORputs;
-  $r?: LedgerIORputs;
+    $namespace: string;
+    $contract: string;
+    $entry?: string;
+    $i: LedgerInputs;
+    $o: LedgerIORputs;
+    $r?: LedgerIORputs;
 }
 
 /**
@@ -114,7 +120,7 @@ export interface LedgerTransaction {
  * @interface LedgerIOputs
  */
 export interface LedgerIORputs {
-  [reference: string]: any;
+    [reference: string]: any;
 }
 
 /**
@@ -126,7 +132,7 @@ export interface LedgerIORputs {
  * @extends {LedgerIOputs}
  */
 export interface LedgerInputs extends LedgerIORputs {
-  $nhpk?: string;
+    $nhpk?: string;
 }
 
 /**
@@ -136,8 +142,8 @@ export interface LedgerInputs extends LedgerIORputs {
  * @interface LedgerRevs
  */
 export interface LedgerRevs {
-  $i: LedgerRevIO;
-  $o: LedgerRevIO;
+    $i: LedgerRevIO;
+    $o: LedgerRevIO;
 }
 
 /**
@@ -147,7 +153,7 @@ export interface LedgerRevs {
  * @interface LedgerRevs
  */
 export interface LedgerRevIO {
-  [reference: string]: string;
+    [reference: string]: string;
 }
 
 /**
@@ -157,8 +163,8 @@ export interface LedgerRevIO {
  * @interface LedgerSignatures
  */
 export interface LedgerSignatures {
-  [reference: string]: string | LedgerAuthSignatures;
-  $sig: string;
+    [reference: string]: string | LedgerAuthSignatures;
+    $sig: string;
 }
 
 /**
@@ -168,7 +174,7 @@ export interface LedgerSignatures {
  * @interface LedgerAuthSignatures
  */
 export interface LedgerAuthSignatures {
-  [reference: string]: string;
+    [reference: string]: string;
 }
 
 /**
@@ -178,9 +184,9 @@ export interface LedgerAuthSignatures {
  * @interface LedgerStream
  */
 export interface LedgerStream {
-  meta: IMeta;
-  state: IFullState;
-  volatile?: IVolatile;
+    meta: IMeta;
+    state: IFullState;
+    volatile?: IVolatile;
 }
 
 /**
@@ -190,12 +196,12 @@ export interface LedgerStream {
  * @interface ILedgerAuthority
  */
 export interface ILedgerAuthority {
-  public: string;
-  type: string;
-  stake: number;
-  hash?: string;
-  label?: string;
-  metadata?: any;
+    public: string;
+    type: string;
+    stake: number;
+    hash?: string;
+    label?: string;
+    metadata?: any;
 }
 
 /**
@@ -206,36 +212,36 @@ export interface ILedgerAuthority {
  * @class LedgerTypeChecks
  */
 export class LedgerTypeChecks {
-  /**
-   * Is object of type LedgerEntry
-   *
-   * @static
-   * @param {*} tx
-   * @returns {object is LedgerEntry}
-   * @memberof LedgerTypeChecks
-   */
-  public static isEntry(tx: LedgerEntry): tx is LedgerEntry {
-    if (
-      tx.$tx &&
-      ((tx.$tx.$i && tx.$sigs) ||
-        (tx.$tx.$namespace && tx.$tx.$contract))
-    ) {
-      return true;
+    /**
+     * Is object of type LedgerEntry
+     *
+     * @static
+     * @param {*} tx
+     * @returns {object is LedgerEntry}
+     * @memberof LedgerTypeChecks
+     */
+    public static isEntry(tx: LedgerEntry): tx is LedgerEntry {
+        if (
+            tx.$tx &&
+            ((tx.$tx.$i && tx.$sigs) ||
+                (tx.$tx.$namespace && tx.$tx.$contract))
+        ) {
+            return true;
+        }
+        return false;
     }
-    return false;
-  }
 
-  /**
-   * Is object of type LedgerAuthSignatures
-   *
-   * @static
-   * @param {*} object
-   * @returns {object is LedgerAuthSignatures}
-   * @memberof LedgerTypeChecks
-   */
-  public static isLedgerAuthSignatures(
-    object: any
-  ): object is LedgerAuthSignatures {
-    return typeof object === "object";
-  }
+    /**
+     * Is object of type LedgerAuthSignatures
+     *
+     * @static
+     * @param {*} object
+     * @returns {object is LedgerAuthSignatures}
+     * @memberof LedgerTypeChecks
+     */
+    public static isLedgerAuthSignatures(
+        object: any
+    ): object is LedgerAuthSignatures {
+        return typeof object === "object";
+    }
 }

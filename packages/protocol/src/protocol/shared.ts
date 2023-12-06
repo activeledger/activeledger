@@ -144,11 +144,16 @@ export class Shared {
         // Remove any suffix like :volatile :stream :umid
         let [streamId, suffix] = stream.split(":");
 
-        if (streamId.length < 64) {
+        // ID can be less than 64 in some cases, e.g when onboarding an identity
+        /* if (streamId.length < 64) {
             // This should never happen, some kind of error needed
-        }
+            ActiveLogger.debug(stream, "Stream ID less than 64 chars - filterPrefix");
+        } */
 
-        if (streamId.length === 64) {
+        ActiveLogger.debug(JSON.stringify(streamId.length, null, 2), "Stream ID Length")
+
+        if (streamId.length <= 64) {
+            ActiveLogger.debug(streamId, "Returning this stream")
             return stream;
         }
 

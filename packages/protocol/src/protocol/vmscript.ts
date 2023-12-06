@@ -120,11 +120,12 @@ class ContractControl implements IVMObject {
      * @returns {*}
      * @memberof ContractControl
      */
-    public getContractData(umid: string): any {
+    public getContractData(umid: string): ActiveDefinitions.IContractData | undefined {
         if (this.smartContracts[umid].updatedContractData) {
-            return this.smartContracts[umid].getContractData();
+            return this.smartContracts[umid].exportContractData();
         }
 
+        return;
     }
 
     /**

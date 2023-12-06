@@ -34,7 +34,7 @@ import { EventEmitter } from "events";
  */
 export class Stream {
     /**
-     * Holds all the activity streams in this trasnaction
+     * Holds all the activity streams in this transaction
      *
      * @private
      * @type {{ [reference: string]: Activity }}
@@ -142,7 +142,7 @@ export class Stream {
         private inputs: ActiveDefinitions.LedgerStream[],
         private outputs: ActiveDefinitions.LedgerStream[],
         private reads: ActiveDefinitions.LedgerIORputs,
-        private contractData: any,
+        private contractData: ActiveDefinitions.IContractData,
         private sigs: ActiveDefinitions.LedgerSignatures,
         private key: number,
         private eventEmitter: EventEmitter,
@@ -362,10 +362,25 @@ export class Stream {
      */
     public setContractData<T>(contractData: T): void {
 
-        this.contractData = contractData as any;
+        if (!this.contractData._id) {
+
+            this.contractData._id = `${this.transactions.$contract}:data`
+
+        }
+
+        this.contractData.data = contractData as any;
 
         this.updatedContractData = true;
+    }
 
+    /**
+     * Export contract data to be stored
+     *
+     * @returns {ActiveDefinitions.IContractData}
+     * @memberof Stream
+     */
+    public exportContractData(): ActiveDefinitions.IContractData {
+        return this.contractData;
     }
 
     /**
