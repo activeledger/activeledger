@@ -46,8 +46,7 @@ import {
  */
 export class VirtualMachine
   extends events.EventEmitter
-  implements IVirtualMachine
-{
+  implements IVirtualMachine {
   /**
    * Virtual Machine Object
    *
@@ -240,8 +239,17 @@ export class VirtualMachine
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
+    let contractData: ActiveDefinitions.IContractData;
+    contractData = this.virtualInstance.getContractData(umid);
+
     // The exported streams with changes
     let exported: ActiveDefinitions.LedgerStream[] = [];
+
+    if (contractData) {
+      exported.push(
+        contractData as unknown as ActiveDefinitions.LedgerStream
+      );
+    }
 
     // Loop each stream and find the marked ones
     while (i--) {
@@ -766,9 +774,9 @@ export class VirtualMachine
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-            timedout()
+          timedout()
           : // Check again later
-            this.checkTimeout(type, timedout, umid);
+          this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
@@ -874,4 +882,4 @@ export class VirtualMachine
  *
  * @class MockBuiltinSecurity
  */
-class MockBuiltinSecurity {}
+class MockBuiltinSecurity { }

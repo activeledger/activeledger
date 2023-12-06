@@ -115,7 +115,8 @@ export class StreamUpdater {
     private nodeResponse: any,
     private db: ActiveDSConnect,
     private emitter: EventEmitter,
-    private shared: Shared
+    private shared: Shared,
+    private contractId: string,
   ) {
     // Determanistic Collision Managamenent
     this.collisions = [];
@@ -283,6 +284,21 @@ export class StreamUpdater {
     }
   }
 
+  private handleContractDataStream(contractData: ActiveDefinitions.IContractData) {
+
+    ActiveLogger.debug(contractData, "Got some contract data?");
+
+    const [contract, suffix] = contractData._id.split(":");
+
+    if (contract.length < 64) {
+      contractData._id = `${this.contractId}:${suffix}`;
+    }
+
+    ActiveLogger.debug(contractData, "Made sure id is id, not label");
+    this.docs.push(contractData);
+
+  }
+
   /**
    * Compile streams for umid & return reference
    *
@@ -293,6 +309,18 @@ export class StreamUpdater {
     // Loop Streams
     let i = this.streams.length;
     while (i--) {
+
+      if (
+        (this.streams[i] as unknown as ActiveDefinitions.IContractData)
+          ._id?.indexOf(":data") > -1
+      ) {
+        this.handleContractDataStream(
+          this.streams[i] as unknown as ActiveDefinitions.IContractData
+        );
+        continue;
+      }
+
+      ActiveLogger.debug(JSON.stringify(this.streams[i], null, 2), "Current stream - buildReferenceStreams");
       // New or Updating?
       // New streams will have a volatile set as {}
       if (!this.streams[i].meta._rev) {
@@ -392,7 +420,7 @@ export class StreamUpdater {
     } catch (error) {
       continueProcessing = emit = false;
 
-      ActiveLogger.debug(error, "Datatore Failure");
+      ActiveLogger.debug(error, "Datastore Failure");
       // TODO: Put in shared
       this.shared.raiseLedgerError(1510, new Error("Failed to save"));
     }
