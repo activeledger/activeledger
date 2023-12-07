@@ -38,7 +38,6 @@ import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import path from "path";
-import { IContractData } from "@activeledger/activedefinitions/lib/definitions";
 
 /**
  * Class controls the processing of this nodes consensus
