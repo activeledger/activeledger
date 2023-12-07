@@ -284,19 +284,20 @@ export class StreamUpdater {
     }
   }
 
+  /**
+   * Handle data that is to be stored specifically against a contract 
+   *
+   * @private
+   * @memberof StreamUpdater
+   */
   private handleContractDataStream(contractData: ActiveDefinitions.IContractData) {
-
-    ActiveLogger.debug(contractData, "Got some contract data?");
-
+    // Replace contract label with ID if required
     const [contract, suffix] = contractData._id.split(":");
-
     if (contract.length < 64) {
       contractData._id = `${this.contractId}:${suffix}`;
     }
 
-    ActiveLogger.debug(contractData, "Made sure id is id, not label");
     this.docs.push(contractData);
-
   }
 
   /**
@@ -320,7 +321,6 @@ export class StreamUpdater {
         continue;
       }
 
-      ActiveLogger.debug(JSON.stringify(this.streams[i], null, 2), "Current stream - buildReferenceStreams");
       // New or Updating?
       // New streams will have a volatile set as {}
       if (!this.streams[i].meta._rev) {

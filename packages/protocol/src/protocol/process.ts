@@ -38,6 +38,7 @@ import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import path from "path";
+import { IContractData } from "@activeledger/activedefinitions/lib/definitions";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -472,9 +473,10 @@ export class Process extends EventEmitter {
       // If Signatureless transaction (Such as a new account there cannot be a revision)
       if (!this.entry.$selfsign) {
         // Prefixes
-        // [umid] : Holds the data state (Prefix may be removed)
-        // [umid]:stream : Activeledger Meta Data
-        // [umid]:volatile : Data that can be lost
+        // [umid]           : Holds the data state (Prefix may be removed)
+        // [umid]:stream    : Activeledger Meta Data
+        // [umid]:volatile  : Data that can be lost
+        // [umid]:data      : Data directly linked to a contract, umid should always be a contract ID
 
         try {
           // Check the input revisions
@@ -485,7 +487,17 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process(inputStreams, outputStreams);
+          const contractDataStreams =
+            await this.permissionChecker.process([`${this.contractId}:data`], false);
+
+
+          let contractData: ActiveDefinitions.IContractData | undefined = undefined;
+          if (contractDataStreams.length > 0) {
+            contractData = contractDataStreams[0].state as unknown as ActiveDefinitions.IContractData;
+
+          }
+
+          this.process(inputStreams, outputStreams, contractData);
         } catch (error) {
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
@@ -543,7 +555,7 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process([], outputStreams);
+          this.process([], outputStreams, undefined);
         } catch (error) {
           // Forward Error On
           this.postVote(virtualMachine, {
@@ -809,17 +821,19 @@ export class Process extends EventEmitter {
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[]
+    outputs: ActiveDefinitions.LedgerStream[],
+    contractData: ActiveDefinitions.IContractData | undefined,
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[] = []
+    outputs: ActiveDefinitions.LedgerStream[] = [],
+    contractData: ActiveDefinitions.IContractData | undefined = undefined,
   ): Promise<void> {
     try {
       // Get readonly data
       const readonly = await this.getReadOnlyStreams();
 
-      const contractName = this.contractLocation.substr(
+      const contractName = this.contractLocation.substring(
         this.contractLocation.lastIndexOf("/") + 1
       );
 
@@ -850,7 +864,7 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: Math.floor(Math.random() * 100),
-        contractData: undefined,
+        contractData,
       };
 
       // Check if the security data has been cached
