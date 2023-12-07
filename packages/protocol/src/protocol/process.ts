@@ -1049,13 +1049,18 @@ export class Process extends EventEmitter {
       }
     }
 
+    // Allow for full network consensus
+    const percent = this.entry.$unanimous
+      ? 100
+      : ActiveOptions.get<any>("consensus", {}).reached;
+
     // Return if consensus has been reached
     return (
       ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
         100 >=
-        ActiveOptions.get<any>("consensus", {}).reached) ||
+        percent) ||
       false
     );
   }

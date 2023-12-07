@@ -45,6 +45,7 @@ export interface LedgerEntry {
   $remoteAddr: string;
   $broadcast?: boolean;
   $territoriality?: string;
+  $unanimous?: boolean;
   $encrypt?: boolean;
 }
 
