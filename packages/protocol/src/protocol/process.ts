@@ -366,19 +366,28 @@ export class Process extends EventEmitter {
       // Default Contract Location
       // Wrapped in realpathSync to resolve symbolic links
       // This prevents issues with cached contracts
-      this.contractLocation = fs.realpathSync(`${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`);
+      this.contractLocation = fs.realpathSync(
+        `${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`
+      );
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () => {
       let contract = this.entry.$tx.$contract;
 
-      let namespacePath = fs.realpathSync(`${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`);
+      let namespacePath = fs.realpathSync(
+        `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
+      );
 
       // Make sure the path is not a symlink
-      const trueContractPath = fs.realpathSync(`${namespacePath}/${contract}.js`);
+      const trueContractPath = fs.realpathSync(
+        `${namespacePath}/${contract}.js`
+      );
 
-      let contractId = path.basename(trueContractPath, path.extname(trueContractPath));
+      let contractId = path.basename(
+        trueContractPath,
+        path.extname(trueContractPath)
+      );
 
       // We don't want the version number if the contract has one
       if (contractId.indexOf("@") > -1) {
@@ -416,7 +425,9 @@ export class Process extends EventEmitter {
       // used in the transaction
       // This needs to be here rather than where trueConrtractPath is as
       // we need the contract ID at that point to look up the latest version
-      this.contractLocation = fs.realpathSync(`${namespacePath}/${contract}.js`);
+      this.contractLocation = fs.realpathSync(
+        `${namespacePath}/${contract}.js`
+      );
     };
 
     // Is this a default contract
@@ -428,8 +439,8 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = this.isDefault
       ? Process.defaultContractsVM
       : this.contractRef
-        ? Process.singleContractVMHolder[this.contractRef]
-        : Process.generalContractVM;
+      ? Process.singleContractVMHolder[this.contractRef]
+      : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -486,14 +497,20 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          const contractDataStreams =
-            await this.permissionChecker.process([`${this.contractId}:data`], false);
+          let contractData: ActiveDefinitions.IContractData | undefined =
+            undefined;
 
+          // Default Contracts don't use context and are not available from the database
+          if (!this.isDefault) {
+            const contractDataStreams = await this.permissionChecker.process(
+              [`${this.contractId}:data`],
+              false
+            );
 
-          let contractData: ActiveDefinitions.IContractData | undefined = undefined;
-          if (contractDataStreams.length > 0) {
-            contractData = contractDataStreams[0].state as unknown as ActiveDefinitions.IContractData;
-
+            if (contractDataStreams.length > 0) {
+              contractData = contractDataStreams[0]
+                .state as unknown as ActiveDefinitions.IContractData;
+            }
           }
 
           this.process(inputStreams, outputStreams, contractData);
@@ -592,8 +609,8 @@ export class Process extends EventEmitter {
       this.isDefault
         ? this.commit(Process.defaultContractsVM)
         : this.contractRef
-          ? this.commit(Process.singleContractVMHolder[this.contractRef])
-          : this.commit(Process.generalContractVM);
+        ? this.commit(Process.singleContractVMHolder[this.contractRef])
+        : this.commit(Process.generalContractVM);
     }
 
     return this.nodeResponse;
@@ -821,12 +838,12 @@ export class Process extends EventEmitter {
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[],
-    contractData: ActiveDefinitions.IContractData | undefined,
+    contractData: ActiveDefinitions.IContractData | undefined
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[] = [],
-    contractData: ActiveDefinitions.IContractData | undefined = undefined,
+    contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
       // Get readonly data
@@ -843,7 +860,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--;) {
+        for (let i = sigKeys.length; i--; ) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -1008,13 +1025,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                error.status || 1502,
-                new Error(error.error)
-              ) // rethrow same error
+                  error.status || 1502,
+                  new Error(error.error)
+                ) // rethrow same error
               : this.shared.raiseLedgerError(
-                1501,
-                new Error("Bad Knock Transaction")
-              ); // Generic error 404/ 500
+                  1501,
+                  new Error("Bad Knock Transaction")
+                ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1058,8 +1075,8 @@ export class Process extends EventEmitter {
       ((skipBoost || this.nodeResponse.vote) &&
         (this.currentVotes /
           ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-        100 >=
-        percent) ||
+          100 >=
+          percent) ||
       false
     );
   }
@@ -1146,15 +1163,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-              1302,
-              new Error(
-                "Commit Failure - " + JSON.stringify(error.message || error)
+                1302,
+                new Error(
+                  "Commit Failure - " + JSON.stringify(error.message || error)
+                )
               )
-            )
             : this.shared.raiseLedgerError(
-              1301,
-              new Error("Failed Commit Transaction")
-            );
+                1301,
+                new Error("Failed Commit Transaction")
+              );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1387,7 +1404,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
