@@ -502,14 +502,20 @@ export class Process extends EventEmitter {
 
           // Default Contracts don't use context and are not available from the database
           if (!this.isDefault) {
-            const contractDataStreams = await this.permissionChecker.process(
-              [`${this.contractId}:data`],
-              false
-            );
+            try {
+              const contractDataStreams = await this.permissionChecker.process(
+                [`${this.contractId}:data`],
+                false
+              );
 
-            if (contractDataStreams.length > 0) {
-              contractData = contractDataStreams[0]
-                .state as unknown as ActiveDefinitions.IContractData;
+              if (contractDataStreams.length > 0) {
+                contractData = contractDataStreams[0]
+                  .state as unknown as ActiveDefinitions.IContractData;
+              }
+            } catch (e) {
+              // This catch block is used for when a contract doesn't have a data file yet
+              // Need to make sure we still restore correctly if it is just a single node missing
+              // the data file for that contract.
             }
           }
 
