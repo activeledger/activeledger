@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.12.0]
+
+### Feature
+* **Protocol** : Added functionality that allows a contract to store localised data linked to the stream ID of the contract so it has access to it for every transaction. 
+* **Contract** : Added setContractData() and getContractData() to stream.ts to access the localised contract data.
+
 ## [2.11.8]
 
 ### Feature
