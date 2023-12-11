@@ -66,6 +66,13 @@ class ContractControl implements IVMObject {
     event: EventEngine,
     emitter: EventEmitter
   ): void {
+
+    // If no contract data set then provide an empty object so the contract 
+    // doesn't just get null
+    const contractData = payload.contractData?.data
+      ? payload.contractData
+      : {};
+
     // We don't need to verify the code unless we suspect server has been
     // comprimised. We will verify with the "install" routine
     this.smartContracts[payload.umid] =
@@ -77,6 +84,7 @@ class ContractControl implements IVMObject {
         payload.inputs,
         payload.outputs,
         payload.readonly,
+        contractData,
         payload.signatures,
         payload.key,
         emitter,
@@ -106,6 +114,17 @@ class ContractControl implements IVMObject {
     return this.smartContracts[umid].getActivityStreams();
   }
 
+  /**
+   * Get data to be stored linked to this contract
+   *
+   * @returns {*}
+   * @memberof ContractControl
+   */
+  public getContractData(umid: string): ActiveDefinitions.IContractData | undefined {
+    if (this.smartContracts[umid].updatedContractData) {
+      return this.smartContracts[umid].exportContractData();
+    }
+  }
   /**
    * Set the internode communications
    *
@@ -168,7 +187,7 @@ class ContractControl implements IVMObject {
    * @returns {Promise<boolean>}
    * @memberof ContractControl
    */
-  public runRead(umid: string, readMethod: string): Promise<unknown> {    
+  public runRead(umid: string, readMethod: string): Promise<unknown> {
     const read = (this.smartContracts[umid] as any)[readMethod]?.();
     return read ? read : false;
   }
@@ -307,6 +326,6 @@ class ContractControl implements IVMObject {
   // #endregion
 }
 
-module.exports = (function () {
+module.exports = (function() {
   return new ContractControl();
 })();
