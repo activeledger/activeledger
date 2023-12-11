@@ -516,6 +516,10 @@ export class Process extends EventEmitter {
               // This catch block is used for when a contract doesn't have a data file yet
               // Need to make sure we still restore correctly if it is just a single node missing
               // the data file for that contract.
+              if(e.code === 1200) {
+                // 1200 means the _rev map didn't match so position error (defaults as output)
+                throw e;
+              }
             }
           }
 
