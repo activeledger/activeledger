@@ -63,6 +63,7 @@ export interface IVMDataPayload {
   outputs: ActiveDefinitions.LedgerStream[];
   readonly: ActiveDefinitions.LedgerIORputs;
   key: number;
+  contractData?: ActiveDefinitions.IContractData;
 }
 
 export interface IVMInternalCache {

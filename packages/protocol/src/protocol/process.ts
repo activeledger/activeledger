@@ -37,6 +37,7 @@ import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
+import path from "path";
 
 /**
  * Class controls the processing of this nodes consensus
@@ -140,6 +141,16 @@ export class Process extends EventEmitter {
    * @memberof Process
    */
   private contractLocation: string;
+
+  /**
+   * The ID of the contract being called
+   * Used for contract:data hanlding
+   *
+   * @private
+   * @type {string}
+   * @memberof Process
+   */
+  private contractId: string;
 
   /**
    * Commiting State
@@ -353,15 +364,38 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Default Contract Location
-      this.contractLocation = `${process.cwd()}/default_contracts/${
-        this.entry.$tx.$contract
-      }.js`;
+      // Wrapped in realpathSync to resolve symbolic links
+      // This prevents issues with cached contracts
+      this.contractLocation = fs.realpathSync(
+        `${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`
+      );
     };
 
     // Ledger Transpiled Contract Location
     const setupLocation = () => {
       let contract = this.entry.$tx.$contract;
-      let path = `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`;
+
+      let namespacePath = fs.realpathSync(
+        `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
+      );
+
+      // Make sure the path is not a symlink
+      const trueContractPath = fs.realpathSync(
+        `${namespacePath}/${contract}.js`
+      );
+
+      let contractId = path.basename(
+        trueContractPath,
+        path.extname(trueContractPath)
+      );
+
+      // We don't want the version number if the contract has one
+      if (contractId.indexOf("@") > -1) {
+        contractId = contractId.split("@")[0];
+      }
+
+      this.contractId = contractId;
+
       // Does the string contain @ then we leave it alone
       if (this.entry.$tx.$contract.indexOf("@") === -1) {
         if (contractVersion) {
@@ -372,11 +406,11 @@ export class Process extends EventEmitter {
           // Or the VMs
           contract =
             fs
-              .readdirSync(path)
-              .filter((fn) => fn.includes(`${contract}@`))
+              .readdirSync(namespacePath)
+              .filter((fn) => fn.includes(`${this.contractId}@`))
               .sort(this.sortVersions)
               .pop()
-              ?.replace(".js", "") || contract;
+              ?.replace(".js", "") || this.contractId;
 
           // Cache it to parent process handler
           this.emit("contractLatestVersion", {
@@ -385,7 +419,15 @@ export class Process extends EventEmitter {
           });
         }
       }
-      this.contractLocation = `${path}${contract}.js`;
+
+      // Wrapped in realpathSync to avoid issues with cached contracts
+      // And to allow us to get the ID of the contract if a label (symlink) was
+      // used in the transaction
+      // This needs to be here rather than where trueConrtractPath is as
+      // we need the contract ID at that point to look up the latest version
+      this.contractLocation = fs.realpathSync(
+        `${namespacePath}/${contract}.js`
+      );
     };
 
     // Is this a default contract
@@ -441,9 +483,10 @@ export class Process extends EventEmitter {
       // If Signatureless transaction (Such as a new account there cannot be a revision)
       if (!this.entry.$selfsign) {
         // Prefixes
-        // [umid] : Holds the data state (Prefix may be removed)
-        // [umid]:stream : Activeledger Meta Data
-        // [umid]:volatile : Data that can be lost
+        // [umid]           : Holds the data state (Prefix may be removed)
+        // [umid]:stream    : Activeledger Meta Data
+        // [umid]:volatile  : Data that can be lost
+        // [umid]:data      : Data directly linked to a contract, umid should always be a contract ID
 
         try {
           // Check the input revisions
@@ -454,7 +497,33 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process(inputStreams, outputStreams);
+          let contractData: ActiveDefinitions.IContractData | undefined =
+            undefined;
+
+          // Default Contracts don't use context and are not available from the database
+          if (!this.isDefault) {
+            try {
+              const contractDataStreams = await this.permissionChecker.process(
+                [`${this.contractId}:data`],
+                false
+              );
+
+              if (contractDataStreams.length > 0) {
+                contractData = contractDataStreams[0]
+                  .state as unknown as ActiveDefinitions.IContractData;
+              }
+            } catch (e) {
+              // This catch block is used for when a contract doesn't have a data file yet
+              // Need to make sure we still restore correctly if it is just a single node missing
+              // the data file for that contract.
+              if(e.code === 1200) {
+                // 1200 means the _rev map didn't match so position error (defaults as output)
+                throw e;
+              }
+            }
+          }
+
+          this.process(inputStreams, outputStreams, contractData);
         } catch (error) {
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
@@ -512,7 +581,7 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process([], outputStreams);
+          this.process([], outputStreams, undefined);
         } catch (error) {
           // Forward Error On
           this.postVote(virtualMachine, {
@@ -778,17 +847,19 @@ export class Process extends EventEmitter {
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[]
+    outputs: ActiveDefinitions.LedgerStream[],
+    contractData: ActiveDefinitions.IContractData | undefined
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[] = []
+    outputs: ActiveDefinitions.LedgerStream[] = [],
+    contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
       // Get readonly data
       const readonly = await this.getReadOnlyStreams();
 
-      const contractName = this.contractLocation.substr(
+      const contractName = this.contractLocation.substring(
         this.contractLocation.lastIndexOf("/") + 1
       );
 
@@ -819,6 +890,7 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: Math.floor(Math.random() * 100),
+        contractData,
       };
 
       // Check if the security data has been cached
@@ -1085,7 +1157,8 @@ export class Process extends EventEmitter {
             this.nodeResponse,
             this.db,
             this,
-            this.shared
+            this.shared,
+            this.contractId
           );
 
           earlyCommit
@@ -1154,7 +1227,8 @@ export class Process extends EventEmitter {
                     this.nodeResponse,
                     this.db,
                     this,
-                    this.shared
+                    this.shared,
+                    this.contractId
                   );
                   streamUpdater.updateStreams();
                 } else {

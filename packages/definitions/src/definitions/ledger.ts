@@ -93,6 +93,12 @@ export interface ICommunications {
   [reference: string]: Object;
 }
 
+export interface IContractData {
+  _id: string;
+  _rev?: string;
+  data: any;
+}
+
 /**
  * Granual detail of the transaction object
  *

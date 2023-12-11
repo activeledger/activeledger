@@ -25,6 +25,7 @@ import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
+import { ActiveLogger } from "@activeledger/activecontracts";
 
 /**
  * Manages the permissions of revisions and signatures of each stream type
@@ -57,7 +58,7 @@ export class PermissionsChecker {
     private checkRevs: boolean,
     private securityCache: ISecurityCache,
     private shared: Shared
-  ) {}
+  ) { }
 
   /**
    * Entry point for processing stream data
@@ -73,6 +74,8 @@ export class PermissionsChecker {
   ): Promise<ActiveDefinitions.LedgerStream[]> {
     this.inputs = inputs;
     this.data = data;
+
+    // NOTE: Using ActiveLogger here will cause Activeledger to fail to start
 
     try {
       // Get all streams to process from the database
@@ -94,8 +97,15 @@ export class PermissionsChecker {
   private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
     // Map into a single alldocs lookup
     const keys: string[] = [];
-    for (let i = this.data.length; i--; ) {
+    let contractDataIncluded = false;
+
+    for (let i = this.data.length; i--;) {
       const filteredPrefix = this.shared.filterPrefix(this.data[i]);
+
+      // Are we looking at contract data?
+      const suffix = this.data[i].split(":")[1];
+      contractDataIncluded = suffix === "data";
+
       keys.push(filteredPrefix + ":stream");
       keys.push(filteredPrefix);
     }
@@ -114,7 +124,7 @@ export class PermissionsChecker {
       const results: ActiveDefinitions.LedgerStream[] = [];
 
       // Must be a better way to manage this, Less operations
-      for (let i = docs.rows.length; i--; ) {
+      for (let i = docs.rows.length; i--;) {
         // stream will be last so most likely need to replace
         // Using .doc for consistancy between data engines
         const baseDoc = docs.rows[i].doc._id.replace(":stream", "");
@@ -167,6 +177,24 @@ export class PermissionsChecker {
             if (iMeta) result.meta = iMeta;
           } else {
             if (iState) result.state = iState;
+          }
+        }
+      }
+
+      // If contract data is being dealt with we need to handle meta ourselves
+      if (contractDataIncluded) {
+
+        for (let i = results.length; i--;) {
+          const sId = results[i].state._id;
+
+          if (sId && sId.indexOf(":data")) {
+            let cRes = results[i];
+            cRes.meta = {
+              _id: `${cRes.state._id}:meta`,
+              _rev: "0-context"
+            }
+
+            results[i] = cRes;
           }
         }
       }

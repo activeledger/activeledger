@@ -61,6 +61,15 @@ export class Stream {
   private outINC: Object;
 
   /**
+   * Flag indicating contract data has been updated
+   *
+   * @public
+   * @type {boolean}
+   * @memberof Stream
+   */
+  public updatedContractData: boolean = false;
+
+  /**
    * Are we throwing this transaction to another ledger
    *
    * @private
@@ -133,6 +142,7 @@ export class Stream {
     private inputs: ActiveDefinitions.LedgerStream[],
     private outputs: ActiveDefinitions.LedgerStream[],
     private reads: ActiveDefinitions.LedgerIORputs,
+    private contractData: ActiveDefinitions.IContractData,
     private sigs: ActiveDefinitions.LedgerSignatures,
     private key: number,
     private eventEmitter: EventEmitter,
@@ -171,31 +181,31 @@ export class Stream {
     }
   }
 
-    /**
-   * Filter out unknown prefixes (copied from selhost.ts)
-   *
-   * @private
-   * @param {string} stream
-   * @returns {string}
-   * @memberof PermissionsChecker
-   */
-    private filterPrefix(stream: string): string {
-      // Remove any suffix like :volatile :stream :umid
-      let [streamId, suffix] = stream.split(":");
-  
-      // If id length more than 64 trim the start
-      if (streamId.length > 64) {
-        streamId = streamId.slice(-64);
-      }
-  
-      // If suffix add it back to return
-      if (suffix) {
-        return streamId + ":" + suffix;
-      }
-  
-      // Return just the id
-      return streamId;
-    };
+  /**
+ * Filter out unknown prefixes (copied from selhost.ts)
+ *
+ * @private
+ * @param {string} stream
+ * @returns {string}
+ * @memberof PermissionsChecker
+ */
+  private filterPrefix(stream: string): string {
+    // Remove any suffix like :volatile :stream :umid
+    let [streamId, suffix] = stream.split(":");
+
+    // If id length more than 64 trim the start
+    if (streamId.length > 64) {
+      streamId = streamId.slice(-64);
+    }
+
+    // If suffix add it back to return
+    if (suffix) {
+      return streamId + ":" + suffix;
+    }
+
+    // Return just the id
+    return streamId;
+  };
 
   /**
    * Attempts to decrypt data with possible known private keys
@@ -318,6 +328,42 @@ export class Stream {
 
     // Have we reached authority stake requested for their conesnsus
     return total >= minimum;
+  }
+
+  /**
+   * Get data linked to this contract
+   *
+   * @returns {*}
+   * @memberof Stream
+   */
+  public getContractData<T>(): T {
+    return this.contractData as unknown as T;
+  }
+
+  /**
+   * Set data linked to this contract
+   *
+   * @param {T} contractData
+   * @returns {void}
+   * @memberof Stream
+   */
+  public setContractData<T>(contractData: T): void {
+    if (!this.contractData._id) {
+      this.contractData._id = `${this.transactions.$contract}:data`;
+    }
+
+    this.contractData.data = contractData as any;
+    this.updatedContractData = true;
+  }
+
+  /**
+   * Export contract data to ledger for storage
+   *
+   * @returns {ActiveDefinitions.IContractData}
+   * @memberof Stream
+   */
+  public exportContractData(): ActiveDefinitions.IContractData {
+    return this.contractData;
   }
 
   /**
