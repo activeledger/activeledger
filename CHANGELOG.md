@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.12.1]
+
+### Fix
+* **Protocol** : Prevents returning "Stream not found" for when a duplicate stream is found within the same i/o group.
+
 ## [2.12.0]
 
 ### Feature
