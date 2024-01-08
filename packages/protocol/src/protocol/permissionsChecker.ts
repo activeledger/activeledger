@@ -106,8 +106,11 @@ export class PermissionsChecker {
       const suffix = this.data[i].split(":")[1];
       contractDataIncluded = suffix === "data";
 
-      keys.push(filteredPrefix + ":stream");
-      keys.push(filteredPrefix);
+      // Maybe use set instead of checking?
+      if(keys.indexOf(filteredPrefix) === -1) {
+        keys.push(filteredPrefix + ":stream");
+        keys.push(filteredPrefix);
+      }
     }
 
     // Single fetch
