@@ -37,6 +37,7 @@ import {
   IVMContractReferences,
   IVirtualMachine,
 } from "./interfaces/vm.interface";
+import { createInterface } from "readline";
 
 /**
  * Contract Virtual Machine Controller
@@ -46,7 +47,8 @@ import {
  */
 export class VirtualMachine
   extends events.EventEmitter
-  implements IVirtualMachine {
+  implements IVirtualMachine
+{
   /**
    * Virtual Machine Object
    *
@@ -211,7 +213,7 @@ export class VirtualMachine
         mock,
       },
       // Disable Wasm to avoid sandbox escapes
-      wasm: false
+      wasm: false,
     });
 
     // Pull in the code to use for the VMScript
@@ -246,9 +248,7 @@ export class VirtualMachine
     let exported: ActiveDefinitions.LedgerStream[] = [];
 
     if (contractData) {
-      exported.push(
-        contractData as unknown as ActiveDefinitions.LedgerStream
-      );
+      exported.push(contractData as unknown as ActiveDefinitions.LedgerStream);
     }
 
     // Loop each stream and find the marked ones
@@ -340,13 +340,14 @@ export class VirtualMachine
     contractName: string
   ): Promise<void> {
     // Return as promise for initalise
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!this.contractReferences) {
         this.contractReferences = {};
       }
 
       this.contractReferences[payload.umid] = {
         contractName,
+        contractLocation: payload.contractLocation,
         inputs: payload.inputs,
         tx: payload.transaction,
         key: payload.key,
@@ -384,7 +385,7 @@ export class VirtualMachine
       } catch (e) {
         if (e instanceof Error) {
           // Exception
-          reject(this.catchException(e, payload.umid));
+          reject(await this.catchException(e, payload.umid));
         }
       }
     });
@@ -420,7 +421,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -461,7 +462,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -505,7 +506,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -557,7 +558,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -607,7 +608,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -632,7 +633,7 @@ export class VirtualMachine
     who: string,
     umid: string
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
 
@@ -669,7 +670,7 @@ export class VirtualMachine
       } catch (error) {
         if (error instanceof Error) {
           // Exception
-          reject(this.catchException(error, umid));
+          reject(await this.catchException(error, umid));
         } else {
           // Rejected by contract
           reject(error);
@@ -774,9 +775,9 @@ export class VirtualMachine
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-          timedout()
+            timedout()
           : // Check again later
-          this.checkTimeout(type, timedout, umid);
+            this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
@@ -817,7 +818,7 @@ export class VirtualMachine
    * @returns {*}
    * @memberof VirtualMachine
    */
-  private catchException(e: Error, umid: string): any {
+  private async catchException(e: Error, umid: string): Promise<any> {
     // Exception
     if (
       e.stack &&
@@ -847,9 +848,22 @@ export class VirtualMachine
           contractLastCallLine.length
         );
 
+        // This should already be filtered at the output but double check as it
+        // will also prevent reading files
+        let line;
+        if (ActiveOptions.get<boolean>("debug", false)) {
+          line = (
+            await this.readNthLine(
+              this.contractReferences[umid].contractLocation,
+              parseInt(contractErrorInfo.substring(contractErrorInfo.indexOf(":")+1,contractErrorInfo.lastIndexOf(":")))
+            )
+          ).trim();
+        }
+
         return {
           error: e.message,
           at: contractErrorInfo,
+          line,
         };
       } else {
         // Degrade to first line from the trace
@@ -873,6 +887,35 @@ export class VirtualMachine
       return e.message;
     }
   }
+
+  /**
+   * Stream reads specific line from file (Debugging only)
+   *
+   * @private
+   * @param {string} file
+   * @param {number} nthLine
+   * @returns {Promise<string>}
+   * @memberof VirtualMachine
+   */
+  private async readNthLine(file: string, nthLine: number): Promise<string> {
+    const rl = createInterface({
+      input: fs.createReadStream(file),
+    });
+
+    // Loop lines searching for nth
+    let lineNumber = 0;
+    for await (const line of rl) {
+      lineNumber++;
+      if (lineNumber === nthLine) {
+        // Found close and return
+        rl.close();
+        return line;
+      }
+    }
+    // Didn't find still close and return empty
+    rl.close();
+    return "";
+  }
 }
 
 /**
@@ -882,4 +925,4 @@ export class VirtualMachine
  *
  * @class MockBuiltinSecurity
  */
-class MockBuiltinSecurity { }
+class MockBuiltinSecurity {}

@@ -76,6 +76,7 @@ export interface IContractKeyHolder {
 
 interface IVMContractReferenceData {
   contractName: string;
+  contractLocation: string;
   inputs: ActiveDefinitions.LedgerStream[];
   tx: ActiveDefinitions.LedgerTransaction;
   key: number;
