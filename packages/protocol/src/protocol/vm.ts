@@ -839,7 +839,7 @@ export class VirtualMachine
         const contractLastCallLine = contractErrorLine[0].trim();
 
         // Find Contract Start
-        const lastIndexFolder = contractLastCallLine.indexOf(contract) + 1;
+        const lastIndexFolder = contractLastCallLine.indexOf(contract);
 
         // Extract Contract + Line Numbers
         let contractErrorInfo = contractLastCallLine.substring(
