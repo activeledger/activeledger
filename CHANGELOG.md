@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [2.12.2]
+
+### Feature
+* **Protocol** : Database Error id appended to transaction error response
+* **Protocol** : Contract execution error now return the code line that generated the error (Debug Only)
+
+### Fix
+* **Network** : Identities can appear in both $i/$o of a single transaction (Not Recommended, Specific use cases only).
+* **Protocol** : Contract Id name no longer being incorrectly trimmed.
+
 ## [2.12.1]
 
 ### Fix
