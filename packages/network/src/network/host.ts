@@ -219,7 +219,7 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--;) {
+      for (let i = this.hybridHosts.length; i--; ) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
@@ -257,8 +257,8 @@ export class Host extends Home {
           Endpoints.postConvertor(
             this,
             data.toString(),
-            ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-            false
+            (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
+              false
           )
             .then((body) => {
               // Post Converted, Continue processing
@@ -356,8 +356,8 @@ export class Host extends Home {
       if (m.data.revs && !pending.entry.$revs) {
         pending.entry.$revs = {
           $i: m.data.revs.$i || {},
-          $o: m.data.revs.$o || {}
-        }
+          $o: m.data.revs.$o || {},
+        };
       }
 
       // Switch on type of messages from processors
@@ -413,7 +413,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                    ActiveInterfaces.getBindingDetails("port")
+                      ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -456,10 +456,10 @@ export class Host extends Home {
             status: 200,
             data: pending.entry,
           });
-          
+
           // Clear Internal (any safe to remove entry, As it is handling a graceful shutdown)
-          (pending as any).entry = null;                    
-          (pending as any) = null;                   
+          (pending as any).entry = null;
+          (pending as any) = null;
         }
       });
       // find from processors list
@@ -571,9 +571,8 @@ export class Host extends Home {
       // We only want to send our value
       const data = Object.assign(this.processPending[umid].entry, {
         $nodes: {
-          [this.reference]: this.processPending[umid].entry.$nodes[
-            this.reference
-          ],
+          [this.reference]:
+            this.processPending[umid].entry.$nodes[this.reference],
         },
       });
 
@@ -652,7 +651,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--;) {
+    for (let i = keys.length; i--; ) {
       // Stream label or self
       out.push(txIO[keys[i]].$stream || keys[i]);
     }
@@ -675,7 +674,13 @@ export class Host extends Home {
     // Ask for locks
     if (
       v.$selfsign ||
-      Locker.hold([...this.labelOrKey(v.$tx.$i), ...this.labelOrKey(v.$tx.$o)])
+      // Use set to filter unique then back to array (or in loop)
+      Locker.hold([
+        ...new Set([
+          ...this.labelOrKey(v.$tx.$i),
+          ...this.labelOrKey(v.$tx.$o),
+        ]),
+      ])
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -842,8 +847,9 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
-                        }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${
+                        tx.$tx.$namespace
+                      }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -855,7 +861,7 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--;) {
+                    for (let i = keys.length; i--; ) {
                       tmp.push(keys[i] + ":stream");
                     }
 
@@ -936,7 +942,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -1040,8 +1046,8 @@ export class Host extends Home {
             response = Endpoints.ExternalEncrypt(
               this,
               body,
-              ((req.headers["x-activeledger-encrypt"] as unknown) as boolean) ||
-              false,
+              (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
+                false,
               this.dbConnection
             );
             // Pass db conntection
@@ -1153,7 +1159,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-        (req.connection.remoteAddress as string)
+          (req.connection.remoteAddress as string)
       )
     );
   }
