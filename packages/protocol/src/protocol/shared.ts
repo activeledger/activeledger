@@ -211,12 +211,17 @@ export class Shared {
   ) {
     try {
       // Store in database for activerestore to review
-      await this.storeError(code, reason, priority);
+      const dbDoc = await this.storeError(code, reason, priority);
 
       if (!stop) {
+        // Append database error id for easier reference
+        let error = this._errorOut.reason;
+        if(dbDoc.id) {
+          error += " - Error " + dbDoc.id;
+        }
         this.emitter.emit("failed", {
           status: this._errorOut.code,
-          error: this._errorOut.reason,
+          error,
         });
       }
     } catch (error) {
