@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.12.3]
+
+### Fix
+* **Crypto** : Import incorrectly assumed 02 03 04 would always be public. Switched to more relilable hex length+2 private keys are 64 vs public 66.
+
 ## [2.12.2]
 
 ### Feature
