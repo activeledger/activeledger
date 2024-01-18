@@ -98,10 +98,12 @@ export class KeyPair {
           if (pem.startsWith("0x")) {
             // Raw Hex based key
             if (
-              pem.startsWith("0x02") || // compressed y point even
-              pem.startsWith("0x03") || // compressed y point odd
-              pem.startsWith("0x04") || // Uncompressed Public key
-              pem.length > 66 // Default to uncompressed Public Key with 0x accounted for if over 64 characters long
+              //pem.startsWith("0x02") || // compressed y point even
+              //pem.startsWith("0x03") || // compressed y point odd
+              //pem.startsWith("0x04") || // Uncompressed Public key
+              // Silly mistake private keys may start as 02 03 04 
+              // (below 66 is to account for 0x string public keys are 64 hex privates are 64)
+              pem.length > 66 // Default to uncompressed Public Key with 0x accounted for if over 66 characters long
             ) {
               // Public
               this.createHandler(
