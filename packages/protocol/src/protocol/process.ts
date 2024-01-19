@@ -516,7 +516,7 @@ export class Process extends EventEmitter {
               // This catch block is used for when a contract doesn't have a data file yet
               // Need to make sure we still restore correctly if it is just a single node missing
               // the data file for that contract.
-              if(e.code === 1200) {
+              if (e.code === 1200) {
                 // 1200 means the _rev map didn't match so position error (defaults as output)
                 throw e;
               }
@@ -816,11 +816,19 @@ export class Process extends EventEmitter {
         this.postVote(virtualMachine);
       }
     } else {
-      // Read only so lets call the $entry (or default which is read())
-      this.nodeResponse.return = await virtualMachine.read(
-        this.entry.$umid,
-        this.entry.$tx.$entry || "read"
-      );
+      try {
+        // Read only so lets call the $entry (or default which is read())
+        this.nodeResponse.return = await virtualMachine.read(
+          this.entry.$umid,
+          this.entry.$tx.$entry || "read"
+        );
+      } catch (error) {
+        // Do something with the error
+        this.nodeResponse.error = "Read Error - " + JSON.stringify(error);
+      }
+
+      // Prevents false positive error log "failed to commit before timeout"
+      this.nodeResponse.commit = true;
 
       // Continue to next nodes vote, We may just want to return
       // however using $instant allows this and we could also have multiple node

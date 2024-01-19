@@ -463,6 +463,7 @@ class Processor {
     // Pass back to host to respond
     this.send("unhandledrejection", {
       umid: entry.$umid,
+      nodes: entry.$nodes,
     });
 
     if (!entry.$broadcast) {

@@ -424,7 +424,7 @@ export class Host extends Home {
           // So if we send as resolve it should still work
           pending.resolve({
             status: 200,
-            data: "UnhandledRejection Error",
+            data: { ...pending.entry, ...m.data.entry },
           });
           // Remove Locks
           this.release(pending);
