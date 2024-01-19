@@ -182,14 +182,14 @@ class ContractControl implements IVMObject {
   }
 
   /**
-   * Run the voting round of the contract
+   * Run an unknown contract read function 
    *
    * @returns {Promise<boolean>}
    * @memberof ContractControl
    */
-  public runRead(umid: string, readMethod: string): Promise<unknown> {
-    const read = (this.smartContracts[umid] as any)[readMethod]?.();
-    return read ? read : false;
+  public async runRead(umid: string, readMethod: string): Promise<unknown> {
+      const read = (this.smartContracts[umid] as any)[readMethod]?.();
+      return read ? read : false;
   }
 
   /**

@@ -400,22 +400,22 @@ export class VirtualMachine
    */
   public read(umid: string, readMethod: string): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
+      // Script running flag
+      this.scriptFinishedExec = false;
+
+      // Upgrade Phase
+      this.event.setPhase("read");
+
+      // Manage Timeout
+      this.checkTimeout(
+        readMethod,
+        () => {
+          reject("VM Error : Read phase timeout");
+        },
+        umid
+      );
+
       try {
-        // Script running flag
-        this.scriptFinishedExec = false;
-
-        // Upgrade Phase
-        this.event.setPhase("read");
-
-        // Manage Timeout
-        this.checkTimeout(
-          readMethod,
-          () => {
-            reject("VM Error : Read phase timeout");
-          },
-          umid
-        );
-
         // Get Commit
         resolve(await this.virtualInstance.runRead(umid, readMethod));
       } catch (error) {
@@ -855,7 +855,12 @@ export class VirtualMachine
           line = (
             await this.readNthLine(
               this.contractReferences[umid].contractLocation,
-              parseInt(contractErrorInfo.substring(contractErrorInfo.indexOf(":")+1,contractErrorInfo.lastIndexOf(":")))
+              parseInt(
+                contractErrorInfo.substring(
+                  contractErrorInfo.indexOf(":") + 1,
+                  contractErrorInfo.lastIndexOf(":")
+                )
+              )
             )
           ).trim();
         }
