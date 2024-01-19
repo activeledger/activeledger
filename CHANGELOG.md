@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.12.4]
+
+### Fix
+* **Network / Protocol** : Handles unhandledRejections better and returns the standard payload with contract errors if applicable. (No more 500 return payloads).
+
 ## [2.12.3]
 
 ### Fix
