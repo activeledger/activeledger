@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.12.5]
+
+### New
+* **Activeledger CLI** : Ability for a single host to run the database and ledger as seperate processes.
+
+### Fix
+* **Network / Protocol** : Further unhandledRejections handling improvements.
+
+
 ## [2.12.4]
 
 ### Fix
