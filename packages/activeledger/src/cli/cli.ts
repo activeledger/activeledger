@@ -416,12 +416,18 @@ export class CLIHandler {
       ActiveLogger.info("Activeledger Boot Process Started");
 
       // Self hosted data storage engine
-      if (ActiveOptions.get<any>("db", {}).selfhost) {
-        // Create Datastore instance
-        let datastore: ActiveDataStore = new ActiveDataStore();
+      const dbConfig = ActiveOptions.get<any>("db", {});
+      if (dbConfig.selfhost) {
+        if(ActiveOptions.get<any>("db-only", false) || !dbConfig.autostart) {
+          // Create Datastore instance
+          const datastore: ActiveDataStore = new ActiveDataStore();
 
-        // Rewrite config for this process
-        ActiveOptions.get<any>("db", {}).url = datastore.launch();
+          // Rewrite config for this process
+          ActiveOptions.get<any>("db", {}).url = datastore.launch();
+        } else {
+          // We should have it running as another process so can assume
+          ActiveOptions.get<any>("db", {}).url = "http://127.0.0.1:" + dbConfig.selfhost.port;
+        }
 
         // Enable Extended Debugging
         ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
