@@ -977,6 +977,11 @@ export class Process extends EventEmitter {
     // Set voting completed state
     this.voting = false;
 
+    if (!this.entry) {
+      // Unhandled contract error issues
+      return;
+    }
+
     // Instant Transaction Return right away
     if (!error && this.entry.$instant) {
       this.emit("commited", { instant: true });

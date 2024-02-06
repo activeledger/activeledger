@@ -457,7 +457,8 @@ class Processor {
     ActiveLogger.warn(error, "UnhandledRejection");
     // Store error (if we can)
     if (entry.$nodes) {
-      entry.$nodes[Home.reference].error = error;
+      entry.$nodes[Home.reference].error =
+        "(Unhandled Contract Error) " + error.toString();
     }
 
     // Pass back to host to respond
