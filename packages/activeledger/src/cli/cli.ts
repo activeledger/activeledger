@@ -23,6 +23,7 @@
 
 import * as child from "child_process";
 import * as fs from "fs";
+import { resolve } from "path";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDataStore } from "@activeledger/activestorage";
@@ -40,6 +41,16 @@ export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
   private static readonly statsHandler: StatsHandler = new StatsHandler();
   private static version: string;
+
+  /**
+   * Return version from package.json
+   *
+   * @static
+   * @memberof CLIHandler
+   */
+  public static getVersion(): void {
+    console.log(`v${JSON.parse(fs.readFileSync(resolve(__dirname, "../../package.json"), "utf8")).version}`);
+  }
 
   /**
    * Start the local node

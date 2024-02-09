@@ -63,6 +63,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   CLIHandler.startCompact();
 } else if (ActiveOptions.get<boolean>("flush", false)) {
   CLIHandler.flushArchives(ActiveOptions.get<number>("flush", false));
+} else if (
+  ActiveOptions.get<boolean>("version", false) ||
+  ActiveOptions.get<boolean>("v", false)
+) {
+  CLIHandler.getVersion();
 } else {
   CLIHandler.start();
 }
