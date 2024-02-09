@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.13.1]
+
+### Fix
+* **Activeledger CLI** : --version doesn't generate .identity file anymore.
+* **Activeledger CLI** : Database auto starting works as expected (no longer attempts to start when config is false)
+
 ## [2.13.0]
 
 ### New
