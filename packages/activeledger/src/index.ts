@@ -67,7 +67,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   ActiveOptions.get<boolean>("version", false) ||
   ActiveOptions.get<boolean>("v", false)
 ) {
-  CLIHandler.getVersion();
+  console.log(`v${version}`);
 } else {
   CLIHandler.start();
 }
