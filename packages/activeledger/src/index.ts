@@ -35,6 +35,15 @@ const version = "unset";
 // Initalise CLI Options
 ActiveOptions.init();
 
+// Show Version (Doesn't require identity)
+if (
+  ActiveOptions.get<boolean>("version", false) ||
+  ActiveOptions.get<boolean>("v", false)
+) {
+  console.log(`v${version}`);
+  process.exit(0);
+}
+
 // Do we have an identity (Will always need, Can be shared)
 if (!fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
@@ -63,11 +72,6 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   CLIHandler.startCompact();
 } else if (ActiveOptions.get<boolean>("flush", false)) {
   CLIHandler.flushArchives(ActiveOptions.get<number>("flush", false));
-} else if (
-  ActiveOptions.get<boolean>("version", false) ||
-  ActiveOptions.get<boolean>("v", false)
-) {
-  console.log(`v${version}`);
 } else {
   CLIHandler.start();
 }
