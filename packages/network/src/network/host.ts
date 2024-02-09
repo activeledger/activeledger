@@ -291,8 +291,29 @@ export class Host extends Home {
     // How many threads (Cache so we can check on ready)
     const cpuTotal = PhysicalCores.count();
 
-    // Processor Setup Values
-    const setup: setup = {
+    // Setup Processors
+    for (let i = 0; i < cpuTotal; i++) {
+      // Add process into array
+      const processor = this.createProcessor(cpuTotal);
+      // Add to list
+      this.processors.push(processor);
+      // Setup
+      processor.send(this.getLatestSetup());
+    }
+
+    // Setup Iterator
+    this.processorIterator = this.processors[Symbol.iterator]();
+  }
+
+  /**
+   * Retuns latest setup for a subprocess
+   *
+   * @private
+   * @returns {setup}
+   * @memberof Host
+   */
+  private getLatestSetup(): setup {
+    return {
       type: "setup",
       data: {
         self: Home.host,
@@ -305,23 +326,6 @@ export class Host extends Home {
         __base: ActiveOptions.get("__base", __dirname),
       },
     };
-
-    // Setup Processors
-    for (let i = 0; i < cpuTotal; i++) {
-      // Add process into array
-      const processor = this.createProcessor(setup, cpuTotal);
-      // Add to list
-      this.processors.push(processor);
-      // Setup
-      processor.send(setup);
-    }
-
-    // Setup Iterator
-    this.processorIterator = this.processors[Symbol.iterator]();
-    //})
-    // .catch((e) => {
-    //   throw new Error("Couldn't create default index");
-    // });
   }
 
   /**
@@ -331,12 +335,54 @@ export class Host extends Home {
    * @returns {ChildProcess}
    * @memberof Host
    */
-  private createProcessor(setup: setup, cpuTotal?: number): ChildProcess {
+  private createProcessor(cpuTotal?: number): ChildProcess {
     // Create Process
     const pFork = fork(`${__dirname}/process.js`, [], {
       cwd: process.cwd(),
       stdio: "inherit",
     });
+
+    // Reusable restart process from error with current scope
+    const restartBadProcess = (...error: any[]) => {
+      ActiveLogger.fatal(error, "Processor Crashed");
+      // Look for any transactions which are in this processor
+      const pendings = Object.keys(this.processPending);
+      pendings.forEach((key) => {
+        // Get Transaction
+        let pending = this.processPending[key];
+        // Was this transaction in the broken processor
+        if (pending?.pid === pFork.pid) {
+          // This will just resolve all pending transactions in that process pool
+          // Wont be graceful but most likely other nodes will have the same conclusion
+
+          // Assign general error
+          pending.entry.$nodes[this.reference].error =
+            "(Unhandled Contract Error) Unknown - Try Again";
+
+          // Resolve to return oprhened transactions
+          pending.resolve({
+            status: 200,
+            data: pending.entry,
+          });
+
+          // Remove Locks
+          this.release(pending, true);
+        }
+      });
+      const pos = this.processors.findIndex((processor) => {
+        return processor.pid === pFork.pid;
+      });
+      // Remove from processors list and create new
+      if (pos !== -1) {
+        this.processors.splice(pos, 1);
+        // We should now create a new processor
+        const processor = this.createProcessor();
+        // Add to list
+        this.processors.push(processor);
+        // Setup
+        processor.send(this.getLatestSetup());
+      }
+    };
 
     // Listen for message to respond to waiting http
     pFork.on("message", (m: any) => {
@@ -421,13 +467,16 @@ export class Host extends Home {
           }
           break;
         case "unhandledrejection":
-          // So if we send as resolve it should still work
           pending.resolve({
             status: 200,
             data: { ...pending.entry, ...m.data.entry },
           });
           // Remove Locks
-          this.release(pending);
+          this.release(pending, true);
+          // End process and create new subprocess
+          restartBadProcess(
+            "unhandledrejection - Already Handled, Tidying up processes"
+          );
           break;
         case "contractLatestVersion":
           // Let other processes know of new version
@@ -442,41 +491,7 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", (error) => {
-      ActiveLogger.fatal(error, "Processor Crashed");
-      // Look for any transactions which are in this processor
-      const pendings = Object.keys(this.processPending);
-      pendings.forEach((key) => {
-        // Get Transaction
-        let pending = this.processPending[key];
-        // Was this transaction in the broken processor
-        if (pending.pid === pFork.pid) {
-          // Resolve to return oprhened transactions
-          pending.resolve({
-            status: 200,
-            data: pending.entry,
-          });
-
-          // Clear Internal (any safe to remove entry, As it is handling a graceful shutdown)
-          (pending as any).entry = null;
-          (pending as any) = null;
-        }
-      });
-      // find from processors list
-      const pos = this.processors.findIndex((processor) => {
-        return processor.pid === pFork.pid;
-      });
-      // Remove from processors list
-      if (pos) {
-        this.processors.splice(pos, 1);
-      }
-      // We should now create a new processor
-      const processor = this.createProcessor(setup);
-      // Add to list
-      this.processors.push(processor);
-      // Setup
-      processor.send(setup);
-    });
+    pFork.on("error", restartBadProcess);
 
     return pFork;
   }
@@ -538,7 +553,7 @@ export class Host extends Home {
     // Make sure it hasn't ben removed already
     if (this.processPending[umid]) {
       // Pass destory message to processor
-      this.findProcessor(this.processPending[umid].pid)!.send({
+      this.findProcessor(this.processPending[umid].pid)?.send({
         type: "destory",
         data: {
           umid,
@@ -743,27 +758,33 @@ export class Host extends Home {
    *
    * @private
    * @param {string} v
+   * @param {boolean} noWait Don't wait to release
    * @memberof Host
    */
-  private release(pending: process) {
-    // Build a list of streams to release
-    // Would be good to cache this
-    // const input = Object.keys(pending.entry.$tx.$i || {});
-    // const output = Object.keys(pending.entry.$tx.$o || {});
-
+  private release(pending: process, noWait = false) {
     // Ask for releases
     Locker.release([
       ...this.labelOrKey(pending.entry.$tx.$i),
       ...this.labelOrKey(pending.entry.$tx.$o),
     ]);
 
-    // Keep transaction in memory for a bit (5 Minutes)
-    setTimeout(() => {
+    // Shared removal method for instant or delayed.
+    // delayed only used on broadcast but only paniced processes call instant
+    const remove = () => {
       // Remove from pending list
       if (pending.entry) {
         this.destroy(pending.entry.$umid);
       }
-    }, 300000); //20000
+    };
+
+    if (noWait) {
+      remove();
+    } else {
+      // Keep transaction in memory for a bit (5 Minutes)
+      setTimeout(() => {
+        remove();
+      }, 300000); //20000
+    }
   }
 
   /**
