@@ -182,13 +182,13 @@ export class Stream {
   }
 
   /**
- * Filter out unknown prefixes (copied from selhost.ts)
- *
- * @private
- * @param {string} stream
- * @returns {string}
- * @memberof PermissionsChecker
- */
+   * Filter out unknown prefixes (copied from selhost.ts)
+   *
+   * @private
+   * @param {string} stream
+   * @returns {string}
+   * @memberof PermissionsChecker
+   */
   private filterPrefix(stream: string): string {
     // Remove any suffix like :volatile :stream :umid
     let [streamId, suffix] = stream.split(":");
@@ -205,7 +205,7 @@ export class Stream {
 
     // Return just the id
     return streamId;
-  };
+  }
 
   /**
    * Attempts to decrypt data with possible known private keys
@@ -281,7 +281,9 @@ export class Stream {
   public getActivityStreams(stream?: any): any {
     if (stream) {
       // Auto detect $stream on passed object
-      const streamLookup = this.filterPrefix(stream.$stream ? stream.$stream : stream);
+      const streamLookup = this.filterPrefix(
+        stream.$stream ? stream.$stream : stream
+      );
       // Return Existing Stream
       if (this.activities[streamLookup]) return this.activities[streamLookup];
       // Return New
@@ -1039,7 +1041,12 @@ export class Activity {
   public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
     return new Promise((resolve, reject) => {
       if (this.volatile) {
-        resolve(this.makeVolatileSafe());
+        try {
+          resolve(this.makeVolatileSafe());
+        } catch(e) {
+          // Most likely not found bad json rethrow
+          reject("Volatile Data - Invalid");
+        }
       } else {
         const umid = this.umid,
           streamid = this.getId();
@@ -1050,11 +1057,16 @@ export class Activity {
           (err: Error, volatile: ActiveDefinitions.IVolatile) => {
             if (err) {
               ActiveLogger.debug(err, "Event error");
-              reject(err);
+              return reject("Volatile Data - Not Found");
             }
             // Set all data as volatile
             this.volatile = volatile;
-            resolve(this.makeVolatileSafe());
+            try {
+              resolve(this.makeVolatileSafe());
+            } catch(e) {
+              // Most likely not found bad json rethrow
+              reject("Volatile Data - Invalid");
+            }
           }
         );
       }
