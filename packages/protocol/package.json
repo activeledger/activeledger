@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.12.5",
+  "version": "2.13.0",
   "description": "Underlying protocol which handles consensus and the smart contract virtual machine of Activeledger",
   "keywords": [
     "blockchain",
@@ -39,7 +39,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.12.3",
+    "@activeledger/activecontracts": "^2.13.0",
     "@activeledger/activecrypto": "^2.12.3",
     "@activeledger/activedefinitions": "^2.12.0",
     "@activeledger/activelogger": "^2.7.0",
