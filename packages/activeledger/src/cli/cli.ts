@@ -418,7 +418,7 @@ export class CLIHandler {
       // Self hosted data storage engine
       const dbConfig = ActiveOptions.get<any>("db", {});
       if (dbConfig.selfhost) {
-        if(ActiveOptions.get<any>("db-only", false) || !dbConfig.autostart) {
+        if (ActiveOptions.get<any>("db-only", false) || dbConfig.autostart) {
           // Create Datastore instance
           const datastore: ActiveDataStore = new ActiveDataStore();
 
@@ -426,7 +426,18 @@ export class CLIHandler {
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
         } else {
           // We should have it running as another process so can assume
-          ActiveOptions.get<any>("db", {}).url = "http://127.0.0.1:" + dbConfig.selfhost.port;
+          ActiveOptions.get<any>("db", {}).url =
+            "http://127.0.0.1:" + dbConfig.selfhost.port;
+
+          // Lets check the database is running
+          ActiveRequest.send(ActiveOptions.get<any>("db", {}).url, "GET").catch(
+            () => {
+              ActiveLogger.fatal(
+                `Datbase Not Running - ${ActiveOptions.get<any>("db", {}).url}`
+              );
+              process.exit(1);
+            }
+          );
         }
 
         // Enable Extended Debugging
