@@ -1,5 +1,14 @@
 # Activeledger Changelog
 
+## [2.13.0]
+
+### New
+* **Activeledger CLI** : --version or -v shows application version.
+
+### Fix
+* **Contracts** : When fetching volatile that is missing or invalid show a better error output.
+* **Network** : Prevents and manages sub processes from crashing and restarts if needed.
+
 ## [2.12.5]
 
 ### New
