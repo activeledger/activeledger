@@ -329,7 +329,7 @@ class Processor {
   private failed(entry: any, error: Error): void {
     ActiveLogger.debug(error, "TX Failed");
     // Store error
-    entry.$nodes[Home.reference].error = error;
+    entry.$nodes[Home.reference].error = error.toString();
 
     // Pass back to host to respond
     this.send("commited", {
