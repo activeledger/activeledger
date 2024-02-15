@@ -418,7 +418,7 @@ export class CLIHandler {
       // Self hosted data storage engine
       const dbConfig = ActiveOptions.get<any>("db", {});
       if (dbConfig.selfhost) {
-        if (ActiveOptions.get<any>("db-only", false) || dbConfig.autostart) {
+        if (ActiveOptions.get<any>("db-only", false) || dbConfig.autostart !== false) {
           // Create Datastore instance
           const datastore: ActiveDataStore = new ActiveDataStore();
 
