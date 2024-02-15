@@ -375,65 +375,110 @@ export class Process extends EventEmitter {
     const setupLocation = () => {
       let contract = this.entry.$tx.$contract;
 
-      let namespacePath = fs.realpathSync(
-        `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
-      );
+      try {
+        let contractId: string;
+        let namespacePath: string;
 
-      // Make sure the path is not a symlink
-      const trueContractPath = fs.realpathSync(
-        `${namespacePath}/${contract}.js`
-      );
+        try {
+          namespacePath = fs.realpathSync(
+            `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
+          );
 
-      let contractId = path.basename(
-        trueContractPath,
-        path.extname(trueContractPath)
-      );
+          // Make sure the path is not a symlink
+          const trueContractPath = fs.realpathSync(
+            `${namespacePath}/${contract}.js`
+          );
 
-      // We don't want the version number if the contract has one
-      if (contractId.indexOf("@") > -1) {
-        contractId = contractId.split("@")[0];
-      }
+          contractId = path.basename(
+            trueContractPath,
+            path.extname(trueContractPath)
+          );
 
-      this.contractId = contractId;
-
-      // Does the string contain @ then we leave it alone
-      if (this.entry.$tx.$contract.indexOf("@") === -1) {
-        if (contractVersion) {
-          contract = contractVersion;
-        } else {
-          // Now we find the latest @ in the file system and include
-          // need to remember to update it upon upgrades. This way we don't nned to manage cache
-          // Or the VMs
-          contract =
-            fs
-              .readdirSync(namespacePath)
-              .filter((fn) => fn.includes(`${this.contractId}@`))
-              .sort(this.sortVersions)
-              .pop()
-              ?.replace(".js", "") || this.contractId;
-
-          // Cache it to parent process handler
-          this.emit("contractLatestVersion", {
-            contract: this.entry.$tx.$contract,
-            file: contract,
-          });
+          // We don't want the version number if the contract has one
+          if (contractId.indexOf("@") > -1) {
+            contractId = contractId.split("@")[0];
+          }
+        } catch {
+          throw new Error("Contract or Namespace not found");
         }
-      }
 
-      // Wrapped in realpathSync to avoid issues with cached contracts
-      // And to allow us to get the ID of the contract if a label (symlink) was
-      // used in the transaction
-      // This needs to be here rather than where trueConrtractPath is as
-      // we need the contract ID at that point to look up the latest version
-      this.contractLocation = fs.realpathSync(
-        `${namespacePath}/${contract}.js`
-      );
+        this.contractId = contractId;
+
+        // Does the string contain @ then we leave it alone
+        if (this.entry.$tx.$contract.indexOf("@") === -1) {
+          if (contractVersion) {
+            contract = contractVersion;
+          } else {
+            try {
+              // Now we find the latest @ in the file system and include
+              // need to remember to update it upon upgrades. This way we don't nned to manage cache
+              // Or the VMs
+              contract =
+                fs
+                  .readdirSync(namespacePath)
+                  .filter((fn) => fn.includes(`${this.contractId}@`))
+                  .sort(this.sortVersions)
+                  .pop()
+                  ?.replace(".js", "") || this.contractId;
+
+              // Cache it to parent process handler
+              this.emit("contractLatestVersion", {
+                contract: this.entry.$tx.$contract,
+                file: contract,
+              });
+            } catch {
+              throw new Error(`${this.contractId}@latest not found`);
+            }
+          }
+        }
+
+        // Check For Locks Global and Version
+        if (
+          fs.existsSync(
+            `${namespacePath}/_LOCK.${this.contractId}`
+          )
+        ) {
+          throw new Error("Contract Global Lock");
+        }
+
+        // 
+        if (
+          fs.existsSync(
+            `${namespacePath}/_LOCK.${contract}`
+          )
+        ) {
+          throw new Error(
+            `Contract Version Lock ${contract.substring(
+              contract.indexOf("@") + 1
+            )}`
+          );
+        }
+        // Wrapped in realpathSync to avoid issues with cached contracts
+        // And to allow us to get the ID of the contract if a label (symlink) was
+        // used in the transaction
+        // This needs to be here rather than where trueConrtractPath is as
+        // we need the contract ID at that point to look up the latest version
+        this.contractLocation = fs.realpathSync(
+          `${namespacePath}/${contract}.js`
+        );
+      } catch (e) {
+        throw e;
+      }
     };
 
-    // Is this a default contract
-    this.entry.$tx.$namespace === "default"
-      ? setupDefaultLocation()
-      : setupLocation();
+    try {
+      // Is this a default contract
+      this.entry.$tx.$namespace === "default"
+        ? setupDefaultLocation()
+        : setupLocation();
+    } catch (error) {
+      // Simple Error Return (Can't use postVote yet due to VM)
+      this.entry.$nodes[
+        this.reference
+      ].error = `Init Contract Error - ${error.message}`;
+      this.emit("commited", { instant: true });
+      return;
+    }
 
     // Setup the virtual machine for this process
     const virtualMachine: IVirtualMachine = this.isDefault
