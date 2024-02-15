@@ -514,8 +514,8 @@ export class Interagent {
       const transaction = document.transaction;
 
       let revisions: string[] = [
-        ...(Object.keys(transaction.$revs.$i || {}) as string[]),
-        ...(Object.keys(transaction.$revs.$o || {}) as string[]),
+        ...(Object.keys(transaction.$revs?.$i || {}) as string[]),
+        ...(Object.keys(transaction.$revs?.$o || {}) as string[]),
         ...(Object.values(transaction.$tx.$r || {}) as string[]),
       ];
 
