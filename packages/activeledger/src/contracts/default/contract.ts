@@ -70,6 +70,15 @@ export default class Contract extends Standard {
   private link: string;
 
   /**
+   * Requested Version File
+   *
+   * @private
+   * @type string
+   * @memberof Fund
+   */
+  private version: string = "";
+
+  /**
    * Reference input stream name
    *
    * @private
@@ -136,6 +145,12 @@ export default class Contract extends Standard {
         case "unlink":
           this.voteUnlink(resolve, reject);
           break;
+        case "lock":
+          this.voteLock(resolve, reject);
+          break;
+        case "unlock":
+          this.voteUnlock(resolve, reject);
+          break;
         default:
           this.voteAdd(resolve, reject);
           break;
@@ -160,6 +175,12 @@ export default class Contract extends Standard {
           break;
         case "unlink":
           this.commitUnlink(resolve, reject);
+          break;
+        case "lock":
+          this.commitLock(resolve, reject);
+          break;
+        case "unlock":
+          this.commitUnlock(resolve, reject);
           break;
         default:
           this.commitAdd(resolve, reject);
@@ -190,10 +211,159 @@ export default class Contract extends Standard {
           removeComments: true,
           module: ts.ModuleKind.CommonJS,
           moduleResolution: ts.ModuleResolutionKind.Classic,
-          target: ts.ScriptTarget.ES2017
-        }
+          target: ts.ScriptTarget.ES2017,
+        },
       }
     ).outputText;
+  }
+
+  /**
+   * Are we allowed to create a link?
+   *
+   * @returns {Promise<boolean>}
+   * @memberof Onboard
+   */
+  public voteLock(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$i)[0];
+
+    // Get namespace and set to lowercase
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
+
+    // Get Contract
+    this.contract = (
+      this.transactions.$i[stream].contract as string
+    ).toLowerCase();
+
+    // Get Version Name
+    if (this.transactions.$i[stream].version) {
+      this.version =
+        "@" + (this.transactions.$i[stream].version as string).toLowerCase();
+    }
+
+    // Does this identity have access to namespace (Maybe use ACL?)
+    if (this.identity.getState().namespace == this.namespace) {
+      // Does the Contract File exist?
+      if (
+        fs.existsSync(
+          this.rootDir + this.namespace + "/" + this.contract + ".js"
+        )
+      ) {
+        // Does the Link file not exist!
+        if (
+          !fs.existsSync(
+            this.rootDir +
+              this.namespace +
+              "/_LOCK." +
+              this.contract +
+              this.version
+          )
+        ) {
+          return resolve(true);
+        } else {
+          return reject("Lock already exists");
+        }
+      } else {
+        return reject("Contract not found in namespace");
+      }
+    }
+    return reject("Invalid Namespace");
+  }
+
+  /**
+   * Are we allowed to remove a link?
+   *
+   * @returns {Promise<boolean>}
+   * @memberof Onboard
+   */
+  public voteUnlock(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Get Stream id
+    let stream = Object.keys(this.transactions.$i)[0];
+
+    // Get namespace and set to lowercase
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
+
+    // Get Contract
+    this.contract = (
+      this.transactions.$i[stream].contract as string
+    ).toLowerCase();
+
+    // Get Version Name
+    if (this.transactions.$i[stream].version) {
+      this.version =
+        "@" + (this.transactions.$i[stream].version as string).toLowerCase();
+    }
+
+    // Does this identity have access to namespace (Maybe use ACL?)
+    if (this.identity.getState().namespace == this.namespace) {
+      // Does the Link file exist!
+      if (
+        fs.existsSync(
+          this.rootDir +
+            this.namespace +
+            "/_LOCK." +
+            this.contract +
+            this.version
+        )
+      ) {
+        return resolve(true);
+      } else {
+        return reject("Lock doesn't exists");
+      }
+    }
+    return reject("Invalid Namespace");
+  }
+
+  /**
+   * Create the symlink to the contract
+   *
+   * @returns {Promise<any>}
+   * @memberof Onboard
+   */
+  public commitLock(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Create File
+    fs.closeSync(
+      fs.openSync(
+        this.rootDir +
+          this.namespace +
+          "/_LOCK." +
+          this.contract +
+          this.version,
+        "w"
+      )
+    );
+    resolve(true);
+  }
+
+  /**
+   * Removes the symlink to the contract
+   *
+   * @returns {Promise<any>}
+   * @memberof Onboard
+   */
+  public commitUnlock(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    // Remove File
+    fs.unlinkSync(
+      this.rootDir + this.namespace + "/_LOCK." + this.contract + this.version
+    );
+
+    resolve(true);
   }
 
   /**
@@ -210,12 +380,14 @@ export default class Contract extends Standard {
     let stream = Object.keys(this.transactions.$i)[0];
 
     // Get namespace and set to lowercase
-    this.namespace = (this.transactions.$i[stream]
-      .namespace as string).toLowerCase();
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
 
     // Get Contract
-    this.contract = (this.transactions.$i[stream]
-      .contract as string).toLowerCase();
+    this.contract = (
+      this.transactions.$i[stream].contract as string
+    ).toLowerCase();
 
     // Get Link Name
     this.link = (this.transactions.$i[stream].link as string).toLowerCase();
@@ -259,12 +431,14 @@ export default class Contract extends Standard {
     let stream = Object.keys(this.transactions.$i)[0];
 
     // Get namespace and set to lowercase
-    this.namespace = (this.transactions.$i[stream]
-      .namespace as string).toLowerCase();
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
 
     // Get Contract
-    this.contract = (this.transactions.$i[stream]
-      .contract as string).toLowerCase();
+    this.contract = (
+      this.transactions.$i[stream].contract as string
+    ).toLowerCase();
 
     // Get Link Name
     this.link = (this.transactions.$i[stream].link as string).toLowerCase();
@@ -335,8 +509,9 @@ export default class Contract extends Standard {
     // TODO : Verify Contract Doesn't Exist
 
     // Get namespace and set to lowercase
-    this.namespace = (this.transactions.$i[stream]
-      .namespace as string).toLowerCase();
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
 
     // Get name as lowercase
     this.name = (this.transactions.$i[stream].name as string).toLowerCase();
@@ -425,8 +600,9 @@ export default class Contract extends Standard {
     // TODO : Verify Version doesn't exist
 
     // Get namespace and set to lowercase
-    this.namespace = (this.transactions.$i[stream]
-      .namespace as string).toLowerCase();
+    this.namespace = (
+      this.transactions.$i[stream].namespace as string
+    ).toLowerCase();
 
     // Get name as lowercase
     this.name = (this.transactions.$i[stream].name as string).toLowerCase();
