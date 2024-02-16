@@ -1,5 +1,31 @@
 # Activeledger Changelog
 
+## [2.13.2]
+
+### New
+* **Activeledger** : Ability to un/lock contracts from executing globally or specific versions.
+
+```json
+{
+    "$tx": {
+        "$namespace": "default",
+        "$contract": "contract",
+        "$entry": "lock or unlock",
+        "$i": {
+            "Contract Stream Identity": {
+                "namespace": "Namespace",
+                "contract": "Contract Id",
+                "version": "Empty or version specific eg 1.1.9"
+            }
+        }
+    }
+}
+```
+
+### Fix
+* **Activeledger CLI** : Another database auto start issue. Where a falsy value was triggering incorrectly.
+* **Restore** : Not all transactions will have $rev this is now skipped instead of causing a crash.
+
 ## [2.13.1]
 
 ### Fix
