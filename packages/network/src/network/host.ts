@@ -391,9 +391,10 @@ export class Host extends Home {
 
       // Process may have been cleared by unhandleded process crashing
       // Wouldn't expect it to make it back here though but just in case it can be ignore
-      if (!pending) {
-        return;
-      }
+      // if (!pending) {
+      //   return;
+      // }
+      // Not so straight forward as some messages don't have a pending
 
       // Check data for self to update
       if (m.data.nodes) {
