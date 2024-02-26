@@ -389,6 +389,12 @@ export class Host extends Home {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
+      // Process may have been cleared by unhandleded process crashing
+      // Wouldn't expect it to make it back here though but just in case it can be ignore
+      if (!pending) {
+        return;
+      }
+
       // Check data for self to update
       if (m.data.nodes) {
         //pending.entry.$nodes[this.reference] = m.data.self;
@@ -559,7 +565,6 @@ export class Host extends Home {
           umid,
         },
       });
-      (this.processPending[umid] as any).entry = null;
       (this.processPending[umid] as any) = null;
     }
   }

@@ -153,7 +153,7 @@ export class ActiveRequest {
                 ) {
                   throw {
                     name: "ActiveError",
-                    message: "URL Request Failed " + response.statusCode,
+                    message: `URL Request Failed : ${reqUrl} - ${response.statusCode}`,
                     body: raw,
                     stack: new Error().stack
                   };
@@ -189,7 +189,7 @@ export class ActiveRequest {
               ) {
                 return reject({
                   name: "ActiveError",
-                  message: "URL Request Failed " + response.statusCode,
+                  message: `URL Request Failed : ${reqUrl} - ${response.statusCode}`,
                   body: "",
                   stack: new Error().stack
                 });

@@ -457,8 +457,17 @@ class Processor {
     ActiveLogger.warn(error, "UnhandledRejection");
     // Store error (if we can)
     if (entry.$nodes) {
-      entry.$nodes[Home.reference].error =
-        "(Unhandled Contract Error) " + error.toString();
+      const errMsg = "(Unhandled Contract Error) " + error.toString();
+      // unhandled may happen before object created
+      if (entry.$nodes[Home.reference].error) {
+        entry.$nodes[Home.reference].error = errMsg;
+      } else {
+        entry.$nodes[Home.reference] = {
+          vote: false,
+          commit: false,
+          error: errMsg,
+        };
+      }
     }
 
     // Pass back to host to respond
