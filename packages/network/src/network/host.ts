@@ -390,32 +390,29 @@ export class Host extends Home {
       const pending = this.processPending[m.data.umid];
 
       // Process may have been cleared by unhandleded process crashing
-      // Wouldn't expect it to make it back here though but just in case it can be ignore
-      // if (!pending) {
-      //   return;
-      // }
-      // Not so straight forward as some messages don't have a pending
+      if (pending) {
+        // Check data for self to update
+        if (m.data.nodes) {
+          //pending.entry.$nodes[this.reference] = m.data.self;
+          pending.entry.$nodes = {
+            ...pending.entry.$nodes,
+            ...m.data.nodes,
+          };
+        }
 
-      // Check data for self to update
-      if (m.data.nodes) {
-        //pending.entry.$nodes[this.reference] = m.data.self;
-        pending.entry.$nodes = {
-          ...pending.entry.$nodes,
-          ...m.data.nodes,
-        };
-      }
-
-      // Check for revisions if they have been added
-      if (m.data.revs && !pending.entry.$revs) {
-        pending.entry.$revs = {
-          $i: m.data.revs.$i || {},
-          $o: m.data.revs.$o || {},
-        };
+        // Check for revisions if they have been added
+        if (m.data.revs && !pending.entry.$revs) {
+          pending.entry.$revs = {
+            $i: m.data.revs.$i || {},
+            $o: m.data.revs.$o || {},
+          };
+        }
       }
 
       // Switch on type of messages from processors
       switch (m.type) {
         case "failed":
+          if (!pending) return; // Fail safe, May happen when process being closed
           // So if we send as resolve it should still work (Will it keep our error?)
           pending.resolve({
             status: 200,
@@ -431,6 +428,7 @@ export class Host extends Home {
           }
           break;
         case "commited":
+          if (!pending) return; // Fail safe, May happen when process being closed
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
@@ -474,12 +472,14 @@ export class Host extends Home {
           }
           break;
         case "unhandledrejection":
-          pending.resolve({
-            status: 200,
-            data: { ...pending.entry, ...m.data.entry },
-          });
-          // Remove Locks
-          this.release(pending, true);
+          if (pending) {
+            pending.resolve({
+              status: 200,
+              data: { ...pending.entry, ...m.data.entry },
+            });
+            // Remove Locks
+            this.release(pending, true);
+          }
           // End process and create new subprocess
           restartBadProcess(
             "unhandledrejection - Already Handled, Tidying up processes"
