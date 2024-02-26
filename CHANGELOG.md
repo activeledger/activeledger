@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [2.13.3]
+
+### New
+* **Network** : Dynamic Network Intervals - Connection timing based on current network status.
+
+### Fix
+* **Utilities** : Non 2XX errors return the error url in the payload.
+* **Protocol** : Single stored database error now always returned instead of null.
+* **Network** : Improved Error Handling for when processes are refreshed.
+
 ## [2.13.2]
 
 ### New
