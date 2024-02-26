@@ -106,7 +106,7 @@ export class Maintain {
   private static healthTimer(boot: boolean = false) {
     setTimeout(() => {
       Maintain.healthTimer();
-    }, Maintain.interval);
+    }, Maintain.getInterval());
     if (!boot) {
       ActiveLogger.debug("Checking Neighbourhood");
       Maintain.checkNeighbourhood();
@@ -114,7 +114,23 @@ export class Maintain {
   }
 
   /**
+   * Cold boot connection to network faster
    *
+   * @private
+   * @static
+   * @returns {number}
+   * @memberof Maintain
+   */
+  private static getInterval(): number {
+    if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
+      return 300;
+    } else {
+      return Maintain.interval;
+    }
+  }
+
+  /**
+   * Calculates nodes position in a network
    *
    * @private
    * @memberof Maintain
@@ -139,12 +155,10 @@ export class Maintain {
     }
 
     // sort may move into the neighbour object
-    Maintain.neighbourOrder = tempOrder.sort(
-      (x, y): number => {
-        if (x.reference > y.reference) return 1;
-        return -1;
-      }
-    );
+    Maintain.neighbourOrder = tempOrder.sort((x, y): number => {
+      if (x.reference > y.reference) return 1;
+      return -1;
+    });
   }
 
   /**
