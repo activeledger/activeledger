@@ -57,7 +57,7 @@ export class Shared {
     code: 0,
     reason: "",
     priority: 0,
-  };
+  }; 
 
   constructor(
     private _storeSingleError: boolean,
@@ -65,6 +65,17 @@ export class Shared {
     private dbe: ActiveDSConnect,
     private emitter: EventEmitter
   ) {}
+
+  /**
+   * Stores a copy of the single error to return
+   *
+   * @private
+   * @type {*}
+   * @memberof Shared
+   */
+  private _storedSingleErrorDoc: any = {
+    id: 'Default Error Id'
+  };
 
   /**
    * Set the value of errorOut
@@ -211,7 +222,7 @@ export class Shared {
   ) {
     try {
       // Store in database for activerestore to review
-      const dbDoc = await this.storeError(code, reason, priority);
+      const dbDoc = this._storedSingleErrorDoc = await this.storeError(code, reason, priority);
 
       if (!stop) {
         // Append database error id for easier reference
@@ -290,7 +301,7 @@ export class Shared {
 
       return this.dbe.post(doc);
     } else {
-      return Promise.resolve();
+      return Promise.resolve(this._storedSingleErrorDoc);
     }
   }
 
