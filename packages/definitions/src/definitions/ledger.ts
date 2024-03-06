@@ -109,6 +109,7 @@ export interface LedgerTransaction {
   $namespace: string;
   $contract: string;
   $entry?: string;
+  $expire?:Date;
   $i: LedgerInputs;
   $o: LedgerIORputs;
   $r?: LedgerIORputs;
