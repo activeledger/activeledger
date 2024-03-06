@@ -71,6 +71,13 @@ export class Endpoints {
         // Set Date
         tx.$datetime = new Date();
 
+        // Check transaction hasn't expired
+        if (tx.$tx.$expire && new Date(tx.$tx.$expire) <= tx.$datetime) {
+          return resolve(
+            this.successfulFailure(`Transaction Expired : ${tx.$tx.$expire}`)
+          );
+        }
+
         // Set Origin
         tx.$origin = host.reference;
 
@@ -85,7 +92,7 @@ export class Endpoints {
           // Multiple
           return resolve({
             statusCode: 400,
-            content: "Multiple Transaction Not Implemented"
+            content: "Multiple Transaction Not Implemented",
           });
         }
 
@@ -108,7 +115,7 @@ export class Endpoints {
               let summary: ActiveDefinitions.ISummary = {
                 total: 0,
                 vote: 0,
-                commit: 0
+                commit: 0,
               };
 
               // Any data to send back to the client
@@ -140,7 +147,7 @@ export class Endpoints {
               let output: ActiveDefinitions.LedgerResponse = {
                 $umid: tx.$umid,
                 $summary: summary,
-                $streams: tx.$streams
+                $streams: tx.$streams,
               };
 
               // Optional Responses to add
@@ -155,25 +162,25 @@ export class Endpoints {
 
               return resolve({
                 statusCode: 200,
-                content: output
+                content: output,
               });
             } else {
               // If we had to be rebroadcasted this isn't an error
               if (response.rebroadcasted) {
                 return resolve({
                   statusCode: 200,
-                  content: response.data
+                  content: response.data,
                 });
               } else {
                 // Just return untouched
                 return resolve({
                   statusCode: response.status,
-                  content: response.data
+                  content: response.data,
                 });
               }
             }
           })
-          .catch(error => {
+          .catch((error) => {
             // Do something with the response before returning
             // If the status code is 100 and busy locks, We will convert it to a standard
             // If network isn't stable we will also convert to standard 200
@@ -183,33 +190,18 @@ export class Endpoints {
               (error.status == "100" && error.error === "Busy Locks") ||
               error === "Network Not Stable"
             ) {
-              return resolve({
-                statusCode: 200,
-                content: {
-                  $umid: "",
-                  $summary: {
-                    total: 1,
-                    vote: 0,
-                    commit: 0,
-                    errors: [error.error || error]
-                  },
-                  $streams: {
-                    new: [],
-                    updated: []
-                  }
-                }
-              });
+              return resolve(this.successfulFailure(error.error || error));
             } else {
               return reject({
                 statusCode: 500,
-                content: error
+                content: error,
               });
             }
           });
       } else {
         return reject({
           statusCode: 500,
-          content: "Invalid Transaction"
+          content: "Invalid Transaction",
         });
       }
     });
@@ -237,28 +229,28 @@ export class Endpoints {
         let secureTx = new ActiveCrypto.Secured(db, host.neighbourhood.get(), {
           reference: Home.reference,
           public: Buffer.from(Home.publicPem, "base64").toString("utf8"),
-          private: Home.identity.pem
+          private: Home.identity.pem,
         });
 
         // Walk all properties
         secureTx
           .encrypt(body as any)
-          .then(results => {
+          .then((results) => {
             resolve({
               statusCode: 200,
-              content: results
+              content: results,
             });
           })
-          .catch(error => {
+          .catch((error) => {
             reject({
               statusCode: 500,
-              content: error
+              content: error,
             });
           });
       } else {
         reject({
           statusCode: 500,
-          content: "Must be sent over X-Activeledger-Encrypt"
+          content: "Must be sent over X-Activeledger-Encrypt",
         });
       }
     });
@@ -281,7 +273,7 @@ export class Endpoints {
       if (host.getStatus() != NeighbourStatus.Stable)
         return resolve({
           statusCode: 500,
-          content: "Network Not Stable"
+          content: "Network Not Stable",
         });
 
       // Cast Body
@@ -292,13 +284,13 @@ export class Endpoints {
         .then((ledger: any) => {
           return resolve({
             statusCode: ledger.status,
-            content: ledger.data
+            content: ledger.data,
           });
         })
         .catch((error: any) => {
           return reject({
             statusCode: 500,
-            content: error
+            content: error,
           });
         });
     });
@@ -344,12 +336,12 @@ export class Endpoints {
             // Send and wait on their response
             rebroadcast
               .knock("", tx, true)
-              .then(ledger => {
+              .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;
                 resolve(ledger);
               })
-              .catch(error => {
+              .catch((error) => {
                 reject(error);
               });
             // Safe to return
@@ -363,8 +355,8 @@ export class Endpoints {
       // Send into host pool
       host
         .pending(tx)
-        .then(ledger => resolve(ledger))
-        .catch(error => reject(error));
+        .then((ledger) => resolve(ledger))
+        .catch((error) => reject(error));
     });
   }
 
@@ -388,11 +380,11 @@ export class Endpoints {
         // Is this a live request
         if (neighbour && !neighbour.graceStop) {
           resolve({
-            statusCode: 200
+            statusCode: 200,
           });
         } else {
           resolve({
-            statusCode: 403
+            statusCode: 403,
           });
         }
 
@@ -419,7 +411,7 @@ export class Endpoints {
           let neighbour = neighbourhood[keys[i]];
           if (!neighbour.graceStop) {
             neighbours[neighbour.reference] = {
-              isHome: neighbour.isHome
+              isHome: neighbour.isHome,
             };
           }
         }
@@ -433,10 +425,10 @@ export class Endpoints {
             left: Home.left.reference,
             right: Home.right.reference,
             neighbourhood: {
-              neighbours: neighbours
+              neighbours: neighbours,
             },
-            pem: Home.publicPem
-          }
+            pem: Home.publicPem,
+          },
         });
       }
     });
@@ -464,13 +456,13 @@ export class Endpoints {
             // End exectuion
             return reject({
               statusCode: 403,
-              content: "Request not allowed"
+              content: "Request not allowed",
             });
           }
 
           // Fetch Request (Catch error here and forward on as an object to process in .all)
           fetchStream.push(
-            db.get(body.$streams[i]).catch(error => {
+            db.get(body.$streams[i]).catch((error) => {
               return { _error: error };
             })
           );
@@ -487,20 +479,20 @@ export class Endpoints {
               if (docs[i]._id) {
                 streams.push({
                   _id: docs[i]._id,
-                  _rev: docs[i]._rev
+                  _rev: docs[i]._rev,
                 });
               }
             }
             return resolve({
               statusCode: 200,
-              content: streams
+              content: streams,
             });
           })
           .catch(() => {
             // Don't mind an error so lets say everyting is ok
             return resolve({
               statusCode: 200,
-              content: []
+              content: [],
             });
           });
       } else {
@@ -511,13 +503,13 @@ export class Endpoints {
             // End exectuion
             return reject({
               statusCode: 403,
-              content: "Request not allowed"
+              content: "Request not allowed",
             });
           }
 
           // Get the specific
           db.get(body.$stream, {
-            _rev: body.$rev
+            _rev: body.$rev,
           })
             .then((results: any) => {
               // Make sure matching rev
@@ -526,21 +518,21 @@ export class Endpoints {
               }
               return resolve({
                 statusCode: 200,
-                content: results
+                content: results,
               });
             })
             .catch(() => {
               // Don't mind an error so lets say everyting is ok
               return resolve({
                 statusCode: 200,
-                content: []
+                content: [],
               });
             });
         } else {
           // Bad Request
           return reject({
             statusCode: 500,
-            content: "Internal Server Error"
+            content: "Internal Server Error",
           });
         }
       }
@@ -571,7 +563,7 @@ export class Endpoints {
             statusCode: 200,
             content: response.rows
               .map(Endpoints.allMap)
-              .filter(Endpoints.allFilter)
+              .filter(Endpoints.allFilter),
           });
         })
         .catch(() => {
@@ -597,7 +589,7 @@ export class Endpoints {
         .then((response: any) => {
           resolve({
             statusCode: 200,
-            content: response
+            content: response,
           });
         })
         .catch(() => {
@@ -661,7 +653,7 @@ export class Endpoints {
           // Error trying to decrypt
           return reject({
             statusCode: 500,
-            content: "Decryption Error"
+            content: "Decryption Error",
           });
         }
       } else {
@@ -698,7 +690,7 @@ export class Endpoints {
               // Bad Message
               return reject({
                 statusCode: 500,
-                content: "Security Challenge Failure"
+                content: "Security Challenge Failure",
               });
             }
           }
@@ -711,5 +703,33 @@ export class Endpoints {
         }
       }
     });
+  }
+
+  /**
+   * Creates a 200 return body with local error
+   *
+   * @private
+   * @static
+   * @param {string} error
+   * @returns {*}
+   * @memberof Endpoints
+   */
+  private static successfulFailure(error: string): any {
+    return {
+      statusCode: 200,
+      content: {
+        $umid: "",
+        $summary: {
+          total: 1,
+          vote: 0,
+          commit: 0,
+          errors: [error],
+        },
+        $streams: {
+          new: [],
+          updated: [],
+        },
+      },
+    };
   }
 }
