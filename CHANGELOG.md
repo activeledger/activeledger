@@ -1,5 +1,18 @@
 # Activeledger Changelog
 
+## [2.13.5]
+
+### New
+* **Network** : $expire transaction check. Transaction cannot enter the network if expired.
+
+### Fix
+* **Utilities** : Request resent if reused socket connection closed.
+* **Network** : Returns early if pending expected but has already been resolved.
+
+## [2.13.4]
+
+Emergency Patch - Under specific circumstances return statement closed the server
+
 ## [2.13.3]
 
 ### New
