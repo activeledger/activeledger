@@ -155,7 +155,7 @@ export class ActiveRequest {
                     name: "ActiveError",
                     message: `URL Request Failed : ${reqUrl} - ${response.statusCode}`,
                     body: raw,
-                    stack: new Error().stack
+                    stack: new Error().stack,
                   };
                 }
 
@@ -191,7 +191,7 @@ export class ActiveRequest {
                   name: "ActiveError",
                   message: `URL Request Failed : ${reqUrl} - ${response.statusCode}`,
                   body: "",
-                  stack: new Error().stack
+                  stack: new Error().stack,
                 });
               }
               return resolve({ raw: "" });
@@ -200,7 +200,16 @@ export class ActiveRequest {
         }
       );
       // handle connection errors of the request
-      request.on("error", (err) => reject(err));
+      request.on("error", (err: NodeJS.ErrnoException) => {
+        if (request.reusedSocket && err.code === "ECONNRESET") {
+          // Resend
+          this.send(reqUrl, type, header, data, enableGZip)
+            .then((r) => resolve(r))
+            .catch((e) => reject(e));
+        } else {
+          reject(err);
+        }
+      });
 
       // Write data if sending
       if (data && (options.method == "POST" || options.method == "PUT")) {
