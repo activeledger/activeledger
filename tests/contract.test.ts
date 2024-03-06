@@ -2,8 +2,8 @@ import { ActiveLogger } from "../packages/logger/src";
 import { ActiveCrypto } from "../packages/crypto/src";
 
 // Setup VM Global variables
-((global as unknown) as any).crypto = ActiveCrypto;
-((global as unknown) as any).logger = ActiveLogger;
+Object.defineProperty(global, "crypto", { value: ActiveCrypto });
+Object.defineProperty(global, "logger", { value: ActiveLogger });
 
 import { Stream } from "../packages/contracts/src";
 import { expect, should } from "chai";
@@ -25,27 +25,28 @@ describe("Stream Management Test (Activecontracts)", () => {
       $i: {
         testStreamId: {
           publicKey:
-            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwUYrUdC11Y+0vH8JD7FC\nlVXTnStllicQ1PPgbrsftuxWJFqE1FPa6qwwdo6y0ZjQTmwsPUSTzLiX5Kr1UVdY\nFZVP/DDeWafOwh80vMZpBuUcxl4hh6IEXf8BtKelwUIq1gmwR2QS6LPjG9UeblBg\nq6a0h3Z1LAB/Ls9+78Rs9zuSwKYBdvn1IT6jwOkQ2eZj+8JO0vDr6VYUzenu+HAG\nuzq+ioHaS9uVn3Vlo7p5FjkXdI0g8rkC8kiwh+dW4d4Qdep0nRSjCUhpYpQhifjp\nHLM/Mtpkbc0gGgUu7NSuHkNBYUbl9TAOQkZNaU1rgYWt0gZ3jMQuttOCfF55We72\niwIDAQAB\n-----END PUBLIC KEY-----"
-        }
+            "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwUYrUdC11Y+0vH8JD7FC\nlVXTnStllicQ1PPgbrsftuxWJFqE1FPa6qwwdo6y0ZjQTmwsPUSTzLiX5Kr1UVdY\nFZVP/DDeWafOwh80vMZpBuUcxl4hh6IEXf8BtKelwUIq1gmwR2QS6LPjG9UeblBg\nq6a0h3Z1LAB/Ls9+78Rs9zuSwKYBdvn1IT6jwOkQ2eZj+8JO0vDr6VYUzenu+HAG\nuzq+ioHaS9uVn3Vlo7p5FjkXdI0g8rkC8kiwh+dW4d4Qdep0nRSjCUhpYpQhifjp\nHLM/Mtpkbc0gGgUu7NSuHkNBYUbl9TAOQkZNaU1rgYWt0gZ3jMQuttOCfF55We72\niwIDAQAB\n-----END PUBLIC KEY-----",
+        },
       },
-      $o: {}
+      $o: {},
     },
     [
       {
         meta: {
           _id: "testStreamId",
-          _rev: null
+          _rev: null,
         },
         state: { _id: "testStreamId", _rev: null },
-        volatile: {}
-      }
+        volatile: {},
+      },
     ],
     [],
     [],
+    { _id: "", data: {} },
     {
       testStreamId:
         "mJbmGI2VdTMC6u+/mQroEPe4unnIVtTr9W85NGsrEAi5jCG4Kt3X+yGMMYQ79wEzTyFpkcyIKHpXDfiRZLInP1BiI5ukdjI+rRNbelK0ueGLh9rHElkxm3znwxRt1ZQeXaFzUtmdLtvo1jhxxZeEa3Hs9AmvTCKWx96KJKaSaREokY3UARZZZzTKIHR5rTL4nrjd8v2g+/hWMzcm1XugjfDNqBRST8J0LYXlyvFnLOE/fc40P8JI3FKDXy/aWHS5sH9CoJDP3kYho/07Tfo4/H0jZGrJ0YQ15kc6ZUonxYRlGNpO+kpsWjhksAKVmgNMsho1nEf7d39i0Dn3aKG/Tg==",
-      $sig: ""
+      $sig: "",
     },
     key,
     new EventEmitter(),
@@ -53,9 +54,7 @@ describe("Stream Management Test (Activecontracts)", () => {
   );
 
   it("should create a new stream", () => {
-    expect(activeledgerStream)
-      .to.be.an("object")
-      .and.property("umid", "umid");
+    expect(activeledgerStream).to.be.an("object").and.property("umid", "umid");
   });
 
   it("should have a matching signature", () => {
