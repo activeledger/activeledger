@@ -1,7 +1,7 @@
 {
   "name": "@activeledger/activehybrid",
   "description": "Activeledger Hybrid Connect, Maintain every permissioned chain yourself",
-  "version": "2.13.3",
+  "version": "2.13.5",
   "publishConfig": {
     "access": "public"
   },
@@ -48,16 +48,16 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "^2.13.0",
-    "@activeledger/activecrypto": "^2.12.3",
-    "@activeledger/activedefinitions": "^2.12.0",
+    "@activeledger/activecontracts": "^2.13.5",
+    "@activeledger/activecrypto": "^2.13.5",
+    "@activeledger/activedefinitions": "^2.13.5",
     "@activeledger/activelogger": "^2.7.0",
-    "@activeledger/activeoptions": "^2.13.3",
-    "@activeledger/activeprotocol": "^2.13.3",
-    "@activeledger/activestorage": "^2.13.3",
-    "@activeledger/activetoolkits": "^2.13.3",
-    "@activeledger/activeutilities": "^2.13.3",
-    "@activeledger/httpd": "^2.13.3",
+    "@activeledger/activeoptions": "^2.13.5",
+    "@activeledger/activeprotocol": "^2.13.5",
+    "@activeledger/activestorage": "^2.13.5",
+    "@activeledger/activetoolkits": "^2.13.5",
+    "@activeledger/activeutilities": "^2.13.5",
+    "@activeledger/httpd": "^2.13.5",
     "typescript": "4.7.3"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
