@@ -1,9 +1,23 @@
 # Activeledger Changelog
 
+## [2.13.6]
+
+### Fix
+* **Network** : Prevent unhandled error in the unhandled error handler from occuring when processor reconnects.
+* **Activeledger** : Testnet multi run file no longer runs out of buffer and crashes.
+
 ## [2.13.5]
 
 ### New
 * **Network** : $expire transaction check. Transaction cannot enter the network if expired.
+
+```json
+{
+    "$tx": {
+        "$expire": "1970-01-01T00:00:00.000Z (isostring)",
+    },
+}
+```
 
 ### Fix
 * **Utilities** : Request resent if reused socket connection closed.
