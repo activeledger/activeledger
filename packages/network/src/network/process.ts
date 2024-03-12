@@ -459,7 +459,7 @@ class Processor {
     if (entry.$nodes) {
       const errMsg = "(Unhandled Contract Error) " + error.toString();
       // unhandled may happen before object created
-      if (entry.$nodes[Home.reference].error) {
+      if (entry.$nodes[Home.reference]?.error) {
         entry.$nodes[Home.reference].error = errMsg;
       } else {
         entry.$nodes[Home.reference] = {
