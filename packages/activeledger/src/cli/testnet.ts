@@ -113,7 +113,14 @@ export class TestnetHandler {
             );\r\n`;
             } else {
               // Standard Execution
-              testnet += `child.exec("${launch}");\r\n`;
+              testnet += `child.spawn(
+              /^win/.test(process.platform) ? "activeledger.cmd" : "activeledger",
+              [],
+              {
+                cwd: "instance-${i}",
+                stdio: "ignore"
+              }
+            );\r\n`;
             }
           }
 
