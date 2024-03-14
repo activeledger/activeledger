@@ -231,46 +231,46 @@ export class CLIHandler {
    * @static
    * @memberof CLIHandler
    */
-  public static async flushArchives(amount: number | boolean): Promise<void> {
-    this.checkConfig();
+  // public static async flushArchives(amount: number | boolean): Promise<void> {
+  //   this.checkConfig();
 
-    // Now we can parse configuration
-    ActiveOptions.parseConfig();
+  //   // Now we can parse configuration
+  //   ActiveOptions.parseConfig();
 
-    const dbConfig = ActiveOptions.get<any>("db", {});
+  //   const dbConfig = ActiveOptions.get<any>("db", {});
 
-    const compactDb = new ActiveDSConnect(
-      `http://${dbConfig.selfhost.host}:${dbConfig.selfhost.port}/${dbConfig.database}_archived`
-    );
+  //   const compactDb = new ActiveDSConnect(
+  //     `http://${dbConfig.selfhost.host}:${dbConfig.selfhost.port}/${dbConfig.database}_archived`
+  //   );
 
-    // Change amount to default number if boolean
-    if (amount === true) {
-      amount = 1000000000;
-    }
+  //   // Change amount to default number if boolean
+  //   if (amount === true) {
+  //     amount = 1000000000;
+  //   }
 
-    try {
-      ActiveLogger.info("Start Flushing Data Archive");
-      const info = await compactDb.info();
-      if (info.data_size > amount) {
-        ActiveLogger.info(
-          info,
-          `Archive larger than requested amount to flush (${amount})`
-        );
-        // Delete the table
-        compactDb.drop();
-        // Recreate the table
-        compactDb.info();
-      } else {
-        ActiveLogger.info(
-          info,
-          `Archive smaller than requested amount to flush (${amount})`
-        );
-      }
-      ActiveLogger.info("Flushing Finished");
-    } catch (e) {
-      ActiveLogger.error(e, "Flushing Error Occured");
-    }
-  }
+  //   try {
+  //     ActiveLogger.info("Start Flushing Data Archive");
+  //     const info = await compactDb.info();
+  //     if (info.data_size > amount) {
+  //       ActiveLogger.info(
+  //         info,
+  //         `Archive larger than requested amount to flush (${amount})`
+  //       );
+  //       // Delete the table
+  //       compactDb.drop();
+  //       // Recreate the table
+  //       compactDb.info();
+  //     } else {
+  //       ActiveLogger.info(
+  //         info,
+  //         `Archive smaller than requested amount to flush (${amount})`
+  //       );
+  //     }
+  //     ActiveLogger.info("Flushing Finished");
+  //   } catch (e) {
+  //     ActiveLogger.error(e, "Flushing Error Occured");
+  //   }
+  // }
 
   // #region Startup handling
   /**
