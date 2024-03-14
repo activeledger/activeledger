@@ -57,7 +57,7 @@ export class Shared {
     code: 0,
     reason: "",
     priority: 0,
-  }; 
+  };
 
   constructor(
     private _storeSingleError: boolean,
@@ -74,7 +74,7 @@ export class Shared {
    * @memberof Shared
    */
   private _storedSingleErrorDoc: any = {
-    id: 'Default Error Id'
+    id: "Default Error Id",
   };
 
   /**
@@ -144,12 +144,13 @@ export class Shared {
    *
    * @private
    * @param {string} stream
+   * @param {boolean} skipMap Do not use lookup calculate it again if needed
    * @returns {string}
    * @memberof PermissionsChecker
    */
-  public filterPrefix(stream: string): string {
-    if (this.filterMap[stream]) {
-      return this.filterMap[stream];
+  public filterPrefix(stream: string, skipMap = false): string {
+    if (!skipMap && this.filterMap[stream]) {
+        return this.filterMap[stream];
     }
 
     // Remove any suffix like :volatile :stream :umid
@@ -222,12 +223,16 @@ export class Shared {
   ) {
     try {
       // Store in database for activerestore to review
-      const dbDoc = this._storedSingleErrorDoc = await this.storeError(code, reason, priority);
+      const dbDoc = (this._storedSingleErrorDoc = await this.storeError(
+        code,
+        reason,
+        priority
+      ));
 
       if (!stop) {
         // Append database error id for easier reference
         let error = this._errorOut.reason;
-        if(dbDoc.id) {
+        if (dbDoc.id) {
           error += " - Error " + dbDoc.id;
         }
         this.emitter.emit("failed", {

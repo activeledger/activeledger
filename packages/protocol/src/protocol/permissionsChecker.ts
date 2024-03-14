@@ -100,7 +100,8 @@ export class PermissionsChecker {
     let contractDataIncluded = false;
 
     for (let i = this.data.length; i--;) {
-      const filteredPrefix = this.shared.filterPrefix(this.data[i]);
+      // Skip the map as the map is also to support labels. Here we just need raw id's
+      const filteredPrefix = this.shared.filterPrefix(this.data[i], true);
 
       // Are we looking at contract data?
       const suffix = this.data[i].split(":")[1];
