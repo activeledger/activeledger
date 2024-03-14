@@ -175,7 +175,7 @@ export class LevelMe {
    * @private
    * @memberof LevelMe
    */
-  private docCount = 0;
+  //private docCount = 0;
 
   /**
    * Real-time document sequencing in the database
@@ -183,7 +183,7 @@ export class LevelMe {
    * @private
    * @memberof LevelMe
    */
-  private docUpdateSeq = 0;
+  //private docUpdateSeq = 0;
 
   constructor(location: string, private name: string, provider: string) {
     if (provider === "rocks") {
@@ -222,19 +222,19 @@ export class LevelMe {
       await this.levelUp.open();
 
       // Cache Values
-      this.docCount = parseInt(
-        (
-          await this.levelUpGet(LevelMe.META_PREFIX + "_local_doc_count", 0)
-        ).toString()
-      );
-      this.docUpdateSeq = parseInt(
-        (
-          await this.levelUpGet(
-            LevelMe.META_PREFIX + "_local_last_update_seq",
-            0
-          )
-        ).toString()
-      );
+      // this.docCount = parseInt(
+      //   (
+      //     await this.levelUpGet(LevelMe.META_PREFIX + "_local_doc_count", 0)
+      //   ).toString()
+      // );
+      // this.docUpdateSeq = parseInt(
+      //   (
+      //     await this.levelUpGet(
+      //       LevelMe.META_PREFIX + "_local_last_update_seq",
+      //       0
+      //     )
+      //   ).toString()
+      // );
     }
   }
 
@@ -249,31 +249,31 @@ export class LevelMe {
    * @returns {{branch: branch, pos: number}}
    * @memberof LevelMe
    */
-  private findBranchEnd(
-    branch: branchTrunk | branch,
-    pos: number = 0
-  ): { branch: branchTrunk; pos: number } {
-    let branchTrunk: branchTrunk;
+  // private findBranchEnd(
+  //   branch: branchTrunk | branch,
+  //   pos: number = 0
+  // ): { branch: branchTrunk; pos: number } {
+  //   let branchTrunk: branchTrunk;
 
-    // Find legacy branchTrunk (sometimes in 0 nested array)
-    if (Array.isArray(branch[0])) {
-      branchTrunk = branch[0] as branchTrunk;
-    } else {
-      branchTrunk = branch as branchTrunk;
-    }
+  //   // Find legacy branchTrunk (sometimes in 0 nested array)
+  //   if (Array.isArray(branch[0])) {
+  //     branchTrunk = branch[0] as branchTrunk;
+  //   } else {
+  //     branchTrunk = branch as branchTrunk;
+  //   }
 
-    // Need to search deeper?
-    if (branchTrunk[2].length) {
-      // Move further along the branch
-      return this.findBranchEnd(branchTrunk[2], ++pos);
-    } else {
-      // We are at the tip! Return this branch
-      return {
-        branch: branchTrunk,
-        pos: ++pos,
-      };
-    }
-  }
+  //   // Need to search deeper?
+  //   if (branchTrunk[2].length) {
+  //     // Move further along the branch
+  //     return this.findBranchEnd(branchTrunk[2], ++pos);
+  //   } else {
+  //     // We are at the tip! Return this branch
+  //     return {
+  //       branch: branchTrunk,
+  //       pos: ++pos,
+  //     };
+  //   }
+  // }
 
   /**
    * Jump straight to the cached wining branch end
@@ -322,17 +322,17 @@ export class LevelMe {
     try {
       await this.open();
       return {
-        doc_count: this.docCount,
-        update_seq: this.docUpdateSeq,
+        doc_count: "----",
+        update_seq: 0,
         db_name: this.name,
         data_size: 0,
       };
     } catch (e) {
       // TODO Filter bad / unexpected creates such as favicon.ico
-      await this.levelUp.put(LevelMe.META_PREFIX + "_local_doc_count", 0);
-      await this.levelUp.put(LevelMe.META_PREFIX + "_local_last_update_seq", 0);
+      //await this.levelUp.put(LevelMe.META_PREFIX + "_local_doc_count", 0);
+      //await this.levelUp.put(LevelMe.META_PREFIX + "_local_last_update_seq", 0);
       return {
-        doc_count: 0,
+        doc_count: "----",
         update_seq: 0,
         db_name: this.name,
         data_size: 0,
@@ -480,7 +480,7 @@ export class LevelMe {
             .on("end", async () => {
               await Promise.all(promises);
               resolve({
-                total_rows: this.docCount,
+                total_rows: 0, //this.docCount, This will return as a global offset
                 offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
                 rows,
               });
@@ -567,7 +567,7 @@ export class LevelMe {
       this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
-      this.docCount--;
+      //this.docCount--;
       // Actually the sequence cannot be unwound because while awaiting another document maybe pending
     }
     return {
@@ -608,10 +608,10 @@ export class LevelMe {
     // For now just delete the document key (not sequence)
     // _local_doc_count need to reduce count
     batch
-      .put(
-        LevelMe.META_PREFIX + "_local_doc_count",
-        this.docCount > 0 ? --this.docCount : (this.docCount = 0)
-      )
+      // .put(
+      //   LevelMe.META_PREFIX + "_local_doc_count",
+      //   this.docCount > 0 ? --this.docCount : (this.docCount = 0)
+      // )
       .del(LevelMe.DOC_PREFIX + key);
 
     await batch.write();
@@ -718,7 +718,7 @@ export class LevelMe {
           await Promise.all(promises);
           resolve({
             results: rows,
-            last_seq: this.docUpdateSeq,
+            last_seq: 0,
           });
         });
     });
@@ -767,7 +767,7 @@ export class LevelMe {
       this.changeEmitter.emit("change", changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
-      this.docCount = this.docCount - docs.length;
+      //this.docCount = this.docCount - docs.length;
       return false;
     }
     return true;
@@ -911,9 +911,9 @@ export class LevelMe {
     //   );
     // }
 
-    if (newDoc) {
-      chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
-    }
+    // if (newDoc) {
+    //   chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
+    // }
 
     return {
       chain,

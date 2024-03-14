@@ -49,8 +49,8 @@ import { LevelMe } from "./levelme";
    * @returns
    */
   const getDB = (name: string): LevelMe => {
-    // Filter out annoying name in a very forcefull way
-    if (name === "favicon.ico") {
+    // Must start with activeledger (will cause problem with config need to resolve)
+    if (!name.startsWith("activeledger")) {
       throw new Error("invalid database");
     }
     if (!dbCache[name]) {
@@ -347,44 +347,44 @@ import { LevelMe } from "./levelme";
    * @param {IActiveHttpIncoming} incoming
    * @returns {Promise<boolean>}
    */
-  const markAsArchived = async (
-    incoming: IActiveHttpIncoming
-  ): Promise<boolean> => {
-    // No more btree archives, return false for now
-    return false;
+  // const markAsArchived = async (
+  //   incoming: IActiveHttpIncoming
+  // ): Promise<boolean> => {
+  //   // No more btree archives, return false for now
+  //   return false;
 
-    const position = isArchivable(incoming.body._rev);
-    if (position) {
-      try {
-        // Get Database
-        const db = getDB(incoming.url[0]);
+  //   const position = isArchivable(incoming.body._rev);
+  //   if (position) {
+  //     try {
+  //       // Get Database
+  //       const db = getDB(incoming.url[0]);
 
-        // Raw meta doc
-        const metaDoc = await db.get(decodeURIComponent(incoming.url[1]), true);
+  //       // Raw meta doc
+  //       const metaDoc = await db.get(decodeURIComponent(incoming.url[1]), true);
 
-        // Make sure archive database exists
-        const archDb = await getCreateArchiveDb(incoming.url[0]);
+  //       // Make sure archive database exists
+  //       const archDb = await getCreateArchiveDb(incoming.url[0]);
 
-        // Time to modify!
-        const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+  //       // Time to modify!
+  //       const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
-        // Prevent clashes
-        metaDoc._id += ":" + position;
+  //       // Prevent clashes
+  //       metaDoc._id += ":" + position;
 
-        // We could add to existing but then we would archive the archive
-        // Write document to archive
-        await archDb.post(checkDoc(metaDoc));
+  //       // We could add to existing but then we would archive the archive
+  //       // Write document to archive
+  //       await archDb.post(checkDoc(metaDoc));
 
-        // Rewrite meta root document
-        await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
-        return true;
-      } catch (e) {
-        // Any errors continue
-        return false;
-      }
-    }
-    return false;
-  };
+  //       // Rewrite meta root document
+  //       await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
+  //       return true;
+  //     } catch (e) {
+  //       // Any errors continue
+  //       return false;
+  //     }
+  //   }
+  //   return false;
+  // };
 
   /**
    * Pouchdb Metadoc rewrite (trimming)
@@ -393,26 +393,26 @@ import { LevelMe } from "./levelme";
    * @param {string} position
    * @returns
    */
-  const prepareArchiveDoc = (metaDoc: any, position: number) => {
-    // Time to modify!
-    const newMetaDoc = {
-      _id: metaDoc._id,
-      rev_tree: [
-        {
-          // pos: metaDoc.rev_tree[0].pos,
-          pos: position - 1, // Get parent starting pos
-          ids: getLastInTree(metaDoc.rev_tree[0].ids),
-        },
-      ],
-      rev_map: {
-        [metaDoc.winningRev]: metaDoc.rev_map[metaDoc.winningRev],
-      },
-      winningRev: metaDoc.winningRev,
-      deleted: metaDoc.deleted,
-      seq: metaDoc.seq,
-    };
-    return newMetaDoc;
-  };
+  // const prepareArchiveDoc = (metaDoc: any, position: number) => {
+  //   // Time to modify!
+  //   const newMetaDoc = {
+  //     _id: metaDoc._id,
+  //     rev_tree: [
+  //       {
+  //         // pos: metaDoc.rev_tree[0].pos,
+  //         pos: position - 1, // Get parent starting pos
+  //         ids: getLastInTree(metaDoc.rev_tree[0].ids),
+  //       },
+  //     ],
+  //     rev_map: {
+  //       [metaDoc.winningRev]: metaDoc.rev_map[metaDoc.winningRev],
+  //     },
+  //     winningRev: metaDoc.winningRev,
+  //     deleted: metaDoc.deleted,
+  //     seq: metaDoc.seq,
+  //   };
+  //   return newMetaDoc;
+  // };
 
   /**
    * Create Archive Database
@@ -420,11 +420,11 @@ import { LevelMe } from "./levelme";
    * @param {string} name
    * @returns
    */
-  const getCreateArchiveDb = async (name: string): Promise<LevelMe> => {
-    const archDb = getDB(name + "_archive");
-    await archDb.info();
-    return archDb;
-  };
+  // const getCreateArchiveDb = async (name: string): Promise<LevelMe> => {
+  //   const archDb = getDB(name + "_archive");
+  //   await archDb.info();
+  //   return archDb;
+  // };
 
   /**
    * Gets the last 2 leafs in the tree (parent, current)
@@ -433,12 +433,12 @@ import { LevelMe } from "./levelme";
    * @param {any[]} [prevTree]
    * @returns {*}
    */
-  const getLastInTree = (tree: any[], prevTree?: any[]): any => {
-    if (tree[2].length) {
-      return getLastInTree(tree[2][0], tree);
-    }
-    return prevTree ? prevTree : tree;
-  };
+  // const getLastInTree = (tree: any[], prevTree?: any[]): any => {
+  //   if (tree[2].length) {
+  //     return getLastInTree(tree[2][0], tree);
+  //   }
+  //   return prevTree ? prevTree : tree;
+  // };
 
   /**
    * Should we Archive the document
@@ -446,16 +446,16 @@ import { LevelMe } from "./levelme";
    * @param {string} revString
    * @returns {number}
    */
-  const isArchivable = (revString: string): number => {
-    if (revString) {
-      const position = parseInt(revString.split("-")[0]);
+  // const isArchivable = (revString: string): number => {
+  //   if (revString) {
+  //     const position = parseInt(revString.split("-")[0]);
 
-      // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
-      //return position % 300 === 0 ? position : 0;
-      return position % 15 === 0 ? position : 0;
-    }
-    return 0;
-  };
+  //     // Set at 300 to have 3 attempts before default 1000 id failure error triggered above
+  //     //return position % 300 === 0 ? position : 0;
+  //     return position % 15 === 0 ? position : 0;
+  //   }
+  //   return 0;
+  // };
 
   /**
    * Reusable Get for mutliple paths
@@ -611,34 +611,34 @@ import { LevelMe } from "./levelme";
 
         // Prepare Archive database
         // Make sure archive database exists
-        const archDb = await getCreateArchiveDb(incoming.url[0]);
+        //const archDb = await getCreateArchiveDb(incoming.url[0]);
 
         // We need to see if the docs need archiving
-        for (let i = incoming.body.docs.length; i--; ) {
-          const doc = incoming.body.docs[i];
-          const position = isArchivable(doc._rev);
-          if (position) {
-            try {
-              // Raw meta doc
-              const metaDoc = await db.get(doc._id, true);
+        // for (let i = incoming.body.docs.length; i--; ) {
+        //   const doc = incoming.body.docs[i];
+        //   const position = isArchivable(doc._rev);
+        //   if (position) {
+        //     try {
+        //       // Raw meta doc
+        //       const metaDoc = await db.get(doc._id, true);
 
-              // Time to modify!
-              const newMetaDoc = prepareArchiveDoc(metaDoc, position);
+        //       // Time to modify!
+        //       const newMetaDoc = prepareArchiveDoc(metaDoc, position);
 
-              // Prevent clashes
-              metaDoc._id += ":" + position;
+        //       // Prevent clashes
+        //       metaDoc._id += ":" + position;
 
-              // We could add to existing but then we would archive the archive
-              // Write document to archive
-              await archDb.post(checkDoc(metaDoc));
+        //       // We could add to existing but then we would archive the archive
+        //       // Write document to archive
+        //       await archDb.post(checkDoc(metaDoc));
 
-              // Rewrite meta root document
-              await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
-            } catch (e) {
-              // Ignore errors and continue
-            }
-          }
-        }
+        //       // Rewrite meta root document
+        //       await db.writeRaw(newMetaDoc._id, JSON.stringify(newMetaDoc));
+        //     } catch (e) {
+        //       // Ignore errors and continue
+        //     }
+        //   }
+        // }
 
         // Bulk Insert
         if (await db.bulkDocs(incoming.body.docs, incoming.body.options)) {
