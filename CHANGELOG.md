@@ -1,5 +1,11 @@
 # Activeledger Changelog
 
+## [2.13.7]
+
+### Fix
+* **Storage** : Improved database management, Less code and reduced writes.
+* **Protocol** : Virtual Prefixes can now be mixed without prefix for the same stream.
+
 ## [2.13.6]
 
 ### Fix
