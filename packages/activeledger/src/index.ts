@@ -70,8 +70,8 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   CLIHandler.getStats(version);
 } else if (ActiveOptions.get<boolean>("compact", false)) {
   CLIHandler.startCompact();
-} else if (ActiveOptions.get<boolean>("flush", false)) {
-  CLIHandler.flushArchives(ActiveOptions.get<number>("flush", false));
+//} else if (ActiveOptions.get<boolean>("flush", false)) {
+//  CLIHandler.flushArchives(ActiveOptions.get<number>("flush", false));
 } else {
   CLIHandler.start();
 }

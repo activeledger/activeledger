@@ -204,7 +204,7 @@ export class Provider {
    */
   private static setupDB(dbConfig: any) {
     this.setupErrorDB(dbConfig);
-    this.setupArchiveDB(dbConfig);
+    //this.setupArchiveDB(dbConfig);
   }
 
   /**
@@ -238,22 +238,22 @@ export class Provider {
    * @param {*} dbConfig
    * @memberof Provider
    */
-  private static setupArchiveDB(dbConfig: any) {
-    // Get error database connection
-    this.archiveDatabase = new ActiveDSConnect(
-      `${dbConfig.url}/${dbConfig.database}_archive`
-    );
-    this.archiveDatabase.info();
+  // private static setupArchiveDB(dbConfig: any) {
+  //   // Get error database connection
+  //   this.archiveDatabase = new ActiveDSConnect(
+  //     `${dbConfig.url}/${dbConfig.database}_archive`
+  //   );
+  //   this.archiveDatabase.info();
 
-    // Get error archive connection
-    this.archiveArchive = new ActiveDSConnect(
-      `${dbConfig.url}/${dbConfig.database}_archived`
-    );
-    this.archiveArchive.info();
+  //   // Get error archive connection
+  //   this.archiveArchive = new ActiveDSConnect(
+  //     `${dbConfig.url}/${dbConfig.database}_archived`
+  //   );
+  //   this.archiveArchive.info();
 
-    // Initialise Error feed
-    // this.archiveFeed = new ActiveChanges("Archive", this.archiveDatabase, 1);
-  }
+  //   // Initialise Error feed
+  //   // this.archiveFeed = new ActiveChanges("Archive", this.archiveDatabase, 1);
+  // }
 
   /**
    * Setup a database connection
