@@ -667,7 +667,10 @@ export class Endpoints {
           // We don't encrypt to ourselve
           if (bodyObject.$neighbour.reference != host.reference) {
             // Decrypt Trasanction First (As Signing Pre Encryption)
-            if (ActiveOptions.get<any>("security", {}).encryptedConsensus) {
+            if (
+              bodyObject.$enc ||
+              ActiveOptions.get<any>("security", {}).encryptedConsensus
+            ) {
               bodyObject.$packet = JSON.parse(
                 Buffer.from(
                   host.decrypt(bodyObject.$packet),
@@ -696,10 +699,13 @@ export class Endpoints {
           }
 
           // Open signed post
-          return resolve(bodyObject.$packet);
+          return resolve({
+            from: bodyObject.$neighbour.reference,
+            body: bodyObject.$packet,
+          });
         } else {
           // Resolve as just the object
-          resolve(bodyObject);
+          resolve({ body: bodyObject });
         }
       }
     });

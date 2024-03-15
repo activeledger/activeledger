@@ -262,7 +262,7 @@ export class Host extends Home {
           )
             .then((body) => {
               // Post Converted, Continue processing
-              this.processEndpoints(req, res, body);
+              this.processEndpoints(req, res, body.body, body.from);
             })
             .catch((error) => {
               // Failed to convery respond;
@@ -992,7 +992,8 @@ export class Host extends Home {
   private processEndpoints(
     req: IncomingMessage,
     res: ServerResponse,
-    body?: any
+    body?: any,
+    from?: string
   ) {
     // Internal or External Request
     let requester = (req.headers["x-activeledger"] as string) || "NA";
@@ -1115,12 +1116,23 @@ export class Host extends Home {
     // Wait for promise to get the response
     response
       .then((response: any) => {
+        let data = response.content || {};
+        // Response should be encrypted?
+        if (response.content && response.content.$encrypt && from) {
+          data = {
+            $packet: this.neighbourhood
+              .get(from)
+              .encryptKnock(JSON.stringify(response.content), true),
+            $enc: true,
+          };
+        }
+
         // Write Header
         // All outputs are JSON and
         this.writeResponse(
           res,
           response.statusCode,
-          JSON.stringify(response.content || {}),
+          JSON.stringify(data),
           gzipAccepted
         );
       })
