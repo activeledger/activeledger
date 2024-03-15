@@ -78,7 +78,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   public getAddress(): { host: string; port: number } {
     return {
       host: this.host,
-      port: this.port
+      port: this.port,
     };
   }
 
@@ -152,9 +152,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         post = {
           $neighbour: {
             reference: Home.reference,
-            signature: Home.sign(params)
+            signature: Home.sign(params),
           },
-          $packet: this.encryptKnock(params)
+          $packet: this.encryptKnock(params, params.$encrypt),
+          $enc: params.$encrypt ? true : false,
         };
       }
 
@@ -168,7 +169,18 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             post,
             true
           )
-            .then(resolve)
+            // TODO: Interface needed
+            .then((response: any) => {
+              if (response.data.$enc && response.data.$packet) {
+                response.data = JSON.parse(
+                  Buffer.from(
+                    Home.identity.decrypt(response.data.$packet),
+                    "base64"
+                  ).toString()
+                );
+              }
+              resolve(response);
+            })
             .catch((error: any) => {
               if (error && error.response && error.response.data) {
                 ActiveLogger.error(
@@ -212,14 +224,14 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @returns {*}
    * @memberof Neighbour
    */
-  private encryptKnock(data: any): any {
+  public encryptKnock(data: any, encrypted: boolean = false): any {
     // Don't encrypt to self
     // Make sure we have an idenity to encrypt
     // Is the network encrypt protected?
     if (
       this.reference !== Home.reference &&
       this.identity &&
-      ActiveOptions.get<any>("security", {}).encryptedConsensus
+      (encrypted || ActiveOptions.get<any>("security", {}).encryptedConsensus)
     ) {
       return this.identity.encrypt(data);
     }
