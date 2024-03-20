@@ -154,6 +154,14 @@ export class Home extends Neighbour {
     // Set This homes reference
     Home.reference = this.reference;
 
+    // Has this address reference been remapped out
+    if (
+      Neighbourhood.remapedAddr &&
+      Neighbourhood.remapedAddr[this.reference]
+    ) {
+      Home.reference = this.reference = Neighbourhood.remapedAddr[this.reference];
+    }
+
     // Set Self Host (Used for Contracts to know who is where)
     Home.host = `${this.host}:${this.port}`;
 
@@ -255,12 +263,10 @@ export class Home extends Neighbour {
     }
 
     // Sort the order of the neighbours
-    this.tMap = tempMap.sort(
-      (x, y): number => {
-        if (x > y) return 1;
-        return -1;
-      }
-    );
+    this.tMap = tempMap.sort((x, y): number => {
+      if (x > y) return 1;
+      return -1;
+    });
   }
 
   /**
@@ -332,12 +338,12 @@ export class Home extends Neighbour {
       }
 
       // Update Sub Processes
-      this.processors.forEach(processor => {
+      this.processors.forEach((processor) => {
         processor.send({
           type: "hk",
           data: {
-            right: Home.right
-          }
+            right: Home.right,
+          },
         });
       });
     }
@@ -372,7 +378,7 @@ export class Home extends Neighbour {
    * @memberof Home
    */
   public findProcessor(pid: number): ChildProcess | undefined {
-    return this.processors.find(processor => {
+    return this.processors.find((processor) => {
       return processor.pid === pid ? true : false;
     }) as ChildProcess;
   }

@@ -26,6 +26,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
+import { Neighbourhood } from "./neighbourhood";
 
 /**
  * Manages Node Connection Information
@@ -67,6 +68,14 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       host + port + ActiveOptions.get<string>("network", ""),
       "sha1"
     );
+
+    // Has this address reference been remapped out
+    if (
+      Neighbourhood.remapedAddr &&
+      Neighbourhood.remapedAddr[this.reference]
+    ) {
+      this.reference = Neighbourhood.remapedAddr[this.reference];
+    }
   }
 
   /**
