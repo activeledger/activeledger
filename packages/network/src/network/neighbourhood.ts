@@ -40,7 +40,7 @@ export enum NeighbourStatus {
   Pairing,
   Recognised,
   Unstable,
-  Stable
+  Stable,
 }
 
 /**
@@ -87,6 +87,15 @@ export class Neighbourhood {
   private houses: number = 0;
 
   /**
+   * Holds remaped references (Holds current to different)
+   *
+   * @static
+   * @type {{ [index: string]: string }}
+   * @memberof Neighbourhood
+   */
+  public static remapedAddr: { [index: string]: string };
+
+  /**
    * Creates an instance of Neighbourhood and builds the list of
    * known neighbours
    * @memberof Neighbourhood
@@ -94,6 +103,11 @@ export class Neighbourhood {
   constructor() {
     // Temporary Access solution
     let neighbourhood: Array<any> = ActiveOptions.get("neighbourhood", false);
+
+    // Any remapped references
+    if (!Neighbourhood.remapedAddr) {
+      Neighbourhood.remapedAddr = ActiveOptions.get("neighbourhoodRemap", {});
+    }
 
     // Known Neighbours list (TODO have alternatives such a ledger based)
     // TODO make config interface
@@ -312,11 +326,11 @@ export class Neighbourhood {
             // We want to catch all errors and only return the data
             this.neighbours[neighbours[i]]
               .knock(endpoint, params)
-              .then(response => {
+              .then((response) => {
                 // Pass over the data response
                 resolve(response.data);
               })
-              .catch(e => {
+              .catch((e) => {
                 // Do nothing with error (Don't want to interrupt)
                 ActiveLogger.debug(e, "Knock All Single Knock Failure");
                 resolve({ error: true });
