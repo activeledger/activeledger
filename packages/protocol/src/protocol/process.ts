@@ -302,10 +302,19 @@ export class Process extends EventEmitter {
    */
   public destroy(umid: string): void {
     // Record un commited transactions as an error
-    if (!this.nodeResponse.commit) {
+    try {
+      if (!this.nodeResponse.commit) {
+        this.shared.raiseLedgerError(
+          1600,
+          new Error("Failed to commit before timeout"),
+          true
+        );
+      }
+    } catch (e) {
+      // Something is wrong with node response, Lets still log and continue
       this.shared.raiseLedgerError(
-        1600,
-        new Error("Failed to commit before timeout"),
+        1605,
+        new Error("Failed to commit lacking this node response"),
         true
       );
     }
@@ -433,20 +442,12 @@ export class Process extends EventEmitter {
         }
 
         // Check For Locks Global and Version
-        if (
-          fs.existsSync(
-            `${namespacePath}/_LOCK.${this.contractId}`
-          )
-        ) {
+        if (fs.existsSync(`${namespacePath}/_LOCK.${this.contractId}`)) {
           throw new Error("Contract Global Lock");
         }
 
-        // 
-        if (
-          fs.existsSync(
-            `${namespacePath}/_LOCK.${contract}`
-          )
-        ) {
+        //
+        if (fs.existsSync(`${namespacePath}/_LOCK.${contract}`)) {
           throw new Error(
             `Contract Version Lock ${contract.substring(
               contract.indexOf("@") + 1

@@ -459,10 +459,20 @@ class Processor {
     if (entry.$nodes) {
       const errMsg = "(Unhandled Contract Error) " + error.toString();
       // unhandled may happen before object created
-      if (entry.$nodes[Home.reference]?.error) {
-        entry.$nodes[Home.reference].error = errMsg;
+      if (Home.reference) {
+        if (entry.$nodes[Home.reference]?.error) {
+          entry.$nodes[Home.reference].error = errMsg;
+        } else {
+          entry.$nodes[Home.reference] = {
+            vote: false,
+            commit: false,
+            error: errMsg,
+          };
+        }
       } else {
-        entry.$nodes[Home.reference] = {
+        // Reference has been lost (Processor crashing?)
+        // Lets use random placeholder to attempt to store the data
+        entry.$nodes[`NoRef-${(+new Date()).toString(36).slice(-5)}`] = {
           vote: false,
           commit: false,
           error: errMsg,
