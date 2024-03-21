@@ -412,6 +412,7 @@ export class LevelMe {
   public allDocs(options: allDocOptions): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
       try {
+        const offset = parseInt(options.skip?.toString() || "0");
         await this.open();
 
         // Cache rows to be returned
@@ -429,7 +430,7 @@ export class LevelMe {
           //await Promise.all(promises);
           return resolve({
             total_rows: rows.length,
-            offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+            offset,
             rows,
           });
         } else {
@@ -480,8 +481,8 @@ export class LevelMe {
             .on("end", async () => {
               await Promise.all(promises);
               resolve({
-                total_rows: 0, //this.docCount, This will return as a global offset
-                offset: 0, // TODO match this up, May need more document to test, Or maybe not needed
+                total_rows: rows.length, //this.docCount, This will return as a global offset
+                offset,
                 rows,
               });
             });

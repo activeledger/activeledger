@@ -51,7 +51,7 @@ import { LevelMe } from "./levelme";
   const getDB = (name: string): LevelMe => {
     // Must start with activeledger (will cause problem with config need to resolve)
     if (!name.startsWith("activeledger")) {
-      throw new Error("invalid database");
+      throw new Error(`invalid database - ${name}`);
     }
     if (!dbCache[name]) {
       dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
@@ -143,7 +143,7 @@ import { LevelMe } from "./levelme";
   });
 
   // Delete Database Local Var
-  let deleteDb = (dir: string) => {
+  const deleteDb = (dir: string) => {
     // Read all files and delete
     fs.readdirSync(dir).map((source: string) => {
       fs.unlinkSync(dir + "/" + source);
@@ -199,6 +199,36 @@ import { LevelMe } from "./levelme";
       prepareAllDocs(Object.assign(incoming.query, incoming.body))
     );
   });
+
+  // Bit of a proxy call to focus on umids
+  http.use("*/umids", "GET", async (incoming: IActiveHttpIncoming) => {
+    return getTransactionUmids(incoming);
+  });
+
+  http.use("*/transactions", "GET", async (incoming: IActiveHttpIncoming) => {
+    return getTransactionUmids(incoming);
+  });
+
+  // Filters the call to  focus on umid transaction (assuming right database!)
+  const getTransactionUmids = async (incoming: IActiveHttpIncoming) => {
+    // Get Database
+    let db = getDB(incoming.url[0]);
+    // Lets make sure it starts with umid:
+    if (incoming.query["from"].startsWith("umid:")) {
+      incoming.query["startkey"] = incoming.query["from"];
+    } else {
+      incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
+    }
+    const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
+    for (let i = txs.rows.length; i--; ) {
+      const [timestamp, umid] = txs.rows[i]._id.split(",");
+      txs.rows[i] = {
+        umid,
+        timestamp: timestamp.replace('umid:',''),
+      };
+    }
+    return txs;
+  };
 
   /**
    * C/Pouch conversion utility tool for _all_docs
