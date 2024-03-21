@@ -114,9 +114,10 @@ export class StreamUpdater {
     private reference: string,
     private nodeResponse: any,
     private db: ActiveDSConnect,
+    private dbev: ActiveDSConnect,
     private emitter: EventEmitter,
     private shared: Shared,
-    private contractId: string,
+    private contractId: string
   ) {
     // Determanistic Collision Managamenent
     this.collisions = [];
@@ -285,12 +286,14 @@ export class StreamUpdater {
   }
 
   /**
-   * Handle data that is to be stored specifically against a contract 
+   * Handle data that is to be stored specifically against a contract
    *
    * @private
    * @memberof StreamUpdater
    */
-  private handleContractDataStream(contractData: ActiveDefinitions.IContractData) {
+  private handleContractDataStream(
+    contractData: ActiveDefinitions.IContractData
+  ) {
     // Replace contract label with ID if required
     const [contract, suffix] = contractData._id.split(":");
     if (contract.length < 64) {
@@ -310,10 +313,10 @@ export class StreamUpdater {
     // Loop Streams
     let i = this.streams.length;
     while (i--) {
-
       if (
-        (this.streams[i] as unknown as ActiveDefinitions.IContractData)
-          ._id?.indexOf(":data") > -1
+        (
+          this.streams[i] as unknown as ActiveDefinitions.IContractData
+        )._id?.indexOf(":data") > -1
       ) {
         this.handleContractDataStream(
           this.streams[i] as unknown as ActiveDefinitions.IContractData
@@ -416,7 +419,14 @@ export class StreamUpdater {
       emit = true;
 
     try {
-      await this.db.bulkDocs(this.docs);
+      await Promise.all([
+        this.db.bulkDocs(this.docs),
+        this.dbev.post({
+          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
+            this.entry.$umid
+          }`,
+        }),
+      ]);
     } catch (error) {
       continueProcessing = emit = false;
 

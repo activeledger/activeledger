@@ -1215,6 +1215,7 @@ export class Process extends EventEmitter {
             this.reference,
             this.nodeResponse,
             this.db,
+            this.dbev,
             this,
             this.shared,
             this.contractId
@@ -1285,6 +1286,7 @@ export class Process extends EventEmitter {
                     this.reference,
                     this.nodeResponse,
                     this.db,
+                    this.dbev,
                     this,
                     this.shared,
                     this.contractId
