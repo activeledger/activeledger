@@ -329,7 +329,7 @@ class Processor {
   private failed(entry: any, error: Error): void {
     ActiveLogger.debug(error, "TX Failed");
     // Store error
-    entry.$nodes[Home.reference].error = error.toString();
+    entry.$nodes[Home.reference].error = error?.toString();
 
     // Pass back to host to respond
     this.send("commited", {
@@ -438,7 +438,7 @@ class Processor {
               sentFrom: Home.host,
               sentTo: location,
               $umid: entry.$umid,
-              response: error.toString(),
+              response: error?.toString(),
             });
           });
       }
@@ -457,7 +457,7 @@ class Processor {
     ActiveLogger.warn(error, "UnhandledRejection");
     // Store error (if we can)
     if (entry.$nodes) {
-      const errMsg = "(Unhandled Contract Error) " + error.toString();
+      const errMsg = "(Unhandled Contract Error) " + error?.toString();
       // unhandled may happen before object created
       if (Home.reference) {
         if (entry.$nodes[Home.reference]?.error) {
