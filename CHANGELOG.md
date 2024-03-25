@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [2.13.8]
+
+### New
+* **Protocol** : UMID Events - Events created for every UMID to better help walkthrough the transaction list.
+* **Network** : Payload encryption between nodes with $encrypt.
+* **Network** : Remap reference names from config file with neighbourhoodRemap (Useful to change IP without breaking generated reference)
+
+### Fix
+* **Network / Logger** : Optional chaining to prevent null errors from not being handled nicely.
+* **Network** : Kill hanging processes that have had an unhandled event.
+* **Network** : Improved handling of unhandled rejection events for a more graceful shutdown.
+
 ## [2.13.7]
 
 ### Fix
