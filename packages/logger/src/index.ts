@@ -380,7 +380,7 @@ export class ActiveLogger {
    */
   private static object(obj: any): string {
     // Convert to string
-    let objectStr = JSON.stringify(obj, null, 2).slice(1, -1);
+    let objectStr = JSON.stringify(obj, null, 2)?.slice(1, -1);
 
     // Get Output String
     let out = "";
@@ -397,7 +397,7 @@ export class ActiveLogger {
         31
       )}-------------`;
     } else {
-      if (obj.toString) {
+      if (obj?.toString) {
         out += `\r\n-------------${ActiveLogger.colour(
           "[ toString() ]",
           32
