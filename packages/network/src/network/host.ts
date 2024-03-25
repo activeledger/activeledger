@@ -40,6 +40,7 @@ import { ActiveInterfaces } from "./utils";
 import { Endpoints } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
+import * as process from "process";
 
 // TODO: Check .send doesn't error if it does rebuild processor
 
@@ -382,6 +383,12 @@ export class Host extends Home {
         // Setup
         processor.send(this.getLatestSetup());
       }
+      // Instruct child to terminate. (Clears memory)
+      // Even though we should be clear timeout to act as a buffer and
+      // push to the end of the event loop
+      setTimeout(() => {
+        pFork.kill();
+      }, 2500);
     };
 
     // Listen for message to respond to waiting http
