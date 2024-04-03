@@ -123,7 +123,7 @@ export class Maintain {
    */
   private static getInterval(): number {
     if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
-      return 300;
+      return 500;
     } else {
       return Maintain.interval;
     }
