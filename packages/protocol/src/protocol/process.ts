@@ -1056,7 +1056,8 @@ export class Process extends EventEmitter {
         // (Early commit, Then Forward to network)
         this.commit(virtualMachine, async () => {
           try {
-            const response = await this.right.knock("init", this.entry);
+            // catch wait retry x 3? (broadcast not really affected other nodes will send it)
+            const response = await this.initRightKnock();
 
             // Check we didn't commit early
             if (!this.nodeResponse.commit) {
@@ -1111,6 +1112,44 @@ export class Process extends EventEmitter {
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
+  }
+
+  /**
+   * Retries the right knock init
+   * During this time "right" may change, Right may have errors so retries
+   * skips this problem. Another problem could be the process managing the request
+   * may get shutdown early so resending will try again. 
+   * (TODO: PRocess shutdown slower try and let all pendings finish)
+   *
+   * @private
+   * @param {number} [retries=0]
+   * @returns {Promise<any>}
+   * @memberof Process
+   */
+  private async initRightKnock(retries = 0): Promise<any> {
+    try {
+      return await this.right.knock("init", this.entry);
+    } catch (e) {
+      // Manage E? (Should partly self manage if node goes down)
+      if (retries <= 2) {
+        await this.sleep(1000);
+        return this.initRightKnock(retries++);
+      } else {
+        throw new Error("3x Right Knock Error");
+      }
+    }
+  }
+
+  /**
+   * Basic awaitable sleep
+   *
+   * @private
+   * @param {number} time
+   * @returns
+   * @memberof Process
+   */
+  private sleep(time: number) {
+    return new Promise((resolve) => setTimeout(resolve, time));
   }
 
   /**
