@@ -133,6 +133,15 @@ export class Host extends Home {
   } = {};
 
   /**
+   * Process ready to be hot swapped
+   *
+   * @private
+   * @type {ChildProcess}
+   * @memberof Host
+   */
+  private standbyProcess: ChildProcess;
+
+  /**
    * How many cpu processors have said they're ready
    *
    * @private
@@ -302,6 +311,10 @@ export class Host extends Home {
       processor.send(this.getLatestSetup());
     }
 
+    // Create temporary ready to swap out (So it is already set up)
+    this.standbyProcess = this.createProcessor(cpuTotal);
+    this.standbyProcess.send(this.getLatestSetup());
+
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
   }
@@ -346,49 +359,59 @@ export class Host extends Home {
     // Reusable restart process from error with current scope
     const restartBadProcess = (...error: any[]) => {
       ActiveLogger.fatal(error, "Processor Crashed");
-      // Look for any transactions which are in this processor
-      const pendings = Object.keys(this.processPending);
-      pendings.forEach((key) => {
-        // Get Transaction
-        let pending = this.processPending[key];
-        // Was this transaction in the broken processor
-        if (pending?.pid === pFork.pid) {
-          // This will just resolve all pending transactions in that process pool
-          // Wont be graceful but most likely other nodes will have the same conclusion
 
-          // Assign general error
-          pending.entry.$nodes[this.reference].error =
-            "(Unhandled Contract Error) Unknown - Try Again";
+      // Push standby process
+      this.processors.push(this.standbyProcess);
 
-          // Resolve to return oprhened transactions
-          pending.resolve({
-            status: 200,
-            data: pending.entry,
-          });
-
-          // Remove Locks
-          this.release(pending, true);
-        }
-      });
+      // Find the bad process
       const pos = this.processors.findIndex((processor) => {
         return processor.pid === pFork.pid;
       });
       // Remove from processors list and create new
       if (pos !== -1) {
         this.processors.splice(pos, 1);
-        // We should now create a new processor
-        const processor = this.createProcessor();
-        // Add to list
-        this.processors.push(processor);
-        // Setup
-        processor.send(this.getLatestSetup());
       }
-      // Instruct child to terminate. (Clears memory)
-      // Even though we should be clear timeout to act as a buffer and
-      // push to the end of the event loop
+
+      // We should now create a new standby processor
+      this.standbyProcess = this.createProcessor();
+      this.standbyProcess.send(this.getLatestSetup());
+
+      // Wait for current tansactions to finish (Destroy can take up to 5 minutes)
       setTimeout(() => {
-        pFork.kill();
-      }, 2500);
+        // Look for any transactions which are in this processor
+        const pendings = Object.keys(this.processPending);
+        pendings.forEach((key) => {
+          // Get Transaction
+          let pending = this.processPending[key];
+          // Was this transaction in the broken processor
+          if (pending?.pid === pFork.pid) {
+            // This will just resolve all pending transactions in that process pool
+            // Wont be graceful but most likely other nodes will have the same conclusion
+            // However enough time has passed that it *should* be safe
+            // TODO make sure we don't have a single transaction forever extending timeout.
+            // Or find a way to move it into another process broadcast timeout is within the 5 minutes
+            // Assign general error
+            pending.entry.$nodes[this.reference].error =
+              "(Contract Thread Error) Unknown - Try Again";
+
+            // Resolve to return oprhened transactions
+            pending.resolve({
+              status: 200,
+              data: pending.entry,
+            });
+
+            // Remove Locks
+            this.release(pending, true);
+          }
+        });
+
+        // Instruct child to terminate. (Clears memory)
+        // Even though we should be clear timeout to act as a buffer and
+        // push to the end of the event loop
+        setTimeout(() => {
+          pFork.kill();
+        }, 2500);
+      }, 420000);
     };
 
     // Listen for message to respond to waiting http
@@ -691,9 +714,10 @@ export class Host extends Home {
    *
    * @private
    * @param {ActiveDefinitions.LedgerEntry} v
+   * @param {number} retries
    * @memberof Host
    */
-  private hold(v: ActiveDefinitions.LedgerEntry) {
+  private hold(v: ActiveDefinitions.LedgerEntry, retries = 0) {
     // Build a list of streams to lock
     // Would be good to cache this
     // let input = Object.keys(v.$tx.$i || {});
@@ -739,11 +763,18 @@ export class Host extends Home {
 
       return;
     } else {
-      // No, How to deal with it?
-      this.processPending[v.$umid].reject({
-        status: 100,
-        error: "Busy Locks",
-      });
+      // Simple queue (Abuse event loop) of 3 retries then reject
+      if (retries <= 2) {
+        setTimeout(() => {
+          this.hold(v, retries++);
+        }, 1000);
+      } else {
+        // No, How to deal with it?
+        this.processPending[v.$umid].reject({
+          status: 100,
+          error: "Busy Locks",
+        });
+      }
     }
   }
 

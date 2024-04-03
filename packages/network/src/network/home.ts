@@ -110,8 +110,22 @@ export class Home extends Neighbour {
    */
   private tMap: string[];
 
+  /**
+   * Holds the Transactions Processors 
+   *
+   * @protected
+   * @type {ChildProcess[]}
+   * @memberof Home
+   */
   protected processors: ChildProcess[] = [];
-
+  
+  /**
+   * Iterator for looping processors
+   *
+   * @protected
+   * @type {IterableIterator<ChildProcess>}
+   * @memberof Home
+   */
   protected processorIterator: IterableIterator<ChildProcess>;
 
   /**
@@ -159,7 +173,8 @@ export class Home extends Neighbour {
       Neighbourhood.remapedAddr &&
       Neighbourhood.remapedAddr[this.reference]
     ) {
-      Home.reference = this.reference = Neighbourhood.remapedAddr[this.reference];
+      Home.reference = this.reference =
+        Neighbourhood.remapedAddr[this.reference];
     }
 
     // Set Self Host (Used for Contracts to know who is where)
