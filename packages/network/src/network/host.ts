@@ -158,6 +158,19 @@ export class Host extends Home {
   private hybridHosts: ActiveDefinitions.IHybridNodes[];
 
   /**
+   * Holds transactions to be run as locks released.
+   * Basic formation of a tx memory pool.
+   *
+   * @private
+   * @type {[]}
+   * @memberof Host
+   */
+  private busyLocksQueue: {
+    entry: ActiveDefinitions.LedgerEntry;
+    retry: number;
+  }[] = [];
+
+  /**
    * Add process into pending
    *
    * @memberof Host
@@ -724,7 +737,7 @@ export class Host extends Home {
    * @param {number} retries
    * @memberof Host
    */
-  private hold(v: ActiveDefinitions.LedgerEntry, retries = 0) {
+  private hold(v: ActiveDefinitions.LedgerEntry, retries = 0): boolean {
     // Build a list of streams to lock
     // Would be good to cache this
     // let input = Object.keys(v.$tx.$i || {});
@@ -768,20 +781,25 @@ export class Host extends Home {
       //   this.processHybridNodes(this.processPending[v.$umid].entry);
       // }
 
-      return;
+      return true;
     } else {
-      // Simple queue (Abuse event loop) of 3 retries then reject
-      if (retries <= 2) {
-        setTimeout(() => {
-          this.hold(v, retries++);
-        }, 1000);
-      } else {
-        // No, How to deal with it?
-        this.processPending[v.$umid].reject({
-          status: 100,
-          error: "Busy Locks",
+      if (retries === 0) {
+        // Push to the end of the queue
+        this.busyLocksQueue.push({
+          entry: v,
+          retry: 1,
         });
+      } else {
+        if (retries > 5) {
+          this.processPending[v.$umid].reject({
+            status: 100,
+            error: "Busy Locks",
+          });
+          // True so it is "handled" and removed from the queue in a single location
+          return true;
+        }
       }
+      return false;
     }
   }
 
@@ -818,6 +836,25 @@ export class Host extends Home {
       ...this.labelOrKey(pending.entry.$tx.$i),
       ...this.labelOrKey(pending.entry.$tx.$o),
     ]);
+
+    // Run through the queue in order to process
+    if (this.busyLocksQueue.length) {
+      for (let i = 0; i < this.busyLocksQueue.length; i++) {
+        const x = (this.busyLocksQueue[i].entry as any).x;
+        if (
+          this.hold(
+            this.busyLocksQueue[i].entry,
+            this.busyLocksQueue[i].retry++
+          )
+        ) {
+          // Success, Can remove from queue
+          // cannot splice as still looping and looping in order
+          delete this.busyLocksQueue[i];
+        }
+      }
+      // Remove the empty results if any
+      this.busyLocksQueue = this.busyLocksQueue.filter((n) => n);
+    }
 
     // Shared removal method for instant or delayed.
     // delayed only used on broadcast but only paniced processes call instant
