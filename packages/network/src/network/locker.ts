@@ -23,6 +23,9 @@
 
 import { setTimeout } from "timers";
 
+const CHECKER_TIMER = 5 * 1000 * 60;
+const AUTO_RELEASE_TIME = 10 * 1000 * 60;
+
 /**
  * Class manages stream locks for multiple processor safety
  *
@@ -40,10 +43,20 @@ export class Locker {
    *
    * @private
    * @static
-   * @type {{[stream: string]: boolean}}
+   * @type {{[stream: string]: number | boolean}}
    * @memberof Locker
    */
-  private static cell: { [stream: string]: boolean } = {};
+  private static cell: { [stream: string]: number | boolean } = {};
+
+  /**
+   * Holds the current timer job
+   *
+   * @private
+   * @static
+   * @type {NodeJS.Timeout}
+   * @memberof Locker
+   */
+  private static timer: NodeJS.Timeout | null;
 
   /**
    * Attempts to lock a stream returns is succussful
@@ -68,18 +81,12 @@ export class Locker {
         }
       }
 
-      // If not successfull release any on hold
-      if (!success)
-        setTimeout(() => {
-          Locker.release(stream);
-        }, 100);
-
       // Let process know
       return success;
     } else {
       // Is the single stream available?
       if (!this.cell[stream]) {
-        this.cell[stream] = !this.cell[stream];
+        this.cell[stream] = Date.now();
         return true;
       }
       return false;
@@ -107,4 +114,35 @@ export class Locker {
       return true;
     }
   }
+
+  /**
+   * Checks to make sure locks have been released. If 10 minutes has passed good chance
+   * something has crashed before they could get released properly
+   *
+   * @static
+   * @memberof Locker
+   */
+  public static checker() {
+    if (!Locker.timer) {
+      Locker.timer = setTimeout(() => {
+        // Loop cell and release if 10 minutes has passed
+        const locks = Object.keys(this.cell);
+        for (let i = locks.length; i--; ) {
+          if (
+            this.cell[locks[i]] &&
+            Date.now() - (this.cell[locks[i]] as number) >= AUTO_RELEASE_TIME
+          ) {
+            Locker.release(locks[i]);
+          }
+        }
+
+        // Unset so can setup next call
+        this.timer = null;
+        this.checker();
+      }, CHECKER_TIMER);
+    }
+  }
 }
+
+// Startup Checker
+Locker.checker();
