@@ -33,6 +33,9 @@ import { Neighbour } from "./neighbour";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { EventEngine } from "@activeledger/activequery";
 
+// Maximum memory used in VM processor
+const MAX_MEMORY_MB = 500 * 1024 * 1024;
+
 /**
  * Bare minimum data needed to make a home
  *
@@ -269,7 +272,14 @@ class Processor {
         default:
           ActiveLogger.fatal(m, "Unknown Processor Call");
       }
-    });
+      // Check memory usage let host know if its high
+      // VM needs improving to release its memory, This is temporary solution to let this process
+      // finish and then be swapped out with the waiting one.
+      if(process.memoryUsage.rss() > MAX_MEMORY_MB) {
+        this.send("memory", process.memoryUsage());
+      }
+    }
+    );
   }
 
   /**

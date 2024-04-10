@@ -357,7 +357,7 @@ export class Host extends Home {
     });
 
     // Reusable restart process from error with current scope
-    const restartBadProcess = (...error: any[]) => {
+    const unloadProcessorSafely = (...error: any[]) => {
       ActiveLogger.fatal(error, "Processor Crashed");
 
       // Push standby process
@@ -411,6 +411,7 @@ export class Host extends Home {
         setTimeout(() => {
           pFork.kill();
         }, 2500);
+        // Contracts which extend timeout will still be at risk hence the above
       }, 420000);
     };
 
@@ -511,7 +512,7 @@ export class Host extends Home {
             this.release(pending, true);
           }
           // End process and create new subprocess
-          restartBadProcess(
+          unloadProcessorSafely(
             "unhandledrejection - Already Handled, Tidying up processes"
           );
           break;
@@ -521,6 +522,12 @@ export class Host extends Home {
             processor.send(m);
           });
           break;
+        case "memory":
+          // End process and create new subprocess
+          unloadProcessorSafely(
+            `High Memory Load (${m.data.rss / 1024 / 1024}mb)`
+          );
+          break;
         default:
           ActiveLogger.fatal(m, "Unknown IPC Call");
           break;
@@ -528,7 +535,7 @@ export class Host extends Home {
     });
 
     // Recreate a new subprocessor
-    pFork.on("error", restartBadProcess);
+    pFork.on("error", unloadProcessorSafely);
 
     return pFork;
   }
