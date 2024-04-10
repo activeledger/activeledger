@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [2.14.0]
+
+### New
+* **Network** : Standby Process, Setup an additional transaction processor ready to be hot swapped right away.
+* **Network** : Simple busy lock queue. Retries 3 times after small delay to see if the locks have been released.
+
+### Fix
+* **Network** : Increase first connection delay (+100ms)
+* **Protocol** : When sending right only (not broadcast mode) retry 3 times instead of failing right away.
+
 ## [2.13.8]
 
 ### New
