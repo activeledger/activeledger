@@ -37,7 +37,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
-import { Endpoints } from "./index";
+import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
@@ -208,7 +208,8 @@ export class Host extends Home {
         pid: 0,
       };
       // Ask for hold
-      this.hold(entry);
+      //this.hold(entry);
+      this.processQueue(entry);
     });
   }
 
@@ -330,6 +331,9 @@ export class Host extends Home {
 
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
+
+    // Start queue failsafe
+    this.timerQueue();
   }
 
   /**
@@ -512,6 +516,7 @@ export class Host extends Home {
                   );
                 }
               );
+              Maintain.healthTimer(true);
             }
           }
           break;
@@ -790,7 +795,7 @@ export class Host extends Home {
           retry: 1,
         });
       } else {
-        if (retries > 5) {
+        if (retries > ActiveOptions.get<number>("queue_retry", 5)) {
           this.processPending[v.$umid].reject({
             status: 100,
             error: "Busy Locks",
@@ -837,24 +842,8 @@ export class Host extends Home {
       ...this.labelOrKey(pending.entry.$tx.$o),
     ]);
 
-    // Run through the queue in order to process
-    if (this.busyLocksQueue.length) {
-      for (let i = 0; i < this.busyLocksQueue.length; i++) {
-        const x = (this.busyLocksQueue[i].entry as any).x;
-        if (
-          this.hold(
-            this.busyLocksQueue[i].entry,
-            this.busyLocksQueue[i].retry++
-          )
-        ) {
-          // Success, Can remove from queue
-          // cannot splice as still looping and looping in order
-          delete this.busyLocksQueue[i];
-        }
-      }
-      // Remove the empty results if any
-      this.busyLocksQueue = this.busyLocksQueue.filter((n) => n);
-    }
+    // Check the lock queue
+    this.processQueue();
 
     // Shared removal method for instant or delayed.
     // delayed only used on broadcast but only paniced processes call instant
@@ -873,6 +862,52 @@ export class Host extends Home {
         remove();
       }, 300000); //20000
     }
+  }
+
+  /**
+   * Manages the busy lock queue
+   *
+   * @private
+   * @param {ActiveDefinitions.LedgerEntry} [next]
+   * @memberof Host
+   */
+  private processQueue(next?: ActiveDefinitions.LedgerEntry) {
+    // Run through the queue in order to process
+    if (this.busyLocksQueue.length) {
+      for (let i = 0; i < this.busyLocksQueue.length; i++) {
+        if (
+          this.hold(
+            this.busyLocksQueue[i].entry,
+            this.busyLocksQueue[i].retry++
+          )
+        ) {
+          // Success, Can remove from queue
+          // cannot splice as still looping and looping in order
+          delete this.busyLocksQueue[i];
+        }
+      }
+      // Remove the empty results if any
+      this.busyLocksQueue = this.busyLocksQueue.filter((n) => n);
+    }
+
+    // After processing earlier transactions now deal with calling
+    if (next) {
+      this.hold(next);
+    }
+  }
+
+  /**
+   * Checks the queue periodically to prevent timeouts
+   * better to return as a busy lock
+   *
+   * @private
+   * @memberof Host
+   */
+  private timerQueue() {
+    setTimeout(() => {
+      this.processQueue();
+      this.timerQueue();
+    }, 10000);
   }
 
   /**

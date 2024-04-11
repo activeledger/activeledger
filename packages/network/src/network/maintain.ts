@@ -93,17 +93,17 @@ export class Maintain {
     Maintain.createNetworkOrder();
 
     // Start the timer
-    Maintain.healthTimer(true);
+    //Maintain.healthTimer(true);
   }
 
   /**
    * Maintain Network health
    *
-   * @private
+   * @public
    * @param {boolean} [boot=false]
    * @memberof Maintain
    */
-  private static healthTimer(boot: boolean = false) {
+  public static healthTimer(boot: boolean = false) {
     setTimeout(() => {
       Maintain.healthTimer();
     }, Maintain.getInterval());
@@ -123,7 +123,7 @@ export class Maintain {
    */
   private static getInterval(): number {
     if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
-      return 500;
+      return 300;
     } else {
       return Maintain.interval;
     }
