@@ -34,7 +34,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { EventEngine } from "@activeledger/activequery";
 
 // Maximum memory used in VM processor
-const MAX_MEMORY_MB = 500 * 1024 * 1024;
+const MAX_MEMORY_MB = ActiveOptions.get<number>("max_memory", 1000) * 1024 * 1024;
 
 /**
  * Bare minimum data needed to make a home
