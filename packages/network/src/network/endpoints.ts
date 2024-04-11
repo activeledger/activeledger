@@ -192,6 +192,7 @@ export class Endpoints {
             ) {
               return resolve(this.successfulFailure(error.error || error));
             } else {
+              ActiveLogger.error(error, "Sent 500 Response (1000)");
               return reject({
                 statusCode: 500,
                 content: error,
@@ -199,6 +200,7 @@ export class Endpoints {
             }
           });
       } else {
+        ActiveLogger.error("Sent 500 Response (1200)");
         return reject({
           statusCode: 500,
           content: "Invalid Transaction",
@@ -242,12 +244,14 @@ export class Endpoints {
             });
           })
           .catch((error) => {
+            ActiveLogger.error(error, "Sent 500 Response (1300)");
             reject({
               statusCode: 500,
               content: error,
             });
           });
       } else {
+        ActiveLogger.error("Sent 500 Response (1400)");
         reject({
           statusCode: 500,
           content: "Must be sent over X-Activeledger-Encrypt",
@@ -270,11 +274,13 @@ export class Endpoints {
   public static InternalInitalise(host: Host, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
       // Is the network stable?
-      if (host.getStatus() != NeighbourStatus.Stable)
+      if (host.getStatus() != NeighbourStatus.Stable) {
+        ActiveLogger.error("Sent 500 Response (1500)");
         return resolve({
           statusCode: 500,
           content: "Network Not Stable",
         });
+      }
 
       // Cast Body
       let tx = body as ActiveDefinitions.LedgerEntry;
@@ -288,6 +294,7 @@ export class Endpoints {
           });
         })
         .catch((error: any) => {
+          ActiveLogger.error(error, "Sent 500 Response (1600)");
           return reject({
             statusCode: 500,
             content: error,
@@ -530,6 +537,7 @@ export class Endpoints {
             });
         } else {
           // Bad Request
+          ActiveLogger.error("Sent 500 Response (1600)");
           return reject({
             statusCode: 500,
             content: "Internal Server Error",
@@ -651,6 +659,7 @@ export class Endpoints {
           );
         } catch {
           // Error trying to decrypt
+          ActiveLogger.error("Sent 500 Response (1700)");
           return reject({
             statusCode: 500,
             content: "Decryption Error",
@@ -691,6 +700,7 @@ export class Endpoints {
                 )
             ) {
               // Bad Message
+              ActiveLogger.error("Sent 500 Response (1800)");
               return reject({
                 statusCode: 500,
                 content: "Security Challenge Failure",
