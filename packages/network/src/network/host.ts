@@ -175,7 +175,10 @@ export class Host extends Home {
    *
    * @memberof Host
    */
-  public pending(entry: ActiveDefinitions.LedgerEntry): Promise<any> {
+  public pending(
+    entry: ActiveDefinitions.LedgerEntry,
+    internal = false
+  ): Promise<any> {
     return new Promise<any>((resolve, reject) => {
       // Broadcasting or Territoriality Mode
       if (entry.$broadcast) {
@@ -200,16 +203,27 @@ export class Host extends Home {
         }
       }
 
-      // Add to pending (Using Promises instead of http request)
-      this.processPending[entry.$umid] = {
-        entry: entry,
-        resolve: resolve,
-        reject: reject,
-        pid: 0,
-      };
-      // Ask for hold
-      //this.hold(entry);
-      this.processQueue(entry);
+      // Check we don't have it, Process finding may have failed.
+      if (!this.processPending[entry.$umid]) {
+        // Add to pending (Using Promises instead of http request)
+        this.processPending[entry.$umid] = {
+          entry: entry,
+          resolve: resolve,
+          reject: reject,
+          pid: 0,
+        };
+        // Ask for hold
+        //this.hold(entry);
+        this.processQueue(entry, internal);
+      } else {
+        // If we have it and didn't find it, Lets return this request, However
+        // do we need to manage the existing one? Possibly stuck? play safe
+        // resolve with what we know
+        return resolve({
+          status: 200,
+          data: this.processPending[entry.$umid].entry,
+        });
+      }
     });
   }
 
@@ -652,14 +666,17 @@ export class Host extends Home {
         },
       });
 
-      // Loop them all and broadcast the transaction
-      while (i--) {
-        let node = neighbourhood[nodes[i]];
+      // Experienced a blank target from above assign, Double check to prevent bad loop
+      if (data) {
+        // Loop them all and broadcast the transaction
+        while (i--) {
+          let node = neighbourhood[nodes[i]];
 
-        // Make sure they're home and not us
-        if (node.isHome && node.reference !== this.reference) {
-          // Need to detect if we have already sent and got response for nodes for performance
-          promises.push(node.knock("init", data));
+          // Make sure they're home and not us
+          if (node.isHome && node.reference !== this.reference) {
+            // Need to detect if we have already sent and got response for nodes for performance
+            promises.push(node.knock("init", data));
+          }
         }
       }
 
@@ -729,9 +746,27 @@ export class Host extends Home {
 
     for (let i = keys.length; i--; ) {
       // Stream label or self
-      out.push(txIO[keys[i]].$stream || keys[i]);
+      out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
     }
     return out;
+  }
+
+  /**
+   * Filters Prefix for labelorkey locking
+   *
+   * @private
+   * @param {string} streamId
+   * @returns {string}
+   * @memberof Host
+   */
+  private filterPrefix(streamId: string): string {
+    // If id length more than 64 trim the start
+    if (streamId.length > 64) {
+      streamId = streamId.slice(-64);
+    }
+
+    // Return just the id
+    return streamId;
   }
 
   /**
@@ -800,6 +835,7 @@ export class Host extends Home {
             status: 100,
             error: "Busy Locks",
           });
+          this.release(this.processPending[v.$umid], true);
           // True so it is "handled" and removed from the queue in a single location
           return true;
         }
@@ -871,7 +907,14 @@ export class Host extends Home {
    * @param {ActiveDefinitions.LedgerEntry} [next]
    * @memberof Host
    */
-  private processQueue(next?: ActiveDefinitions.LedgerEntry) {
+  private processQueue(next?: ActiveDefinitions.LedgerEntry, internal = false) {
+    // If Internal and not broadcast let it skip the queue
+    let skipped = false;
+    if (next && internal && !next.$broadcast) {
+      this.hold(next);
+      skipped = true;
+    }
+
     // Run through the queue in order to process
     if (this.busyLocksQueue.length) {
       for (let i = 0; i < this.busyLocksQueue.length; i++) {
@@ -891,7 +934,7 @@ export class Host extends Home {
     }
 
     // After processing earlier transactions now deal with calling
-    if (next) {
+    if (next && !skipped) {
       this.hold(next);
     }
   }

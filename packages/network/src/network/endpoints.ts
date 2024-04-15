@@ -286,7 +286,7 @@ export class Endpoints {
       let tx = body as ActiveDefinitions.LedgerEntry;
       // Send into host pool
       host
-        .pending(tx)
+        .pending(tx, true)
         .then((ledger: any) => {
           return resolve({
             statusCode: ledger.status,
