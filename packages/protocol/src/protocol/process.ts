@@ -1096,7 +1096,7 @@ export class Process extends EventEmitter {
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
                   error.status || 1502,
-                  new Error(error.error)
+                  new Error(error.error || error)
                 ) // rethrow same error
               : this.shared.raiseLedgerError(
                   1501,
@@ -1133,7 +1133,7 @@ export class Process extends EventEmitter {
       // Manage E? (Should partly self manage if node goes down)
       if (retries <= 2) {
         await this.sleep(1000);
-        return this.initRightKnock(retries++);
+        return await this.initRightKnock(++retries);
       } else {
         throw new Error("3x Right Knock Error");
       }
