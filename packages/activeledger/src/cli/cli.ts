@@ -188,6 +188,7 @@ export class CLIHandler {
     } else {
       ActiveLogger.fatal("Mutiple merge arguments needed to continue.");
     }
+    process.exit();
     //#endregion
   }
 
