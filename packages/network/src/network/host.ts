@@ -208,8 +208,16 @@ export class Host extends Home {
         // Add to pending (Using Promises instead of http request)
         this.processPending[entry.$umid] = {
           entry: entry,
-          resolve: resolve,
-          reject: reject,
+          resolve: (response: unknown) => {
+            // Catch all release (with a response) Impact on broadcast?
+            this.release({ entry, resolve: null, reject: null, pid: 0 });
+            resolve(response);
+          },
+          reject: (response: unknown) => {
+            // Catch all release (with a response) Impact on broadcast?
+            this.release({ entry, resolve: null, reject: null, pid: 0 });
+            reject(response);
+          },
           pid: 0,
         };
         // Ask for hold
@@ -878,9 +886,6 @@ export class Host extends Home {
       ...this.labelOrKey(pending.entry.$tx.$o),
     ]);
 
-    // Check the lock queue
-    this.processQueue();
-
     // Shared removal method for instant or delayed.
     // delayed only used on broadcast but only paniced processes call instant
     const remove = () => {
@@ -898,6 +903,12 @@ export class Host extends Home {
         remove();
       }, 300000); //20000
     }
+
+    // Put this at the end so the queue can clear this transaction
+    setTimeout(() => {
+      // Check the lock queue
+      this.processQueue();
+    }, 100);
   }
 
   /**

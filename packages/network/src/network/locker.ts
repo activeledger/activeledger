@@ -84,6 +84,11 @@ export class Locker {
       // Let process know
       return success;
     } else {
+      // Self signed lets not lock up (assuming will be less than 64, using 60 as buffer)
+      if(stream.length < 60){
+        return true;
+      }
+
       // Is the single stream available?
       if (!this.cell[stream]) {
         this.cell[stream] = Date.now();
@@ -138,7 +143,6 @@ export class Locker {
   }
 
   public static checkLocks(releaseTime:number = AUTO_RELEASE_TIME) {
-    console.log(releaseTime);
     // Loop cell and release if 10 minutes has passed
     const locks = Object.keys(this.cell);
     for (let i = locks.length; i--; ) {

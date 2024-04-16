@@ -1010,6 +1010,7 @@ export class Process extends EventEmitter {
     } catch (error) {
       // error fetch read only streams
       this.shared.raiseLedgerError(1210, new Error("Read Only Stream Error"));
+      throw error;
     }
   }
 
