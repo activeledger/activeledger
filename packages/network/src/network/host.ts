@@ -1169,6 +1169,21 @@ export class Host extends Home {
       case "GET":
         // Different endpoints switched on calling path
         switch (req.url) {
+          case "/a/locks": // Network Status Request
+            return this.writeResponse(
+              res,
+              200,
+              JSON.stringify(Locker.getLocks()),
+              gzipAccepted
+            );
+          case "/a/locks/check": // Network Status Request
+            Locker.checkLocks();
+            return this.writeResponse(
+              res,
+              200,
+              JSON.stringify({ checked: true }),
+              gzipAccepted
+            );
           case "/a/status": // Network Status Request
             response = Endpoints.status(this, requester);
             break;

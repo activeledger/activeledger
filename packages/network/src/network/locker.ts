@@ -125,21 +125,29 @@ export class Locker {
   public static checker() {
     if (!Locker.timer) {
       Locker.timer = setTimeout(() => {
-        // Loop cell and release if 10 minutes has passed
-        const locks = Object.keys(this.cell);
-        for (let i = locks.length; i--; ) {
-          if (
-            this.cell[locks[i]] &&
-            Date.now() - (this.cell[locks[i]] as number) >= AUTO_RELEASE_TIME
-          ) {
-            Locker.release(locks[i]);
-          }
-        }
-
+        this.checkLocks();
         // Unset so can setup next call
         this.timer = null;
         this.checker();
       }, CHECKER_TIMER);
+    }
+  }
+
+  public static getLocks(): { [stream: string]: number | boolean } {
+    return this.cell;
+  }
+
+  public static checkLocks(releaseTime:number = AUTO_RELEASE_TIME) {
+    console.log(releaseTime);
+    // Loop cell and release if 10 minutes has passed
+    const locks = Object.keys(this.cell);
+    for (let i = locks.length; i--; ) {
+      if (
+        this.cell[locks[i]] &&
+        Date.now() - (this.cell[locks[i]] as number) >= releaseTime
+      ) {
+        Locker.release(locks[i]);
+      }
     }
   }
 }
