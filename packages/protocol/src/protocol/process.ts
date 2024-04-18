@@ -39,6 +39,8 @@ import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import path from "path";
 
+const BROADCAST_TIMEOUT = 20 * 1000;
+
 /**
  * Class controls the processing of this nodes consensus
  *
@@ -1381,7 +1383,7 @@ export class Process extends EventEmitter {
                     1510,
                     new Error("Failed Network Voting Timeout")
                   );
-                }, 20000);
+                }, BROADCAST_TIMEOUT);
               } else {
                 // Even if the other nodes voted yes we will still not reach conesnsus
                 ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
