@@ -68,7 +68,7 @@ export class Locker {
    */
   public static hold(stream: string): boolean;
   public static hold(stream: string[]): boolean;
-  public static hold(stream: any): boolean {
+  public static hold(stream: string | string[]): boolean {
     if (Array.isArray(stream)) {
       // Are all the streams available
       let i = stream.length;
@@ -107,7 +107,7 @@ export class Locker {
    */
   public static release(stream: string): boolean;
   public static release(stream: string[]): boolean;
-  public static release(stream: any): boolean {
+  public static release(stream: string | string[]): boolean {
     if (Array.isArray(stream)) {
       let i = stream.length;
       while (i--) {

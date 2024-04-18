@@ -910,7 +910,7 @@ export default class Setup extends PostProcess {
    */
   private convertArray(input: string): Array<string>;
   private convertArray(input: string[]): Array<string>;
-  private convertArray(input: any): any {
+  private convertArray(input: unknown): any {
     // Basic shallow check
     if (Array.isArray(input)) return input;
 
