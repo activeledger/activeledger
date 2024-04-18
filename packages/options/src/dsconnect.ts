@@ -37,7 +37,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   /**
    * Creates an instance of DBConnector.
    * @param {string} location
-   * @memberof DBConnector
    */
   constructor(private location: string) {
     // Search to make sure the database exists
@@ -47,7 +46,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * Creates Database / Get Database Info
    *
    * @returns
-   * @memberof ActiveDSConnect
    */
   public info(): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -61,7 +59,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * Drops database table
    *
    * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
    */
   public drop(): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -76,7 +73,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {*} [options={}]
    * @returns
-   * @memberof ActiveDSConnect
    */
   public createIndex(options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -91,7 +87,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {*} [options]
    * @returns
-   * @memberof ActiveDSConnect
    */
 
   public allDocs(options?: any): Promise<any> {
@@ -113,7 +108,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {string} id
    * @param {*} [options={}]
    * @returns
-   * @memberof ActiveDSConnect
    */
   public get(id: string, options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -129,7 +123,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {string} id
    * @param {*} [options={}]
    * @returns
-   * @memberof ActiveDSConnect
    */
   public createget(id: string, options: any = {}): Promise<any> {
     return new Promise((resolve) => {
@@ -146,7 +139,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {string} id
    * @returns {(Promise<{} | Boolean>)}
-   * @memberof ActiveDSConnect
    */
   public exists(id: string): Promise<{} | Boolean> {
     return new Promise<Boolean>((resolve) => {
@@ -163,7 +155,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {*} [options={}]
    * @returns
-   * @memberof ActiveDSConnect
    */
   public find(options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -179,7 +170,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {any[]} docs
    * @param {*} [options={}]
    * @returns
-   * @memberof ActiveDSConnect
    */
   public bulkDocs(docs: any[], options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -197,7 +187,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {} doc
    * @returns
-   * @memberof ActiveDSConnect
    */
   public post(doc: {}): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -212,7 +201,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {{ _id: string }} doc
    * @returns
-   * @memberof ActiveDSConnect
    */
   public put(doc: { _id: string; _rev?: string }): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -227,7 +215,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {{}} doc
    * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
    */
   public purge(doc: { _id: string; _rev?: string }): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -251,7 +238,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {string} sequence
    * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
    */
   public async seqDelete(sequence: string): Promise<any> {
     if (ActiveOptions.get<any>("db", {}).selfhost) {
@@ -269,7 +255,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {string} sequence
    * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
    */
   public async seqGet(sequence: string): Promise<any> {
     if (ActiveOptions.get<any>("db", {}).selfhost) {
@@ -286,7 +271,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * Compacts the database
    *
    * @returns {Promise<any>}
-   * @memberof ActiveDSConnect
    */
   public async compact(): Promise<any> {
     if (ActiveOptions.get<any>("db", {}).selfhost) {
@@ -304,7 +288,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {{}} opts
    * @returns {Promise<ActiveDSChanges | any>}
-   * @memberof DBConnector
    */
   public changes(opts: {
     live?: boolean;
@@ -341,7 +324,6 @@ export class ActiveDSChanges
    * Flag for cancelling the next listeing round
    *
    * @private
-   * @memberof ActiveDSChanges
    */
   private stop = false;
 
@@ -350,7 +332,6 @@ export class ActiveDSChanges
    * @param {{ live?: boolean; [opt: string]: any }} opts
    * @param {string} location
    * @param {boolean} [bulk=false]
-   * @memberof ActiveDSChanges
    */
   constructor(
     private opts: { live?: boolean; [opt: string]: any },
@@ -374,7 +355,6 @@ export class ActiveDSChanges
    * Listen for changes from the data store
    *
    * @private
-   * @memberof ActiveDSChanges
    */
   private listen(): void {
     ActiveRequest.send(
@@ -410,7 +390,6 @@ export class ActiveDSChanges
   /**
    * Cancels the changes listner
    *
-   * @memberof ActiveDSChanges
    */
   public cancel(): void {
     this.stop = true;

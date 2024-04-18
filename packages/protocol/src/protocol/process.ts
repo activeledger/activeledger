@@ -54,7 +54,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {VirtualMachine}
-   * @memberof Process
    */
   private static generalContractVM: VirtualMachine;
 
@@ -64,7 +63,6 @@ export class Process extends EventEmitter {
    * @private
    * @static
    * @type {VirtualMachine}
-   * @memberof Process
    */
   private static defaultContractsVM: VirtualMachine;
 
@@ -75,7 +73,6 @@ export class Process extends EventEmitter {
    * @private
    * @static
    * @type {IVMContractHolder}
-   * @memberof Process
    */
   private static singleContractVMHolder: IVMContractHolder = {};
 
@@ -84,7 +81,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {boolean}
-   * @memberof Process
    */
   private isDefault: boolean = false;
 
@@ -93,7 +89,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string}
-   * @memberof Process
    */
   private contractRef: string;
 
@@ -102,7 +97,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string[]}
-   * @memberof Process
    */
   private inputs: string[];
 
@@ -111,7 +105,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string[]}
-   * @memberof Process
    */
   private outputs: string[];
 
@@ -120,7 +113,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {boolean}
-   * @memberof Process
    */
   private checkRevs: boolean = true;
 
@@ -129,7 +121,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {ActiveDefinitions.INodeResponse}
-   * @memberof Process
    */
   private nodeResponse: ActiveDefinitions.INodeResponse;
 
@@ -138,7 +129,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string}
-   * @memberof Process
    */
   private contractLocation: string;
 
@@ -148,7 +138,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string}
-   * @memberof Process
    */
   private contractId: string;
 
@@ -156,7 +145,6 @@ export class Process extends EventEmitter {
    * Commiting State
    *
    * @private
-   * @memberof Process
    */
   private commiting = false;
 
@@ -164,7 +152,6 @@ export class Process extends EventEmitter {
    *  Voting State
    *
    * @private
-   * @memberof Process
    */
   private voting = true;
 
@@ -173,7 +160,6 @@ export class Process extends EventEmitter {
    * we use this as a flag for the storeError
    *
    * @private
-   * @memberof Process
    */
   private storeSingleError = false;
 
@@ -181,7 +167,6 @@ export class Process extends EventEmitter {
    * Prioritise the error sent to the requestee
    *
    * @private
-   * @memberof Process
    */
   private errorOut = {
     code: 0,
@@ -194,7 +179,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {NodeJS.Timeout}
-   * @memberof Process
    */
   private broadcastTimeout: NodeJS.Timeout;
 
@@ -203,7 +187,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {number}
-   * @memberof Process
    */
   private currentVotes: number;
 
@@ -212,7 +195,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {string[]}
-   * @memberof Process
    */
   private securityCache: ISecurityCache | null;
 
@@ -221,7 +203,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {Shared}
-   * @memberof Process
    */
   private shared: Shared;
 
@@ -230,7 +211,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @type {PermissionsChecker}
-   * @memberof Process
    */
   private permissionChecker: PermissionsChecker;
 
@@ -247,7 +227,6 @@ export class Process extends EventEmitter {
    * @param {ActiveDSConnect} error
    * @param {ActiveDSConnect} events
    * @param {ActiveCrypto.Secured} secured
-   * @memberof Process
    */
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
@@ -298,7 +277,6 @@ export class Process extends EventEmitter {
   /**
    * Destroy the process object from memory
    *
-   * @memberof Process
    */
   public destroy(umid: string): void {
     // Record un commited transactions as an error
@@ -343,7 +321,6 @@ export class Process extends EventEmitter {
    * @param {string} a
    * @param {string} b
    * @returns
-   * @memberof Process
    */
   private sortVersions(a: string, b: string) {
     const padSorting = (v: string) => {
@@ -361,7 +338,6 @@ export class Process extends EventEmitter {
   /**
    * Starts the consensus and commit phase processing
    *
-   * @memberof Process
    */
   public async start(contractVersion?: string) {
     ActiveLogger.debug("New TX : " + this.entry.$umid);
@@ -650,7 +626,6 @@ export class Process extends EventEmitter {
    *
    * @param {*} node
    * @returns {ActiveDefinitions.INodeResponse}
-   * @memberof Process
    */
   public updatedFromBroadcast(node?: any): ActiveDefinitions.INodeResponse {
     // Update networks response into local object
@@ -676,7 +651,6 @@ export class Process extends EventEmitter {
    * Returns Commiting State (Broadcast)
    *
    * @returns {boolean}
-   * @memberof Process
    */
   public isCommiting(): boolean {
     return this.commiting;
@@ -688,7 +662,6 @@ export class Process extends EventEmitter {
    * @private
    * @param {IVMDataPayload} payload
    * @param {string} contractName
-   * @memberof Process
    */
   private processDefaultContracts(
     payload: IVMDataPayload,
@@ -726,7 +699,6 @@ export class Process extends EventEmitter {
    * @param {string} namespace
    * @param {string} contractName
    * @param {string[]} extraBuiltins
-   * @memberof Process
    */
   private processUnsafeContracts(
     payload: IVMDataPayload,
@@ -772,7 +744,6 @@ export class Process extends EventEmitter {
    * @param {IVirtualMachine} virtualMachine
    * @param {IVMDataPayload} payload
    * @param {string} contractName
-   * @memberof Process
    */
   private async handleVM(
     virtualMachine: IVirtualMachine,
@@ -894,7 +865,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @param {LedgerStream[]} inputs
-   * @memberof Process
    */
   private async process(
     inputs: ActiveDefinitions.LedgerStream[]
@@ -1018,7 +988,6 @@ export class Process extends EventEmitter {
    * Manages the protocol process after this node has voted
    *
    * @private
-   * @memberof Process
    */
   private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
@@ -1125,7 +1094,6 @@ export class Process extends EventEmitter {
    * @private
    * @param {number} [retries=0]
    * @returns {Promise<any>}
-   * @memberof Process
    */
   private async initRightKnock(retries = 0): Promise<any> {
     try {
@@ -1147,7 +1115,6 @@ export class Process extends EventEmitter {
    * @private
    * @param {number} time
    * @returns
-   * @memberof Process
    */
   private sleep(time: number) {
     return new Promise((resolve) => setTimeout(resolve, time));
@@ -1159,7 +1126,6 @@ export class Process extends EventEmitter {
    * @private
    * @param {boolean} [skipBoost=false]
    * @returns {boolean}
-   * @memberof Process
    */
   private canCommit(skipBoost = false): boolean {
     // Time to count the votes (Need to recache keys)
@@ -1197,7 +1163,6 @@ export class Process extends EventEmitter {
    * @private
    * @param {Function} [earlyCommit]
    * @returns {void}
-   * @memberof Process
    */
   private async commit(
     virtualMachine: IVirtualMachine,
@@ -1442,7 +1407,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @returns {Promise<boolean>}
-   * @memberof Process
    */
   private getReadOnlyStreams(): Promise<ActiveDefinitions.LedgerIORputs> {
     return new Promise(async (resolve, reject) => {
@@ -1504,7 +1468,6 @@ export class Process extends EventEmitter {
    *
    * @private
    * @param {boolean} [outputs=false]
-   * @memberof Process
    */
   private labelOrKey(outputs: boolean = false): void {
     // Get reference for input or output

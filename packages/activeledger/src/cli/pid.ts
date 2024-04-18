@@ -36,7 +36,6 @@ export class PIDHandler {
    * Get all PIDs
    *
    * @returns {Promise<IPID>}
-   * @memberof PIDHandler
    */
   public async getPids(): Promise<IPID> {
     const { pidData, error } = await this.readPid();
@@ -55,7 +54,6 @@ export class PIDHandler {
    *
    * @param {EPIDChild} child
    * @returns {Promise<number>}
-   * @memberof PIDHandler
    */
   public async getPID(child: EPIDChild): Promise<number> {
     const { pidData, error } = await this.readPid();
@@ -114,7 +112,6 @@ export class PIDHandler {
    * @param {EPIDChild} child
    * @param {number} pid
    * @returns {Promise<void>}
-   * @memberof PIDHandler
    */
   public async addPid(child: EPIDChild, pid: number): Promise<void> {
     const { pidData, error } = await this.readPid();
@@ -145,7 +142,6 @@ export class PIDHandler {
    *
    * @param {EPIDChild} child
    * @returns {Promise<void>}
-   * @memberof PIDHandler
    */
   public async removePid(child: EPIDChild): Promise<void> {
     // Use the add function to reset the pid to 0
@@ -156,7 +152,6 @@ export class PIDHandler {
    * Reset the PID file, sets all PIDs to 0
    *
    * @returns {Promise<void>}
-   * @memberof PIDHandler
    */
   public async resetPidFile(): Promise<void> {
     return await this.writePid();
@@ -167,7 +162,6 @@ export class PIDHandler {
    *
    * @private
    * @returns {Promise<void>}
-   * @memberof PIDHandler
    */
   private async pidCheck(): Promise<void> {
     try {
@@ -189,7 +183,6 @@ export class PIDHandler {
    * @private
    * @param {IPID} [data]
    * @returns {Promise<void>}
-   * @memberof PIDHandler
    */
   private async writePid(data?: IPID): Promise<void> {
     if (!data) {
@@ -216,7 +209,6 @@ export class PIDHandler {
    *
    * @private
    * @returns {Promise<{pidData?: IPID, error?: Error}>}
-   * @memberof PIDHandler
    */
   private async readPid(): Promise<{ pidData?: IPID; error?: Error }> {
     if (!this.pidFileExists) {

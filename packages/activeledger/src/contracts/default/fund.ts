@@ -36,7 +36,6 @@ export default class Fund extends Standard {
    *
    * @private
    * @type {*}
-   * @memberof Fund
    */
   private prepare: any;
 
@@ -45,7 +44,6 @@ export default class Fund extends Standard {
    *
    * @private
    * @type {Activity}
-   * @memberof Fund
    */
   private outputActivity: Activity;
 
@@ -54,7 +52,6 @@ export default class Fund extends Standard {
    *
    * @private
    * @type {Activity}
-   * @memberof Fund
    */
   private inputActivity: Activity;
 
@@ -63,7 +60,6 @@ export default class Fund extends Standard {
    *
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public verify(signatureless: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -79,7 +75,6 @@ export default class Fund extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -98,7 +93,6 @@ export default class Fund extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
@@ -120,7 +114,6 @@ export default class Fund extends Standard {
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
    * @returns {void}
-   * @memberof Fund
    */
   private voteAdd(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -161,7 +154,6 @@ export default class Fund extends Standard {
    * @private
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Fund
    */
   private commitAdd(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -188,7 +180,6 @@ export default class Fund extends Standard {
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
    * @returns {void}
-   * @memberof Fund
    */
   private voteTransfer(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -231,7 +222,6 @@ export default class Fund extends Standard {
    * @private
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Fund
    */
   private commitTransfer(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,

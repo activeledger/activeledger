@@ -42,7 +42,6 @@ export class Home extends Neighbour {
    * This is the reason for Left & Right for child processes.
    *
    * @type {Neighbourhood}
-   * @memberof Home
    */
   public neighbourhood: Neighbourhood = new Neighbourhood();
 
@@ -52,7 +51,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {ActiveCrypto.KeyPair}
-   * @memberof Home
    */
   public static identity: ActiveCrypto.KeyPair;
 
@@ -61,7 +59,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {string}
-   * @memberof Home
    */
   public static publicPem: string;
 
@@ -70,7 +67,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {Neighbour}
-   * @memberof Home
    */
   public static left: Neighbour;
 
@@ -79,7 +75,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {Neighbour}
-   * @memberof Home
    */
   public static right: Neighbour;
 
@@ -88,7 +83,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {string}
-   * @memberof Home
    */
   public static reference: string;
 
@@ -97,7 +91,6 @@ export class Home extends Neighbour {
    *
    * @static
    * @type {string}
-   * @memberof Home
    */
   public static host: string;
 
@@ -106,7 +99,6 @@ export class Home extends Neighbour {
    *
    * @private
    * @type {string[]}
-   * @memberof Home
    */
   private tMap: string[];
 
@@ -115,7 +107,6 @@ export class Home extends Neighbour {
    *
    * @protected
    * @type {ChildProcess[]}
-   * @memberof Home
    */
   protected processors: ChildProcess[] = [];
   
@@ -124,13 +115,11 @@ export class Home extends Neighbour {
    *
    * @protected
    * @type {IterableIterator<ChildProcess>}
-   * @memberof Home
    */
   protected processorIterator: IterableIterator<ChildProcess>;
 
   /**
    * Creates an instance of Home.
-   * @memberof Home
    */
   constructor() {
     // Avoid calling super first error
@@ -199,7 +188,6 @@ export class Home extends Neighbour {
    * @static
    * @param {string} data
    * @returns {(string | null)}
-   * @memberof Home
    */
   public static sign(data: string): string | null {
     if (ActiveOptions.get<any>("security", {}).signedConsensus) {
@@ -214,7 +202,6 @@ export class Home extends Neighbour {
    * @static
    * @param {*} data
    * @returns {*}
-   * @memberof Home
    */
   public decrypt(data: any): any {
     return Home.identity.decrypt(data);
@@ -224,7 +211,6 @@ export class Home extends Neighbour {
    * Gets the current host home status
    *
    * @returns {NeighbourStatus}
-   * @memberof Home
    */
   public getStatus(): NeighbourStatus {
     // Only Connected to itself
@@ -257,7 +243,6 @@ export class Home extends Neighbour {
    *
    * @param {string} commitAt
    * @returns {string}
-   * @memberof Home
    */
   public terriBuildMap(): void {
     // Get the neighbours
@@ -290,7 +275,6 @@ export class Home extends Neighbour {
    *
    * @param {string} commitAt
    * @returns {string}
-   * @memberof Home
    */
   public terriMap(commitAt: string): string {
     // How many votes are needed for consesus
@@ -325,7 +309,6 @@ export class Home extends Neighbour {
    * @param {string | null} left
    * @param {string | null} right
    * @returns {void}
-   * @memberof Home
    */
   public setNeighbours(left: string | null, right: string | null): void {
     // Check to make sure this is a new neighbour
@@ -337,7 +320,6 @@ export class Home extends Neighbour {
    * Sets its right neighbour
    *
    * @param {Neighbour} right
-   * @memberof Host
    */
   public setRight(right: string): void {
     if (right) {
@@ -368,7 +350,6 @@ export class Home extends Neighbour {
    * Sets its left neighbour
    *
    * @param {Neighbour} left
-   * @memberof Host
    */
   public setLeft(left: string): void {
     if (left) {
@@ -390,7 +371,6 @@ export class Home extends Neighbour {
    *
    * @param {number} pid
    * @returns {ChildProcess}
-   * @memberof Home
    */
   public findProcessor(pid: number): ChildProcess | undefined {
     return this.processors.find((processor) => {

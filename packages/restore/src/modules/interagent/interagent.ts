@@ -55,7 +55,6 @@ export class Interagent {
    * Flag dictating if the process should attempt to create a UMID doc
    *
    * @private
-   * @memberof Interagent
    */
   private attemptUmidDoc = false;
 
@@ -64,7 +63,6 @@ export class Interagent {
    *
    * @private
    * @type {*}
-   * @memberof Interagent
    */
   private umidDoc: any;
 
@@ -72,7 +70,6 @@ export class Interagent {
 
   /**
    * Creates an instance of Interagent.
-   * @memberof Interagent
    */
   constructor() {
     this.listener();
@@ -98,7 +95,6 @@ export class Interagent {
    * Begins listenning to the errorfeed
    *
    * @private
-   * @memberof Interagent
    */
   private listener(): void {
     // Provider.errorFeed.on("change", async (change: IChange) => {
@@ -156,7 +152,6 @@ export class Interagent {
    * Get documents that are pending to be checked
    *
    * @private
-   * @memberof Interagent
    */
   private async skippedChecker() {
     // Get any existing error documents
@@ -184,7 +179,6 @@ export class Interagent {
    * Get documents that are pending to be checked
    *
    * @private
-   * @memberof Interagent
    */
   // private async skippedArchieveChecker() {
   //   // Get any existing archive documents
@@ -237,15 +231,13 @@ export class Interagent {
    * Check if a transaction has votes
    *
    * @private
-   * @memberof FeedHandler
    */
-  private hasVote = (data: any) => (data.vote ? true : false);
+  private hasVote = (data: any) => (!!data.vote);
 
   /**
    * Handle consensus not being met
    *
    * @private
-   * @memberof FeedHandler
    */
   private handleConsensusNotMet(changeDoc: any): Promise<void> {
     Helper.output("Conensus not met.");
@@ -266,47 +258,40 @@ export class Interagent {
    * Does the transaction have an error code
    *
    * @private
-   * @memberof FeedHandler
    */
   private hasErrorCode = (changeDoc: any) =>
-    this.errorCodes.indexOf(changeDoc.code) !== -1 ? true : false;
+    this.errorCodes.indexOf(changeDoc.code) !== -1;
 
   /**
    * Check that a transaction is compatible
    *
    * @private
-   * @memberof FeedHandler
    */
   private isCompatibleTransaction = (changeDoc: any) =>
     changeDoc.code !== ErrorCodes.FailedToSave && // 1510
     changeDoc.code !== ErrorCodes.NodeFinalReject && // 1505
     changeDoc.code !== ErrorCodes.VoteFailed && // 1000
-    !changeDoc.transaction.$broadcast
-      ? true
-      : false;
+    !changeDoc.transaction.$broadcast;
 
   /**
    * Check if revision already stored
    *
    * @private
-   * @memberof FeedHandler
    */
   private revisionAlreadyStored = (revisions: any, revision: any) =>
-    revisions[revision] ? true : false;
+    !!revisions[revision];
 
   /**
    * Check if the response has an error
    *
    * @private
-   * @memberof FeedHandler
    */
-  private responseHasError = (data: any) => (data.error ? true : false);
+  private responseHasError = (data: any) => (!!data.error);
 
   /**
    * Create a cache of streams
    *
    * @private
-   * @memberof FeedHandler
    */
   private createStreamCache = (data: any) => {
     if (data.umid) {
@@ -326,7 +311,6 @@ export class Interagent {
    * Create a fix stream promise element
    *
    * @private
-   * @memberof FeedHandler
    */
   private handleStreamFixPromise = (streamIndex: any, revisionIndex: any) => {
     ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
@@ -334,54 +318,31 @@ export class Interagent {
   };
 
   /**
-   * Check if stream data is volatile
-   *
-   * @private
-   * @memberof FeedHandler
-   */
-  private isVolatileStreamData = (volatile: boolean, data: any) =>
-    volatile && data._id.indexOf(":stream") > -1 ? true : false;
-
-  /**
-   * Check if stream contains required data
-   *
-   * @private
-   * @memberof FeedHandler
-   */
-  private isRequiredStreamData = (stream: any) =>
-    stream.namespace && stream.contract && stream.compiled ? true : false;
-
-  /**
    * Check if document is missing
    *
    * @private
-   * @memberof FeedHandler
    */
   private isDocMissing = (document: any) =>
-    document.error &&
-    document.status &&
-    document.message &&
-    document.docId &&
-    document.status === 404 &&
-    document.message === "missing"
-      ? true
-      : false;
+    !!(document.error &&
+      document.status &&
+      document.message &&
+      document.docId &&
+      document.status === 404 &&
+      document.message === "missing");
 
   /**
    * Check if the stream data is in a correct format
    *
    * @private
-   * @memberof FeedHandler
    */
   private isStreamDefinedAndNotEmptyArray = (stream: any) =>
-    stream && !Array.isArray(stream) ? true : false;
+    !!(stream && !Array.isArray(stream));
   // #endregion
 
   /**
    * Handle a document not having the processed flag
    *
    * @private
-   * @memberof FeedHandler
    */
   private processDocument(changeDoc: any): Promise<void> {
     Helper.output("Document not yet processed.");
@@ -410,7 +371,6 @@ export class Interagent {
    * Begin the main process
    *
    * @private
-   * @memberof FeedHandler
    */
   private beginMain(changeDoc: any, transaction: any): Promise<void> {
     // Check for true votes
@@ -431,7 +391,6 @@ export class Interagent {
    * @private
    * @param {IChangeDocument} document
    * @returns {Promise<void>}
-   * @memberof FeedHandler
    */
   private async dataIntegrityCheck(document: IChangeDocument): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -476,7 +435,6 @@ export class Interagent {
    * @private
    * @param {IChangeDocument} document
    * @returns
-   * @memberof Interagent
    */
   private errorMismatchFinder(document: IChangeDocument) {
     if (document.code === ErrorCodes.NodeFinalReject) {
@@ -506,7 +464,6 @@ export class Interagent {
    * @private
    * @param {IChangeDocument} document
    * @returns {Promise<string[]>}
-   * @memberof FeedHandler
    */
   private getRevisions(document: IChangeDocument): Promise<string[]> {
     return new Promise(async (resolve, reject) => {
@@ -585,7 +542,6 @@ export class Interagent {
    * @param {*} reducedStreamData
    * @param {IChangeDocument} document
    * @returns {Promise<any>}
-   * @memberof FeedHandler
    */
   private consensusCheck(
     reducedStreamData: any,
@@ -642,7 +598,6 @@ export class Interagent {
    *
    * @private
    * @param {*} umidDoc
-   * @memberof FeedHandler
    */
   private insertUmid(umidDoc: any): Promise<void> {
     return new Promise(async (resolve, reject) => {
@@ -668,7 +623,6 @@ export class Interagent {
    * @param {*} streamId
    * @param {*} revision
    * @returns {Promise<boolean>}
-   * @memberof FeedHandler
    */
   private fixStream(streamId: any, revision: any): Promise<boolean> {
     Helper.output(`Stream ${streamId} revision ${revision} needs fixing...`);
@@ -713,7 +667,6 @@ export class Interagent {
    * @param {string} revision
    * @param {boolean} volatile
    * @returns {Promise<boolean>}
-   * @memberof FeedHandler
    */
   private fixDocument(
     document: any,
@@ -738,7 +691,6 @@ export class Interagent {
    * @param {string} $rev
    * @param {boolean} volatile
    * @returns {Promise<any>}
-   * @memberof FeedHandler
    */
   private rebuildData(
     document: IChangeDocument,
@@ -817,7 +769,6 @@ export class Interagent {
    * @param {*} stream
    * @param {boolean} volatile
    * @returns {Promise<any>}
-   * @memberof FeedHandler
    */
   private rebuildRemote(
     document: any,
@@ -835,7 +786,6 @@ export class Interagent {
    * @param {*} document
    * @param {*} stream
    * @returns {Promise<boolean>}
-   * @memberof FeedHandler
    */
   private rebuildSelf(document: any, stream: any): Promise<boolean> {
     return new Promise(async (resolve, reject) => {
@@ -859,7 +809,6 @@ export class Interagent {
    * @private
    * @param {string[]} $streams
    * @returns {Promise<any>}
-   * @memberof FeedHandler
    */
   private getNetworkStreamData($streams: string[]): Promise<any> {
     return new Promise(async (resolve, reject) => {
@@ -895,7 +844,6 @@ export class Interagent {
    * @param {*} streams
    * @param {*} reduction
    * @returns {*}
-   * @memberof FeedHandler
    */
   private reduceStreamData(streams: any, reduction: any): any {
     Helper.output("Current reduction:", reduction);
@@ -929,7 +877,6 @@ export class Interagent {
    * @private
    * @param {IChangeDocument} document
    * @returns {Promise<void>}
-   * @memberof FeedHandler
    */
   private setProcessed(document: IChangeDocument): Promise<void> {
     return new Promise(async (resolve, reject) => {
@@ -959,7 +906,6 @@ export class Interagent {
    * @private
    * @param {IChangeDocument} document
    * @returns {Promise<void>}
-   * @memberof Interagent
    */
   private async archive(document: IChangeDocument): Promise<void> {
     await Provider.errorDatabase.purge(document);

@@ -45,7 +45,6 @@ export class ActiveDataStore {
    *
    * @private
    * @type {string}
-   * @memberof DataStore
    */
   private dsLocation: string;
 
@@ -54,7 +53,6 @@ export class ActiveDataStore {
    *
    * @private
    * @type {child.ChildProcess}
-   * @memberof DataStore
    */
   private process: child.ChildProcess;
 
@@ -63,7 +61,6 @@ export class ActiveDataStore {
    * This wont solve the restart problem just reduce the logs
    *
    * @private
-   * @memberof ActiveDataStore
    */
   private restartCounter = 0;
 
@@ -74,13 +71,11 @@ export class ActiveDataStore {
    *
    * @private
    * @type {Date}
-   * @memberof ActiveDataStore
    */
   private lastRestart: number = Date.now();
 
   /**
    * Creates an instance of DataStore.
-   * @memberof DataStore
    */
   constructor() {
     // Set Folder Location
@@ -103,7 +98,6 @@ export class ActiveDataStore {
    *
    * @private
    * @returns {string}
-   * @memberof DataStore
    */
   public launch(): string {
     const dbInfo = ActiveOptions.get<any>("db", {});

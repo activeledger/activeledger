@@ -40,7 +40,6 @@ export class Secured {
    * @param {string} seed
    * @param {number} [length=32]
    * @returns {string}
-   * @memberof SecuredData
    */
   private static createPassword(seed: string, length = 32): string {
     let salt = crypto.randomBytes(32);
@@ -55,7 +54,6 @@ export class Secured {
    * @param {ActiveDSConnect} db
    * @param {*} neighbour
    * @param {*} self
-   * @memberof Secured
    */
   public constructor(
     private db: ActiveDefinitions.IActiveDSConnect,
@@ -70,7 +68,6 @@ export class Secured {
    * @param {string} password
    * @param {string} data
    * @returns {Promise<string>}
-   * @memberof Secured
    */
   private cipherEncrypt(password: string, data: string): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -131,7 +128,6 @@ export class Secured {
    * @param {*} data
    * @param {*} passwords
    * @returns {Promise<ISecuredData>}
-   * @memberof Secured
    */
   private deepMapEncrypt(data: any, passwords: any): Promise<ISecuredData> {
     return new Promise(async (resolve, reject) => {
@@ -199,7 +195,6 @@ export class Secured {
    * @param {ISecuredData} data
    * @param {*} passwords
    * @returns {Promise<ISecuredData>}
-   * @memberof Secured
    */
   private deepMapDecrypt(
     data: ISecuredData,
@@ -244,7 +239,6 @@ export class Secured {
    *
    * @param {ISecured} packet
    * @returns {Promise<{}>}
-   * @memberof Secured
    */
   public encrypt(packet: ISecured): Promise<{}> {
     return new Promise(async (resolve, reject) => {
@@ -330,7 +324,6 @@ export class Secured {
    *
    * @param {ISecuredData} packet
    * @returns {Promise<{}>}
-   * @memberof Secured
    */
   public decrypt(packet: ISecuredData): Promise<{}> {
     return new Promise((resolve, reject) => {

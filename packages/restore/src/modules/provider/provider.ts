@@ -69,7 +69,6 @@ export class Provider {
    *
    * @static
    * @returns {Promise<void>}
-   * @memberof Provider
    */
   public static initialise(): Promise<void> {
     return new Promise(async (resolve) => {
@@ -94,7 +93,6 @@ export class Provider {
    * @static
    * @param {string} key
    * @param {string} data
-   * @memberof Provider
    */
   private static setConfigData(key: string, data: string) {
     Helper.output("Setting " + key);
@@ -107,7 +105,6 @@ export class Provider {
    * @private
    * @static
    * @returns {Promise<void>}
-   * @memberof Provider
    */
   private static getConfig(): Promise<void> {
     return new Promise(async (resolve, reject) => {
@@ -151,7 +148,6 @@ export class Provider {
    * @private
    * @static
    * @returns {Promise<void>}
-   * @memberof Provider
    */
   private static getIdentity(): Promise<void> {
     return new Promise((resolve) => {
@@ -180,7 +176,6 @@ export class Provider {
    * @private
    * @static
    * @param {*} dbConfig
-   * @memberof Provider
    */
   private static setupSelfHostDB(dbConfig: any) {
     Helper.output("Setting up self hosted database");
@@ -200,7 +195,6 @@ export class Provider {
    * @private
    * @static
    * @param {*} dbConfig
-   * @memberof Provider
    */
   private static setupDB(dbConfig: any) {
     this.setupErrorDB(dbConfig);
@@ -213,7 +207,6 @@ export class Provider {
    * @private
    * @static
    * @param {*} dbConfig
-   * @memberof Provider
    */
   private static setupErrorDB(dbConfig: any) {
     // Get error database connection
@@ -236,7 +229,6 @@ export class Provider {
    * @private
    * @static
    * @param {*} dbConfig
-   * @memberof Provider
    */
   // private static setupArchiveDB(dbConfig: any) {
   //   // Get error database connection
@@ -261,7 +253,6 @@ export class Provider {
    * @private
    * @static
    * @returns {Promise<void>}
-   * @memberof Provider
    */
   private static setupDatabase(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -296,7 +287,6 @@ export class Provider {
    * @private
    * @static
    * @returns {Promise<void>}
-   * @memberof Provider
    */
   private static getConsensusData(): Promise<void> {
     return new Promise((resolve) => {

@@ -37,7 +37,6 @@ export class ActiveInterfaces {
    * @private
    * @static
    * @type {string}
-   * @memberof ActiveInterfaces
    */
   private static bindingHost: string;
 
@@ -47,7 +46,6 @@ export class ActiveInterfaces {
    * @private
    * @static
    * @type {number}
-   * @memberof ActiveInterfaces
    */
   private static bindingPort: number;
 
@@ -57,7 +55,6 @@ export class ActiveInterfaces {
    * @static
    * @param {string} type
    * @returns {string}
-   * @memberof ActiveInterfaces
    */
   public static getBindingDetails(type: string): string;
   public static getBindingDetails(type: string, num: boolean): number;
@@ -77,7 +74,6 @@ export class ActiveInterfaces {
    * @private
    * @static
    * @returns {void}
-   * @memberof ActiveInterfaces
    */
   private static findBinding(): void {
     // Return if already bound

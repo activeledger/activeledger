@@ -32,7 +32,6 @@ export class ActiveOptions {
    * @private
    * @static
    * @type {minimist.ParsedArgs}
-   * @memberof ActiveOptions
    */
   private static argv: minimist.ParsedArgs = { _: [] };
 
@@ -42,7 +41,6 @@ export class ActiveOptions {
    * @private
    * @static
    * @type {*}
-   * @memberof ActiveOptions
    */
   private static config: any = {};
 
@@ -50,7 +48,6 @@ export class ActiveOptions {
    * Static Constructor, Reads CLI Arguements
    *
    * @static
-   * @memberof ActiveOptions
    */
   public static init(): void {
     // Process Passed Arguments
@@ -61,7 +58,6 @@ export class ActiveOptions {
    * Parse Configuration into Options
    *
    * @static
-   * @memberof ActiveOptions
    */
   public static parseConfig() {
     // Parse Configuration
@@ -89,7 +85,6 @@ export class ActiveOptions {
    * @static
    * @param {boolean} [automerge=true]
    * @returns {Promise<any>}
-   * @memberof ActiveOptions
    */
   public static extendConfig(automerge: boolean = true): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -136,7 +131,6 @@ export class ActiveOptions {
    * @param {string} name
    * @param {*} [defValue=null]
    * @returns {T}
-   * @memberof ActiveOptions
    */
   public static get<T>(name: string, defValue: any = null): T {
     // Return Config, CLI, Default
@@ -150,7 +144,6 @@ export class ActiveOptions {
    * @param {string} name
    * @param {*} value
    * @param {boolean} [reload=false]
-   * @memberof ActiveOptions
    */
   public static set(name: string, value: any, reload: boolean = false): void {
     // Set Configuration
@@ -167,7 +160,6 @@ export class ActiveOptions {
    * @static
    * @param {boolean} argv
    * @returns
-   * @memberof ActiveOptions
    */
   public static fetch(argv: boolean) {
     if (argv) {

@@ -90,7 +90,6 @@ export class Host extends Home {
    * we will need to manage permissions and security to seperate the calls
    *
    * @type {Server}
-   * @memberof Home
    */
   public readonly api: Server;
 
@@ -99,7 +98,6 @@ export class Host extends Home {
    *
    * @private
    * @type ActiveDSConnect
-   * @memberof Host
    */
   private dbConnection: ActiveDSConnect;
 
@@ -108,7 +106,6 @@ export class Host extends Home {
    *
    * @private
    * @type ActiveDSConnect
-   * @memberof Host
    */
   private dbErrorConnection: ActiveDSConnect;
 
@@ -117,7 +114,6 @@ export class Host extends Home {
    *
    * @private
    * @type ActiveDSConnect
-   * @memberof Host
    */
   private dbEventConnection: ActiveDSConnect;
 
@@ -126,7 +122,6 @@ export class Host extends Home {
    *
    * @private
    * @type {*}
-   * @memberof Host
    */
   private processPending: {
     [reference: string]: process;
@@ -137,7 +132,6 @@ export class Host extends Home {
    *
    * @private
    * @type {ChildProcess}
-   * @memberof Host
    */
   private standbyProcess: ChildProcess;
 
@@ -145,7 +139,6 @@ export class Host extends Home {
    * How many cpu processors have said they're ready
    *
    * @private
-   * @memberof Host
    */
   private cpuReady = 0;
 
@@ -153,7 +146,6 @@ export class Host extends Home {
    * How many hybrid connected nodes
    *
    * @private
-   * @memberof Host
    */
   private hybridHosts: ActiveDefinitions.IHybridNodes[];
 
@@ -163,7 +155,6 @@ export class Host extends Home {
    *
    * @private
    * @type {[]}
-   * @memberof Host
    */
   private busyLocksQueue: {
     entry: ActiveDefinitions.LedgerEntry;
@@ -173,7 +164,6 @@ export class Host extends Home {
   /**
    * Add process into pending
    *
-   * @memberof Host
    */
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
@@ -237,7 +227,6 @@ export class Host extends Home {
 
   /**
    * Creates an instance of Host.
-   * @memberof Host
    */
   constructor() {
     super();
@@ -363,7 +352,6 @@ export class Host extends Home {
    *
    * @private
    * @returns {setup}
-   * @memberof Host
    */
   private getLatestSetup(): setup {
     return {
@@ -386,7 +374,6 @@ export class Host extends Home {
    *
    * @private
    * @returns {ChildProcess}
-   * @memberof Host
    */
   private createProcessor(cpuTotal?: number): ChildProcess {
     // Create Process
@@ -584,7 +571,6 @@ export class Host extends Home {
    * Reload the configuration
    *
    * @private
-   * @memberof Host
    */
   private reload() {
     // Reload Neighbourhood
@@ -631,7 +617,6 @@ export class Host extends Home {
    *
    * @private
    * @param {*} umid
-   * @memberof Host
    */
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
@@ -652,7 +637,6 @@ export class Host extends Home {
    *
    * @private
    * @param {string} umid
-   * @memberof Host
    */
   private broadcast(umid: string): void {
     // Get all the neighbour nodes
@@ -709,7 +693,6 @@ export class Host extends Home {
    *
    * @private
    * @param {string} umid
-   * @memberof Host
    */
   private broadcastResolver(umid: string): void {
     // Check access to the protocol
@@ -745,7 +728,6 @@ export class Host extends Home {
    * @param {*} txIO
    * @param {boolean} [outputs=false]
    * @returns {string[]}
-   * @memberof Host
    */
   private labelOrKey(txIO: any): string[] {
     // Get reference for input or output
@@ -765,7 +747,6 @@ export class Host extends Home {
    * @private
    * @param {string} streamId
    * @returns {string}
-   * @memberof Host
    */
   private filterPrefix(streamId: string): string {
     // If id length more than 64 trim the start
@@ -778,12 +759,11 @@ export class Host extends Home {
   }
 
   /**
-   * Trigger a hold of the stream locks the process wants to own
+   * Trigger a hold of the stream locks that the process wants to own
    *
    * @private
    * @param {ActiveDefinitions.LedgerEntry} v
    * @param {number} retries
-   * @memberof Host
    */
   private hold(v: ActiveDefinitions.LedgerEntry, retries = 0): boolean {
     // Build a list of streams to lock
@@ -857,7 +837,6 @@ export class Host extends Home {
    *
    * @private
    * @returns {ChildProcess}
-   * @memberof Host
    */
   private getRobin(): ChildProcess {
     // Get next processes in queue
@@ -877,7 +856,6 @@ export class Host extends Home {
    * @private
    * @param {string} v
    * @param {boolean} noWait Don't wait to release
-   * @memberof Host
    */
   private release(pending: process, noWait = false) {
     // Ask for releases
@@ -916,7 +894,6 @@ export class Host extends Home {
    *
    * @private
    * @param {ActiveDefinitions.LedgerEntry} [next]
-   * @memberof Host
    */
   private processQueue(next?: ActiveDefinitions.LedgerEntry, internal = false) {
     // If Internal and not broadcast let it skip the queue
@@ -955,7 +932,6 @@ export class Host extends Home {
    * better to return as a busy lock
    *
    * @private
-   * @memberof Host
    */
   private timerQueue() {
     setTimeout(() => {
@@ -970,7 +946,6 @@ export class Host extends Home {
    * @private
    * @param {string} tx
    * @param {ActiveDefinitions.IStreams} [activityStreams]
-   * @memberof Host
    */
   private processHybridNodes(
     tx: ActiveDefinitions.LedgerEntry,
@@ -1130,7 +1105,6 @@ export class Host extends Home {
    * @private
    * @param {ActiveDefinitions.LedgerIORputs} txIO
    * @returns {string[]}
-   * @memberof Host
    */
   private hybridLabelKeyId(txIO: ActiveDefinitions.LedgerIORputs): string[] {
     // Get reference for input or output
@@ -1158,7 +1132,6 @@ export class Host extends Home {
    * @param {IncomingMessage} req
    * @param {ServerResponse} res
    * @param {*} [body]
-   * @memberof Host
    */
   private processEndpoints(
     req: IncomingMessage,
@@ -1342,7 +1315,6 @@ export class Host extends Home {
    * @param {number} statusCode
    * @param {(string | Buffer)} content
    * @param {string} encoding
-   * @memberof Host
    */
   private async writeResponse(
     res: ServerResponse,
@@ -1377,7 +1349,6 @@ export class Host extends Home {
    * @param {string} requester
    * @param {IncomingMessage} req
    * @returns {boolean}
-   * @memberof Host
    */
   private firewallCheck(requester: string, req: IncomingMessage): boolean {
     return (

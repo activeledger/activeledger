@@ -23,8 +23,7 @@ class Cryptography {
   * @static
   * @param {any} data 
   * @param {any} key 
-  * @returns {Promise<string>} 
-  * @memberof ClassName
+  * @returns {Promise<string>}
   */
   public static sign(data: any, key: any): Promise<string> {
       // Get ActiveCrypto Object

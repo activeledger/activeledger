@@ -54,7 +54,6 @@ export class VirtualMachine
    *
    * @private
    * @type {VM}
-   * @memberof VirtualMachine
    */
   private virtual: NodeVM;
 
@@ -63,7 +62,6 @@ export class VirtualMachine
    *
    * @private
    * @type {*}
-   * @memberof VirtualMachine
    */
   private virtualInstance: any; // IVMObject;
 
@@ -72,7 +70,6 @@ export class VirtualMachine
    *
    * @private
    * @type {IVMContractReferences}
-   * @memberof VirtualMachine
    */
   private contractReferences: IVMContractReferences;
 
@@ -81,7 +78,6 @@ export class VirtualMachine
    *
    * @private
    * @type {EventEngine}
-   * @memberof VirtualMachine
    */
   private event: EventEngine;
 
@@ -90,7 +86,6 @@ export class VirtualMachine
    *
    * @private
    * @type {EventEmitter}
-   * @memberof VirtualMachine
    */
   private emitter: EventEmitter;
 
@@ -99,7 +94,6 @@ export class VirtualMachine
    *
    * @private
    * @type {Date}
-   * @memberof VirtualMachine
    */
   private maxTimeout: Date;
 
@@ -108,7 +102,6 @@ export class VirtualMachine
    *
    * @private
    * @type {boolean}
-   * @memberof VirtualMachine
    */
   private scriptFinishedExec: boolean = false;
 
@@ -126,7 +119,6 @@ export class VirtualMachine
    * @param {ActiveDSConnect} db
    * @param {ActiveDSConnect} dbev
    * @param {ActiveCrypto.Secured} secured
-   * @memberof VirtualMachine
    */
   constructor(
     private selfHost: string,
@@ -148,7 +140,6 @@ export class VirtualMachine
    * Initialise the Virtual machine instance
    *
    * @private
-   * @memberof VirtualMachine
    */
   public initialiseVirtualMachine(
     extraBuiltins?: string[],
@@ -229,7 +220,6 @@ export class VirtualMachine
    * Extract All changed streams
    *
    * @returns {{ [reference: string]: Activity }}
-   * @memberof VirtualMachine
    */
   public getActivityStreamsFromVM(
     umid: string
@@ -268,7 +258,6 @@ export class VirtualMachine
    * Clear transaction from memory by umid
    *
    * @param {string} umid
-   * @memberof VirtualMachine
    */
   public destroy(umid: string): void {
     // Clear inside VM
@@ -283,7 +272,6 @@ export class VirtualMachine
    * Gets any internode communication to pass to other nodes.
    *
    * @returns {any}
-   * @memberof VirtualMachine
    */
   public getInternodeCommsFromVM(umid: string): any {
     return this.virtualInstance.getInternodeComms(umid);
@@ -293,7 +281,6 @@ export class VirtualMachine
    * Are we suppose to clear the node comms
    *
    * @returns {boolean}
-   * @memberof VirtualMachine
    */
   public clearingInternodeCommsFromVM(umid: string): boolean {
     return this.virtualInstance.clearInternodeComms(umid);
@@ -303,7 +290,6 @@ export class VirtualMachine
    * Data to send back to the requesting http client
    *
    * @returns {boolean}
-   * @memberof VirtualMachine
    */
   public getReturnContractData(umid: string): unknown {
     return this.virtualInstance.returnContractData(umid);
@@ -313,7 +299,6 @@ export class VirtualMachine
    * Gets any internode communication to pass to other nodes.
    *
    * @returns {any}
-   * @memberof VirtualMachine
    */
   public getThrowsFromVM(umid: string): string[] {
     return this.virtualInstance.throwFrom(umid);
@@ -323,7 +308,6 @@ export class VirtualMachine
    * Get current working inputs of the contract (External to VM)
    *
    * @returns {ActiveDefinitions.LedgerStream[]}
-   * @memberof VirtualMachine
    */
   public getInputs(umid: string): ActiveDefinitions.LedgerStream[] {
     return this.contractReferences[umid].inputs;
@@ -333,7 +317,6 @@ export class VirtualMachine
    * Dynamically import the contract. Currently object is created outside VM and set as a global
    *
    * @returns {Promise<void>}
-   * @memberof VirtualMachine
    */
   public initialise(
     payload: IVMDataPayload,
@@ -396,7 +379,6 @@ export class VirtualMachine
    *
    * @param {ActiveDefinitions.INodes} nodes
    * @returns {Promise<boolean>}
-   * @memberof VirtualMachine
    */
   public read(umid: string, readMethod: string): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
@@ -436,7 +418,6 @@ export class VirtualMachine
    * Run verify part of the smart contract
    *
    * @returns {boolean}
-   * @memberof VirtualMachine
    */
   public verify(sigless: boolean, umid: string): Promise<boolean> {
     return new Promise<boolean>(async (resolve, reject) => {
@@ -477,7 +458,6 @@ export class VirtualMachine
    * Run vote part of the smart contract
    *
    * @returns {boolean}
-   * @memberof VirtualMachine
    */
   public vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean> {
     return new Promise<boolean>(async (resolve, reject) => {
@@ -523,7 +503,6 @@ export class VirtualMachine
    * @param {ActiveDefinitions.INodes} nodes
    * @param {boolean} possibleTerritoriality
    * @returns {Promise<boolean>}
-   * @memberof VirtualMachine
    */
   public commit(
     nodes: ActiveDefinitions.INodes,
@@ -574,7 +553,6 @@ export class VirtualMachine
    *
    * @param {ActiveDefinitions.INodes} nodes
    * @returns {Promise<boolean>}
-   * @memberof VirtualMachine
    */
   public reconcile(
     nodes: ActiveDefinitions.INodes,
@@ -626,7 +604,6 @@ export class VirtualMachine
    * @param {boolean} territoriality
    * @param {string} who
    * @returns {Promise<any>}
-   * @memberof VirtualMachine
    */
   public postProcess(
     territoriality: boolean,
@@ -686,7 +663,6 @@ export class VirtualMachine
    *
    * @private
    * @param {ActiveDefinitions.INodes} nodes
-   * @memberof VirtualMachine
    */
   private incMarshel(nodes: ActiveDefinitions.INodes, umid: string): void {
     // Get Node Keys (Or get from Neighbourhood?)
@@ -739,7 +715,6 @@ export class VirtualMachine
    * Allow for any stream data to be fetched during contract execution
    *
    * @private
-   * @memberof VirtualMachine
    */
   private listenForFetch(): void {
     this.emitter.on("getStreamData", async (umid: string, streamId: string) => {
@@ -765,7 +740,6 @@ export class VirtualMachine
    * @private
    * @param {string} type
    * @param {Function} timedout
-   * @memberof VirtualMachine
    */
   private checkTimeout(type: string, timedout: Function, umid: string): void {
     // Setup Timeout Ticket
@@ -787,7 +761,6 @@ export class VirtualMachine
    *
    * @private
    * @returns {boolean}
-   * @memberof VirtualMachine
    */
   private hasBeenExtended(umid: string): boolean {
     // Fetch new time out request from the contract
@@ -816,7 +789,6 @@ export class VirtualMachine
    * @private
    * @param {Error} e
    * @returns {*}
-   * @memberof VirtualMachine
    */
   private async catchException(e: Error, umid: string): Promise<any> {
     // Exception
@@ -900,7 +872,6 @@ export class VirtualMachine
    * @param {string} file
    * @param {number} nthLine
    * @returns {Promise<string>}
-   * @memberof VirtualMachine
    */
   private async readNthLine(file: string, nthLine: number): Promise<string> {
     const rl = createInterface({

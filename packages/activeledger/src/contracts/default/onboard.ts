@@ -36,7 +36,6 @@ export default class Onboard extends Standard {
    *
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public verify(signatureless: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -52,7 +51,6 @@ export default class Onboard extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -66,7 +64,6 @@ export default class Onboard extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
