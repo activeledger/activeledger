@@ -186,17 +186,15 @@ export class QuickRestore {
    * @memberof QuickRestore
    */
   private handleNetworkData(activityData: any): INetworkData {
-    const hasNotErrored = (data: IBaseData) => (data.error ? false : true);
+    const hasNotErrored = (data: IBaseData) => (!data.error);
 
     const isNotStreamOrUmid = (data: IBaseData) =>
       data._id.indexOf(":stream") === -1 &&
       data._id.indexOf(":umid") === -1 &&
-      data._id.indexOf("_design") === -1
-        ? true
-        : false;
+      data._id.indexOf("_design") === -1;
 
     const hasRequiredData = (data: IBaseData) =>
-      data.namespace && data.contract && data.compiled ? true : false;
+      !!(data.namespace && data.contract && data.compiled);
 
     const documents: unknown[] = [];
     const volatile: unknown[] = [];
@@ -234,7 +232,7 @@ export class QuickRestore {
     streamInformation: IReductionData
   ): Promise<IConsensusData[]> {
     const streamIdCorrect = (streamId: string) =>
-      streamId && streamId !== "undefined" ? true : false;
+      !!(streamId && streamId !== "undefined");
 
     return new Promise((resolve) => {
       const consensusReached: IConsensusData[] = [];
@@ -280,7 +278,7 @@ export class QuickRestore {
     promises: Promise<IStreamInformation>[]
   ): Promise<IReductionData> {
     const streamDataCorrect = (data: IStreamInformation) =>
-      data ? true : false;
+      !!data;
 
     return new Promise(async (resolve, reject) => {
       try {
@@ -312,10 +310,10 @@ export class QuickRestore {
     streamInformation: IStreamInformation[]
   ): IReductionData {
     const haveStream = (stream: IRestoreStream) =>
-      reduction[stream.id] ? true : false;
+      !!reduction[stream.id];
 
     const haveRevision = (stream: IRestoreStream) =>
-      reduction[stream.id][stream.rev] ? true : false;
+      !!reduction[stream.id][stream.rev];
 
     const incrementStreamRevisionCounter = (stream: IRestoreStream) =>
       reduction[stream.id][stream.rev]++;

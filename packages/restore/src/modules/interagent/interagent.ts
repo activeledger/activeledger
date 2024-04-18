@@ -239,7 +239,7 @@ export class Interagent {
    * @private
    * @memberof FeedHandler
    */
-  private hasVote = (data: any) => (data.vote ? true : false);
+  private hasVote = (data: any) => (!!data.vote);
 
   /**
    * Handle consensus not being met
@@ -269,7 +269,7 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private hasErrorCode = (changeDoc: any) =>
-    this.errorCodes.indexOf(changeDoc.code) !== -1 ? true : false;
+    this.errorCodes.indexOf(changeDoc.code) !== -1;
 
   /**
    * Check that a transaction is compatible
@@ -281,9 +281,7 @@ export class Interagent {
     changeDoc.code !== ErrorCodes.FailedToSave && // 1510
     changeDoc.code !== ErrorCodes.NodeFinalReject && // 1505
     changeDoc.code !== ErrorCodes.VoteFailed && // 1000
-    !changeDoc.transaction.$broadcast
-      ? true
-      : false;
+    !changeDoc.transaction.$broadcast;
 
   /**
    * Check if revision already stored
@@ -292,7 +290,7 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private revisionAlreadyStored = (revisions: any, revision: any) =>
-    revisions[revision] ? true : false;
+    !!revisions[revision];
 
   /**
    * Check if the response has an error
@@ -300,7 +298,7 @@ export class Interagent {
    * @private
    * @memberof FeedHandler
    */
-  private responseHasError = (data: any) => (data.error ? true : false);
+  private responseHasError = (data: any) => (!!data.error);
 
   /**
    * Create a cache of streams
@@ -358,14 +356,12 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private isDocMissing = (document: any) =>
-    document.error &&
-    document.status &&
-    document.message &&
-    document.docId &&
-    document.status === 404 &&
-    document.message === "missing"
-      ? true
-      : false;
+    !!(document.error &&
+      document.status &&
+      document.message &&
+      document.docId &&
+      document.status === 404 &&
+      document.message === "missing");
 
   /**
    * Check if the stream data is in a correct format
@@ -374,7 +370,7 @@ export class Interagent {
    * @memberof FeedHandler
    */
   private isStreamDefinedAndNotEmptyArray = (stream: any) =>
-    stream && !Array.isArray(stream) ? true : false;
+    !!(stream && !Array.isArray(stream));
   // #endregion
 
   /**
