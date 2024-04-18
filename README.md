@@ -65,11 +65,14 @@ Visit [Release section](https://github.com/activeledger/ide/releases)
 
 ### Prerequisites
 
-We use [lerna](https://lernajs.io/) to manage this monorepo. Make sure you have lerna installed.
+We use [lerna](https://lernajs.io/) to manage this monorepo.
+Make sure you have lerna installed.
+If you use a package manager, install lerna with that. Otherwise:
 
 ```bash
 npm install --global lerna
 ```
+
 ### Building
 
 ```bash
