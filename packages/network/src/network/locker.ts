@@ -21,8 +21,6 @@
  * SOFTWARE.
  */
 
-import { setTimeout } from "timers";
-
 const CHECKER_TIMER = 5 * 1000 * 60;
 const AUTO_RELEASE_TIME = 10 * 1000 * 60;
 
@@ -36,15 +34,14 @@ export class Locker {
   /**
    * Holds information about stream locks
    * In the future we can add a lock time and have a timeout to release locks
-   * this shouldn't happen as V1 solves this problem however maybe useful. Alternative on process exit
-   * we can trigger release.
+   * this shouldn't happen as V1 solves this problem however maybe useful.
+   * Alternatively, on process exit we can trigger release.
    *
    * Currently we do not have to concern ourselves on input and output lock differential
    *
    * @private
    * @static
    * @type {{[stream: string]: number | boolean}}
-   * @memberof Locker
    */
   private static cell: { [stream: string]: number | boolean } = {};
 
@@ -54,21 +51,19 @@ export class Locker {
    * @private
    * @static
    * @type {NodeJS.Timeout}
-   * @memberof Locker
    */
   private static timer: NodeJS.Timeout | null;
 
   /**
-   * Attempts to lock a stream returns is succussful
+   * Attempts to lock streams
    *
    * @static
    * @param {string} stream
-   * @returns {boolean}
-   * @memberof Locker
+   * @returns {boolean} indicate whether all the locks were acquired
    */
   public static hold(stream: string): boolean;
   public static hold(stream: string[]): boolean;
-  public static hold(stream: any): boolean {
+  public static hold(stream: string | string[]): boolean {
     if (Array.isArray(stream)) {
       // Are all the streams available
       let i = stream.length;
@@ -103,11 +98,10 @@ export class Locker {
    *
    * @static
    * @param {string} stream
-   * @memberof Locker
    */
   public static release(stream: string): boolean;
   public static release(stream: string[]): boolean;
-  public static release(stream: any): boolean {
+  public static release(stream: string | string[]): boolean {
     if (Array.isArray(stream)) {
       let i = stream.length;
       while (i--) {
@@ -125,7 +119,6 @@ export class Locker {
    * something has crashed before they could get released properly
    *
    * @static
-   * @memberof Locker
    */
   public static checker() {
     if (!Locker.timer) {

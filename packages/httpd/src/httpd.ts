@@ -62,7 +62,6 @@ export class ActiveHttpd {
    *
    * @static
    * @type {*}
-   * @memberof ActiveHttpd
    */
   public static mimeType: any = {
     ".html": "text/html",
@@ -80,7 +79,6 @@ export class ActiveHttpd {
    *
    * @private
    * @type {http.Server}
-   * @memberof ActiveHttpd
    */
   private server: http.Server;
 
@@ -89,14 +87,12 @@ export class ActiveHttpd {
    *
    * @private
    * @type {*}
-   * @memberof ActiveHttpd
    */
   private routes: any = [];
 
   /**
    * Creates an instance of ActiveHttpd.
    * @param {boolean} [enableCORS=false]
-   * @memberof ActiveHttpd
    */
   constructor(private enableCORS: boolean = false) {}
 
@@ -105,7 +101,6 @@ export class ActiveHttpd {
    *
    * @param {string} url
    * @param {Function} handler
-   * @memberof ActiveHttpd
    */
   public use(url: string, method: string, handler: Function) {
     // Add to routes
@@ -123,7 +118,6 @@ export class ActiveHttpd {
    *
    * @param {number} port
    * @param {boolean} [log=false]
-   * @memberof ActiveHttpd
    */
   public listen(port: number, log: boolean = false) {
     // Get Local Reference
@@ -224,7 +218,6 @@ export class ActiveHttpd {
    * @param {IActiveHttpIncoming} incoming
    * @param {http.IncomingMessage} req
    * @param {http.ServerResponse} res
-   * @memberof ActiveHttpd
    */
   private async processListen(
     incoming: IActiveHttpIncoming,
@@ -291,7 +284,6 @@ export class ActiveHttpd {
    * @private
    * @param {*} data
    * @param {http.ServerResponse} res
-   * @memberof ActiveHttpd
    */
   private writeAsHttpData(data: any, res: http.ServerResponse) {
     if (typeof data == "object") {
@@ -311,7 +303,6 @@ export class ActiveHttpd {
    * @param {any[]} routes
    * @param {number} [position=0]
    * @returns {(Function | null)}
-   * @memberof ActiveHttpd
    */
   private findHandler(
     path: string[],
@@ -373,7 +364,6 @@ export class ActiveHttpd {
    * @param {any[]} handlers
    * @param {number} position
    * @returns {Function}
-   * @memberof ActiveHttpd
    */
   private selectSingleHandler(
     handlers: any[],
@@ -416,7 +406,6 @@ export class ActiveHttpd {
    * @private
    * @param {string[]} path
    * @returns {number}
-   * @memberof ActiveHttpd
    */
   private pathAstriskCount(path: string[]): number {
     let c = 0;
@@ -437,7 +426,6 @@ export class ActiveHttpd {
    * @private
    * @param {string} ip
    * @returns {string}
-   * @memberof ActiveHttpd
    */
   private ipv46(ip: string): string {
     return ip.substr(0, 7) == "::ffff:" ? ip.substr(7) : ip;

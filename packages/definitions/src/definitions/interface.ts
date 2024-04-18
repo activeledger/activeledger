@@ -22,7 +22,6 @@ export interface IActiveDSConnect {
    * Creates Database / Get Database Info
    *
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   info(): Promise<any>;
 
@@ -31,7 +30,6 @@ export interface IActiveDSConnect {
    *
    * @param {*} options
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   createIndex(options: any): Promise<any>;
 
@@ -40,7 +38,6 @@ export interface IActiveDSConnect {
    *
    * @param {*} options
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   allDocs(options: any): Promise<any>;
 
@@ -50,7 +47,6 @@ export interface IActiveDSConnect {
    * @param {string} id
    * @param {*} [options]
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   get(id: string, options?: any): Promise<any>;
 
@@ -60,7 +56,6 @@ export interface IActiveDSConnect {
    * @deprecated
    * @param {*} options
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   // find(options: any): Promise<any>;
 
@@ -70,7 +65,6 @@ export interface IActiveDSConnect {
    * @param {any[]} docs
    * @param {*} [options]
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   bulkDocs(docs: any[], options?: any): Promise<any>;
 
@@ -79,7 +73,6 @@ export interface IActiveDSConnect {
    *
    * @param {} doc
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   post(doc: {}): Promise<any>;
 
@@ -88,7 +81,6 @@ export interface IActiveDSConnect {
    *
    * @param {{ _id: string }} doc
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   put(doc: { _id: string; _rev?: string }): Promise<any>;
 
@@ -97,7 +89,6 @@ export interface IActiveDSConnect {
    *
    * @param {{}} opts
    * @returns {Promise<any>}
-   * @memberof IActiveDSConnect
    */
   changes(opts: {
     live?: boolean;

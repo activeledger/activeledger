@@ -38,7 +38,6 @@ export default abstract class Event extends Standard {
    *
    * @protected
    * @type {EventEngine}
-   * @memberof Query
    */
   protected event: EventEngine;
 
@@ -46,7 +45,6 @@ export default abstract class Event extends Standard {
    * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
    *
    * @param {QueryEngine} engine
-   * @memberof Query
    */
   public setEvent(engine: EventEngine) {
     this.event = engine;

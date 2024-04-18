@@ -38,7 +38,6 @@ export class AsnParser {
    * @param {string} pkcs8pem
    * @param {string} [label="EC PRIVATE KEY"]
    * @returns {string}
-   * @memberof AsnParser
    */
   public static decodeECPrivateKey(
     pkcs8pem: string,
@@ -59,7 +58,6 @@ export class AsnParser {
    * @param {string} key
    * @param {string} [label="EC PRIVATE KEY"]
    * @returns {string}
-   * @memberof AsnParser
    */
   public static encodeECPrivateKey(
     prv: Buffer,
@@ -88,7 +86,6 @@ export class AsnParser {
    * @param {string} pkcs8pem
    * @param {string} [label="PUBLIC KEY"]
    * @returns {string}
-   * @memberof AsnParser
    */
   public static decodeECPublicKey(
     pkcs8pem: string,
@@ -110,7 +107,6 @@ export class AsnParser {
    * @param {string} key
    * @param {string} [label="PUBLIC KEY"]
    * @returns {string}
-   * @memberof AsnParser
    */
   public static encodeECPublicKey(key: Buffer, label = "PUBLIC KEY"): string {
     return AsnParser.ECPubASN.encode(
@@ -137,7 +133,6 @@ export class AsnParser {
    *
    * @private
    * @static
-   * @memberof AsnParser
    */
   private static ECPrivASN = asn1.define("ECPrivASN", function() {
     this.seq().obj(
@@ -173,7 +168,6 @@ export class AsnParser {
    *
    * @private
    * @static
-   * @memberof AsnParser
    */
   private static ECPrivLiteASN = asn1.define("ECPrivASN", function() {
     this.seq().obj(
@@ -201,7 +195,6 @@ export class AsnParser {
    *
    * @private
    * @static
-   * @memberof AsnParser
    */
   private static ECPubASN = asn1.define("ECPubASN", function() {
     this.seq().obj(
@@ -221,7 +214,6 @@ export class AsnParser {
    * @param {*} asn
    * @param {string} [type="privateKey"]
    * @returns {string}
-   * @memberof AsnParser
    */
   private static extractNestedKeys(
     asn: any,

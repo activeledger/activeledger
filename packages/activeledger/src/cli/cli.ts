@@ -45,7 +45,6 @@ export class CLIHandler {
    * Start the local node
    *
    * @static
-   * @memberof CLIHandler
    */
   public static async start(): Promise<void> {
     this.statsHandler.init();
@@ -59,7 +58,6 @@ export class CLIHandler {
    * Stop the local node
    *
    * @static
-   * @memberof CLIHandler
    */
   public static async stop(isRestart?: boolean): Promise<void> {
     try {
@@ -101,7 +99,6 @@ export class CLIHandler {
    * Restart the local node
    *
    * @static
-   * @memberof CLIHandler
    */
   public static async restart(auto?: boolean): Promise<void> {
     ActiveLogger.info("Restarting");
@@ -126,7 +123,6 @@ export class CLIHandler {
    * Initialise the creation of a testnet
    *
    * @static
-   * @memberof CLIHandler
    */
   public static setupTestnet(): void {
     TestnetHandler.setup();
@@ -136,7 +132,6 @@ export class CLIHandler {
    * Merge configuration
    *
    * @static
-   * @memberof CLIHandler
    */
   public static merge(): void {
     //#region Merge Configs
@@ -196,7 +191,6 @@ export class CLIHandler {
    * Start the compacting process, Will assume activeledger is running
    *
    * @static
-   * @memberof CLIHandler
    */
   public static async startCompact(): Promise<void> {
     this.checkConfig();
@@ -230,7 +224,6 @@ export class CLIHandler {
    * Flushes the archives process, Will assume activeledger is running
    *
    * @static
-   * @memberof CLIHandler
    */
   // public static async flushArchives(amount: number | boolean): Promise<void> {
   //   this.checkConfig();
@@ -279,7 +272,6 @@ export class CLIHandler {
    *
    * @private
    * @static
-   * @memberof CLIHandler
    */
   private static normalStart(): void {
     // Continue Normal Boot
@@ -469,7 +461,6 @@ export class CLIHandler {
    *
    * @private
    * @static
-   * @memberof CLIHandler
    */
   private static async boot(): Promise<void> {
     try {
@@ -540,7 +531,6 @@ export class CLIHandler {
    *
    * @private
    * @static
-   * @memberof CLIHandler
    */
   private static checkConfig() {
     if (!fs.existsSync(ActiveOptions.get<string>("config", "./config.json"))) {
@@ -607,7 +597,6 @@ export class CLIHandler {
    *
    * @private
    * @static
-   * @memberof CLIHandler
    */
   private static assertNetwork(): void {
     //#region Configuration To Ledger

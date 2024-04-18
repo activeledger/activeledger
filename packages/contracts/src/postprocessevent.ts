@@ -39,7 +39,6 @@ export default abstract class PostProcessEvent extends PostProcess {
    *
    * @protected
    * @type {EventEngine}
-   * @memberof Query
    */
   protected event: EventEngine;
 
@@ -47,7 +46,6 @@ export default abstract class PostProcessEvent extends PostProcess {
    * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
    *
    * @param {QueryEngine} engine
-   * @memberof Query
    */
   public setEvent(engine: EventEngine) {
     this.event = engine;

@@ -60,7 +60,6 @@ export class KeyPair {
    *
    * @private
    * @type {KeyHandler}
-   * @memberof KeyPair
    */
   private handler: KeyHandler;
 
@@ -68,7 +67,6 @@ export class KeyPair {
    * EC Key been passed for compaitibility
    *
    * @private
-   * @memberof KeyPair
    */
   private compatMode = false;
 
@@ -76,7 +74,6 @@ export class KeyPair {
    * Prevents webpack throwing not found, We are checking for it.
    *
    * @private
-   * @memberof KeyPair
    */
   private readonly webpackBypassCheck = "generateKeyPairSync";
 
@@ -84,11 +81,10 @@ export class KeyPair {
    * Creates an instance of KeyPair.
    * @param {*} [type="rsa"]
    * @param {*} [pem]
-   * @memberof KeyPair
    */
   constructor(type?: string);
   constructor(type?: string, pem?: string);
-  constructor(private type: any = "rsa", public pem?: any) {
+  constructor(private type: string = "rsa", public pem?: string) {
     if (pem) {
       switch (type) {
         case "rsa":
@@ -143,7 +139,6 @@ export class KeyPair {
    * @private
    * @param {string} prv
    * @param {string} [pub=""]
-   * @memberof KeyPair
    */
   private createHandler(prv: string, pub: string = ""): void {
     this.handler = {
@@ -161,7 +156,6 @@ export class KeyPair {
    *
    * @private
    * @returns {boolean}
-   * @memberof KeyPair
    */
   private enableCompatMode(): boolean {
     if (!this.compatMode) {
@@ -222,7 +216,6 @@ export class KeyPair {
    *
    * @private
    * @returns {boolean}
-   * @memberof KeyPair
    */
   private isFullNodeEnv(): boolean {
     return typeof crypto[this.webpackBypassCheck] === "function" ? true : false;
@@ -234,18 +227,14 @@ export class KeyPair {
    * @private
    * @param {string} data
    * @returns {string}
-   * @memberof KeyPair
    */
   private getString(data: string): string;
   private getString(data: Object): string;
   private getString(data: Buffer): string;
-  private getString(data: any): any {
+  private getString(data: string | Object | Buffer): string {
     // Data Object to string
-    if (typeof data === "object") {
-      data = JSON.stringify(data);
-    } else if (Buffer.isBuffer(data)) {
-      data = data.toString();
-    }
+    if (Buffer.isBuffer(data)) return data.toString();
+    if (typeof data === "object") return JSON.stringify(data);
     return data;
   }
 
@@ -256,7 +245,6 @@ export class KeyPair {
    * @param {string} data
    * @param {number} [size=100]
    * @returns {string[]}
-   * @memberof KeyPair
    */
   private chunkString(data: string, size: number = 100): string[] {
     let chunks = [];
@@ -279,7 +267,6 @@ export class KeyPair {
    * @param {boolean} [pem] ASN encoded PEM or HEX (EC Only)
    * @param {boolean} [compressed] return compressed public key (EC Only)
    * @returns {KeyHandler}
-   * @memberof KeyPair
    */
   public generate(
     bits: number = 2048,
@@ -359,15 +346,20 @@ export class KeyPair {
   /**
    * Encrypt
    *
-   * @param {*} data
+   * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
-  public encrypt(data: string): string;
-  public encrypt(data: Object): string;
-  public encrypt(data: Buffer): string;
-  public encrypt(data: any, encoding: any = "base64"): string {
+  public encrypt(rawData: string): string;
+  public encrypt(rawData: Object): string;
+  public encrypt(rawData: Buffer): string;
+  public encrypt(
+    rawData: string | Object | Buffer,
+    encoding: any = "base64"
+  ): string {
+    // Data Object to string
+    const data = this.getString(rawData);
+
     if (this.type == "rsa") {
       // Check we have public
       if (!this.handler.pub.pkcs8pem) {
@@ -376,11 +368,8 @@ export class KeyPair {
           `Cannot encrypt without ${this.type} Public Key`
         );
       } else {
-        // Get data as string
-        data = this.getString(data);
-
         // Split data
-        let chunked = this.chunkString(data);
+        let chunked = this.chunkString(this.getString(data));
 
         // Concated Encrypted string
         let encrypted = "";
@@ -402,15 +391,20 @@ export class KeyPair {
   /**
    * Decrypt
    *
-   * @param {*} data
+   * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
-  public decrypt(data: string): string;
-  public decrypt(data: Object): string;
-  public decrypt(data: Buffer): string;
-  public decrypt(data: any, encoding: any = "base64"): string {
+  public decrypt(rawData: string): string;
+  public decrypt(rawData: Object): string;
+  public decrypt(rawData: Buffer): string;
+  public decrypt(
+    rawData: string | Object | Buffer,
+    encoding: any = "base64"
+  ): string {
+    // Data Object to string
+    const data = this.getString(rawData);
+
     if (this.type == "rsa") {
       // Check we have public
       if (!this.handler.prv.pkcs8pem) {
@@ -420,7 +414,7 @@ export class KeyPair {
         );
       } else {
         // Get data as string
-        let chunked = this.getString(data).split("|");
+        let chunked = data.split("|");
 
         // Concated decrypted string
         let decrypted = "";
@@ -443,15 +437,20 @@ export class KeyPair {
   /**
    * Sign
    *
-   * @param {*} data
+   * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
-  public sign(data: string): string;
-  public sign(data: Object): string;
-  public sign(data: Buffer): string;
-  public sign(data: any, encoding: any = "base64"): string {
+  public sign(rawData: string): string;
+  public sign(rawData: Object): string;
+  public sign(rawData: Buffer): string;
+  public sign(
+    rawData: string | Object | Buffer,
+    encoding: any = "base64"
+  ): string {
+    // Data Object to string
+    const data = this.getString(rawData);
+
     // Check we have a private key
     if (!this.handler.prv.pkcs8pem) {
       throw ActiveLogger.fatal(
@@ -462,9 +461,6 @@ export class KeyPair {
 
     // Signing Digest Object
     let sign;
-
-    // Data Object to string
-    data = this.getString(data);
 
     // Sign by type
     switch (this.type) {
@@ -506,7 +502,6 @@ export class KeyPair {
    * @param {*} data
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
   public verify(data: string, signature: string): boolean;
   public verify(data: Object, signature: string): boolean;

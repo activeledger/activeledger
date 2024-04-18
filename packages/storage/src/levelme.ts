@@ -107,7 +107,6 @@ export class LevelMe {
    *
    * @private
    * @static
-   * @memberof LevelMe
    */
   private static META_PREFIX = "ÿmeta-storeÿ"; // \xff charcode 255
 
@@ -119,7 +118,6 @@ export class LevelMe {
    *
    * @private
    * @static
-   * @memberof LevelMe
    */
   private static DOC_PREFIX = "ÿdocument-storeÿ";
 
@@ -133,7 +131,6 @@ export class LevelMe {
    *
    * @private
    * @static
-   * @memberof LevelMe
    */
   private static SEQ_PREFIX = "ÿby-sequenceÿ";
 
@@ -147,7 +144,6 @@ export class LevelMe {
    *
    * @private
    * @static
-   * @memberof LevelMe
    */
   //private static SEQ_META_PREFIX = "ÿsequence-storeÿ";
 
@@ -156,7 +152,6 @@ export class LevelMe {
    *
    * @private
    * @static
-   * @memberof LevelMe
    */
   private changeEmitter = new EventEmitter();
 
@@ -165,7 +160,6 @@ export class LevelMe {
    *
    * @private
    * @type {LevelUp}
-   * @memberof LevelMe
    */
   private levelUp: LevelUp;
 
@@ -173,7 +167,6 @@ export class LevelMe {
    * Real-time document count in the database
    *
    * @private
-   * @memberof LevelMe
    */
   //private docCount = 0;
 
@@ -181,7 +174,6 @@ export class LevelMe {
    * Real-time document sequencing in the database
    *
    * @private
-   * @memberof LevelMe
    */
   //private docUpdateSeq = 0;
 
@@ -201,7 +193,6 @@ export class LevelMe {
    * @param {string} document
    * @param {T} defaultvalue
    * @returns
-   * @memberof LevelMe
    */
   private async levelUpGet<T>(document: string, defaultvalue: T) {
     try {
@@ -215,7 +206,6 @@ export class LevelMe {
    * Opens the database and caches the metadata
    *
    * @private
-   * @memberof LevelMe
    */
   private async open() {
     if (!this.levelUp.isOpen()) {
@@ -247,7 +237,6 @@ export class LevelMe {
    * @param {branch} branch
    * @param {number} [pos=0]
    * @returns {{branch: branch, pos: number}}
-   * @memberof LevelMe
    */
   // private findBranchEnd(
   //   branch: branchTrunk | branch,
@@ -281,7 +270,6 @@ export class LevelMe {
    * @private
    * @param {schema} doc
    * @returns {{ key: string; pos: number }}
-   * @memberof LevelMe
    */
   private findCachedBranchEnd(doc: schema): string {
     return doc.rev_map[doc.winningRev].toString().padStart(16, "0");
@@ -293,7 +281,6 @@ export class LevelMe {
    * @private
    * @param {schema} doc
    * @returns {Promise<document>}
-   * @memberof LevelMe
    */
   private async seqDocFromRoot(doc: schema): Promise<document> {
     // Backwards Compatible Check
@@ -316,7 +303,6 @@ export class LevelMe {
    * Fetches information about the database or creates a new database
    *
    * @returns
-   * @memberof LevelMe
    */
   public async info() {
     try {
@@ -343,7 +329,6 @@ export class LevelMe {
   /**
    * Close the underlying leveldb connction
    *
-   * @memberof LevelMe
    */
   public close() {
     this.levelUp.close();
@@ -353,7 +338,6 @@ export class LevelMe {
    * @deprecated
    *
    * @param {unknown} options
-   * @memberof LevelMe
    */
   public async createIndex(options: unknown) {
     ActiveLogger.fatal("createIndex is deprecated");
@@ -363,7 +347,6 @@ export class LevelMe {
    * @deprecated
    *
    * @param {unknown} options
-   * @memberof LevelMe
    */
   public async deleteIndex(options: unknown) {
     ActiveLogger.fatal("deleteIndex is deprecated");
@@ -373,7 +356,6 @@ export class LevelMe {
    * @deprecated
    *
    * @param {unknown} options
-   * @memberof LevelMe
    */
   public async explain(options: unknown) {
     ActiveLogger.fatal("explain is deprecated");
@@ -383,7 +365,6 @@ export class LevelMe {
    * @deprecated
    *
    * @param {unknown} options
-   * @memberof LevelMe
    */
   public async find(options: unknown) {
     ActiveLogger.fatal("find is deprecated");
@@ -393,7 +374,6 @@ export class LevelMe {
    * @deprecated
    *
    * @param {unknown} options
-   * @memberof LevelMe
    */
   public async getIndexes() {
     ActiveLogger.fatal("getIndexes is deprecated");
@@ -407,7 +387,6 @@ export class LevelMe {
    *
    * @param {allDocOptions} options
    * @returns {Promise<unknown>}
-   * @memberof LevelMe
    */
   public allDocs(options: allDocOptions): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
@@ -498,7 +477,6 @@ export class LevelMe {
    *
    * @param {string} key
    * @returns
-   * @memberof LevelMe
    */
   public async get(key: string, raw = false) {
     await this.open();
@@ -517,7 +495,6 @@ export class LevelMe {
    *
    * @param {string} seq
    * @returns
-   * @memberof LevelMe
    */
   public async getSeq(seq: string) {
     return this.levelUp.get(LevelMe.SEQ_PREFIX + seq);
@@ -529,7 +506,6 @@ export class LevelMe {
    * Will keep compact for now, Will later update to compact direct written files no more sequence
    *
    * @returns
-   * @memberof LevelMe
    */
   public compact(): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -558,7 +534,6 @@ export class LevelMe {
    *
    * @param {document} doc
    * @returns
-   * @memberof LevelMe
    */
   public async post(doc: document) {
     const writer = await this.prepareForWrite(doc, this.levelUp.batch());
@@ -588,7 +563,6 @@ export class LevelMe {
    *
    * @param {(document | unknown)} doc
    * @returns
-   * @memberof LevelMe
    */
   public async put(doc: document | unknown) {
     return await this.post(doc as document);
@@ -600,7 +574,6 @@ export class LevelMe {
    *
    * @param {string} key
    * @returns
-   * @memberof LevelMe
    */
   public async del(key: string): Promise<void> {
     await this.open();
@@ -623,7 +596,6 @@ export class LevelMe {
    *
    * @param {string[]} keys
    * @returns {Promise<void>}
-   * @memberof LevelMe
    */
   public async delSeq(keys: string[]): Promise<void> {
     await this.open();
@@ -641,7 +613,6 @@ export class LevelMe {
    *
    * @param {string} options
    * @returns {*}
-   * @memberof LevelMe
    */
   public changesFromSeq(options: changesOptions): Promise<{
     results: {
@@ -730,7 +701,6 @@ export class LevelMe {
    *
    * @param {string} options
    * @returns {*}
-   * @memberof LevelMe
    */
   public changes(): EventEmitter {
     return this.changeEmitter;
@@ -742,7 +712,6 @@ export class LevelMe {
    * @param {unknown[]} docs
    * @param {unknown} options
    * @returns
-   * @memberof LevelMe
    */
   public async bulkDocs(
     docs: document[],
@@ -781,7 +750,6 @@ export class LevelMe {
    * @param {document} doc
    * @param {LevelUpChain<any, any>} chain
    * @returns {Promise<{ chain: LevelUpChain<any, any>; rev: string }>}
-   * @memberof LevelMe
    */
   private async prepareForWrite(
     doc: document,

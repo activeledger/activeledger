@@ -50,7 +50,6 @@ export class StatsHandler {
    * Checks the stats file exists
    *
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   public async init(version?: string): Promise<void> {
     if (version) {
@@ -66,7 +65,6 @@ export class StatsHandler {
    * Note: Windows implementation of disk usage not currently implemented, this will return 0s
    *
    * @returns {Promise<IStats>}
-   * @memberof StatsHandler
    */
   public async getStats(): Promise<IStats> {
     const { data, error } = await this.readFileStats();
@@ -96,7 +94,6 @@ export class StatsHandler {
    * Reset the uptime counter
    *
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   public async resetUptime(): Promise<void> {
     const { data, error } = await this.readFileStats();
@@ -124,7 +121,6 @@ export class StatsHandler {
    *
    * @param {boolean} [auto]
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   public async updateRestartCount(auto?: boolean): Promise<void> {
     const { data, error } = await this.readFileStats();
@@ -162,7 +158,6 @@ export class StatsHandler {
    * Reset the auto restart count
    *
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   public async resetAutoRestartCount(): Promise<void> {
     const { data, error } = await this.readFileStats();
@@ -189,7 +184,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {ICPUStats}
-   * @memberof StatsHandler
    */
   private getCPU(): ICPUStats {
     const average = os.loadavg();
@@ -207,7 +201,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {IRAMStats}
-   * @memberof StatsHandler
    */
   private getRAM(): IRAMStats {
     return {
@@ -227,7 +220,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {Promise<IDiskStats>}
-   * @memberof StatsHandler
    */
   private getHDD(): IDiskStats {
     try {
@@ -270,7 +262,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {Promise<number>}
-   * @memberof StatsHandler
    */
   private async getIO(): Promise<number> {
     if (os.type() !== "Windows_NT") {
@@ -285,7 +276,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   private async statsCheck(): Promise<void> {
     try {
@@ -309,7 +299,6 @@ export class StatsHandler {
    * @private
    * @param {IStatsFile} [data]
    * @returns {Promise<void>}
-   * @memberof StatsHandler
    */
   private async writeStats(data?: IStatsFile): Promise<void> {
     if (!data) {
@@ -339,7 +328,6 @@ export class StatsHandler {
    *
    * @private
    * @returns {Promise<{ data?: IStatsFile; error?: Error }>}
-   * @memberof StatsHandler
    */
   private async readFileStats(): Promise<{ data?: IStatsFile; error?: Error }> {
     if (!this.statsFileExists) {

@@ -38,7 +38,6 @@ export class SQL {
   /**
    * Creates an instance of SQL.
    * @param {string} query
-   * @memberof SQL
    */
   constructor(private query: string) {}
 
@@ -46,7 +45,6 @@ export class SQL {
    * Parse SQL Query to Mango
    *
    * @returns {IQuery}
-   * @memberof SQL
    */
   public parse(): IQuery {
     let out: IQuery = { selector: {} };
@@ -121,7 +119,6 @@ export class SQL {
    * @private
    * @param {string} conditions
    * @returns {*}
-   * @memberof SQL
    */
   private where(conditions: string): any {
     // Split on AND

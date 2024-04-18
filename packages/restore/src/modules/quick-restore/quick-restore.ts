@@ -46,7 +46,6 @@ import { Contract } from "../contract/contract";
 export class QuickRestore {
   /**
    * Creates an instance of QuickRestore.
-   * @memberof QuickRestore
    */
   constructor() {
     this.runQuickFullRestore();
@@ -56,7 +55,6 @@ export class QuickRestore {
    * Check that a node is not this one
    *
    * @private
-   * @memberof QuickRestore
    */
   private isNotThisNode = (node: string) =>
     node !== ActiveNetwork.Home.reference;
@@ -66,7 +64,6 @@ export class QuickRestore {
    *
    * @private
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private async runQuickFullRestore(): Promise<void> {
     const preparePromise = (node: string) =>
@@ -107,7 +104,6 @@ export class QuickRestore {
    * @private
    * @param {*} consensusData
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private fetchDocuments(consensusData: IConsensusData[]): Promise<void> {
     const streamData = (data: IConsensusData) =>
@@ -146,7 +142,6 @@ export class QuickRestore {
    * @private
    * @param {INetworkData} networkData
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private uploadData(networkData: INetworkData): Promise<void> {
     return new Promise(async (resolve, reject) => {
@@ -183,20 +178,17 @@ export class QuickRestore {
    * @private
    * @param {Promise<unknown>[]} promises
    * @returns {Promise<INetworkData>}
-   * @memberof QuickRestore
    */
   private handleNetworkData(activityData: any): INetworkData {
-    const hasNotErrored = (data: IBaseData) => (data.error ? false : true);
+    const hasNotErrored = (data: IBaseData) => (!data.error);
 
     const isNotStreamOrUmid = (data: IBaseData) =>
       data._id.indexOf(":stream") === -1 &&
       data._id.indexOf(":umid") === -1 &&
-      data._id.indexOf("_design") === -1
-        ? true
-        : false;
+      data._id.indexOf("_design") === -1;
 
     const hasRequiredData = (data: IBaseData) =>
-      data.namespace && data.contract && data.compiled ? true : false;
+      !!(data.namespace && data.contract && data.compiled);
 
     const documents: unknown[] = [];
     const volatile: unknown[] = [];
@@ -228,13 +220,12 @@ export class QuickRestore {
    * @private
    * @param {*} streamInformation
    * @returns {Promise<IConsensusData[]>}
-   * @memberof QuickRestore
    */
   private checkConsensus(
     streamInformation: IReductionData
   ): Promise<IConsensusData[]> {
     const streamIdCorrect = (streamId: string) =>
-      streamId && streamId !== "undefined" ? true : false;
+      !!(streamId && streamId !== "undefined");
 
     return new Promise((resolve) => {
       const consensusReached: IConsensusData[] = [];
@@ -274,13 +265,12 @@ export class QuickRestore {
    * @private
    * @param {Promise<IStreamInformation>[]} promises
    * @returns {Promise<IReductionData>}
-   * @memberof QuickRestore
    */
   private processRebuildPromises(
     promises: Promise<IStreamInformation>[]
   ): Promise<IReductionData> {
     const streamDataCorrect = (data: IStreamInformation) =>
-      data ? true : false;
+      !!data;
 
     return new Promise(async (resolve, reject) => {
       try {
@@ -306,16 +296,15 @@ export class QuickRestore {
    * @private
    * @param {IStreamInformation[]} streamInformation
    * @returns {*}
-   * @memberof QuickRestore
    */
   private reduceStreamInformation(
     streamInformation: IStreamInformation[]
   ): IReductionData {
     const haveStream = (stream: IRestoreStream) =>
-      reduction[stream.id] ? true : false;
+      !!reduction[stream.id];
 
     const haveRevision = (stream: IRestoreStream) =>
-      reduction[stream.id][stream.rev] ? true : false;
+      !!reduction[stream.id][stream.rev];
 
     const incrementStreamRevisionCounter = (stream: IRestoreStream) =>
       reduction[stream.id][stream.rev]++;
@@ -362,7 +351,6 @@ export class QuickRestore {
    * @private
    * @param {ActiveNetwork.Neighbour} node
    * @returns {(Promise<IStreamInformation>)}
-   * @memberof QuickRestore
    */
   private getRebuildData(
     node: ActiveNetwork.Neighbour

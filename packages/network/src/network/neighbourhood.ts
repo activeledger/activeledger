@@ -55,7 +55,6 @@ export class Neighbourhood {
    *
    * @private
    * @type {{[reference: string]: Neighbour}}
-   * @memberof Neighbourhood
    */
   private neighbours: { [reference: string]: Neighbour } = {};
 
@@ -64,7 +63,6 @@ export class Neighbourhood {
    *
    * @private
    * @type {string[]}
-   * @memberof Neighbourhood
    */
   private neighboursKeys: string[];
 
@@ -73,7 +71,6 @@ export class Neighbourhood {
    *
    * @private
    * @type {{[reference: string]: boolean}}
-   * @memberof Neighbourhood
    */
   private firewall: { [reference: string]: boolean } = {};
 
@@ -82,7 +79,6 @@ export class Neighbourhood {
    *
    * @private
    * @type {Number}
-   * @memberof Neighbourhood
    */
   private houses: number = 0;
 
@@ -91,14 +87,12 @@ export class Neighbourhood {
    *
    * @static
    * @type {{ [index: string]: string }}
-   * @memberof Neighbourhood
    */
   public static remapedAddr: { [index: string]: string };
 
   /**
    * Creates an instance of Neighbourhood and builds the list of
    * known neighbours
-   * @memberof Neighbourhood
    */
   constructor() {
     // Temporary Access solution
@@ -136,11 +130,10 @@ export class Neighbourhood {
    * Add new neighbour to dictionary
    *
    * @param {Neighbour[]} neighbour
-   * @memberof Neighbourhood
    */
   private add(neighbour: Neighbour): void;
   private add(neighbour: Neighbour[]): void;
-  private add(neighbour: any): void {
+  private add(neighbour: Neighbour | Neighbour[]): void {
     if (Array.isArray(neighbour)) {
       let i = neighbour.length;
       while (i--) {
@@ -173,7 +166,6 @@ export class Neighbourhood {
    * Reset Neighbourhood
    *
    * @param {Neighbour[]} neighbours
-   * @memberof Neighbourhood
    */
   public reset(neighbours: Array<any>): void {
     ActiveLogger.debug("Reload Request (Worker Resetting)");
@@ -210,12 +202,11 @@ export class Neighbourhood {
    * Accessor error for public get
    *
    * @returns {({ [reference: string]: Neighbour })}
-   * @memberof Neighbourhood
    */
   public get(): { [reference: string]: Neighbour };
   public get(reference: string): Neighbour;
   public get(random: boolean, skip?: Neighbour): Neighbour;
-  public get(p1?: any, p2?: any): any {
+  public get(p1?: string | boolean, p2?: Neighbour): any {
     if (p1) {
       if (typeof p1 == "boolean") {
         // Get Keys as an array
@@ -249,7 +240,6 @@ export class Neighbourhood {
    * Return Object.keys cache of neighbours
    *
    * @returns {string[]}
-   * @memberof Neighbourhood
    */
   public keys(): string[] {
     if (!this.neighboursKeys) {
@@ -263,7 +253,6 @@ export class Neighbourhood {
    *
    * @param {string} remote
    * @returns {boolean}
-   * @memberof Neighbourhood
    */
   public checkFirewall(remote: string): boolean {
     // IPv4 & IPv6 notation support
@@ -276,7 +265,6 @@ export class Neighbourhood {
    *
    * @param {string} reference
    * @returns {boolean}
-   * @memberof Neighbourhood
    */
   public exists(reference: string): boolean {
     if (this.neighbours[reference]) {
@@ -289,7 +277,6 @@ export class Neighbourhood {
    * Return the number of known neighbours
    *
    * @returns {number}
-   * @memberof Neighbourhood
    */
   public count(): number {
     return this.houses;
@@ -302,7 +289,6 @@ export class Neighbourhood {
    * @param {*} [params]
    * @param {boolean} [force=false]
    * @returns {Promise<any>}
-   * @memberof Neighbourhood
    */
   public knockAll(
     endpoint: string,
