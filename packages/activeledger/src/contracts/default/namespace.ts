@@ -37,7 +37,6 @@ export default class Namespace extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private namespace: string;
 
@@ -46,7 +45,6 @@ export default class Namespace extends Standard {
    *
    * @private
    * @type {string}
-   * @memberof Namespace
    */
   private identity: Activity;
 
@@ -54,7 +52,6 @@ export default class Namespace extends Standard {
    * The Root for contract files
    *
    * @type {string}
-   * @memberof Contract
    */
   readonly rootDir: string = "./contracts/";
 
@@ -63,7 +60,6 @@ export default class Namespace extends Standard {
    *
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public verify(signatureless: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -79,7 +75,6 @@ export default class Namespace extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -108,7 +103,6 @@ export default class Namespace extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {

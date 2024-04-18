@@ -39,7 +39,6 @@ export class Helper {
    * @static
    * @param {string} message
    * @param {*} [other]
-   * @memberof Helper
    */
   public static output(message: string, other?: any): void {
     if (Helper.verbose) {
@@ -51,7 +50,6 @@ export class Helper {
    * Returns the number of nodes in the network (neighbours in neighbourhood)
    *
    * @static
-   * @memberof Helper
    * @returns boolean
    */
   public static getNeighbourCount = (dontIncludeSelf: boolean) =>
@@ -61,7 +59,6 @@ export class Helper {
    * Returns the state of consensus based on the votes provided.
    *
    * @static
-   * @memberof Helper
    * @returns boolean
    */
   public static metConsensus = (

@@ -76,7 +76,6 @@ export class SSE {
    * @param {(number | string)} sequence
    * @param {unknown} prepare
    * @returns {boolean}
-   * @memberof SSE
    */
   public write(sequence: number | string, prepare: unknown): boolean {
     // Connection still open?

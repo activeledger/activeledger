@@ -41,7 +41,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {*}
-   * @memberof StreamUpdater
    */
   private docs: any;
 
@@ -50,7 +49,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {ActiveDefinitions.LedgerStream[]}
-   * @memberof StreamUpdater
    */
   private streams: ActiveDefinitions.LedgerStream[];
 
@@ -59,7 +57,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {ActiveDefinitions.LedgerStream[]}
-   * @memberof StreamUpdater
    */
   private inputs: ActiveDefinitions.LedgerStream[];
 
@@ -68,7 +65,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {string[]}
-   * @memberof StreamUpdater
    */
   private skip: string[];
 
@@ -77,7 +73,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {string[]}
-   * @memberof StreamUpdater
    */
   private collisions: string[];
 
@@ -86,7 +81,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {boolean}
-   * @memberof StreamUpdater
    */
   private nhkpCheck: boolean;
 
@@ -95,7 +89,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {IReferenceStreams}
-   * @memberof StreamUpdater
    */
   private refStreams: IReferenceStreams;
 
@@ -104,7 +97,6 @@ export class StreamUpdater {
    *
    * @private
    * @type {Function}
-   * @memberof StreamUpdater
    */
   private earlyCommit: Function;
 
@@ -217,7 +209,6 @@ export class StreamUpdater {
    *
    * @private
    * @returns
-   * @memberof Process
    * */
   private compactTxEntry() {
     return {
@@ -289,7 +280,6 @@ export class StreamUpdater {
    * Handle data that is to be stored specifically against a contract
    *
    * @private
-   * @memberof StreamUpdater
    */
   private handleContractDataStream(
     contractData: ActiveDefinitions.IContractData
@@ -307,7 +297,6 @@ export class StreamUpdater {
    * Compile streams for umid & return reference
    *
    * @private
-   * @memberof StreamUpdater
    */
   private buildReferenceStreams() {
     // Loop Streams

@@ -36,7 +36,6 @@ export class ActiveGZip {
    * @static
    * @param {(string | Buffer)} data
    * @returns {Promise<string>}
-   * @memberof ActiveGZip
    */
   public static gzip(data: string | Buffer): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -56,7 +55,6 @@ export class ActiveGZip {
    * @static
    * @param {string} data
    * @returns {Promise<string>}
-   * @memberof ActiveGZip
    */
   public static ungzip(data: Buffer): Promise<Buffer> {
     return new Promise((resolve, reject) => {

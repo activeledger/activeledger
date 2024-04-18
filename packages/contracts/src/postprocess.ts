@@ -41,7 +41,6 @@ export default abstract class PostProcess extends Standard {
    * @param {boolean} territoriality
    * @param {string} who
    * @returns {Promise<any>}
-   * @memberof PostProcess
    */
   public abstract postProcess(
     territoriality: boolean,

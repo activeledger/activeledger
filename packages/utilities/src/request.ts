@@ -53,7 +53,6 @@ export class ActiveRequest {
    * @param {*} [data]
    * @param {boolean} [enableGZip=false]
    * @returns {Promise<any>}
-   * @memberof ActiveRequest
    */
   public static send(
     reqUrl: string,

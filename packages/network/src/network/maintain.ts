@@ -40,7 +40,6 @@ export class Maintain {
    *
    * @private
    * @type {string[]}
-   * @memberof Maintain
    */
   private static neighbourOrder: Neighbour[];
 
@@ -49,7 +48,6 @@ export class Maintain {
    *
    * @private
    * @type {boolean}
-   * @memberof Maintain
    */
   private static checking: boolean = false;
 
@@ -58,7 +56,6 @@ export class Maintain {
    *
    * @private
    * @type {boolean}
-   * @memberof Maintain
    */
   private static rebasing: boolean = false;
 
@@ -72,7 +69,6 @@ export class Maintain {
    *
    * @private
    * @type {number}
-   * @memberof Watch
    */
   private static readonly interval: number =
     (20 + Math.floor(Math.random() * 15) + -10) * 1000;
@@ -83,7 +79,6 @@ export class Maintain {
    * Creates an instance of Maintain
    *
    * @param {Home} home
-   * @memberof Watch
    */
   public static init(home: Home) {
     // Move to statics in home
@@ -101,7 +96,6 @@ export class Maintain {
    *
    * @public
    * @param {boolean} [boot=false]
-   * @memberof Maintain
    */
   public static healthTimer(boot: boolean = false) {
     setTimeout(() => {
@@ -119,7 +113,6 @@ export class Maintain {
    * @private
    * @static
    * @returns {number}
-   * @memberof Maintain
    */
   private static getInterval(): number {
     if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
@@ -133,7 +126,6 @@ export class Maintain {
    * Calculates nodes position in a network
    *
    * @private
-   * @memberof Maintain
    */
   private static createNetworkOrder() {
     // Get all neighbours
@@ -165,7 +157,6 @@ export class Maintain {
    * Will rebase the neighbourhood asap
    *
    * @public
-   * @memberof Maintain
    */
   public static rebaseNeighbourhood(): void {
     // Only Rebase if recognised
@@ -196,7 +187,6 @@ export class Maintain {
    * @private
    * @param {boolean} [force=false]
    * @returns {*}
-   * @memberof Maintain
    */
   private static async checkNeighbourhood(
     force: boolean = false
@@ -253,7 +243,6 @@ export class Maintain {
    *
    * @private
    * @returns {*}
-   * @memberof Maintain
    */
   private static pairing(): any {
     // Loop Index

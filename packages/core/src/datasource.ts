@@ -38,7 +38,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {*}
-   * @memberof ActiveledgerDatasource
    */
   private static db: ActiveDSConnect;
 
@@ -48,7 +47,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {*}
-   * @memberof ActiveledgerDatasource
    */
   private static dbEvents: ActiveDSConnect;
 
@@ -58,7 +56,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {ActiveChanges}
-   * @memberof ActiveledgerDatasource
    */
   private static changes: ActiveChanges;
 
@@ -68,7 +65,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {ActiveChanges}
-   * @memberof ActiveledgerDatasource
    */
   private static events: ActiveChanges;
 
@@ -78,7 +74,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {QueryEngine}
-   * @memberof ActiveledgerDatasource
    */
   private static query: QueryEngine;
 
@@ -88,7 +83,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {{}}
-   * @memberof ActiveledgerDatasource
    */
   private static neighbourhood: any;
 
@@ -98,7 +92,6 @@ export class ActiveledgerDatasource {
    * @private
    * @static
    * @type {*}
-   * @memberof ActiveledgerDatasource
    */
   private static selfNeighbour: ActiveNetwork.Home;
 
@@ -109,7 +102,6 @@ export class ActiveledgerDatasource {
    * @param {*} doc
    * @param {*} req
    * @returns {boolean}
-   * @memberof Activity
    */
   private static filter(doc: any): boolean {
     return doc.$stream || doc._id.indexOf(":") !== -1 ? false : true;
@@ -120,7 +112,6 @@ export class ActiveledgerDatasource {
    *
    * @static
    * @returns
-   * @memberof ActiveledgerDatasource
    */
   public static getDb() {
     if (!this.db) {
@@ -174,7 +165,6 @@ export class ActiveledgerDatasource {
    * @deprecated
    * @static
    * @returns {QueryEngine}
-   * @memberof ActiveledgerDatasource
    */
   // public static getQuery(): QueryEngine {
   //   // Make sure we have db connection
@@ -189,7 +179,6 @@ export class ActiveledgerDatasource {
    *
    * @static
    * @returns {*}
-   * @memberof ActiveledgerDatasource
    */
   public static getChanges(lastEventId: string): ActiveChanges {
     // Make sure we have db connection
@@ -207,7 +196,6 @@ export class ActiveledgerDatasource {
    *
    * @static
    * @returns {*}
-   * @memberof ActiveledgerDatasource
    */
   public static getEvents(lastEventId: string): ActiveChanges {
     // Make sure we have db connection
@@ -225,7 +213,6 @@ export class ActiveledgerDatasource {
    *
    * @static
    * @returns {{}}
-   * @memberof ActiveledgerDatasource
    */
   public static getNeighbourhood(): {} {
     if (!this.neighbourhood) {
@@ -259,7 +246,6 @@ export class ActiveledgerDatasource {
    *
    * @static
    * @returns {{}}
-   * @memberof ActiveledgerDatasource
    */
   public static getSelfNeighbour(): {} {
     if (!this.selfNeighbour) {

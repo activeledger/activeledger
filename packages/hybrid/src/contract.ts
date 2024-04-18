@@ -38,7 +38,6 @@ export class Contract {
    *
    * @static
    * @param {*} contract
-   * @memberof Contract
    */
   public static rebuild(contract: any): void {
     // Get keys of the contract
@@ -78,7 +77,6 @@ export class Contract {
    * @static
    * @param {string} code
    * @returns {string}
-   * @memberof Contract
    */
   private static transpile(code: string): string {
     // Base64 Decode & Transpile to javascript

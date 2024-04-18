@@ -43,7 +43,6 @@ export class Endpoints {
    *
    * @static
    * @type {number}
-   * @memberof Endpoints
    */
   public static rebaseThrottle: number = 0;
 
@@ -56,7 +55,6 @@ export class Endpoints {
    * @param {Host} host
    * @param {*} body
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static ExternalInitalise(
     host: Host,
@@ -218,7 +216,6 @@ export class Endpoints {
    * @param {boolean} encHeader
    * @param {ActiveDSConnect} db
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static ExternalEncrypt(
     host: Host,
@@ -269,7 +266,6 @@ export class Endpoints {
    * @param {Host} host
    * @param {*} body
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static InternalInitalise(host: Host, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -312,7 +308,6 @@ export class Endpoints {
    * @param {Host} host
    * @param {ActiveDefinitions.LedgerEntry} tx
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   private static DirectInternalInitalise(
     host: Host,
@@ -374,7 +369,6 @@ export class Endpoints {
    * @param {Host} host
    * @param {string} requester
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static status(host: Host, requester: string): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -448,7 +442,6 @@ export class Endpoints {
    * @param {ActiveDSConnect} db
    * @param {*} body
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static streams(db: ActiveDSConnect, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -554,7 +547,6 @@ export class Endpoints {
    * @param {ActiveDSConnect} db
    * @param {*} [start]
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static all(db: ActiveDSConnect, start?: any): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -588,7 +580,6 @@ export class Endpoints {
    * @param {ActiveDSConnect} db
    * @param {string} umid
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static umid(db: ActiveDSConnect, umid: string): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -614,7 +605,6 @@ export class Endpoints {
    * @static
    * @param {*} row
    * @returns
-   * @memberof Endpoints
    */
   private static allMap(row: any) {
     return { id: row.id, rev: row.value.rev };
@@ -626,7 +616,6 @@ export class Endpoints {
    * @private
    * @static
    * @param {*} row
-   * @memberof Endpoints
    */
   private static allFilter(row: any) {
     return !(row.id.indexOf(":volatile") !== -1);
@@ -640,7 +629,6 @@ export class Endpoints {
    * @param {*} body
    * @param {boolean} encryptHeader
    * @returns {Promise<any>}
-   * @memberof Endpoints
    */
   public static postConvertor(
     host: Host,
@@ -728,7 +716,6 @@ export class Endpoints {
    * @static
    * @param {string} error
    * @returns {*}
-   * @memberof Endpoints
    */
   private static successfulFailure(error: string): any {
     return {

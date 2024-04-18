@@ -38,7 +38,6 @@ export default abstract class Query extends Standard {
    *
    * @protected
    * @type {QueryEngine}
-   * @memberof Query
    */
   protected query: QueryEngine;
 
@@ -46,7 +45,6 @@ export default abstract class Query extends Standard {
    * Sets the query engine. Used as a hook from the VM to know to inject the QueryEngine
    *
    * @param {QueryEngine} db
-   * @memberof Query
    */
   public setQuery(db: QueryEngine) {
     this.query = db;

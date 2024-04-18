@@ -35,7 +35,6 @@ export class ActiveLogger {
    *
    * @static
    * @type {boolean}
-   * @memberof ActiveLogger
    */
   public static enableDebug: boolean = false;
 
@@ -44,7 +43,6 @@ export class ActiveLogger {
    *
    * @static
    * @type {boolean}
-   * @memberof ActiveLogger
    */
   public static isVMRuntime: boolean = false;
 
@@ -55,7 +53,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public static trace(obj: object, msg?: string, ...args: any[]): void;
   public static trace(msg: string, ...args: any[]): void;
@@ -85,7 +82,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public trace(obj: object, msg?: string, ...args: any[]): void;
   public trace(msg: string, ...args: any[]): void;
@@ -100,7 +96,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public static debug(obj: object, msg?: string, ...args: any[]): void;
   public static debug(msg: string, ...args: any[]): void;
@@ -129,7 +124,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public debug(obj: object, msg?: string, ...args: any[]): void;
   public debug(msg: string, ...args: any[]): void;
@@ -144,7 +138,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
@@ -171,7 +164,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public info(obj: object, msg?: string, ...args: any[]): void;
   public info(msg: string, ...args: any[]): void;
@@ -186,7 +178,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
@@ -213,7 +204,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public warn(obj: object, msg?: string, ...args: any[]): void;
   public warn(msg: string, ...args: any[]): void;
@@ -228,7 +218,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
@@ -255,7 +244,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public error(obj: object, msg?: string, ...args: any[]): void;
   public error(msg: string, ...args: any[]): void;
@@ -271,7 +259,6 @@ export class ActiveLogger {
    * @param {string} [msg]
    * @param {...any[]} args
    * @returns {Error}
-   * @memberof ActiveLogger
    */
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
@@ -301,7 +288,6 @@ export class ActiveLogger {
    * @param {object} obj
    * @param {string} [msg]
    * @param {...any[]} args
-   * @memberof ActiveLogger
    */
   public fatal(obj: object, msg?: string, ...args: any[]): void;
   public fatal(msg: string, ...args: any[]): void;
@@ -314,7 +300,6 @@ export class ActiveLogger {
    *
    * @static
    * @param {boolean} isVM
-   * @memberof ActiveLogger
    */
   public static setVMRuntime(isVM: boolean): void {
     ActiveLogger.isVMRuntime = isVM;
@@ -324,7 +309,6 @@ export class ActiveLogger {
    * Definition Proxy
    *
    * @param {boolean} isVM
-   * @memberof ActiveLogger
    */
   public setVMRuntime(isVM: boolean): void {
     ActiveLogger.isVMRuntime = isVM;
@@ -336,7 +320,6 @@ export class ActiveLogger {
    * @private
    * @static
    * @returns {number}
-   * @memberof ActiveLogger
    */
   private static isVM(): number {
     return ActiveLogger.isVMRuntime ? 93 : 36;
@@ -348,7 +331,6 @@ export class ActiveLogger {
    * @private
    * @static
    * @returns {string}
-   * @memberof ActiveLogger
    */
   private static timestamp(): string {
     return `${ActiveLogger.colour(`[${new Date().getTime()}]`, 90)} `;
@@ -360,7 +342,6 @@ export class ActiveLogger {
    * @private
    * @static
    * @returns {string}
-   * @memberof ActiveLogger
    */
   private static process(): string {
     return ` ${ActiveLogger.colour(
@@ -376,7 +357,6 @@ export class ActiveLogger {
    * @static
    * @param {*} obj
    * @returns {string}
-   * @memberof ActiveLogger
    */
   private static object(obj: any): string {
     // Convert to string
@@ -420,7 +400,6 @@ export class ActiveLogger {
    * @param {string} text
    * @param {number} colour
    * @returns {string}
-   * @memberof ActiveLogger
    */
   private static colour(text: string, colour: number): string {
     if (process && process.pid) {

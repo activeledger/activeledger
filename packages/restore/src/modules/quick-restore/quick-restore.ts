@@ -46,7 +46,6 @@ import { Contract } from "../contract/contract";
 export class QuickRestore {
   /**
    * Creates an instance of QuickRestore.
-   * @memberof QuickRestore
    */
   constructor() {
     this.runQuickFullRestore();
@@ -56,7 +55,6 @@ export class QuickRestore {
    * Check that a node is not this one
    *
    * @private
-   * @memberof QuickRestore
    */
   private isNotThisNode = (node: string) =>
     node !== ActiveNetwork.Home.reference;
@@ -66,7 +64,6 @@ export class QuickRestore {
    *
    * @private
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private async runQuickFullRestore(): Promise<void> {
     const preparePromise = (node: string) =>
@@ -107,7 +104,6 @@ export class QuickRestore {
    * @private
    * @param {*} consensusData
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private fetchDocuments(consensusData: IConsensusData[]): Promise<void> {
     const streamData = (data: IConsensusData) =>
@@ -146,7 +142,6 @@ export class QuickRestore {
    * @private
    * @param {INetworkData} networkData
    * @returns {Promise<void>}
-   * @memberof QuickRestore
    */
   private uploadData(networkData: INetworkData): Promise<void> {
     return new Promise(async (resolve, reject) => {
@@ -183,7 +178,6 @@ export class QuickRestore {
    * @private
    * @param {Promise<unknown>[]} promises
    * @returns {Promise<INetworkData>}
-   * @memberof QuickRestore
    */
   private handleNetworkData(activityData: any): INetworkData {
     const hasNotErrored = (data: IBaseData) => (!data.error);
@@ -226,7 +220,6 @@ export class QuickRestore {
    * @private
    * @param {*} streamInformation
    * @returns {Promise<IConsensusData[]>}
-   * @memberof QuickRestore
    */
   private checkConsensus(
     streamInformation: IReductionData
@@ -272,7 +265,6 @@ export class QuickRestore {
    * @private
    * @param {Promise<IStreamInformation>[]} promises
    * @returns {Promise<IReductionData>}
-   * @memberof QuickRestore
    */
   private processRebuildPromises(
     promises: Promise<IStreamInformation>[]
@@ -304,7 +296,6 @@ export class QuickRestore {
    * @private
    * @param {IStreamInformation[]} streamInformation
    * @returns {*}
-   * @memberof QuickRestore
    */
   private reduceStreamInformation(
     streamInformation: IStreamInformation[]
@@ -360,7 +351,6 @@ export class QuickRestore {
    * @private
    * @param {ActiveNetwork.Neighbour} node
    * @returns {(Promise<IStreamInformation>)}
-   * @memberof QuickRestore
    */
   private getRebuildData(
     node: ActiveNetwork.Neighbour

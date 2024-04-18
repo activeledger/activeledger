@@ -43,7 +43,6 @@ class ContractControl implements IVMObject {
    *
    * @private
    * @type {IVMInternalCache}
-   * @memberof ContractControl
    */
   private smartContracts: IVMInternalCache;
 
@@ -58,7 +57,6 @@ class ContractControl implements IVMObject {
    *
    * @param {*} query
    * @param {EventEngine} event
-   * @memberof ContractControl
    */
   public initialiseContract(
     payload: IVMDataPayload,
@@ -108,7 +106,6 @@ class ContractControl implements IVMObject {
    * Get the activity stream data
    *
    * @returns {{ [reference: string]: Activity }}
-   * @memberof ContractControl
    */
   public getActivityStreams(umid: string): { [reference: string]: Activity } {
     return this.smartContracts[umid].getActivityStreams();
@@ -118,7 +115,6 @@ class ContractControl implements IVMObject {
    * Get data to be stored linked to this contract
    *
    * @returns {*}
-   * @memberof ContractControl
    */
   public getContractData(umid: string): ActiveDefinitions.IContractData | undefined {
     if (this.smartContracts[umid].updatedContractData) {
@@ -131,7 +127,6 @@ class ContractControl implements IVMObject {
    * @param {string} umid
    * @param {ActiveDefinitions.ICommunications} comms
    * @param {number} key
-   * @memberof ContractControl
    */
   public setInternodeComms(
     umid: string,
@@ -145,7 +140,6 @@ class ContractControl implements IVMObject {
    * Get the inter-node communication
    *
    * @returns {*}
-   * @memberof ContractControl
    */
   public getInternodeComms(umid: string): any {
     return this.smartContracts[umid].getThisInterNodeComms();
@@ -155,7 +149,6 @@ class ContractControl implements IVMObject {
    * Clear the inter-node communication
    *
    * @returns {boolean}
-   * @memberof ContractControl
    */
   public clearInternodeComms(umid: string): boolean {
     return this.smartContracts[umid].getClearInterNodeComms();
@@ -165,7 +158,6 @@ class ContractControl implements IVMObject {
    * Get the contract data
    *
    * @returns {unknown}
-   * @memberof ContractControl
    */
   public returnContractData(umid: string): unknown {
     return this.smartContracts[umid].getReturnToRemote();
@@ -175,7 +167,6 @@ class ContractControl implements IVMObject {
    * Throw to the caller
    *
    * @returns {string[]}
-   * @memberof ContractControl
    */
   public throwFrom(umid: string): string[] {
     return this.smartContracts[umid].throwTo;
@@ -185,7 +176,6 @@ class ContractControl implements IVMObject {
    * Run an unknown contract read function 
    *
    * @returns {Promise<boolean>}
-   * @memberof ContractControl
    */
   public async runRead(umid: string, readMethod: string): Promise<unknown> {
       const read = (this.smartContracts[umid] as any)[readMethod]?.();
@@ -197,7 +187,6 @@ class ContractControl implements IVMObject {
    *
    * @param {boolean} sigless
    * @returns {Promise<boolean>}
-   * @memberof ContractControl
    */
   public async runVerify(umid: string, sigless: boolean): Promise<boolean> {
     // Skip verify if doesn't exist
@@ -209,7 +198,6 @@ class ContractControl implements IVMObject {
    * Run the voting round of the contract
    *
    * @returns {Promise<boolean>}
-   * @memberof ContractControl
    */
   public runVote(umid: string): Promise<boolean> {
     return this.smartContracts[umid].vote();
@@ -220,7 +208,6 @@ class ContractControl implements IVMObject {
    *
    * @param {boolean} possibleTerritoriality
    * @returns {Promise<boolean>}
-   * @memberof ContractControl
    */
   public runCommit(
     umid: string,
@@ -235,7 +222,6 @@ class ContractControl implements IVMObject {
    * @param {boolean} territoriality
    * @param {string} who
    * @returns {Promise<any>}
-   * @memberof ContractControl
    */
   public postProcess(
     umid: string,
@@ -259,7 +245,6 @@ class ContractControl implements IVMObject {
    *
    * @param {string} umid
    * @returns {Promise<any>}
-   * @memberof ContractControl
    */
   public reconcile(umid: string): Promise<any> {
     if ("reconcile" in this.smartContracts[umid]) {
@@ -275,7 +260,6 @@ class ContractControl implements IVMObject {
    * Clear smart contract transaction from memory
    *
    * @param {string} umid
-   * @memberof ContractControl
    */
   public destroy(umid: string): void {
     delete this.smartContracts[umid];
@@ -285,7 +269,6 @@ class ContractControl implements IVMObject {
    * Get the current timeout of the contract
    *
    * @returns {Date}
-   * @memberof ContractControl
    */
   public getTimeout(umid: string): Date | null {
     return this.smartContracts[umid]
@@ -301,7 +284,6 @@ class ContractControl implements IVMObject {
    * Set the system configuration data
    *
    * @param {*} sysConfig
-   * @memberof ContractControl
    */
   public setSysConfig(umid: string, sysConfig: any): void {
     if ("sysConfig" in this.smartContracts[umid]) {
@@ -313,7 +295,6 @@ class ContractControl implements IVMObject {
    * Reload the sys config
    *
    * @returns {boolean}
-   * @memberof ContractControl
    */
   public reloadSysConfig(umid: string): boolean {
     if ("sysConfig" in this.smartContracts[umid]) {

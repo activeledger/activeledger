@@ -40,7 +40,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    *
    * @private
    * @type {string}
-   * @memberof Neighbour
    */
   public reference: string;
 
@@ -48,7 +47,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * Controls if this neighbour should slowly be turned off.
    *
    * @type {boolean}
-   * @memberof Neighbour
    */
   public graceStop: boolean = false;
 
@@ -56,7 +54,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * Creates an instance of NodeNeighbour.
    * @param {string} host
    * @param {number} port
-   * @memberof Neighbour
    */
   constructor(
     protected host: string,
@@ -82,7 +79,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * Expose Neighbours address
    *
    * @returns {{host: string, port: number}}
-   * @memberof Neighbour
    */
   public getAddress(): { host: string; port: number } {
     return {
@@ -97,7 +93,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @param {string} signature
    * @param {string} data
    * @returns {boolean}
-   * @memberof Neighbour
    */
   public verifySignature(signature: string, data: string): boolean {
     if (this.identity) {
@@ -115,7 +110,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @param {*} [params]
    * @param {boolean} [external]
    * @returns {Promise<any>}
-   * @memberof Neighbour
    */
   public knock(
     endpoint: string,
@@ -231,7 +225,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @private
    * @param {*} data
    * @returns {*}
-   * @memberof Neighbour
    */
   public encryptKnock(data: any, encrypted: boolean = false): any {
     // Don't encrypt to self

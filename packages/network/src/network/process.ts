@@ -75,7 +75,6 @@ class Processor {
    *
    * @private
    * @type {ActiveDSConnect}
-   * @memberof Processor
    */
   private db: ActiveDSConnect;
 
@@ -84,7 +83,6 @@ class Processor {
    *
    * @private
    * @type {ActiveDSConnect}
-   * @memberof Processor
    */
   private dbe: ActiveDSConnect;
 
@@ -93,7 +91,6 @@ class Processor {
    *
    * @private
    * @type {ActiveDSConnect}
-   * @memberof Processor
    */
   private dbev: ActiveDSConnect;
 
@@ -102,7 +99,6 @@ class Processor {
    *
    * @private
    * @type {ActiveCrypto.Secured}
-   * @memberof Processor
    */
   private secured: ActiveCrypto.Secured;
 
@@ -111,7 +107,6 @@ class Processor {
    *
    * @private
    * @type {{ [reference: string]: Neighbour }}
-   * @memberof Processor
    */
   private neighbourhood: { [reference: string]: Neighbour };
 
@@ -122,7 +117,6 @@ class Processor {
    * @type {{
    *     [umid: string]: any;
    *   }}
-   * @memberof Processor
    */
   private unhandledRejection: {
     [umid: string]: any;
@@ -135,7 +129,6 @@ class Processor {
    * @type {{
    *     [umid: string]: ActiveProtocol.Process;
    *   }}
-   * @memberof Processor
    */
   private protocols: {
     [umid: string]: ActiveProtocol.Process;
@@ -146,7 +139,6 @@ class Processor {
    *
    * @private
    * @type {IContractVersions}
-   * @memberof Process
    */
   private latestContractVersion: IContractVersions = {};
 
@@ -288,7 +280,6 @@ class Processor {
    * @private
    * @param {*} entry
    * @param {*} response
-   * @memberof Processor
    */
   private committed(entry: any, response: any): void {
     if (response && response.instant) {
@@ -334,7 +325,6 @@ class Processor {
    * @private
    * @param {*} entry
    * @param {Error} error
-   * @memberof Processor
    */
   private failed(entry: any, error: Error): void {
     ActiveLogger.debug(error, "TX Failed");
@@ -357,7 +347,6 @@ class Processor {
    *
    * @private
    * @param {*} entry
-   * @memberof Processor
    */
   private broadcast(entry: any): void {
     // Pass back to host to respond
@@ -373,7 +362,6 @@ class Processor {
    *
    * @private
    * @param {string} umid
-   * @memberof Processor
    */
   private reloadUp(umid: string): void {
     this.send("reload", {
@@ -385,7 +373,6 @@ class Processor {
    * Reload the configuration
    *
    * @private
-   * @memberof Host
    */
   private reloadDown(data: any) {
     // Reload Neighbourhood
@@ -408,7 +395,6 @@ class Processor {
    * @private
    * @param {*} entry
    * @param {*} response
-   * @memberof Processor
    */
   private throw(entry: any, response: any): void {
     // We can throw from here
@@ -461,7 +447,6 @@ class Processor {
    * @private
    * @param {*} entry
    * @param {Error} error
-   * @memberof Processor
    */
   private unhandled(entry: any, error: Error): void {
     ActiveLogger.warn(error, "UnhandledRejection");
@@ -507,7 +492,6 @@ class Processor {
    * @private
    * @param {string} type
    * @param {unknown} data
-   * @memberof Processor
    */
   private send(type: string, data: unknown): void {
     (process as any).send({
@@ -521,7 +505,6 @@ class Processor {
    *
    * @private
    * @param {string} umid
-   * @memberof Processor
    */
   private clear(umid: string) {
     ActiveLogger.debug("Removing from memory : " + umid);
@@ -545,7 +528,6 @@ class Processor {
    *
    * @private
    * @param {ISetup} setup
-   * @memberof Processor
    */
   private setup(setup: ISetup) {
     // Manage False postive warnings.
@@ -579,7 +561,6 @@ class Processor {
    *
    * @private
    * @param {IMakeHome} { reference, self, pubPem, privPem }
-   * @memberof Processor
    */
   private makeHome({ reference, self, pubPem, privPem }: IMakeHome) {
     Home.reference = reference;
@@ -594,7 +575,6 @@ class Processor {
    * @private
    * @param {*} right
    * @param {{ [reference: string]: Neighbour }} [neighbours]
-   * @memberof Processor
    */
   private housekeeping(
     right: any,

@@ -35,7 +35,6 @@ export class HeartBeat {
    * @static
    * @param {ServerResponse} response
    * @returns {NodeJS.Timeout}
-   * @memberof HeartBeat
    */
   public static Start(response: ServerResponse): NodeJS.Timeout {
     return setInterval(() => {
@@ -59,7 +58,6 @@ export class HeartBeat {
    *
    * @static
    * @param {NodeJS.Timeout} interval
-   * @memberof HeartBeat
    */
   public static Stop(interval: NodeJS.Timeout): void {
     clearInterval(interval);

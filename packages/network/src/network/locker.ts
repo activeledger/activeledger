@@ -42,7 +42,6 @@ export class Locker {
    * @private
    * @static
    * @type {{[stream: string]: number | boolean}}
-   * @memberof Locker
    */
   private static cell: { [stream: string]: number | boolean } = {};
 
@@ -52,7 +51,6 @@ export class Locker {
    * @private
    * @static
    * @type {NodeJS.Timeout}
-   * @memberof Locker
    */
   private static timer: NodeJS.Timeout | null;
 
@@ -62,7 +60,6 @@ export class Locker {
    * @static
    * @param {string} stream
    * @returns {boolean} indicate whether all the locks were acquired
-   * @memberof Locker
    */
   public static hold(stream: string): boolean;
   public static hold(stream: string[]): boolean;
@@ -101,7 +98,6 @@ export class Locker {
    *
    * @static
    * @param {string} stream
-   * @memberof Locker
    */
   public static release(stream: string): boolean;
   public static release(stream: string[]): boolean;
@@ -123,7 +119,6 @@ export class Locker {
    * something has crashed before they could get released properly
    *
    * @static
-   * @memberof Locker
    */
   public static checker() {
     if (!Locker.timer) {

@@ -38,7 +38,6 @@ export class PermissionsChecker {
    *
    * @private
    * @type {boolean}
-   * @memberof PermissionsChecker
    */
   private inputs: boolean;
 
@@ -47,7 +46,6 @@ export class PermissionsChecker {
    *
    * @private
    * @type {*}
-   * @memberof PermissionsChecker
    */
   private data: string[];
 
@@ -65,7 +63,6 @@ export class PermissionsChecker {
    * @param {*} data
    * @param {boolean} [inputs=true]
    * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
-   * @memberof PermissionsChecker
    */
   public async process(
     data: string[],
@@ -91,7 +88,6 @@ export class PermissionsChecker {
    *
    * @private
    * @returns {Promise<any>[]}
-   * @memberof PermissionsChecker
    */
   private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
     // Map into a single alldocs lookup
@@ -226,7 +222,6 @@ export class PermissionsChecker {
    * @private
    * @param {ActiveDefinitions.LedgerStream[]} stream
    * @returns {Promise<ActiveDefinitions.LedgerStream[]>}
-   * @memberof PermissionsChecker
    */
   private processStreams(
     stream: ActiveDefinitions.LedgerStream[]
@@ -337,7 +332,6 @@ export class PermissionsChecker {
    * @param {ActiveDefinitions.LedgerIORputs} nhpkCheckIO
    * @param {(value?: any) => void} reject
    * @returns {void}
-   * @memberof PermissionsChecker
    */
   private signatureCheck(
     streamId: string,
