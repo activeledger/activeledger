@@ -38,7 +38,6 @@ export class PhysicalCores {
    *
    * @static
    * @returns {number}
-   * @memberof PhysicalCores
    */
   public static count(): number {
     switch (os.platform()) {

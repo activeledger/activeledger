@@ -37,7 +37,6 @@ export class Hash {
    * @param {string} value
    * @param {string} [algorithm="sha256"]
    * @returns {string}
-   * @memberof Hash
    */
   public static getHash(value: string, algorithm: string = "sha256"): string {
     let hash = crypto.createHash(algorithm);
@@ -51,7 +50,6 @@ export class Hash {
    * @param {string} value
    * @param {string} [algorithm="sha256"]
    * @returns {string}
-   * @memberof Hash
    */
   public getHash(value: string, algorithm: string = "sha256"): string {
     return Hash.getHash(value, algorithm);

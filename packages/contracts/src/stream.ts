@@ -38,7 +38,6 @@ export class Stream {
    *
    * @private
    * @type {{ [reference: string]: Activity }}
-   * @memberof Stream
    */
   private activities: { [reference: string]: Activity } = {};
 
@@ -47,7 +46,6 @@ export class Stream {
    *
    * @private
    * @type {Object}
-   * @memberof Stream
    */
   private inINC: ActiveDefinitions.ICommunications;
 
@@ -56,7 +54,6 @@ export class Stream {
    *
    * @private
    * @type {Object}
-   * @memberof Stream
    */
   private outINC: Object;
 
@@ -65,7 +62,6 @@ export class Stream {
    *
    * @public
    * @type {boolean}
-   * @memberof Stream
    */
   public updatedContractData: boolean = false;
 
@@ -74,7 +70,6 @@ export class Stream {
    *
    * @private
    * @type {string}
-   * @memberof Stream
    */
   public throwTo: string[];
 
@@ -83,7 +78,6 @@ export class Stream {
    *
    * @private
    * @type {date}
-   * @memberof Stream
    */
   private nextTimeout: Date;
 
@@ -93,7 +87,6 @@ export class Stream {
    *
    * @private
    * @type {boolean}
-   * @memberof Stream
    */
   private safeMode: boolean = false;
 
@@ -102,7 +95,6 @@ export class Stream {
    *
    * @protected
    * @type {boolean}
-   * @memberof Stream
    */
   private clearINC: boolean = false;
 
@@ -111,7 +103,6 @@ export class Stream {
    *
    * @private
    * @type {unknown}
-   * @memberof Stream
    */
   private remoteReturn: unknown;
 
@@ -132,7 +123,6 @@ export class Stream {
    * @param {ActiveDefinitions.LedgerSignatures} sigs
    * @param {number} key
    * @param {string} selfHost
-   * @memberof Stream
    */
   constructor(
     protected cDate: Date,
@@ -187,7 +177,6 @@ export class Stream {
    * @private
    * @param {string} stream
    * @returns {string}
-   * @memberof PermissionsChecker
    */
   private filterPrefix(stream: string): string {
     // Remove any suffix like :volatile :stream :umid
@@ -213,7 +202,6 @@ export class Stream {
    * @param {(ActiveCrypto.ISecuredData | {})} data
    * @param {boolean} [safeMode=true]
    * @returns {Promise<{}>}
-   * @memberof Stream
    */
   public attemptDecrypt(
     data: DefaultActiveCrypto.ISecuredData | {},
@@ -248,7 +236,6 @@ export class Stream {
    * @param {string} name
    * @param {string} [deterministic]
    * @returns {Activity}
-   * @memberof Stream
    */
   public newActivityStream(name: string, deterministic?: string): Activity {
     if (this.safeMode) {
@@ -274,7 +261,6 @@ export class Stream {
    *
    * @returns {{ [reference: string]: Activity }}
    * @returns {Activity}
-   * @memberof Stream
    */
   public getActivityStreams(): { [reference: string]: Activity };
   public getActivityStreams(stream: any): Activity;
@@ -297,7 +283,6 @@ export class Stream {
    *
    * @param {number} m
    * @returns {boolean}
-   * @memberof Stream
    */
   public getMofSignatures(m: number): boolean {
     // Get total Signatures and compare
@@ -310,7 +295,6 @@ export class Stream {
    * @param {number} minimum
    * @param {Activity} acitivty
    * @returns {boolean}
-   * @memberof Stream
    */
   public hasAuthorityStake(minimum: number, activity: Activity): boolean {
     // Running Total
@@ -336,7 +320,6 @@ export class Stream {
    * Get data linked to this contract
    *
    * @returns {*}
-   * @memberof Stream
    */
   public getContractData<T>(): T {
     return this.contractData as unknown as T;
@@ -347,7 +330,6 @@ export class Stream {
    *
    * @param {T} contractData
    * @returns {void}
-   * @memberof Stream
    */
   public setContractData<T>(contractData: T): void {
     if (!this.contractData._id) {
@@ -362,7 +344,6 @@ export class Stream {
    * Export contract data to ledger for storage
    *
    * @returns {ActiveDefinitions.IContractData}
-   * @memberof Stream
    */
   public exportContractData(): ActiveDefinitions.IContractData {
     return this.contractData;
@@ -374,7 +355,6 @@ export class Stream {
    * @deprecated Use getAnyStreamReadOnly
    * @param {string} name
    * @returns {*}
-   * @memberof Stream
    */
   public getReadOnlyStream(name: string): any {
     if (this.reads[name]) return this.reads[name];
@@ -385,7 +365,6 @@ export class Stream {
    * Get the volatile state from the activity stream
    *
    * @returns {ActiveDefinitions.IStream}
-   * @memberof Stream
    */
   public getAnyStreamReadOnly(
     streamId: string
@@ -412,7 +391,6 @@ export class Stream {
    *
    * @param {number} secret
    * @param {ActiveDefinitions.ICommunications} data
-   * @memberof Stream
    */
   public setInterNodeComms(
     secret: number,
@@ -430,7 +408,6 @@ export class Stream {
    *
    * @param {number} secret
    * @returns {Object[]}
-   * @memberof Stream
    */
   protected getInterNodeComms(): ActiveDefinitions.ICommunications {
     return this.inINC;
@@ -440,7 +417,6 @@ export class Stream {
    * Set the data that is sent out by this node for INC
    *
    * @param {object} data
-   * @memberof Stream
    */
   protected setThisInterNodeComms(data: object): void {
     this.outINC = data;
@@ -450,7 +426,6 @@ export class Stream {
    * Get this nodes outbound INC
    *
    * @returns {object}
-   * @memberof Stream
    */
   public getThisInterNodeComms(): object {
     return this.outINC;
@@ -459,7 +434,6 @@ export class Stream {
   /**
    * Clear all inter node communications
    *
-   * @memberof Stream
    */
   protected clearAllInterNodeComms(): void {
     this.clearINC = true;
@@ -469,7 +443,6 @@ export class Stream {
    * Expose Clear request outside VM
    *
    * @returns {boolean}
-   * @memberof Stream
    */
   public getClearInterNodeComms(): boolean {
     return this.clearINC;
@@ -480,7 +453,6 @@ export class Stream {
    *
    * @protected
    * @param {unknown} data
-   * @memberof Stream
    */
   protected returnToRemote(data: unknown) {
     this.remoteReturn = data;
@@ -494,7 +466,6 @@ export class Stream {
    * Returns the remote address which sent the transaction into the network
    *
    * @returns {string}
-   * @memberof Stream
    */
   protected getRemoteAddr(): string {
     return this.remoteAddr;
@@ -505,7 +476,6 @@ export class Stream {
    *
    * @param {(string | string[])} matches
    * @returns {boolean}
-   * @memberof Stream
    */
   public findRemoteAddr(matches: string | string[]): boolean {
     if (typeof matches === "string") {
@@ -523,7 +493,6 @@ export class Stream {
    * Throw this transaction to another ledger
    *
    * @param {string} location
-   * @memberof Stream
    */
   public throw(location: string): void {
     if (this.throwTo) {
@@ -538,7 +507,6 @@ export class Stream {
    *
    * @param {string} host host:port
    * @returns
-   * @memberof Stream
    */
   public isExecutingOn(host: string) {
     return host == this.selfHost;
@@ -549,7 +517,6 @@ export class Stream {
    *
    * @protected
    * @param {number} ms
-   * @memberof Stream
    */
   protected setTimeout(ms: number): void {
     // Get Current time
@@ -564,7 +531,6 @@ export class Stream {
    * Fetch the next requested timeout time tick
    *
    * @returns {Date}
-   * @memberof Stream
    */
   public getTimeout(): Date {
     return this.nextTimeout;
@@ -580,7 +546,6 @@ export class Activity {
    * Has the activity been updated at all
    *
    * @type {boolean}
-   * @memberof Activity
    */
   public updated: boolean = false;
 
@@ -588,7 +553,6 @@ export class Activity {
    * Has the activity had a volatile data change
    *
    * @type {boolean}
-   * @memberof Activity
    */
   public volatileUpdated: boolean = false;
 
@@ -597,7 +561,6 @@ export class Activity {
    *
    * @private
    * @type {number}
-   * @memberof Activity
    */
   private key: number;
 
@@ -607,7 +570,6 @@ export class Activity {
    *
    * @private
    * @type {boolean}
-   * @memberof Stream
    */
   private safeMode: boolean = false;
 
@@ -616,7 +578,6 @@ export class Activity {
    *
    * @private
    * @type {ActiveDefinitions.IVolatile}
-   * @memberof Activity
    */
   private volatile: ActiveDefinitions.IVolatile;
 
@@ -626,7 +587,6 @@ export class Activity {
    * @param {string} name
    * @param {ActiveDefinitions.IMeta} meta
    * @param {ActiveDefinitions.IState} state
-   * @memberof Activity
    */
   constructor(
     private umid: string,
@@ -661,7 +621,6 @@ export class Activity {
   /**
    * Expose enable safe mode
    *
-   * @memberof Activity
    */
   public setSafeMode() {
     this.safeMode = true;
@@ -673,7 +632,6 @@ export class Activity {
    *
    * @param {number} secret
    * @returns {ActiveDefinitions.LedgerStream}
-   * @memberof Activity
    */
   public export2Ledger(secret: number): ActiveDefinitions.LedgerStream {
     if (this.key == secret) {
@@ -696,7 +654,6 @@ export class Activity {
    * Set secret access key
    *
    * @param {number} secret
-   * @memberof Activity
    */
   public setKey(secret: number): void {
     if (!this.key) {
@@ -710,7 +667,6 @@ export class Activity {
    * @deprecated
    * @param {string} name
    * @param {string} stream
-   * @memberof Activity
    */
   public setACL(name: string, stream: string) {
     throw new Error("setACL has been deprecated : Use setAuthorities");
@@ -722,7 +678,6 @@ export class Activity {
    * @deprecated
    * @param {string} name
    * @returns {boolean}
-   * @memberof Activity
    */
   public hasACL(name: string): boolean {
     throw new Error("hasACL has been deprecated : Use getAuthorities");
@@ -732,7 +687,6 @@ export class Activity {
    * Does this activity stream have a signature for this transaction
    *
    * @returns {boolean}
-   * @memberof Activity
    */
   public hasSignature(): boolean {
     return this.signature;
@@ -747,7 +701,6 @@ export class Activity {
    * @deprecated Use setAuthorities
    * @param {string} pubKey
    * @param {string} [type="rsa"]
-   * @memberof Activity
    */
   public setAuthority(pubKey: string, type: string = "rsa"): void {
     if (this.safeMode) {
@@ -780,7 +733,6 @@ export class Activity {
    *       | ActiveDefinitions.ILedgerAuthority[])} authority
    * @param {number} [stake=0]
    * @param {number} [stake=0]
-   * @memberof Activity
    */
   public setAuthorities(
     authority:
@@ -832,7 +784,6 @@ export class Activity {
    * Iterate over the allowed authorities and remove the keys which cannot control this Activity Stream
    *
    * @param {(string | string[])} pubKey
-   * @memberof Activity
    */
   public deleteAuthorities(pubKey: string | string[]): void {
     if (this.safeMode) {
@@ -879,7 +830,6 @@ export class Activity {
    *
    * @deprecated Use getAuthorities
    * @returns {(string | undefined)}
-   * @memberof Activity
    */
   public getAuthority(type: boolean = false): string | undefined {
     // Degrade Check
@@ -905,7 +855,6 @@ export class Activity {
    * Returns all the authorities of this Activity Stream
    *
    * @returns {ActiveDefinitions.ILedgerAuthority[]}
-   * @memberof Activity
    */
   public getAuthorities(): ActiveDefinitions.ILedgerAuthority[] {
     return this.meta.authorities;
@@ -917,7 +866,6 @@ export class Activity {
    *
    * @param {(string|Array<string>)} script
    * @returns {boolean}
-   * @memberof Activity
    */
   public setContractLock(script: string | Array<string>): boolean {
     if (this.safeMode) {
@@ -942,7 +890,6 @@ export class Activity {
    *
    * @param {(string | Array<string>)} namespace
    * @returns {boolean}
-   * @memberof Activity
    */
   public setNamespaceLock(namespace: string | Array<string>): boolean {
     if (this.safeMode) {
@@ -965,7 +912,6 @@ export class Activity {
    * Alise of getName
    *
    * @returns {string}
-   * @memberof Activity
    */
   public getId(): string {
     return this.getName();
@@ -975,7 +921,6 @@ export class Activity {
    * Return the name of this activity stream
    *
    * @returns {string}
-   * @memberof Activity
    */
   public getName(): string {
     return this.state._id as string;
@@ -985,7 +930,6 @@ export class Activity {
    * Get the data state from the activity stream
    *
    * @returns {ActiveDefinitions.IState}
-   * @memberof Activity
    */
   public getState(): ActiveDefinitions.IState {
     // Deep copy
@@ -1007,7 +951,6 @@ export class Activity {
    * Set the data state into the activity stream
    *
    * @param {ActiveDefinitions.IState} state
-   * @memberof Activity
    */
   public setState(state: ActiveDefinitions.IState): void {
     if (this.safeMode) {
@@ -1036,7 +979,6 @@ export class Activity {
    * Get the volatile state from the activity stream
    *
    * @returns {ActiveDefinitions.IVolatile}
-   * @memberof Activity
    */
   public getVolatile(): Promise<ActiveDefinitions.IVolatile> {
     return new Promise((resolve, reject) => {
@@ -1078,7 +1020,6 @@ export class Activity {
    *
    * @private
    * @returns {ActiveDefinitions.IVolatile}
-   * @memberof Activity
    */
   private makeVolatileSafe(): ActiveDefinitions.IVolatile {
     // Deep copy
@@ -1099,7 +1040,6 @@ export class Activity {
    * Set the volatile state into the activity stream
    *
    * @param {ActiveDefinitions.IState} state
-   * @memberof Activity
    */
   public setVolatile(volatile: ActiveDefinitions.IVolatile): void {
     // Cast to full state to manage
@@ -1130,7 +1070,6 @@ export class Activity {
    *
    * @param {string} buffer
    * @returns {number}
-   * @memberof Activity
    */
   public getCng(buffer?: string): number {
     let input: string = this.state._rev + buffer + this.meta._rev;
@@ -1155,7 +1094,6 @@ export class ActiveCrypto {
    *
    * @private
    * @static
-   * @memberof ActiveLogger
    */
   private static reference = (global as unknown as any).crypto;
 
@@ -1178,7 +1116,6 @@ export class ActiveLogger {
    *
    * @private
    * @static
-   * @memberof ActiveLogger
    */
   private static reference = (global as unknown as any)
     .logger as DefaultActiveLogger;

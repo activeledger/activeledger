@@ -39,7 +39,6 @@ export default class Setup extends PostProcess {
    *
    * @private
    * @type {*}
-   * @memberof Setup
    */
   private config: any;
 
@@ -48,7 +47,6 @@ export default class Setup extends PostProcess {
    *
    * @private
    * @type {boolean}
-   * @memberof Setup
    */
   private updateConfig: boolean = false;
 
@@ -57,7 +55,6 @@ export default class Setup extends PostProcess {
    *
    * @private
    * @type {boolean}
-   * @memberof Setup
    */
   private reloadConfig: boolean = false;
 
@@ -65,7 +62,6 @@ export default class Setup extends PostProcess {
    * Get System Configuration
    *
    * @param {any} config
-   * @memberof Setup
    */
   public sysConfig(config: any) {
     this.config = config;
@@ -75,7 +71,6 @@ export default class Setup extends PostProcess {
    * Does the configuration need to reload
    *
    * @returns {boolean}
-   * @memberof Setup
    */
   public configReload(): boolean {
     return this.reloadConfig;
@@ -90,7 +85,6 @@ export default class Setup extends PostProcess {
    *
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public verify(selfsigned: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -121,7 +115,6 @@ export default class Setup extends PostProcess {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -152,7 +145,6 @@ export default class Setup extends PostProcess {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
@@ -189,7 +181,6 @@ export default class Setup extends PostProcess {
    * @param {boolean} selfsigned
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public assertVerify(
     selfsigned: boolean,
@@ -218,7 +209,6 @@ export default class Setup extends PostProcess {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public assertVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -274,7 +264,6 @@ export default class Setup extends PostProcess {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public assertCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -337,7 +326,6 @@ export default class Setup extends PostProcess {
    * @param {boolean} selfsigned
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public addNodeVerify(
     selfsigned: boolean,
@@ -367,7 +355,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public addNodeVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -401,7 +388,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public addNodeCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -441,7 +427,6 @@ export default class Setup extends PostProcess {
    * @param {boolean} selfsigned
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public removeNodeVerify(
     selfsigned: boolean,
@@ -471,7 +456,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public removeNodeVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -505,7 +489,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public removeNodeCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -561,7 +544,6 @@ export default class Setup extends PostProcess {
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
    * @returns {void}
-   * @memberof Setup
    */
   public approveNamespaceVerify(
     selfsigned: boolean,
@@ -598,7 +580,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public approveNamespaceVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -622,7 +603,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public approveNamespaceCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -665,7 +645,6 @@ export default class Setup extends PostProcess {
    * @param {boolean} selfsigned
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public revokeNamespaceVerify(
     selfsigned: boolean,
@@ -693,7 +672,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public revokeNamespaceVote(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -712,7 +690,6 @@ export default class Setup extends PostProcess {
    *
    * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
    * @param {(reason?: any) => void} reject
-   * @memberof Setup
    */
   public revokeNamespaceCommit(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -750,7 +727,6 @@ export default class Setup extends PostProcess {
    * @param {boolean} territoriality
    * @param {string} who
    * @returns {Promise<any>}
-   * @memberof Setup
    */
   public postProcess(territoriality: boolean, who: string): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -783,7 +759,6 @@ export default class Setup extends PostProcess {
    *
    * @private
    * @returns {boolean}
-   * @memberof Setup
    */
   private verifySelfSignedTx(): boolean {
     // Get Config neighbourhood
@@ -836,7 +811,6 @@ export default class Setup extends PostProcess {
    * @param {Array<any>} a
    * @param {Array<any>} b
    * @returns {boolean}
-   * @memberof Setup
    */
   private deepArrayEq(a: Array<any>, b: Array<any>): boolean {
     // First check the lengths match
@@ -864,7 +838,6 @@ export default class Setup extends PostProcess {
    * @param {*} a
    * @param {Array<any>} b
    * @returns {boolean}
-   * @memberof Setup
    */
   private arrayEq(a: any, b: Array<any>): boolean {
     // String comparrsion check cache
@@ -887,7 +860,6 @@ export default class Setup extends PostProcess {
    * @param {*} a
    * @param {*} b
    * @returns {boolean}
-   * @memberof Setup
    * @author atmin {stackoveflow}
    */
   private deepEq(a: any, b: any): boolean {
@@ -906,7 +878,6 @@ export default class Setup extends PostProcess {
    * @private
    * @param {string} input
    * @returns {Array<string>}
-   * @memberof Setup
    */
   private convertArray(input: string): Array<string>;
   private convertArray(input: string[]): Array<string>;

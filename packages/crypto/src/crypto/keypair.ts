@@ -60,7 +60,6 @@ export class KeyPair {
    *
    * @private
    * @type {KeyHandler}
-   * @memberof KeyPair
    */
   private handler: KeyHandler;
 
@@ -68,7 +67,6 @@ export class KeyPair {
    * EC Key been passed for compaitibility
    *
    * @private
-   * @memberof KeyPair
    */
   private compatMode = false;
 
@@ -76,7 +74,6 @@ export class KeyPair {
    * Prevents webpack throwing not found, We are checking for it.
    *
    * @private
-   * @memberof KeyPair
    */
   private readonly webpackBypassCheck = "generateKeyPairSync";
 
@@ -84,7 +81,6 @@ export class KeyPair {
    * Creates an instance of KeyPair.
    * @param {*} [type="rsa"]
    * @param {*} [pem]
-   * @memberof KeyPair
    */
   constructor(type?: string);
   constructor(type?: string, pem?: string);
@@ -143,7 +139,6 @@ export class KeyPair {
    * @private
    * @param {string} prv
    * @param {string} [pub=""]
-   * @memberof KeyPair
    */
   private createHandler(prv: string, pub: string = ""): void {
     this.handler = {
@@ -161,7 +156,6 @@ export class KeyPair {
    *
    * @private
    * @returns {boolean}
-   * @memberof KeyPair
    */
   private enableCompatMode(): boolean {
     if (!this.compatMode) {
@@ -222,7 +216,6 @@ export class KeyPair {
    *
    * @private
    * @returns {boolean}
-   * @memberof KeyPair
    */
   private isFullNodeEnv(): boolean {
     return typeof crypto[this.webpackBypassCheck] === "function" ? true : false;
@@ -234,7 +227,6 @@ export class KeyPair {
    * @private
    * @param {string} data
    * @returns {string}
-   * @memberof KeyPair
    */
   private getString(data: string): string;
   private getString(data: Object): string;
@@ -253,7 +245,6 @@ export class KeyPair {
    * @param {string} data
    * @param {number} [size=100]
    * @returns {string[]}
-   * @memberof KeyPair
    */
   private chunkString(data: string, size: number = 100): string[] {
     let chunks = [];
@@ -276,7 +267,6 @@ export class KeyPair {
    * @param {boolean} [pem] ASN encoded PEM or HEX (EC Only)
    * @param {boolean} [compressed] return compressed public key (EC Only)
    * @returns {KeyHandler}
-   * @memberof KeyPair
    */
   public generate(
     bits: number = 2048,
@@ -359,7 +349,6 @@ export class KeyPair {
    * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
   public encrypt(rawData: string): string;
   public encrypt(rawData: Object): string;
@@ -405,7 +394,6 @@ export class KeyPair {
    * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
   public decrypt(rawData: string): string;
   public decrypt(rawData: Object): string;
@@ -452,7 +440,6 @@ export class KeyPair {
    * @param {*} rawData
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
   public sign(rawData: string): string;
   public sign(rawData: Object): string;
@@ -515,7 +502,6 @@ export class KeyPair {
    * @param {*} data
    * @param {*} [encoding="base64"]
    * @returns {string}
-   * @memberof KeyPair
    */
   public verify(data: string, signature: string): boolean;
   public verify(data: Object, signature: string): boolean;

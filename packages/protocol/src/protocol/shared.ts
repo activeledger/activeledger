@@ -39,7 +39,6 @@ export class Shared {
    * Maps streamId to their labels
    *
    * @private
-   * @memberof Process
    */
   public ioLabelMap: any = { i: {}, o: {} };
 
@@ -47,7 +46,6 @@ export class Shared {
    * Prioritise the error sent to the requestee
    *
    * @private
-   * @memberof Process
    */
   private _errorOut: {
     code: number;
@@ -71,7 +69,6 @@ export class Shared {
    *
    * @private
    * @type {*}
-   * @memberof Shared
    */
   private _storedSingleErrorDoc: any = {
     id: "Default Error Id",
@@ -80,7 +77,6 @@ export class Shared {
   /**
    * Set the value of errorOut
    *
-   * @memberof Shared
    */
   set errorOut(errorOut: {
     code: number;
@@ -93,7 +89,6 @@ export class Shared {
   /**
    * Set the store single error state
    *
-   * @memberof Shared
    */
   set storeSingleError(state: boolean) {
     this._storeSingleError = state;
@@ -106,7 +101,6 @@ export class Shared {
    * @param {boolean} inputs
    * @param {string} streamId
    * @returns {string}
-   * @memberof Process
    */
   public getLabelIOMap(inputs: boolean, streamId: string): string {
     // Get Correct Map
@@ -126,7 +120,6 @@ export class Shared {
    *
    * @private
    * @type {{ [name: string]: string }}
-   * @memberof Shared
    */
   private filterMap: { [name: string]: string } = {};
 
@@ -135,7 +128,6 @@ export class Shared {
    *
    * @private
    * @type {string}
-   * @memberof Shared
    */
   public assumedVirtualPrefix: string = "";
 
@@ -146,7 +138,6 @@ export class Shared {
    * @param {string} stream
    * @param {boolean} skipMap Do not use lookup calculate it again if needed
    * @returns {string}
-   * @memberof PermissionsChecker
    */
   public filterPrefix(stream: string, skipMap = false): string {
     if (!skipMap && this.filterMap[stream]) {
@@ -184,7 +175,6 @@ export class Shared {
    * @param {IVirtualMachine} virtualMachine
    * @param {*} preserveComms
    * @returns {ActiveDefinitions.LedgerEntry}
-   * @memberof Shared
    */
   public clearAllComms(
     virtualMachine: IVirtualMachine,
@@ -213,7 +203,6 @@ export class Shared {
    * @param {number} code
    * @param {Error} reason
    * @param {Boolean} [stop]
-   * @memberof Process
    */
   public async raiseLedgerError(
     code: number,
@@ -264,7 +253,6 @@ export class Shared {
    * @param {Error} reason
    * @param {number} priority
    * @returns {Promise<any>}
-   * @memberof Process
    */
   public storeError(
     code: number,
@@ -318,7 +306,6 @@ export class Shared {
    * @param {string} signature
    * @param {string} rsa
    * @returns {boolean}
-   * @memberof Process
    */
   public signatureCheck(
     publicKey: string,

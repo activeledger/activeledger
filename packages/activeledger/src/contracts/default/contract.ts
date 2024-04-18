@@ -38,7 +38,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private name: string;
 
@@ -47,7 +46,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private namespace: string;
 
@@ -56,7 +54,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private contract: string;
 
@@ -65,7 +62,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private link: string;
 
@@ -74,7 +70,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type string
-   * @memberof Fund
    */
   private version: string = "";
 
@@ -83,7 +78,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @type {string}
-   * @memberof Namespace
    */
   private identity: Activity;
 
@@ -91,7 +85,6 @@ export default class Contract extends Standard {
    * The Root for contract files
    *
    * @type {string}
-   * @memberof Contract
    */
   readonly rootDir: string = "./contracts/";
 
@@ -100,7 +93,6 @@ export default class Contract extends Standard {
    *
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public verify(signatureless: boolean): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -131,7 +123,6 @@ export default class Contract extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
@@ -162,7 +153,6 @@ export default class Contract extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
@@ -194,7 +184,6 @@ export default class Contract extends Standard {
    *
    * @private
    * @returns {string}
-   * @memberof Contract
    */
   private transpile(): string {
     // Base64 Decode & Transpile to javascript
@@ -221,7 +210,6 @@ export default class Contract extends Standard {
    * Are we allowed to create a link?
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteLock(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -279,7 +267,6 @@ export default class Contract extends Standard {
    * Are we allowed to remove a link?
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteUnlock(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -328,7 +315,6 @@ export default class Contract extends Standard {
    * Create the symlink to the contract
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitLock(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -352,7 +338,6 @@ export default class Contract extends Standard {
    * Removes the symlink to the contract
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitUnlock(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -370,7 +355,6 @@ export default class Contract extends Standard {
    * Are we allowed to create a link?
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteLink(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -421,7 +405,6 @@ export default class Contract extends Standard {
    * Are we allowed to remove a link?
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteUnlink(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -461,7 +444,6 @@ export default class Contract extends Standard {
    * Create the symlink to the contract
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitLink(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -481,7 +463,6 @@ export default class Contract extends Standard {
    * Removes the symlink to the contract
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitUnlink(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -497,7 +478,6 @@ export default class Contract extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteAdd(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -527,7 +507,6 @@ export default class Contract extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitAdd(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -588,7 +567,6 @@ export default class Contract extends Standard {
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
-   * @memberof Onboard
    */
   public voteUpdate(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
@@ -618,7 +596,6 @@ export default class Contract extends Standard {
    * Prepares the new streams state to be comitted to the ledger
    *
    * @returns {Promise<any>}
-   * @memberof Onboard
    */
   public commitUpdate(
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,

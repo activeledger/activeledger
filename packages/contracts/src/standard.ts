@@ -40,7 +40,6 @@ export default abstract class Standard extends Stream {
    * @abstract
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
-   * @memberof Standard
    */
   public verify?(signatureless: boolean): Promise<boolean>;  
 
@@ -51,7 +50,6 @@ export default abstract class Standard extends Stream {
    *
    * @abstract
    * @returns {Promise<boolean>}
-   * @memberof Standard
    */
   public abstract vote(): Promise<boolean>;
 
@@ -62,7 +60,6 @@ export default abstract class Standard extends Stream {
    * @abstract
    * @param {boolean} [possibleTerritoriality]
    * @returns {Promise<any>}
-   * @memberof Standard
    */
   public abstract commit(possibleTerritoriality?: boolean): Promise<any>;
 
@@ -71,7 +68,6 @@ export default abstract class Standard extends Stream {
    * this function will run to allow the developer to self recover
    *
    * @returns {Promise<any>}
-   * @memberof Standard
    */
   public reconcile?(): Promise<any>
 }

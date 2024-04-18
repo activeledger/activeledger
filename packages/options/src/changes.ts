@@ -39,7 +39,6 @@ export class ActiveChanges extends events.EventEmitter {
    *
    * @private
    * @type {*}
-   * @memberof ActiveChanges
    */
   private dbChanges: ActiveDSChanges;
 
@@ -48,7 +47,6 @@ export class ActiveChanges extends events.EventEmitter {
    *
    * @private
    * @type {(number | undefined)}
-   * @memberof ActiveChanges
    */
   private lastSequence: number | undefined;
 
@@ -57,7 +55,6 @@ export class ActiveChanges extends events.EventEmitter {
    *
    * @private
    * @type {boolean}
-   * @memberof ActiveChanges
    */
   private restarting: boolean = false;
 
@@ -66,7 +63,6 @@ export class ActiveChanges extends events.EventEmitter {
    * @param {string} name
    * @param {ActiveDSConnect} db
    * @param {number} [limit]
-   * @memberof ActiveChanges
    */
   constructor(
     private name: string,
@@ -80,7 +76,6 @@ export class ActiveChanges extends events.EventEmitter {
    * Start Following Changes
    *
    * @param {(string | number)} [since="now"]
-   * @memberof ActiveChanges
    */
   public start(since: string | number = "now"): void {
     this.addPid();
@@ -129,7 +124,6 @@ export class ActiveChanges extends events.EventEmitter {
   /**
    * Pause Changes
    *
-   * @memberof ActiveChanges
    */
   public pause(): void {
     // Make sure changes exists
@@ -142,7 +136,6 @@ export class ActiveChanges extends events.EventEmitter {
   /**
    * Proxy to start
    *
-   * @memberof ActiveChanges
    */
   public resume(force: boolean = false): void {
     if (force || !this.restarting) {
@@ -177,7 +170,6 @@ export class ActiveChanges extends events.EventEmitter {
   /**
    * Stop Following Changes
    *
-   * @memberof ActiveChanges
    */
   public stop(): void {
     this.lastSequence = undefined;

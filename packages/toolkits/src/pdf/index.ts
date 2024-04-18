@@ -37,7 +37,6 @@ export class PDF {
    * PDFKit Object
    *
    * @type {PDFKit.PDFDocument}
-   * @memberof PDF
    */
   public document: PDFKit.PDFDocument;
 
@@ -46,7 +45,6 @@ export class PDF {
    *
    * @private
    * @type {Buffer[]}
-   * @memberof PDF
    */
   private buffers: Buffer[] = [];
 
@@ -55,7 +53,6 @@ export class PDF {
    *
    * @private
    * @type {Buffer}
-   * @memberof PDF
    */
   private data: Buffer;
 
@@ -63,7 +60,6 @@ export class PDF {
 
   /**
    *Creates an instance of PDF.
-   * @memberof PDF
    */
   constructor() {
     // Get PdfMake Printer
@@ -143,7 +139,6 @@ export class PDF {
    *
    * @param {string} [encoding="base64"]
    * @returns {Promise<string>}
-   * @memberof PDF
    */
   public getData(encoding: BufferEncoding = "base64"): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -159,7 +154,6 @@ export class PDF {
    * Get PDF document in Data URI Format
    *
    * @returns {Promise<string>}
-   * @memberof PDF
    */
   public getDataURI(): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -175,7 +169,6 @@ export class PDF {
    * Get PDF Document as Buffer
    *
    * @returns {Promise<Buffer>}
-   * @memberof PDF
    */
   public getDataBuffer(): Promise<Buffer> {
     return new Promise((resolve, reject) => {

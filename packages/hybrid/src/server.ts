@@ -52,7 +52,6 @@ export class HybridNode {
    * Server connection to the couchdb instance for this node
    *
    * @type {ActiveDSConnect}
-   * @memberof HybridNode
    */
   dbConnection: ActiveDSConnect;
 
@@ -60,7 +59,6 @@ export class HybridNode {
    * Server connection to the couchdb error instance for this node
    *
    * @type {ActiveDSConnect}
-   * @memberof HybridNode
    */
   dbErrorConnection: ActiveDSConnect;
 
@@ -68,7 +66,6 @@ export class HybridNode {
    * Server connection to the couchdb event instance for this node
    *
    * @type {ActiveDSConnect}
-   * @memberof HybridNode
    */
   dbEventConnection: ActiveDSConnect;
 
@@ -76,14 +73,12 @@ export class HybridNode {
    * Http server to listen for transactions
    *
    * @type {ActiveHttpd}
-   * @memberof HybridNode
    */
   httpServer: ActiveHttpd;
 
   /**
    *Creates an instance of HybridNode.
    * @param {IUpstreamNode} upstreamNode
-   * @memberof HybridNode
    */
   constructor(private upstreamNode: IUpstreamNode) {
     // Get Default Db connection data
@@ -139,7 +134,6 @@ export class HybridNode {
    * @param {IActiveHttpIncoming} incoming
    * @param {IncomingMessage} req
    * @returns {Promise<unknown>}
-   * @memberof HybridNode
    */
   private requestRoot(
     incoming: IActiveHttpIncoming,
@@ -189,7 +183,6 @@ export class HybridNode {
    * @param {IActiveHttpIncoming} incoming
    * @param {IncomingMessage} req
    * @returns {Promise<void>}
-   * @memberof HybridNode
    */
   private async requestErrorRestore(
     incoming: IActiveHttpIncoming,
@@ -318,7 +311,6 @@ export class HybridNode {
    * @param {IActiveHttpIncoming} incoming
    * @param {IncomingMessage} req
    * @returns {void}
-   * @memberof HybridNode
    */
   private requestQBack(
     incoming: IActiveHttpIncoming,
@@ -350,7 +342,6 @@ export class HybridNode {
    * @private
    * @param {string} id
    * @returns {Promise<void>}
-   * @memberof HybridNode
    */
   private async purgeStream(id: string): Promise<void> {
     // Trusted Purged?
@@ -370,7 +361,6 @@ export class HybridNode {
    * Start Hybrider Listner (Single Threaded Process for now)
    *
    * @param {boolean} [enableLogs=false]
-   * @memberof HybridNode
    */
   public start(enableLogs: boolean = false) {
     // Make sure Index exists
@@ -397,7 +387,6 @@ export class HybridNode {
    * @private
    * @param {ActiveDefinitions.LedgerEntry} tx
    * @returns {ActiveProtocol.Process}
-   * @memberof HybridNode
    */
   private contractProcessor(tx: ActiveDefinitions.LedgerEntry): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -499,7 +488,6 @@ export class HybridNode {
    * @private
    * @param {*} data
    * @returns {boolean}
-   * @memberof HybridNode
    */
   private isContractStream(data: any): boolean {
     return data.namespace && data.contract && data.compiled ? true : false;
@@ -511,7 +499,6 @@ export class HybridNode {
    * @private
    * @param {*} doc
    * @returns {Promise<string>}
-   * @memberof HybridNode
    */
   private async raiseError(doc: any): Promise<string> {
     ActiveLogger.error(doc.reason, "Transaction Failure");
@@ -554,7 +541,6 @@ export class HybridNode {
    * @private
    * @param {IncomingHttpHeaders} headers
    * @returns {boolean}
-   * @memberof HybridNode
    */
   private authTokenCheck(headers: IncomingHttpHeaders): boolean {
     if (headers["x-activeledger"] !== this.upstreamNode.auth) {

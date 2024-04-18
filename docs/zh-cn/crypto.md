@@ -24,7 +24,6 @@ class Cryptography {
   * @param {any} data 数据
   * @param {any} key 密钥
   * @returns {Promise<string>}
-  * @memberof ClassName
   */
   public static sign(data: any, key: any): Promise<string> {
       // Get ActiveCrypto Object 获取ActiveCryto对象

@@ -220,7 +220,6 @@ export class LedgerTypeChecks {
    * @static
    * @param {*} tx
    * @returns {object is LedgerEntry}
-   * @memberof LedgerTypeChecks
    */
   public static isEntry(tx: LedgerEntry): tx is LedgerEntry {
     if (
@@ -239,7 +238,6 @@ export class LedgerTypeChecks {
    * @static
    * @param {*} object
    * @returns {object is LedgerAuthSignatures}
-   * @memberof LedgerTypeChecks
    */
   public static isLedgerAuthSignatures(
     object: any

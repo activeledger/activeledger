@@ -36,7 +36,6 @@ export class QueryEngine {
    *
    * @private
    * @type {(QueryWarning | undefined)}
-   * @memberof QueryEngine
    */
   private warning: QueryWarning | undefined;
 
@@ -45,7 +44,6 @@ export class QueryEngine {
    * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {boolean} [isContract=true]
    * @param {number} [limit=0]
-   * @memberof QueryEngine
    */
   constructor(
     private db: any,
@@ -58,7 +56,6 @@ export class QueryEngine {
    *
    * @param {string} sql
    * @returns {Promise<ActiveDefinitions.IState>}
-   * @memberof QueryEngine
    */
   public sql(sql: string): Promise<ActiveDefinitions.IState> {
     // Convert to json query
@@ -72,7 +69,6 @@ export class QueryEngine {
    *
    * @param {*} query
    * @returns {Promise<ActiveDefinitions.IState>}
-   * @memberof QueryEngine
    */
   public mango(query: any): Promise<ActiveDefinitions.IState> {
     return new Promise((resolve, reject) => {
@@ -132,7 +128,6 @@ export class QueryEngine {
    * Get the last warning
    *
    * @returns {(QueryWarning | undefined)}
-   * @memberof QueryEngine
    */
   public getLastWarning(): QueryWarning | undefined {
     return this.warning ? this.warning : undefined;
@@ -150,7 +145,6 @@ export class EventEngine {
    * Contract Phase
    *
    * @private
-   * @memberof EventEngine
    */
   private phase = "vote";
 
@@ -159,7 +153,6 @@ export class EventEngine {
    * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {string} contract
    * @param {*} transaction
-   * @memberof EventEngine
    */
   constructor(private db: any, private contract: string) {}
 
@@ -169,7 +162,6 @@ export class EventEngine {
    * @param {string} name
    * @param {*} data
    * @returns {Promise<any>}
-   * @memberof EventEngine
    */
   public emit(name: string, data: any): void {
     // Event object to store
@@ -191,7 +183,6 @@ export class EventEngine {
    * Change Phase position
    *
    * @param {string} name
-   * @memberof EventEngine
    */
   public setPhase(name: string) {
     this.phase = name;
