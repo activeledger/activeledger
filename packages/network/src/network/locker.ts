@@ -21,8 +21,8 @@
  * SOFTWARE.
  */
 
-const CHECKER_TIMER = 5 * 1000 * 60;
-const AUTO_RELEASE_TIME = 10 * 1000 * 60;
+const CHECKER_TIMER = 3 * 1000 * 60;
+const AUTO_RELEASE_TIME = 5 * 1000 * 60;
 
 /**
  * Class manages stream locks for multiple processor safety
@@ -107,11 +107,10 @@ export class Locker {
       while (i--) {
         Locker.release(stream[i]);
       }
-      return true;
     } else {
-      this.cell[stream] = false;
-      return true;
+      delete this.cell[stream]
     }
+    return true;
   }
 
   /**
@@ -131,10 +130,22 @@ export class Locker {
     }
   }
 
+  /**
+   * Return Current Locks
+   *
+   * @static
+   * @returns {({ [stream: string]: number | boolean })}
+   */
   public static getLocks(): { [stream: string]: number | boolean } {
     return this.cell;
   }
 
+  /**
+   * Check locks for any that are stuck
+   *
+   * @static
+   * @param {number} [releaseTime=AUTO_RELEASE_TIME]
+   */
   public static checkLocks(releaseTime:number = AUTO_RELEASE_TIME) {
     // Loop cell and release if 10 minutes has passed
     const locks = Object.keys(this.cell);
