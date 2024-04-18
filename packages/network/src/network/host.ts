@@ -42,7 +42,11 @@ import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
 
-// TODO: Check .send doesn't error if it does rebuild processor
+const RELEASE_SHUTDOWN_TIMEOUT = 5 * 60 * 1000;
+const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
+const TIMER_QUEUE_INTERVAL = 10 * 1000;
+const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
+const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 
 /**
  * Process object used to manage an individual transaction
@@ -54,6 +58,7 @@ interface process {
   resolve: any;
   reject: any;
   pid: number;
+  shutdown?: boolean;
 }
 
 /**
@@ -402,9 +407,14 @@ export class Host extends Home {
       this.standbyProcess = this.createProcessor();
       this.standbyProcess.send(this.getLatestSetup());
 
+      ActiveLogger.fatal(
+        pFork,
+        "Will Gracefully Shutdown in " + GRACEFUL_PROC_SHUTDOWN
+      );
       // Wait for current tansactions to finish (Destroy can take up to 5 minutes)
       setTimeout(() => {
         // Look for any transactions which are in this processor
+        ActiveLogger.fatal(pFork, "Starting Graceful Shutdown");
         const pendings = Object.keys(this.processPending);
         pendings.forEach((key) => {
           // Get Transaction
@@ -427,18 +437,20 @@ export class Host extends Home {
             });
 
             // Remove Locks
-            this.release(pending, true);
+            this.release(pending);
           }
         });
 
         // Instruct child to terminate. (Clears memory)
         // Even though we should be clear timeout to act as a buffer and
         // push to the end of the event loop
+        ActiveLogger.fatal(pFork, "Will Kill in " + KILL_PROC_SHUTDOWN);
         setTimeout(() => {
+          ActiveLogger.fatal(pFork, "Sending Kill Signal");
           pFork.kill();
-        }, 2500);
+        }, KILL_PROC_SHUTDOWN);
         // Contracts which extend timeout will still be at risk hence the above
-      }, 420000);
+      }, GRACEFUL_PROC_SHUTDOWN);
     };
 
     // Listen for message to respond to waiting http
@@ -536,7 +548,7 @@ export class Host extends Home {
               data: { ...pending.entry, ...m.data.entry },
             });
             // Remove Locks
-            this.release(pending, true);
+            this.release(pending);
           }
           // End process and create new subprocess
           unloadProcessorSafely(
@@ -621,6 +633,9 @@ export class Host extends Home {
   private destroy(umid: string): void {
     // Make sure it hasn't ben removed already
     if (this.processPending[umid]) {
+      // Set to shutdown so broadcast can stop
+      this.processPending[umid].shutdown = true;
+
       // Pass destory message to processor
       this.findProcessor(this.processPending[umid].pid)?.send({
         type: "destory",
@@ -628,7 +643,11 @@ export class Host extends Home {
           umid,
         },
       });
-      (this.processPending[umid] as any) = null;
+
+      // Keep in memory to manage inbound broadcasts
+      setTimeout(() => {
+        delete this.processPending[umid];
+      }, RELEASE_DELETE_TIMEOUT);
     }
   }
 
@@ -696,7 +715,7 @@ export class Host extends Home {
    */
   private broadcastResolver(umid: string): void {
     // Check access to the protocol
-    if (this.processPending[umid]) {
+    if (this.processPending[umid] && this.processPending[umid].entry) {
       // Recast as connection errors found.
       ActiveLogger.warn("Rebroadcasting : " + umid);
       this.broadcast(umid);
@@ -823,7 +842,7 @@ export class Host extends Home {
             status: 100,
             error: "Busy Locks",
           });
-          this.release(this.processPending[v.$umid], true);
+          this.release(this.processPending[v.$umid]);
           // True so it is "handled" and removed from the queue in a single location
           return true;
         }
@@ -857,30 +876,19 @@ export class Host extends Home {
    * @param {string} v
    * @param {boolean} noWait Don't wait to release
    */
-  private release(pending: process, noWait = false) {
+  private release(pending: process) {
     // Ask for releases
     Locker.release([
       ...this.labelOrKey(pending.entry.$tx.$i),
       ...this.labelOrKey(pending.entry.$tx.$o),
     ]);
 
-    // Shared removal method for instant or delayed.
-    // delayed only used on broadcast but only paniced processes call instant
-    const remove = () => {
-      // Remove from pending list
+    // Keep transaction in memory for a bit (5 Minutes)
+    setTimeout(() => {
       if (pending.entry) {
         this.destroy(pending.entry.$umid);
       }
-    };
-
-    if (noWait) {
-      remove();
-    } else {
-      // Keep transaction in memory for a bit (5 Minutes)
-      setTimeout(() => {
-        remove();
-      }, 300000); //20000
-    }
+    }, RELEASE_SHUTDOWN_TIMEOUT);
 
     // Put this at the end so the queue can clear this transaction
     setTimeout(() => {
@@ -937,7 +945,7 @@ export class Host extends Home {
     setTimeout(() => {
       this.processQueue();
       this.timerQueue();
-    }, 10000);
+    }, TIMER_QUEUE_INTERVAL);
   }
 
   /**
