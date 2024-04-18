@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [2.14.5]
+
+### New
+* **Network** : Process Memory Manager. Process will not be used anymore if memory limits are exceeded.
+* **Network** : Interface to view current locks and trigger to run checker.
+* **Locker** : Failsafe Unlocker of Streams. If an unhandled event still occurs this will auto unlock based on expected timeouts.
+
+### Fix
+* **Network** : Busy Lock Queuer Improvements. (Internal have highest priority, Broadcast lowest)
+
 ## [2.14.0]
 
 ### New
