@@ -778,7 +778,7 @@ export class Host extends Home {
   }
 
   /**
-   * Trigger a hold of the stream locks the process wants to own
+   * Trigger a hold of the stream locks that the process wants to own
    *
    * @private
    * @param {ActiveDefinitions.LedgerEntry} v

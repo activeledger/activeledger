@@ -21,8 +21,6 @@
  * SOFTWARE.
  */
 
-import { setTimeout } from "timers";
-
 const CHECKER_TIMER = 5 * 1000 * 60;
 const AUTO_RELEASE_TIME = 10 * 1000 * 60;
 
@@ -36,8 +34,8 @@ export class Locker {
   /**
    * Holds information about stream locks
    * In the future we can add a lock time and have a timeout to release locks
-   * this shouldn't happen as V1 solves this problem however maybe useful. Alternative on process exit
-   * we can trigger release.
+   * this shouldn't happen as V1 solves this problem however maybe useful.
+   * Alternatively, on process exit we can trigger release.
    *
    * Currently we do not have to concern ourselves on input and output lock differential
    *
@@ -59,11 +57,11 @@ export class Locker {
   private static timer: NodeJS.Timeout | null;
 
   /**
-   * Attempts to lock a stream returns is succussful
+   * Attempts to lock streams
    *
    * @static
    * @param {string} stream
-   * @returns {boolean}
+   * @returns {boolean} indicate whether all the locks were acquired
    * @memberof Locker
    */
   public static hold(stream: string): boolean;
