@@ -697,9 +697,6 @@ export class VirtualMachine
 
   private listenForVolatile(): void {
     this.emitter.on("getVolatile", async (umid: string, streamId: string) => {
-      // Check that the UMID matches the transactions Stream ID
-      ActiveLogger.debug(this.contractReferences[umid], "TX");
-
       try {
         const volatile: ActiveDefinitions.IVolatile = await this.db.get(
           `${streamId}:volatile`
@@ -718,9 +715,6 @@ export class VirtualMachine
    */
   private listenForFetch(): void {
     this.emitter.on("getStreamData", async (umid: string, streamId: string) => {
-      // Check that the UMID matches the transactions Stream ID
-      ActiveLogger.debug(this.contractReferences[umid], "TX");
-
       try {
         const data: ActiveDefinitions.IStream = await this.db.get(streamId);
         this.emitter.emit(

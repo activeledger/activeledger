@@ -426,7 +426,7 @@ export class CLIHandler {
           ActiveRequest.send(ActiveOptions.get<any>("db", {}).url, "GET").catch(
             () => {
               ActiveLogger.fatal(
-                `Datbase Not Running - ${ActiveOptions.get<any>("db", {}).url}`
+                `Database Not Running - ${ActiveOptions.get<any>("db", {}).url}`
               );
               process.exit(1);
             }

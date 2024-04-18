@@ -343,7 +343,6 @@ export class Process extends EventEmitter {
    */
   public async start(contractVersion?: string) {
     ActiveLogger.debug("New TX : " + this.entry.$umid);
-    ActiveLogger.debug(this.entry, "Starting TX");
 
     // Compiled Contracts sit in another location
     const setupDefaultLocation = () => {
@@ -469,8 +468,6 @@ export class Process extends EventEmitter {
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
       // Now we know we can execute the contract now or more costly cpu checks
-      ActiveLogger.debug("Fetching Inputs");
-
       // Build Inputs Key Maps (Reference is Stream)
       this.inputs = Object.keys(this.entry.$tx.$i || {});
 
@@ -485,7 +482,6 @@ export class Process extends EventEmitter {
       }
 
       // Build Outputs Key Maps (Reference is Stream)
-      ActiveLogger.debug("Fetching Outputs");
       this.outputs = Object.keys(this.entry.$tx.$o || {});
 
       // Which $o lookup are we using. Are they labelled or stream names
@@ -1090,7 +1086,7 @@ export class Process extends EventEmitter {
    * Retries the right knock init
    * During this time "right" may change, Right may have errors so retries
    * skips this problem. Another problem could be the process managing the request
-   * may get shutdown early so resending will try again. 
+   * may get shutdown early so resending will try again.
    * (TODO: PRocess shutdown slower try and let all pendings finish)
    *
    * @private

@@ -55,7 +55,6 @@ export default class Onboard extends Standard {
   public vote(): Promise<boolean> {
     return new Promise<boolean>((resolve, reject) => {
       // Auto Approve (Demo Onboarding Contract)
-      ActiveLogger.debug("Always Exposed Logging");
       resolve(true);
     });
   }
