@@ -69,7 +69,5 @@ export class Helper {
     dontIncludeSelf: boolean = false
   ) =>
     (votes / Helper.getNeighbourCount(dontIncludeSelf)) * 100 >=
-    Provider.consensusReachedAmount
-      ? true
-      : false;
+    Provider.consensusReachedAmount;
 }
