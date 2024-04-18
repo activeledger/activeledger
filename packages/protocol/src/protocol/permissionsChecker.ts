@@ -25,7 +25,6 @@ import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
-import { ActiveLogger } from "@activeledger/activecontracts";
 
 /**
  * Manages the permissions of revisions and signatures of each stream type
