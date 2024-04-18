@@ -140,7 +140,7 @@ export class Neighbourhood {
    */
   private add(neighbour: Neighbour): void;
   private add(neighbour: Neighbour[]): void;
-  private add(neighbour: any): void {
+  private add(neighbour: Neighbour | Neighbour[]): void {
     if (Array.isArray(neighbour)) {
       let i = neighbour.length;
       while (i--) {
@@ -215,7 +215,7 @@ export class Neighbourhood {
   public get(): { [reference: string]: Neighbour };
   public get(reference: string): Neighbour;
   public get(random: boolean, skip?: Neighbour): Neighbour;
-  public get(p1?: any, p2?: any): any {
+  public get(p1?: string | boolean, p2?: Neighbour): any {
     if (p1) {
       if (typeof p1 == "boolean") {
         // Get Keys as an array
