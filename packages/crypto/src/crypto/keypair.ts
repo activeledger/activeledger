@@ -241,11 +241,8 @@ export class KeyPair {
   private getString(data: Buffer): string;
   private getString(data: string | Object | Buffer): string {
     // Data Object to string
-    if (typeof data === "object") {
-      return JSON.stringify(data);
-    } else if (Buffer.isBuffer(data)) {
-      return data.toString();
-    }
+    if (Buffer.isBuffer(data)) return data.toString();
+    if (typeof data === "object") return JSON.stringify(data);
     return data;
   }
 
