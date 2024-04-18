@@ -332,24 +332,6 @@ export class Interagent {
   };
 
   /**
-   * Check if stream data is volatile
-   *
-   * @private
-   * @memberof FeedHandler
-   */
-  private isVolatileStreamData = (volatile: boolean, data: any) =>
-    volatile && data._id.indexOf(":stream") > -1 ? true : false;
-
-  /**
-   * Check if stream contains required data
-   *
-   * @private
-   * @memberof FeedHandler
-   */
-  private isRequiredStreamData = (stream: any) =>
-    stream.namespace && stream.contract && stream.compiled ? true : false;
-
-  /**
    * Check if document is missing
    *
    * @private
