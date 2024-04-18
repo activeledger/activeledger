@@ -99,6 +99,20 @@ export interface IContractData {
   data: any;
 }
 
+export interface IContractSessionDate {
+  remove: string[];
+  write?: {
+    value: any;
+    version: string;
+  };
+}
+
+export interface IContractSession {
+  path: string;
+  umid: string;
+  data: unknown;
+}
+
 /**
  * Granual detail of the transaction object
  *
@@ -109,7 +123,7 @@ export interface LedgerTransaction {
   $namespace: string;
   $contract: string;
   $entry?: string;
-  $expire?:Date;
+  $expire?: Date;
   $i: LedgerInputs;
   $o: LedgerIORputs;
   $r?: LedgerIORputs;
@@ -224,8 +238,7 @@ export class LedgerTypeChecks {
   public static isEntry(tx: LedgerEntry): tx is LedgerEntry {
     if (
       tx.$tx &&
-      ((tx.$tx.$i && tx.$sigs) ||
-        (tx.$tx.$namespace && tx.$tx.$contract))
+      ((tx.$tx.$i && tx.$sigs) || (tx.$tx.$namespace && tx.$tx.$contract))
     ) {
       return true;
     }

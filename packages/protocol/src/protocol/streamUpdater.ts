@@ -28,6 +28,8 @@ import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { EventEmitter } from "events";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { mkdirSync, unlinkSync, writeFile } from "fs";
+import { dirname } from "path";
 
 /**
  * Handles updating the streams
@@ -171,6 +173,9 @@ export class StreamUpdater {
         this.nodeResponse.incomms
       );
 
+      // Store / Erase Session Data
+      this.manageSessionDate();
+
       // Remember to let other nodes know
       if (this.earlyCommit) this.earlyCommit();
 
@@ -245,6 +250,12 @@ export class StreamUpdater {
     }
   }
 
+  /**
+   * Makes sure to support the harden keys
+   *
+   * @private
+   * @param {*} input
+   */
   private handleNHPK(input: any) {
     const inputLabel = this.shared.getLabelIOMap(
       true,
@@ -272,6 +283,47 @@ export class StreamUpdater {
 
       if (txSigAuthKey === -1) {
         authority.public = nhpk[txSigAuthKeys[txSigAuthKey]];
+      }
+    }
+  }
+
+  /**
+   * Manages the persostant files of session data
+   *
+   * @private
+   */
+  private manageSessionDate() {
+    const session = this.virtualMachine.getReturnPersistentSessionData(
+      this.entry.$umid
+    );
+
+    const path = `contracts/${
+      this.entry.$tx.$namespace
+    }/sessions/${this.entry.$tx.$contract.substring(0, 64)}/`;
+
+    if (session.write) {
+      // Create file and path, Make sure it exists
+      const file = `${path}${this.entry.$umid}-${session.write.version}.session`;
+      mkdirSync(dirname(file), { recursive: true });
+
+      writeFile(
+        file,
+        JSON.stringify({
+          umid: this.entry.$umid,
+          data: session.write.value,
+        }),
+        (err) => {
+          // Do we need to handle the error? Yes nodes may have different values but
+          // stream position incorrect should manage it after the next run if this data is used
+        }
+      );
+    }
+
+    // Any to be removed
+    if (session.remove.length) {
+      for (let i = session.remove.length; i--; ) {
+        console.log(`removing ${path}${session.remove[i]}`);
+        unlinkSync(`${path}${session.remove[i]}`);
       }
     }
   }
@@ -463,6 +515,9 @@ export class StreamUpdater {
           this.virtualMachine,
           this.nodeResponse.incomms
         );
+
+        // Store / Erase Session Data
+        this.manageSessionDate();
       } catch (error) {
         continueProcessing = false;
       }

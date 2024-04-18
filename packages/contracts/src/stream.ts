@@ -106,6 +106,22 @@ export class Stream {
    */
   private remoteReturn: unknown;
 
+  /**
+   * Session Storage (Sits outside database can run in parallel)
+   *
+   * @private
+   * @type {{
+   *     remove: string[];
+   *     write: {
+   *       value: any;
+   *       version: string;
+   *     };
+   *   }}
+   */
+  private sessionData: ActiveDefinitions.IContractSessionDate = {
+    remove: [],
+  };
+
   // Backwards Compatible
   public ActiveLogger = ActiveLogger;
   public ActiveCrypto = ActiveCrypto;
@@ -370,11 +386,10 @@ export class Stream {
     streamId: string
   ): Promise<ActiveDefinitions.IStream> {
     return new Promise((resolve, reject) => {
-      const umid = this.umid;
-      this.eventEmitter.emit("getStreamData", umid, streamId);
+      this.eventEmitter.emit("getStreamData", this.umid, streamId);
 
       this.eventEmitter.on(
-        `getStreamDataFetched-${umid}${streamId}`,
+        `getStreamDataFetched-${this.umid}${streamId}`,
         (err: Error, data: ActiveDefinitions.IStream) => {
           if (err) {
             ActiveLogger.debug(err, "Event error");
@@ -458,8 +473,76 @@ export class Stream {
     this.remoteReturn = data;
   }
 
+  /**
+   * Returns data to sent back to calling client
+   *
+   * @returns {unknown}
+   */
   public getReturnToRemote(): unknown {
     return this.remoteReturn;
+  }
+
+  /**
+   * Returns data to be stored in a persistant transaction
+   *
+   * @returns {unknown}
+   */
+  public getPersistentSessionData(): ActiveDefinitions.IContractSessionDate {
+    return this.sessionData;
+  }
+
+  /**
+   *
+   *
+   * @protected
+   * @param {unknown} value
+   * @param {string} [version="all"]
+   * @returns {*}
+   */
+  protected setSessionData(value: unknown, version: string = "all"): void {
+    this.sessionData.write = {
+      value,
+      version,
+    };
+  }
+
+  /**
+   * Returns all stored session data (can't target specific)
+   *
+   * @protected
+   * @param {string} [version="all"]
+   * @returns {Promise<{ id: string; value: string }[]>}
+   */
+  protected getAllSessionData(
+    version: string = "all"
+  ): Promise<ActiveDefinitions.IContractSession[]> {
+    return new Promise((resolve, reject) => {
+      this.eventEmitter.on(
+        `getSessionDataFetched-${this.umid}${version}`,
+        (err: Error, data: ActiveDefinitions.IContractSession[]) => {
+          if (err) {
+            ActiveLogger.debug(err, "Event error");
+            reject(err);
+          }
+          resolve(data);
+        }
+      );
+      this.eventEmitter.emit("getSessionData", this.umid, version);
+    });
+  }
+
+  /**
+   * Marks session data to be deleted
+   *
+   * @protected
+   * @param {string} sessionId
+   */
+  protected deleteSessionData(
+    session: ActiveDefinitions.IContractSession | string
+  ): void {
+    this.sessionData.remove.push(
+      typeof session !== "string" ? session.path : session
+    );
   }
 
   /**
@@ -985,7 +1068,7 @@ export class Activity {
       if (this.volatile) {
         try {
           resolve(this.makeVolatileSafe());
-        } catch(e) {
+        } catch (e) {
           // Most likely not found bad json rethrow
           reject("Volatile Data - Invalid");
         }
@@ -1005,7 +1088,7 @@ export class Activity {
             this.volatile = volatile;
             try {
               resolve(this.makeVolatileSafe());
-            } catch(e) {
+            } catch (e) {
               // Most likely not found bad json rethrow
               reject("Volatile Data - Invalid");
             }

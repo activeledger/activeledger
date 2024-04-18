@@ -105,6 +105,10 @@ export interface IVirtualMachine {
 
   getReturnContractData(umid: string): unknown;
 
+  getReturnPersistentSessionData(
+    umid: string
+  ): ActiveDefinitions.IContractSessionDate;
+
   getThrowsFromVM(umid: string): string[];
 
   destroy(umid: string): void;

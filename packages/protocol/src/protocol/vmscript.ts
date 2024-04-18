@@ -64,12 +64,9 @@ class ContractControl implements IVMObject {
     event: EventEngine,
     emitter: EventEmitter
   ): void {
-
-    // If no contract data set then provide an empty object so the contract 
+    // If no contract data set then provide an empty object so the contract
     // doesn't just get null
-    const contractData = payload.contractData?.data
-      ? payload.contractData
-      : {};
+    const contractData = payload.contractData?.data ? payload.contractData : {};
 
     // We don't need to verify the code unless we suspect server has been
     // comprimised. We will verify with the "install" routine
@@ -116,7 +113,9 @@ class ContractControl implements IVMObject {
    *
    * @returns {*}
    */
-  public getContractData(umid: string): ActiveDefinitions.IContractData | undefined {
+  public getContractData(
+    umid: string
+  ): ActiveDefinitions.IContractData | undefined {
     if (this.smartContracts[umid].updatedContractData) {
       return this.smartContracts[umid].exportContractData();
     }
@@ -164,6 +163,17 @@ class ContractControl implements IVMObject {
   }
 
   /**
+   * Get the contract data
+   *
+   * @returns {unknown}
+   */
+  public returnPersistentSessionData(
+    umid: string
+  ): ActiveDefinitions.IContractSessionDate {
+    return this.smartContracts[umid].getPersistentSessionData();
+  }
+
+  /**
    * Throw to the caller
    *
    * @returns {string[]}
@@ -173,13 +183,13 @@ class ContractControl implements IVMObject {
   }
 
   /**
-   * Run an unknown contract read function 
+   * Run an unknown contract read function
    *
    * @returns {Promise<boolean>}
    */
   public async runRead(umid: string, readMethod: string): Promise<unknown> {
-      const read = (this.smartContracts[umid] as any)[readMethod]?.();
-      return read ? read : false;
+    const read = (this.smartContracts[umid] as any)[readMethod]?.();
+    return read ? read : false;
   }
 
   /**
@@ -307,6 +317,6 @@ class ContractControl implements IVMObject {
   // #endregion
 }
 
-module.exports = (function() {
+module.exports = (function () {
   return new ContractControl();
 })();

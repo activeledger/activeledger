@@ -38,6 +38,18 @@ import {
   IVirtualMachine,
 } from "./interfaces/vm.interface";
 import { createInterface } from "readline";
+import { readFileSync, readdirSync } from "fs";
+
+/**
+ * Object to return previos session data to the contract
+ *
+ * @interface StoredSession
+ */
+interface StoredSession {
+  path: string;
+  umid: string;
+  data: unknown;
+}
 
 /**
  * Contract Virtual Machine Controller
@@ -134,6 +146,8 @@ export class VirtualMachine
     this.listenForVolatile();
     // start all stream fetching
     this.listenForFetch();
+    // listen for session reads
+    this.listenForSession();
   }
 
   /**
@@ -293,6 +307,18 @@ export class VirtualMachine
    */
   public getReturnContractData(umid: string): unknown {
     return this.virtualInstance.returnContractData(umid);
+  }
+
+  /**
+   * Returns persitant data ready for processing
+   *
+   * @param {string} umid
+   * @returns {unknown}
+   */
+  public getReturnPersistentSessionData(
+    umid: string
+  ): ActiveDefinitions.IContractSessionDate {
+    return this.virtualInstance.returnPersistentSessionData(umid);
   }
 
   /**
@@ -730,6 +756,41 @@ export class VirtualMachine
         );
       } catch (error) {
         this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
+      }
+    });
+  }
+
+  private listenForSession(): void {
+    this.emitter.on("getSessionData", async (umid, version) => {
+      try {
+        const path = `contracts/${
+          this.contractReferences[umid].tx.$namespace
+        }/sessions/${this.contractReferences[umid].tx.$contract.substring(
+          0,
+          64
+        )}`;
+
+        // Read all files filter on version
+        const files = readdirSync(path);
+        const data: StoredSession[] = [];
+        for (let i = files.length; i--; ) {
+          const file = files[i];
+          // No need for regex, Simple search should be good enough
+          if (file.indexOf(version) !== 0) {
+            data.push({
+              path: file,
+              ...JSON.parse(readFileSync(`${path}/${file}`).toString()),
+            });
+          }
+        }
+
+        this.emitter.emit(
+          `getSessionDataFetched-${umid}${version}`,
+          null,
+          data
+        );
+      } catch (error) {
+        this.emitter.emit(`getSessionDataFetched-${umid}${version}`, error);
       }
     });
   }
