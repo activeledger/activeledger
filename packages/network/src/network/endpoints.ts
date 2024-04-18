@@ -530,7 +530,7 @@ export class Endpoints {
             });
         } else {
           // Bad Request
-          ActiveLogger.error("Sent 500 Response (1600)");
+          ActiveLogger.error("Sent 500 Response (1610)");
           return reject({
             statusCode: 500,
             content: "Internal Server Error",
