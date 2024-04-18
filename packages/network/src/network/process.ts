@@ -452,7 +452,7 @@ class Processor {
     ActiveLogger.warn(error, "UnhandledRejection");
     // Store error (if we can)
     if (entry.$nodes) {
-      const errMsg = "(Unhandled Contract Error) " + error?.toString();
+      const errMsg = "(Unhandled Contract Error) " + JSON.stringify(error || "unknown");
       // unhandled may happen before object created
       if (Home.reference) {
         if (entry.$nodes[Home.reference]?.error) {
@@ -519,7 +519,7 @@ class Processor {
     // No longer need to handle unhandled rejections
     if (this.unhandledRejection[umid]) {
       process.off("unhandledRejection", this.unhandledRejection[umid]);
-      this.unhandledRejection[umid] = null;
+      delete this.unhandledRejection[umid];
     }
   }
 
