@@ -217,6 +217,7 @@ export class StreamUpdater {
       $sigs: this.entry.$sigs,
       $revs: this.entry.$revs,
       $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false,
+      $datetime: this.entry.$datetime,
     };
   }
 
