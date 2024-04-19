@@ -1334,7 +1334,7 @@ export class Process extends EventEmitter {
             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
             this.shared.raiseLedgerError(
               1510,
-              new Error("Failed Network Voting Round")
+              new Error("Failed Network Voting Round - Non Broadcast")
             );
           } else {
             // Are there any outstanding node responses which could mean consensus can still be reached
@@ -1357,7 +1357,7 @@ export class Process extends EventEmitter {
               ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
               return this.shared.raiseLedgerError(
                 1510,
-                new Error("Failed Network Voting Round")
+                new Error("Failed Network Voting Round - No More Voters")
               );
             } else {
               // Clear current timeout to prevent it from running
@@ -1377,7 +1377,9 @@ export class Process extends EventEmitter {
                   ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
                   return this.shared.raiseLedgerError(
                     1510,
-                    new Error("Failed Network Voting Timeout")
+                    new Error(
+                      "Failed Network Voting Timeout - Voters Timed Out"
+                    )
                   );
                 }, BROADCAST_TIMEOUT);
               } else {
@@ -1385,7 +1387,7 @@ export class Process extends EventEmitter {
                 ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
                 return this.shared.raiseLedgerError(
                   1510,
-                  new Error("Failed Network Voting Round")
+                  new Error("Failed Network Voting Round - No Quorum")
                 );
               }
             }

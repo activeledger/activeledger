@@ -34,7 +34,8 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { EventEngine } from "@activeledger/activequery";
 
 // Maximum memory used in VM processor
-const MAX_MEMORY_MB = ActiveOptions.get<number>("max_memory", 1000) * 1024 * 1024;
+const MAX_MEMORY_MB =
+  ActiveOptions.get<number>("max_memory", 1000) * 1024 * 1024;
 
 /**
  * Bare minimum data needed to make a home
@@ -267,11 +268,10 @@ class Processor {
       // Check memory usage let host know if its high
       // VM needs improving to release its memory, This is temporary solution to let this process
       // finish and then be swapped out with the waiting one.
-      if(process.memoryUsage.rss() > MAX_MEMORY_MB) {
+      if (process.memoryUsage.rss() > MAX_MEMORY_MB) {
         this.send("memory", process.memoryUsage());
       }
-    }
-    );
+    });
   }
 
   /**
@@ -282,12 +282,6 @@ class Processor {
    * @param {*} response
    */
   private committed(entry: any, response: any): void {
-    if (response && response.instant) {
-      ActiveLogger.debug(entry, "Transaction Currently Processing");
-    } else {
-      ActiveLogger.debug(entry, "Transaction Processed");
-    }
-
     // Was it a contract upgrade? (Moved here to not delay cache updates)
     if (entry.$tx.$contract == "contract" && entry.$tx.$entry == "update") {
       // Get input (To get namespace)
@@ -452,7 +446,8 @@ class Processor {
     ActiveLogger.warn(error, "UnhandledRejection");
     // Store error (if we can)
     if (entry.$nodes) {
-      const errMsg = "(Unhandled Contract Error) " + JSON.stringify(error || "unknown");
+      const errMsg =
+        "(Unhandled Contract Error) " + JSON.stringify(error || "unknown");
       // unhandled may happen before object created
       if (Home.reference) {
         if (entry.$nodes[Home.reference]?.error) {
