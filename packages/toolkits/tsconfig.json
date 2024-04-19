@@ -2,7 +2,7 @@
   "extends": "../tsconfig.settings.json",
   "compilerOptions": {
     "rootDir": "./src/",
-    "composite": false,
+    "composite": true,
     "declaration": false,
     "declarationMap": false,
     "allowJs": true
