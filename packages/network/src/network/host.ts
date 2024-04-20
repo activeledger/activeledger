@@ -387,70 +387,78 @@ export class Host extends Home {
       stdio: "inherit",
     });
 
+    // Prevent multiple runs, Could overwrite method instead
+    let unloadHandled = false;
+
     // Reusable restart process from error with current scope
     const unloadProcessorSafely = (...error: any[]) => {
-      ActiveLogger.fatal(error, "Processor Crashed");
+      if (unloadHandled) {
+        ActiveLogger.fatal("Processor Crashed - Already Shutting Down");
+      } else {
+        unloadHandled = true;
+        ActiveLogger.fatal(error, "Processor Crashed");
 
-      // Push standby process
-      this.processors.push(this.standbyProcess);
+        // Push standby process
+        this.processors.push(this.standbyProcess);
 
-      // Find the bad process
-      const pos = this.processors.findIndex((processor) => {
-        return processor.pid === pFork.pid;
-      });
-      // Remove from processors list and create new
-      if (pos !== -1) {
-        this.processors.splice(pos, 1);
-      }
-
-      // We should now create a new standby processor
-      this.standbyProcess = this.createProcessor();
-      this.standbyProcess.send(this.getLatestSetup());
-
-      ActiveLogger.fatal(
-        pFork,
-        "Will Gracefully Shutdown in " + GRACEFUL_PROC_SHUTDOWN
-      );
-      // Wait for current tansactions to finish (Destroy can take up to 5 minutes)
-      setTimeout(() => {
-        // Look for any transactions which are in this processor
-        ActiveLogger.fatal(pFork, "Starting Graceful Shutdown");
-        const pendings = Object.keys(this.processPending);
-        pendings.forEach((key) => {
-          // Get Transaction
-          let pending = this.processPending[key];
-          // Was this transaction in the broken processor
-          if (pending?.pid === pFork.pid) {
-            // This will just resolve all pending transactions in that process pool
-            // Wont be graceful but most likely other nodes will have the same conclusion
-            // However enough time has passed that it *should* be safe
-            // TODO make sure we don't have a single transaction forever extending timeout.
-            // Or find a way to move it into another process broadcast timeout is within the 5 minutes
-            // Assign general error
-            pending.entry.$nodes[this.reference].error =
-              "(Contract Thread Error) Unknown - Try Again";
-
-            // Resolve to return oprhened transactions
-            pending.resolve({
-              status: 200,
-              data: pending.entry,
-            });
-
-            // Remove Locks
-            this.release(pending);
-          }
+        // Find the bad process
+        const pos = this.processors.findIndex((processor) => {
+          return processor.pid === pFork.pid;
         });
+        // Remove from processors list and create new
+        if (pos !== -1) {
+          this.processors.splice(pos, 1);
+        }
 
-        // Instruct child to terminate. (Clears memory)
-        // Even though we should be clear timeout to act as a buffer and
-        // push to the end of the event loop
-        ActiveLogger.fatal(pFork, "Will Kill in " + KILL_PROC_SHUTDOWN);
+        // We should now create a new standby processor
+        this.standbyProcess = this.createProcessor();
+        this.standbyProcess.send(this.getLatestSetup());
+
+        ActiveLogger.fatal(
+          pFork,
+          "Will Gracefully Shutdown in " + GRACEFUL_PROC_SHUTDOWN
+        );
+        // Wait for current tansactions to finish (Destroy can take up to 5 minutes)
         setTimeout(() => {
-          ActiveLogger.fatal(pFork, "Sending Kill Signal");
-          pFork.kill();
-        }, KILL_PROC_SHUTDOWN);
-        // Contracts which extend timeout will still be at risk hence the above
-      }, GRACEFUL_PROC_SHUTDOWN);
+          // Look for any transactions which are in this processor
+          ActiveLogger.fatal(pFork, "Starting Graceful Shutdown");
+          const pendings = Object.keys(this.processPending);
+          pendings.forEach((key) => {
+            // Get Transaction
+            let pending = this.processPending[key];
+            // Was this transaction in the broken processor
+            if (pending?.pid === pFork.pid) {
+              // This will just resolve all pending transactions in that process pool
+              // Wont be graceful but most likely other nodes will have the same conclusion
+              // However enough time has passed that it *should* be safe
+              // TODO make sure we don't have a single transaction forever extending timeout.
+              // Or find a way to move it into another process broadcast timeout is within the 5 minutes
+              // Assign general error
+              pending.entry.$nodes[this.reference].error =
+                "(Contract Thread Error) Unknown - Try Again";
+
+              // Resolve to return oprhened transactions
+              pending.resolve({
+                status: 200,
+                data: pending.entry,
+              });
+
+              // Remove Locks
+              this.release(pending);
+            }
+          });
+
+          // Instruct child to terminate. (Clears memory)
+          // Even though we should be clear timeout to act as a buffer and
+          // push to the end of the event loop
+          ActiveLogger.fatal(pFork, "Will Kill in " + KILL_PROC_SHUTDOWN);
+          setTimeout(() => {
+            ActiveLogger.fatal(pFork, "Sending Kill Signal");
+            pFork.kill();
+          }, KILL_PROC_SHUTDOWN);
+          // Contracts which extend timeout will still be at risk hence the above
+        }, GRACEFUL_PROC_SHUTDOWN);
+      }
     };
 
     // Listen for message to respond to waiting http
