@@ -730,7 +730,7 @@ export class Host extends Home {
     } else {
       // No longer in memory. Create a new error document outside protocol
       // We could have comitted but no idea we may have needed a rebroadcast back.
-      let doc = {
+      const doc = {
         code: 1610,
         processed: false,
         umid: umid,
@@ -867,6 +867,19 @@ export class Host extends Home {
               commit: false,
               error: "Busy Locks",
             };
+
+            // Internal Busy Locks, Safe to track
+            const doc = {
+              code: 1100,
+              processed: false,
+              umid: v.$umid,
+              transaction: v,
+              locker: Locker.getLocks(),
+              reason: "Internal Busy Locks",
+            };
+
+            // Return
+            this.dbErrorConnection.post(doc);
 
             // Not Broadcast & Not Last
             if (!v.$broadcast && Home.right.reference != v.$origin) {
