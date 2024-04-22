@@ -37,6 +37,8 @@ export enum ErrorCodes {
    * If vote failed might not have node responses
    */
   VoteFailedNetworkOk = 1001,
+  /** Transaction was busy locked for just us (maybe others) */
+  InternalBusyLocked = 1100,
   /** Stream position incorrect */
   StreamPositionIncorrect = 1200,
   /** Read only stream not found */

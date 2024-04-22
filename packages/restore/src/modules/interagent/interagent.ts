@@ -43,6 +43,7 @@ export class Interagent {
     ErrorCodes.StreamNotFound,
     ErrorCodes.StateNotFound,
     ErrorCodes.VoteFailedNetworkOk,
+    ErrorCodes.InternalBusyLocked,
     ErrorCodes.StreamPositionIncorrect,
     ErrorCodes.ReadOnlyStreamNotFound,
     ErrorCodes.NodeFinalReject,
@@ -243,7 +244,8 @@ export class Interagent {
     Helper.output("Conensus not met.");
     if (
       changeDoc.code === ErrorCodes.StreamPositionIncorrect ||
-      changeDoc.code === ErrorCodes.StreamNotFound
+      changeDoc.code === ErrorCodes.StreamNotFound ||
+      changeDoc.code === ErrorCodes.InternalBusyLocked
     ) {
       return this.dataIntegrityCheck(changeDoc);
     } else {
