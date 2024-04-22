@@ -1,23 +1,6 @@
 {
   "name": "activeledger-monorepo",
   "private": true,
-  "workspaces": [
-    "packages/activeledger",
-    "packages/contracts",
-    "packages/core",
-    "packages/crypto",
-    "packages/definitions",
-    "packages/httpd",
-    "packages/hybrid",
-    "packages/logger",
-    "packages/network",
-    "packages/options",
-    "packages/protocol",
-    "packages/query",
-    "packages/restore",
-    "packages/storage",
-    "packages/toolkits"
-  ],
   "scripts": {
     "setup": "lerna clean --yes && npm run unlink && lerna bootstrap && npm rum build && lerna bootstrap",
     "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm rum build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:ledger && npm run build:restore && npm run build:core && npm rum build:hybrid && npm run link",
@@ -54,8 +37,7 @@
     "@types/mocha": "9.1.1",
     "@types/node": "18.0.0",
     "chai": "4.3.6",
-    "lerna": "^8.1.2",
-    "@lerna/legacy-package-management": "^8.1.2",
+    "lerna": "^6.0.0",
     "mocha": "10.0.0",
     "nyc": "15.1.0",
     "ts-node": "10.8.1",
