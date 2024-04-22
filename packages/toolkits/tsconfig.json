@@ -3,7 +3,7 @@
   "compilerOptions": {
     "rootDir": "./src/",
     "composite": true,
-    "declaration": false,
+    "declaration": true,
     "declarationMap": false,
     "allowJs": true
   }
