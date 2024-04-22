@@ -845,11 +845,55 @@ export class Host extends Home {
           retry: 1,
         });
       } else {
-        if (retries > ActiveOptions.get<number>("queue_retry", 5)) {
-          this.processPending[v.$umid].reject({
-            status: 100,
-            error: "Busy Locks",
-          });
+        // Detect internal transaction read below for more information
+        const internal = v.$revs ? true : false;
+        const maxRetries = internal
+          ? 2
+          : ActiveOptions.get<number>("queue_retry", 5);
+
+        if (retries > maxRetries) {
+          // $origin check will mean if this is the entry node and is locked it will
+          // still send around the network. Broadcast will fail. So for now if entry is locked
+          // defaulting to queue attempt to unlock. Otherwise busy locks could be spammed. Doesn't mean
+          // in the future we can enable it. For now if entry node isn't locked then it will continue regardless
+          if (/*v.$origin || */ internal) {
+            // Internal Request (So need to respond as expected + forward on if not broadcast)
+            // Some network conditions wont have this set
+            if (!v.$nodes) {
+              v.$nodes = {};
+            }
+            v.$nodes[this.reference] = {
+              vote: false,
+              commit: false,
+              error: "Busy Locks",
+            };
+
+            // Not Broadcast & Not Last
+            if (!v.$broadcast && Home.right.reference != v.$origin) {
+              // Forward on to the next node and compile responses back
+              (async () => {
+                const next = await Home.right.knock("init", v);
+                this.processPending[v.$umid].resolve({
+                  status: 200,
+                  data: { ...v, ...next.data },
+                });
+              })();
+            } else {
+              // Respond back with our failure
+              this.processPending[v.$umid].resolve({
+                status: 200,
+                data: v,
+              });
+            }
+          } else {
+            // External Request
+            this.processPending[v.$umid].reject({
+              status: 100,
+              error: "Busy Locks",
+            });
+          }
+
+          // Not always safe but i/o position incorrect will help
           this.release(this.processPending[v.$umid]);
           // True so it is "handled" and removed from the queue in a single location
           return true;
