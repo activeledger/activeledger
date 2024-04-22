@@ -170,6 +170,7 @@ export class Endpoints {
                   content: response.data,
                 });
               } else {
+
                 // Just return untouched
                 return resolve({
                   statusCode: response.status,
@@ -179,15 +180,7 @@ export class Endpoints {
             }
           })
           .catch((error) => {
-            // Do something with the response before returning
-            // If the status code is 100 and busy locks, We will convert it to a standard
-            // If network isn't stable we will also convert to standard 200
-            // ledger error for the SDK's to capture and manage
-            // TODO: Reduce the amount of data to detect
-            if (
-              (error.status == "100" && error.error === "Busy Locks") ||
-              error === "Network Not Stable"
-            ) {
+            if (error?.status == "100" && error.error) {
               return resolve(this.successfulFailure(error.error || error));
             } else {
               ActiveLogger.error(error, "Sent 500 Response (1000)");
@@ -316,13 +309,19 @@ export class Endpoints {
     return new Promise<any>((resolve, reject) => {
       // Is the network stable?
       if (host.getStatus() != NeighbourStatus.Stable)
-        return reject("Network Not Stable");
+        return reject({
+          status: 100,
+          error: "Network Not Stable",
+        });
 
       // Targetted territoriality mapper
       if (tx.$territoriality) {
         // Cannot work with broadcast
         if (tx.$broadcast) {
-          return reject("Territoriality not supported in broadcast mode");
+          return reject({
+            status: 100,
+            error: "Territoriality not supported in broadcast mode",
+          });
         }
 
         // Get the sending node details
