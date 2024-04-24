@@ -311,6 +311,7 @@ export class Endpoints {
           });
         })
         .catch((error: any) => {
+          ActiveLogger.error(tx, "Transaction error");
           ActiveLogger.error(error, "Sent 500 Response (1600)");
           return reject({
             statusCode: 500,
