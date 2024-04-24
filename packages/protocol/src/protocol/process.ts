@@ -574,13 +574,23 @@ export class Process extends EventEmitter {
         ActiveLogger.debug("Self signed Transaction");
 
         // If there are sigs we can enforce for the developer
-        let sigs = Object.keys(this.entry.$sigs);
-        if (sigs.length > 0) {
+        const inputs = Object.keys(this.entry.$tx.$i);
+
+        if (inputs.length > 0) {
           // Loop Signatures and match against inputs
-          let i = sigs.length;
+          let i = inputs.length;
+
           while (i--) {
-            let signature = this.entry.$sigs[sigs[i]];
-            let input = this.entry.$tx.$i[sigs[i]];
+            const signature = this.entry.$sigs[inputs[i]];
+            const input = this.entry.$tx.$i[inputs[i]];
+
+            // No matching signature found
+            if (!signature) {
+              return this.shared.raiseLedgerError(
+                1260,
+                new Error("Self signed signature not found")
+              );
+            }
 
             const validSignature = () =>
               this.shared.signatureCheck(
@@ -604,12 +614,11 @@ export class Process extends EventEmitter {
                 return this.shared.raiseLedgerError(
                   1255,
                   new Error(
-                    "Self signed publicKey property not found in $i " + sigs[i]
+                    "Self signed publicKey property not found in $i " +
+                      inputs[i]
                   )
                 );
               }
-            } else {
-              return;
             }
           }
         }
