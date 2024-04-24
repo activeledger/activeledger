@@ -208,6 +208,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                     error,
                     `Network Error - ${this.host}:${this.port}/${endpoint}`
                   );
+                  ActiveLogger.error(
+                    post,
+                    `Data sent which caused the error`
+                  );
                   reject("Network Communication Error");
                 }
               }
