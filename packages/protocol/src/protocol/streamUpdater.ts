@@ -104,7 +104,7 @@ export class StreamUpdater {
     private entry: ActiveDefinitions.LedgerEntry,
     private virtualMachine: IVirtualMachine,
     private reference: string,
-    private nodeResponse: any,
+    private nodeResponse: ActiveDefinitions.INodeResponse,
     private db: ActiveDSConnect,
     private dbev: ActiveDSConnect,
     private emitter: EventEmitter,
@@ -439,6 +439,9 @@ export class StreamUpdater {
         this.entry.$streams = this.refStreams;
       }
 
+      // Update response object to send to client if entry node failed
+      this.nodeResponse.streams = this.refStreams;
+
       try {
         // Handle post processing if it exists
         const post = await this.virtualMachine.postProcess(
@@ -469,6 +472,8 @@ export class StreamUpdater {
       }
     }
 
+    // Broadcast commit & returns
+    this.emitter.emit("broadcast");
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 

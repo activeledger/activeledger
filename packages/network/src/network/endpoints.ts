@@ -29,6 +29,7 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
 import { Maintain } from "./maintain";
+import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 
 /**
  * Endpoints used to manage Network Neighbourhood
@@ -121,8 +122,7 @@ export class Endpoints {
 
               // Get nodes to count
               let nodes = Object.keys(tx.$nodes);
-              let i = nodes.length;
-              while (i--) {
+              for (let i = nodes.length; i--; ) {
                 summary.total++;
                 if (tx.$nodes[nodes[i]].vote) summary.vote++;
                 if (tx.$nodes[nodes[i]].commit) summary.commit++;
@@ -137,8 +137,30 @@ export class Endpoints {
                 }
 
                 // Did this node have data to send to the client
-                if (tx.$nodes[nodes[i]].return)
+                if (tx.$nodes[nodes[i]].return) {
                   responses.push(tx.$nodes[nodes[i]].return);
+                }
+
+                // Any updated streams we may not know about
+                if (!tx.$streams && tx.$nodes[nodes[i]].streams) {
+                  tx.$streams = tx.$nodes[nodes[i]].streams as IStreams;
+                }
+              }
+
+              // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
+              // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful
+              if (tx.$broadcast && summary.vote) {
+                // TODO - Reusable, not copied from protocol/process
+                // Allow for full network consensus
+                const percent = tx.$unanimous
+                  ? 100
+                  : ActiveOptions.get<any>("consensus", {}).reached;
+
+                // Return if consensus has been reached
+                if ((summary.vote / summary.total) * 100 >= percent || false) {
+                  // If reach all that voted yes should have committed
+                  summary.commit = summary.vote;
+                }
               }
 
               // We have the entire network $tx object. This isn't something we want to return
@@ -170,7 +192,6 @@ export class Endpoints {
                   content: response.data,
                 });
               } else {
-
                 // Just return untouched
                 return resolve({
                   statusCode: response.status,
@@ -654,7 +675,7 @@ export class Endpoints {
         }
       } else {
         // body should now be a json string to be converted
-        let bodyObject = JSON.parse(body);
+        const bodyObject = JSON.parse(body);
 
         // Internal Transaction Messesing (Encrypted & Signing Security)
         if (bodyObject.$neighbour && bodyObject.$packet) {
@@ -677,7 +698,10 @@ export class Endpoints {
           }
 
           // Verify Signature (but we do verify)
-          if (ActiveOptions.get<any>("security", {}).signedConsensus) {
+          if (
+            bodyObject.$neighbour.signature ||
+            ActiveOptions.get<any>("security", {}).signedConsensus
+          ) {
             if (
               !host.neighbourhood
                 .get(bodyObject.$neighbour.reference)

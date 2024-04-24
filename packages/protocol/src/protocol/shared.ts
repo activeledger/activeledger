@@ -24,9 +24,9 @@
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveDSConnect } from "@activeledger/activeoptions";
-import { EventEmitter } from "events";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { Process } from "./process";
 
 /**
  * Holds methods shared between process, permissionsChecker, and streamUpdater
@@ -61,7 +61,7 @@ export class Shared {
     private _storeSingleError: boolean,
     private entry: ActiveDefinitions.LedgerEntry,
     private dbe: ActiveDSConnect,
-    private emitter: EventEmitter
+    private emitter: Process
   ) {}
 
   /**
@@ -224,10 +224,10 @@ export class Shared {
         if (dbDoc.id) {
           error += " - Error " + dbDoc.id;
         }
-        this.emitter.emit("failed", {
+        this.emitter.emitFailed({
           status: this._errorOut.code,
           error,
-        });
+        })
       }
     } catch (error) {
       // Problem could be serious (Database down?)
@@ -236,6 +236,7 @@ export class Shared {
 
       // Emit failed event for execution
       if (!stop) {
+        // Skip over delay send it right away
         this.emitter.emit("failed", {
           status: code,
           error: error,

@@ -216,6 +216,22 @@ export class Process extends EventEmitter {
    */
   private permissionChecker: PermissionsChecker;
 
+  /**
+   * Holds the failed emit timer information
+   *
+   * @private
+   * @type {NodeJS.Timeout}
+   */
+  private willEmit: NodeJS.Timeout;
+
+  /**
+   * The data that will be emitted as an error
+   *
+   * @private
+   * @type {{ status: number; error: string }}
+   */
+  private willEmitData: { status: number; error: string | Error } | undefined;
+
   // #endregion
 
   /**
@@ -282,22 +298,24 @@ export class Process extends EventEmitter {
    */
   public destroy(umid: string): void {
     // Record un commited transactions as an error
-    try {
-      if (!this.nodeResponse.commit) {
-        this.shared.raiseLedgerError(
-          1600,
-          new Error("Failed to commit before timeout"),
-          true
-        );
-      }
-    } catch (e) {
-      // Something is wrong with node response, Lets still log and continue
-      this.shared.raiseLedgerError(
-        1605,
-        new Error("Failed to commit lacking this node response"),
-        true
-      );
-    }
+    // No longer needed with "trust the network"
+    // Keeping as comments for reference as we may need it but should already have an error log
+    // try {
+    //   if (!this.nodeResponse.commit) {
+    //     this.shared.raiseLedgerError(
+    //       1600,
+    //       new Error("Failed to commit before timeout"),
+    //       true
+    //     );
+    //   }
+    // } catch (e) {
+    //   // Something is wrong with node response, Lets still log and continue
+    //   this.shared.raiseLedgerError(
+    //     1605,
+    //     new Error("Failed to commit lacking this node response"),
+    //     true
+    //   );
+    // }
 
     // Make sure broadcast timeout is cleared
     clearTimeout(this.broadcastTimeout);
@@ -628,18 +646,36 @@ export class Process extends EventEmitter {
   public updatedFromBroadcast(node?: any): ActiveDefinitions.INodeResponse {
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
-    // Make sure we haven't already reached consensus
-    if (!this.isCommiting() && !this.voting) {
-      // Reset Reference node response
-      this.nodeResponse = this.entry.$nodes[this.reference];
-      // Try run commit!
+    if (this.willEmit) {
+      // need to make sure streams exists
+      const nodes = Object.keys(this.entry.$nodes);
+      // Do we have any votes left if not can fast forward
+      if (!this.hasOutstandingVotes(nodes.length) && !this.canCommit()) {
+        this.emitFailed(this.willEmitData);
+      } else {
+        // Waiting on commit confirmation for streams
+        for (let i = nodes.length; i--; ) {
+          if (this.entry.$nodes[nodes[i]].streams) {
+            // We have 1 nodes $stream record can fast forward the error throwing
+            this.emitFailed(this.willEmitData);
+            break;
+          }
+        }
+      }
+    } else {
+      // Make sure we haven't already reached consensus
+      if (!this.isCommiting() && !this.voting) {
+        // Reset Reference node response
+        this.nodeResponse = this.entry.$nodes[this.reference];
+        // Try run commit!
 
-      // Get the correct VM instance reference
-      this.isDefault
-        ? this.commit(Process.defaultContractsVM)
-        : this.contractRef
-        ? this.commit(Process.singleContractVMHolder[this.contractRef])
-        : this.commit(Process.generalContractVM);
+        // Get the correct VM instance reference
+        this.isDefault
+          ? this.commit(Process.defaultContractsVM)
+          : this.contractRef
+          ? this.commit(Process.singleContractVMHolder[this.contractRef])
+          : this.commit(Process.generalContractVM);
+      }
     }
 
     return this.nodeResponse;
@@ -755,6 +791,12 @@ export class Process extends EventEmitter {
       // Continue Execution of consensus
       // Update Error (Keep same format as before to not be a breaking change)
       this.nodeResponse.error = "Vote Failure - " + JSON.stringify(error);
+
+      // With broadcast mode this isn't picked up on the vote failure round
+      // Not an issue to keep recalling this as it only extract from the same place within the VM
+      this.nodeResponse.return = virtualMachine.getReturnContractData(
+        this.entry.$umid
+      );
 
       // Continue to next nodes vote
       this.postVote(virtualMachine);
@@ -1083,6 +1125,54 @@ export class Process extends EventEmitter {
   }
 
   /**
+   * Delayed "failed" response from this node to calling client
+   * This will allow other nodes to confirm if they have committed or not
+   * and provide their $stream / $returns
+   *
+   * The delay here will only ever happen if the transaction doesn't reach consensus
+   * but may require tweaking
+   *
+   * @param {*} [data]
+   */
+  public emitFailed(data?: { status: number; error: string | Error }) {
+    if (this.willEmit) {
+      clearTimeout(this.willEmit);
+      this.emit("failed", this.willEmitData);
+    } else {
+      // Only delay for broadcast method and if it has outstanding votes to count
+      // or waiting for streams if can commit
+      // Still check for entry as it maybe cleared from memory ($broadcast false will clear early)
+      if (
+        this.entry &&
+        this.entry.$broadcast &&
+        (this.hasOutstandingVotes() || this.canCommit())
+      ) {
+        this.willEmitData = data;
+        this.willEmit = setTimeout(() => {
+          this.emit("failed", this.willEmitData);
+        }, 10000);
+      } else {
+        this.emit("failed", data);
+      }
+    }
+  }
+
+  /**
+   * Return if missing votes (Doesn't account for enough votes)
+   *
+   * @private
+   * @param {number} [nodes]
+   * @returns {boolean}
+   */
+  private hasOutstandingVotes(nodes?: number): boolean {
+    const neighbours = ActiveOptions.get<Array<any>>(
+      "neighbourhood",
+      []
+    ).length;
+    return !!(neighbours - (nodes || Object.keys(this.entry.$nodes).length));
+  }
+
+  /**
    * Retries the right knock init
    * During this time "right" may change, Right may have errors so retries
    * skips this problem. Another problem could be the process managing the request
@@ -1125,18 +1215,17 @@ export class Process extends EventEmitter {
    * @param {boolean} [skipBoost=false]
    * @returns {boolean}
    */
-  private canCommit(skipBoost = false): boolean {
+  private canCommit(): boolean {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     this.currentVotes = 0;
 
     // Small performance boost if we voted no
-    if (skipBoost || this.nodeResponse.vote) {
-      let i = networkNodes.length;
-      while (i--) {
-        if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
-      }
+    //if (skipBoost /*|| this.nodeResponse.vote*/) {
+    for (let i = networkNodes.length; i--; ) {
+      if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
     }
+    //}
 
     // Allow for full network consensus
     const percent = this.entry.$unanimous
@@ -1145,12 +1234,10 @@ export class Process extends EventEmitter {
 
     // Return if consensus has been reached
     return (
-      ((skipBoost || this.nodeResponse.vote) &&
-        (this.currentVotes /
-          ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-          100 >=
-          percent) ||
-      false
+      (this.currentVotes /
+        ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
+        100 >=
+        percent || false
     );
   }
 
@@ -1169,7 +1256,7 @@ export class Process extends EventEmitter {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit) {
       // check we can commit still
-      if (this.canCommit()) {
+      if (this.canCommit() && this.nodeResponse.vote) {
         // Consensus reached commit phase
         this.commiting = true;
 
@@ -1187,6 +1274,9 @@ export class Process extends EventEmitter {
           // Update Commit Entry
           this.nodeResponse.commit = true;
 
+          // Wait to get $streams?
+          //this.emit("broadcast");
+
           // Update in communication (Recommended pre commit only but can be edge use cases)
           this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
             this.entry.$umid
@@ -1197,7 +1287,7 @@ export class Process extends EventEmitter {
             this.entry.$umid
           );
 
-          // Clearing All node comms?
+          // Clearing All node comms?#
           this.entry = this.shared.clearAllComms(
             virtualMachine,
             this.nodeResponse.incomms
@@ -1251,11 +1341,11 @@ export class Process extends EventEmitter {
         if (earlyCommit) return earlyCommit();
 
         // Consensus not reached
-        if (!this.nodeResponse.vote) {
+        if (!this.nodeResponse.vote && !this.entry.$broadcast) {
           // We didn't vote right
           ActiveLogger.debug(
             this.nodeResponse,
-            "VM Commit Failure, We voted NO"
+            "VM Commit Failure, We voted NO (100)"
           );
 
           // We voted false, Need to process
@@ -1266,68 +1356,68 @@ export class Process extends EventEmitter {
           );
 
           //TODO: Consensus Vote Reconciling not available on broadcast p2p method
-          if (!this.entry.$broadcast) {
-            //? Reminder : Contract Voted False to be here not pre-flights
-            // How can we tell the network commited? I guess we should count the votes?
-            if (this.canCommit(true)) {
-              ActiveLogger.debug(
-                "Network Consensus reached without me (Reconciling)"
-              );
+          //if (!this.entry.$broadcast) {
+          //? Reminder : Contract Voted False to be here not pre-flights
+          // How can we tell the network commited? I guess we should count the votes?
+          if (this.canCommit()) {
+            ActiveLogger.debug(
+              "Network Consensus reached without me (Reconciling)"
+            );
 
-              try {
-                const reconciled: boolean = await virtualMachine.reconcile(
-                  this.entry.$nodes,
-                  this.entry.$umid
+            try {
+              const reconciled: boolean = await virtualMachine.reconcile(
+                this.entry.$nodes,
+                this.entry.$umid
+              );
+              // Contract ran its own reconcile procedure
+              if (reconciled) {
+                ActiveLogger.info("Self Reconcile Successful");
+                // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
+                const streamUpdater = new StreamUpdater(
+                  this.entry,
+                  virtualMachine,
+                  this.reference,
+                  this.nodeResponse,
+                  this.db,
+                  this.dbev,
+                  this,
+                  this.shared,
+                  this.contractId
                 );
-                // Contract ran its own reconcile procedure
-                if (reconciled) {
-                  ActiveLogger.info("Self Reconcile Successful");
-                  // tx is for hybrid, Do we want to broadcast a reconciled one? if so we can do this within the function
-                  const streamUpdater = new StreamUpdater(
-                    this.entry,
-                    virtualMachine,
-                    this.reference,
-                    this.nodeResponse,
-                    this.db,
-                    this.dbev,
-                    this,
-                    this.shared,
-                    this.contractId
+                streamUpdater.updateStreams();
+              } else {
+                // No move onto internal attempts
+                // Upgrade error code so restore will process it
+                if (this.errorOut.code === 1505) {
+                  ActiveLogger.info(
+                    "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
                   );
-                  streamUpdater.updateStreams();
+                  // reset single error as 1505 is skipped anyway
+                  this.shared.storeSingleError = false;
+                  // try/catch to finish execution
+                  this.shared
+                    .storeError(1001, new Error(this.errorOut.reason), 11)
+                    .then(() => {
+                      this.emit("commited");
+                    })
+                    .catch(() => {
+                      this.emit("commited");
+                    });
                 } else {
-                  // No move onto internal attempts
-                  // Upgrade error code so restore will process it
-                  if (this.errorOut.code === 1505) {
-                    ActiveLogger.info(
-                      "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
-                    );
-                    // reset single error as 1505 is skipped anyway
-                    this.shared.storeSingleError = false;
-                    // try/catch to finish execution
-                    this.shared
-                      .storeError(1001, new Error(this.errorOut.reason), 11)
-                      .then(() => {
-                        this.emit("commited");
-                      })
-                      .catch(() => {
-                        this.emit("commited");
-                      });
-                  } else {
-                    // Because we voted no doesn't mean the network should error
-                    this.emit("commited");
-                  }
+                  // Because we voted no doesn't mean the network should error
+                  this.emit("commited");
                 }
-              } catch (error) {
-                // Timed out
-                ActiveLogger.debug(error);
-                this.emit("commited");
               }
+            } catch (error) {
+              // Timed out
+              ActiveLogger.debug(error);
+              this.emit("commited");
             }
-          } else {
-            // Because we voted no doesn't mean the network should error
-            this.emit("commited");
           }
+          //} else {
+          // Because we voted no doesn't mean the network should error
+          //  this.emit("commited");
+          //}
         } else {
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
@@ -1348,17 +1438,33 @@ export class Process extends EventEmitter {
             ).reached;
             const outstandingVoters =
               neighbours - Object.keys(this.entry.$nodes).length;
-
             // Basic check, If no nodes to respond and we failed to reach consensus we will fail
             if (!outstandingVoters) {
               // Clear current timeout to prevent it from running
               clearTimeout(this.broadcastTimeout);
-              // Entire Network didn't reach consensus
-              ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-              return this.shared.raiseLedgerError(
-                1510,
-                new Error("Failed Network Voting Round - No More Voters")
-              );
+
+              // Did we vote no and raise our error?
+              if (this.nodeResponse.error) {
+                if (!this.storeSingleError) {
+                  ActiveLogger.debug(
+                    this.nodeResponse,
+                    "VM Commit Failure, We voted NO (200)"
+                  );
+                  this.storeSingleError = true;
+                  // We voted false, Need to process
+                  return this.shared.raiseLedgerError(
+                    1505,
+                    new Error(this.nodeResponse.error)
+                  );
+                }
+              } else {
+                // Entire Network didn't reach consensus
+                ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+                return this.shared.raiseLedgerError(
+                  1510,
+                  new Error("Failed Network Voting Round - No More Voters")
+                );
+              }
             } else {
               // Clear current timeout to prevent it from running
               clearTimeout(this.broadcastTimeout);
@@ -1383,12 +1489,28 @@ export class Process extends EventEmitter {
                   );
                 }, BROADCAST_TIMEOUT);
               } else {
-                // Even if the other nodes voted yes we will still not reach conesnsus
-                ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
-                return this.shared.raiseLedgerError(
-                  1510,
-                  new Error("Failed Network Voting Round - No Quorum")
-                );
+                // Did we vote no and raise our error?
+                if (this.nodeResponse.error) {
+                  if (!this.storeSingleError) {
+                    ActiveLogger.debug(
+                      this.nodeResponse,
+                      "VM Commit Failure, We voted NO (300)"
+                    );
+                    this.storeSingleError = true;
+                    // We voted false, Need to process
+                    return this.shared.raiseLedgerError(
+                      1505,
+                      new Error(this.nodeResponse.error)
+                    );
+                  }
+                } else {
+                  // Even if the other nodes voted yes we will still not reach conesnsus
+                  ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
+                  return this.shared.raiseLedgerError(
+                    1510,
+                    new Error("Failed Network Voting Round - No Quorum")
+                  );
+                }
               }
             }
           }
