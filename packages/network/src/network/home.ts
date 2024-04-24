@@ -103,13 +103,13 @@ export class Home extends Neighbour {
   private tMap: string[];
 
   /**
-   * Holds the Transactions Processors 
+   * Holds the Transactions Processors
    *
    * @protected
    * @type {ChildProcess[]}
    */
   protected processors: ChildProcess[] = [];
-  
+
   /**
    * Iterator for looping processors
    *
@@ -187,10 +187,11 @@ export class Home extends Neighbour {
    *
    * @static
    * @param {string} data
+   * @param {boolean} [signed=false]
    * @returns {(string | null)}
    */
-  public static sign(data: string): string | null {
-    if (ActiveOptions.get<any>("security", {}).signedConsensus) {
+  public static sign(data: string, signed: boolean = false): string | null {
+    if (signed || ActiveOptions.get<any>("security", {}).signedConsensus) {
       return Home.identity.sign(data);
     }
     return null;

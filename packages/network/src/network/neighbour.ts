@@ -155,7 +155,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         post = {
           $neighbour: {
             reference: Home.reference,
-            signature: Home.sign(params),
+            signature: Home.sign(params, params.$signed),
           },
           $packet: this.encryptKnock(params, params.$encrypt),
           $enc: params.$encrypt ? true : false,
@@ -224,6 +224,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    *
    * @private
    * @param {*} data
+   * @param {boolean} [encrypted=false]
    * @returns {*}
    */
   public encryptKnock(data: any, encrypted: boolean = false): any {
