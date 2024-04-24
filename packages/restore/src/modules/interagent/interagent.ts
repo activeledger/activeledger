@@ -83,13 +83,13 @@ export class Interagent {
       // Next loop delay
       setTimeout(() => {
         this.skippedErrorInterval();
-      }, 30000);
+      }, 5000);
     }; //300000
 
     // Start up delay
     setTimeout(() => {
       this.skippedErrorInterval();
-    }, 30000);
+    }, 5000);
   }
 
   /**
@@ -915,7 +915,7 @@ export class Interagent {
     // Sometimes there is similair auto id with revision collisions
     // Instead of rewrite revision (as this data is not important) we will create a new
     // timestamped document everytime so we can track all errors which have processed.
-    document._id = Date.now() + ":" + document._id;
+    document._id = document._id + ":" + Date.now();
     await Provider.errorArchive.put(document);
   }
 }
