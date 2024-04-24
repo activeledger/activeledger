@@ -522,7 +522,6 @@ export class Host extends Home {
           }
           break;
         case "broadcast":
-          ActiveLogger.debug("Broadcasting TX : " + m.data.umid);
           this.broadcast(m.data.umid);
           break;
         case "reload":
@@ -666,17 +665,21 @@ export class Host extends Home {
    * @param {string} umid
    */
   private broadcast(umid: string): void {
-    // Get all the neighbour nodes
-    let neighbourhood = this.neighbourhood.get();
-    let nodes = this.neighbourhood.keys();
-    let i = nodes.length;
-    let promises: any[] = [];
-
     // Final check object exists
     if (
+      this.processPending[umid]?.entry &&
+      this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
       this.processPending[umid].entry.$nodes[this.reference]
     ) {
+      ActiveLogger.debug("Broadcasting TX : " + umid);
+
+      // Get all the neighbour nodes
+      let neighbourhood = this.neighbourhood.get();
+      let nodes = this.neighbourhood.keys();
+      let i = nodes.length;
+      let promises: any[] = [];
+
       // We only want to send our value
       const data = Object.assign(this.processPending[umid].entry, {
         $nodes: {
