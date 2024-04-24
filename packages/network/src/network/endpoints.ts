@@ -77,6 +77,13 @@ export class Endpoints {
           );
         }
 
+        // Make sure $sigs exists
+        if(!tx.$sigs){
+          return resolve(
+            this.successfulFailure(`$sigs not found`)
+          );
+        }
+
         // Set Origin
         tx.$origin = host.reference;
 
