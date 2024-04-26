@@ -1,5 +1,56 @@
 # Activeledger Changelog
 
+## [2.15.2]
+
+### Fix
+* **Network** : Standby Processors now receiving updates as if it was in the processor pool.
+* **Network** : GZip compression now optional from the configuration file gzip:true.
+
+## [2.15.1]
+
+### New
+* **Network** : Process Memory Manager. Process will not be used anymore if memory limits are exceeded.
+
+### Fix
+* **Network** : Better GZip detection. Headers & Magic number checks.
+* **Protocol** : Improved Logging.
+
+
+## [2.15.0]
+
+### New
+* **Network / Protocol** : "Trust The Network" the node will still not write data but it will return to the calling client the $summary information if the other nodes agreed and committed the transaction.
+* **Network** : Transaction implied network signing with $signed.
+* **Restore** : Checks occur more often and document date is a suffix as lookups have been a higher priority than order.
+
+### Fix
+* **Network** : $sigs must always be present in every transaction (including read).
+* **Network** : Improved Logging.
+* **Protocol** : Inverted $selfsign check resuling in every $i must needing a matching signature.
+
+## [2.14.8]
+
+### New
+* **Network** : Internal busy locks now raise errors
+
+## [2.14.7]
+
+### Fix
+* **Network** : Internal busy locks no longer prevents transaction propergation.
+
+### Fix
+* **Network** : Improved error responses. Now come back as 200 OK with $summary.errors.
+* **Network** : Prevent multiple new processors launching.
+* **Network / Protocol** : Improved Logging
+* Lerna build working again
+
+## [2.14.6]
+
+
+### Fix
+* **Protocol** : Improved Logging
+* **Protocol** : Transaction time stored in UMID
+
 ## [2.14.5]
 
 ### New
