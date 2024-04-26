@@ -170,7 +170,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             "POST",
             ["X-Activeledger:" + Home.reference],
             post,
-            true
+            ActiveOptions.get<boolean>("gzip", false)
           )
             // TODO: Interface needed
             .then((response: any) => {
