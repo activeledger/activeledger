@@ -111,6 +111,14 @@ export class Home extends Neighbour {
   protected processors: ChildProcess[] = [];
 
   /**
+   * Process ready to be hot swapped
+   *
+   * @private
+   * @type {ChildProcess}
+   */
+  protected standbyProcess: ChildProcess;
+
+  /**
    * Iterator for looping processors
    *
    * @protected
@@ -336,14 +344,18 @@ export class Home extends Neighbour {
       }
 
       // Update Sub Processes
+      const hkMsg = {
+        type: "hk",
+        data: {
+          right: Home.right,
+        },
+      };
       this.processors.forEach((processor) => {
-        processor.send({
-          type: "hk",
-          data: {
-            right: Home.right,
-          },
-        });
+        processor.send(hkMsg);
       });
+
+      // Also Send to the standby
+      this.standbyProcess.send(hkMsg);
     }
   }
 

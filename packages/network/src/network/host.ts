@@ -133,14 +133,6 @@ export class Host extends Home {
   } = {};
 
   /**
-   * Process ready to be hot swapped
-   *
-   * @private
-   * @type {ChildProcess}
-   */
-  private standbyProcess: ChildProcess;
-
-  /**
    * How many cpu processors have said they're ready
    *
    * @private
@@ -344,18 +336,19 @@ export class Host extends Home {
     const cpuTotal = PhysicalCores.count();
 
     // Setup Processors
+    const latestSetupMsg = this.getLatestSetup();
     for (let i = 0; i < cpuTotal; i++) {
       // Add process into array
       const processor = this.createProcessor(cpuTotal);
       // Add to list
       this.processors.push(processor);
       // Setup
-      processor.send(this.getLatestSetup());
+      processor.send(latestSetupMsg);
     }
 
     // Create temporary ready to swap out (So it is already set up)
     this.standbyProcess = this.createProcessor(cpuTotal);
-    this.standbyProcess.send(this.getLatestSetup());
+    this.standbyProcess.send(latestSetupMsg);
 
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
@@ -579,6 +572,7 @@ export class Host extends Home {
           this.processors.forEach((processor) => {
             processor.send(m);
           });
+          // No need to send to standby it hasn't processed the transaction
           break;
         case "memory":
           // End process and create new subprocess
@@ -626,17 +620,20 @@ export class Host extends Home {
           // Rebuild Network Territory Map
           this.terriBuildMap();
         }
+
         // Now to make sure all other processors reload
+        const reloadMsg = {
+          type: "reload",
+          data: {
+            reference: Home.reference,
+            right: Home.right,
+            neighbourhood: this.neighbourhood.get(),
+          },
+        };
         this.processors.forEach((processor) => {
-          processor.send({
-            type: "reload",
-            data: {
-              reference: Home.reference,
-              right: Home.right,
-              neighbourhood: this.neighbourhood.get(),
-            },
-          });
+          processor.send(reloadMsg);
         });
+        this.standbyProcess.send(reloadMsg);
       })
       .catch((e: any) => {
         ActiveLogger.info(e, "Failed to reload Neighbourhood");
