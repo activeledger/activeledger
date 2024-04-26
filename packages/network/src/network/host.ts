@@ -275,7 +275,7 @@ export class Host extends Home {
       // Capture POST data
       if (req.method == "POST") {
         // Holds the body
-        let body: Buffer[] = [];
+        const body: Buffer[] = [];
 
         // Reads body data
         req.on("data", (chunk) => {
@@ -288,8 +288,20 @@ export class Host extends Home {
           let data = Buffer.concat(body);
 
           // gzipped?
-          if (req.headers["content-encoding"] == "gzip") {
-            data = await ActiveGZip.ungzip(data);
+          // Sometimes internal transactions fail to be decompressed
+          // the header shouldn't be missing but added magic number check as a back
+          // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+          if (
+            req.headers["content-encoding"] == "gzip" ||
+            (data[0] == 0x1f && data[1] == 0x8b)
+          ) {
+            try {
+              data = await ActiveGZip.ungzip(data);
+            } catch {
+              // Just incase the magic number still invalid gzip
+              // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+              // with the original non-gzip compliant data
+            }
           }
 
           // All posted data should be JSON
