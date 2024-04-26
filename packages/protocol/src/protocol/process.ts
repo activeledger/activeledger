@@ -800,9 +800,11 @@ export class Process extends EventEmitter {
       // Continue Execution of consensus
       // Update Error (Keep same format as before to not be a breaking change)
       this.nodeResponse.error = "Vote Failure - " + JSON.stringify(error);
+      ActiveLogger.debug(this.nodeResponse.error, `Handle Vote Error ${payload.umid}`);
 
       // With broadcast mode this isn't picked up on the vote failure round
       // Not an issue to keep recalling this as it only extract from the same place within the VM
+      ActiveLogger.debug(`Calling Contract Return Data - ${payload.umid}`);
       this.nodeResponse.return = virtualMachine.getReturnContractData(
         this.entry.$umid
       );
@@ -832,7 +834,8 @@ export class Process extends EventEmitter {
     // Run the verification round
     try {
       if (continueProcessing)
-        await virtualMachine.verify(this.entry.$selfsign, this.entry.$umid);
+        ActiveLogger.debug(`Calling Contract Verify - ${payload.umid}`);
+        await virtualMachine.verify(this.entry.$selfsign, payload.umid);
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
@@ -847,7 +850,8 @@ export class Process extends EventEmitter {
       // Run the vote round
       try {
         if (continueProcessing)
-          await virtualMachine.vote(this.entry.$nodes, this.entry.$umid);
+          ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
+          await virtualMachine.vote(this.entry.$nodes, payload.umid);
       } catch (error) {
         // Do something with the error
         handleVoteError(error);
@@ -863,13 +867,15 @@ export class Process extends EventEmitter {
 
         // Internode Communication picked up here, Doesn't mean every node
         // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
+        ActiveLogger.debug(`Calling Contract INC - ${payload.umid}`);
         this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
-          this.entry.$umid
+          payload.umid
         );
 
         // Return Data for this nodes contract run (Useful for $instant request expected id's)
+        ActiveLogger.debug(`Calling Contract Return Data - ${payload.umid}`);
         this.nodeResponse.return = virtualMachine.getReturnContractData(
-          this.entry.$umid
+          payload.umid
         );
 
         // Clearing All node comms?
@@ -884,8 +890,9 @@ export class Process extends EventEmitter {
     } else {
       try {
         // Read only so lets call the $entry (or default which is read())
+        ActiveLogger.debug(`Calling Contract Read - ${payload.umid}`);
         this.nodeResponse.return = await virtualMachine.read(
-          this.entry.$umid,
+          payload.umid,
           this.entry.$tx.$entry || "read"
         );
       } catch (error) {
@@ -1044,6 +1051,7 @@ export class Process extends EventEmitter {
 
     if (!this.entry) {
       // Unhandled contract error issues
+      ActiveLogger.debug(`postVote entry is missing?`);
       return;
     }
 
@@ -1073,6 +1081,7 @@ export class Process extends EventEmitter {
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
+        ActiveLogger.debug("Attempting commit with too early commit callback (to send right");
         this.commit(virtualMachine, async () => {
           try {
             // catch wait retry x 3? (broadcast not really affected other nodes will send it)
@@ -1104,6 +1113,7 @@ export class Process extends EventEmitter {
               }
 
               // Run the Commit Phase
+              ActiveLogger.debug("Sending Commit without callback")
               this.commit(virtualMachine);
             }
           } catch (error) {
@@ -1194,11 +1204,13 @@ export class Process extends EventEmitter {
    */
   private async initRightKnock(retries = 0): Promise<any> {
     try {
+      ActiveLogger.debug(`Sending -> ${this.right.reference} - ${this.entry.$umid}`);
       return await this.right.knock("init", this.entry);
     } catch (e) {
       // Manage E? (Should partly self manage if node goes down)
       if (retries <= 2) {
         await this.sleep(1000);
+        ActiveLogger.debug(`Sending -> ${this.right.reference} - ${this.entry.$umid} attempt ${retries}`);
         return await this.initRightKnock(++retries);
       } else {
         throw new Error("3x Right Knock Error");
@@ -1274,6 +1286,7 @@ export class Process extends EventEmitter {
 
         // Pass Nodes for possible INC injection
         try {
+          ActiveLogger.debug(`Calling Contract Commit - ${this.entry.$umid}`);
           await virtualMachine.commit(
             this.entry.$nodes,
             this.entry.$territoriality === this.reference,
@@ -1287,11 +1300,13 @@ export class Process extends EventEmitter {
           //this.emit("broadcast");
 
           // Update in communication (Recommended pre commit only but can be edge use cases)
+          ActiveLogger.debug(`Calling Contract INC X2 - ${this.entry.$umid}`);
           this.nodeResponse.incomms = virtualMachine.getInternodeCommsFromVM(
             this.entry.$umid
           );
 
           // Return Data for this nodes contract run
+          ActiveLogger.debug(`Calling Contract Return Data X2 - ${this.entry.$umid}`);
           this.nodeResponse.return = virtualMachine.getReturnContractData(
             this.entry.$umid
           );
@@ -1374,6 +1389,7 @@ export class Process extends EventEmitter {
             );
 
             try {
+              ActiveLogger.debug(`Calling Contract Reconcile - ${this.entry.$umid}`);
               const reconciled: boolean = await virtualMachine.reconcile(
                 this.entry.$nodes,
                 this.entry.$umid
