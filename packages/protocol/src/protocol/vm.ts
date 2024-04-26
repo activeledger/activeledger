@@ -401,6 +401,7 @@ export class VirtualMachine
         // Get Commit
         resolve(await this.virtualInstance.runRead(umid, readMethod));
       } catch (error) {
+        ActiveLogger.debug(error,`VM Contract Read - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -441,6 +442,7 @@ export class VirtualMachine
         await this.virtualInstance.runVerify(umid, sigless);
         resolve(true);
       } catch (error) {
+        ActiveLogger.debug(error,`VM Contract Verify - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -484,6 +486,7 @@ export class VirtualMachine
         await this.virtualInstance.runVote(umid);
         resolve(true);
       } catch (error) {
+        ActiveLogger.debug(error,`VM Contract Vote - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -535,6 +538,7 @@ export class VirtualMachine
         // Or just manipulate / check the outputs
         resolve(true);
       } catch (error) {
+        ActiveLogger.debug(error,`VM Contract Commit - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -584,6 +588,7 @@ export class VirtualMachine
         // Or just manipulate / check the outputs
         resolve(true);
       } catch (error) {
+        ActiveLogger.debug(error,`VM Contract Reconcile - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
