@@ -78,10 +78,8 @@ export class Endpoints {
         }
 
         // Make sure $sigs exists
-        if(!tx.$sigs){
-          return resolve(
-            this.successfulFailure(`$sigs not found`)
-          );
+        if (!tx.$sigs) {
+          return resolve(this.successfulFailure(`$sigs not found`));
         }
 
         // Set Origin
@@ -682,8 +680,9 @@ export class Endpoints {
           });
         }
       } else {
-        // body should now be a json string to be converted
-        const bodyObject = JSON.parse(body);
+        // body should now be a json string to be converted, However check
+        // that it still isn't in its Buffer form!
+        const bodyObject = this.makeSureNotBuffer(JSON.parse(body)) as any;
 
         // Internal Transaction Messesing (Encrypted & Signing Security)
         if (bodyObject.$neighbour && bodyObject.$packet) {
@@ -738,6 +737,29 @@ export class Endpoints {
         }
       }
     });
+  }
+
+  /**
+   * Make sure the object is as expected not somehow a Buffer still from testing
+   * we have seen {$neighbour,$packet} still encoded in Buffer form.
+   *
+   * @private
+   * @param {unknown} obj
+   * @param { { type: string; data: number[] }} obj
+   * @returns {unknown}
+   */
+  private static makeSureNotBuffer(obj: unknown): unknown;
+  private static makeSureNotBuffer(obj: { type: string; data: number[] }): unknown {
+    if (obj.type === "Buffer" && obj.data?.length) {
+      // This shouldn't be like that
+      // Question is why and where this happens. This solution comes across in research
+      // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
+      const tmp = JSON.parse(Buffer.from(obj.data).toString());
+      ActiveLogger.error(tmp, "Buffer Found");
+      return tmp;
+    }
+    // It should be normal just return!
+    return obj;
   }
 
   /**
