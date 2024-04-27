@@ -1,5 +1,10 @@
 # Activeledger Changelog
 
+## [2.15.3]
+
+### Fix
+* **Network** : Somehow an object is masquerading as a Buffer is sneaking through. This is acts as a backstop to prevent and recover the TX.
+
 ## [2.15.2]
 
 ### Fix
