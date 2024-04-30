@@ -175,13 +175,20 @@ export class Host extends Home {
           // Process Assigned?
           if (this.processPending[entry.$umid].pid) {
             // Find Processor to send in the broadcast message
-            this.findProcessor(this.processPending[entry.$umid].pid)!.send({
-              type: "broadcast",
-              data: {
-                umid: entry.$umid,
-                nodes: entry.$nodes,
-              },
-            });
+            const processor = this.findProcessor(
+              this.processPending[entry.$umid].pid
+            );
+            if (processor) {
+              processor.send({
+                type: "broadcast",
+                data: {
+                  umid: entry.$umid,
+                  nodes: entry.$nodes,
+                },
+              });
+            } else {
+              // Not found, Lets just return the umid anyway it may confirm or will timeout
+            }
           }
           return resolve({
             status: 200,
@@ -341,6 +348,7 @@ export class Host extends Home {
       // Add process into array
       const processor = this.createProcessor(cpuTotal);
       // Add to list
+      console.log(`PID : ${processor.pid}`);
       this.processors.push(processor);
       // Setup
       processor.send(latestSetupMsg);
@@ -349,6 +357,8 @@ export class Host extends Home {
     // Create temporary ready to swap out (So it is already set up)
     this.standbyProcess = this.createProcessor(cpuTotal);
     this.standbyProcess.send(latestSetupMsg);
+    console.log(`PID : ${this.standbyProcess.pid}`);
+
 
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
@@ -402,6 +412,7 @@ export class Host extends Home {
       } else {
         unloadHandled = true;
         ActiveLogger.fatal(error, "Processor Crashed");
+        process.exit();
 
         // Push standby process
         this.processors.push(this.standbyProcess);
