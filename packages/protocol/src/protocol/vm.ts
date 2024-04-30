@@ -375,6 +375,22 @@ export class VirtualMachine
   }
 
   /**
+   * Set phase in event engine
+   *
+   * Checks to make sure event object exists due to an occurance
+   * where it can be undefined. Source of the problem to be found only happens
+   * with the spam tool, This is allows for spam to continue.
+   *
+   * @private
+   * @param {string} phase
+   */
+  private setPhase(phase: string) {
+    if (this.event) {
+      this.event.setPhase(phase);
+    }
+  }
+
+  /**
    * Contract transaction read methods
    *
    * @param {ActiveDefinitions.INodes} nodes
@@ -386,7 +402,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.event.setPhase("read");
+      this.setPhase("read");
 
       // Manage Timeout
       this.checkTimeout(
@@ -401,7 +417,7 @@ export class VirtualMachine
         // Get Commit
         resolve(await this.virtualInstance.runRead(umid, readMethod));
       } catch (error) {
-        ActiveLogger.debug(error,`VM Contract Read - Error`);
+        ActiveLogger.debug(error, `VM Contract Read - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -426,7 +442,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.event.setPhase("verify");
+      this.setPhase("verify");
 
       // Manage Timeout
       this.checkTimeout(
@@ -442,7 +458,7 @@ export class VirtualMachine
         await this.virtualInstance.runVerify(umid, sigless);
         resolve(true);
       } catch (error) {
-        ActiveLogger.debug(error,`VM Contract Verify - Error`);
+        ActiveLogger.debug(error, `VM Contract Verify - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -470,7 +486,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.event.setPhase("vote");
+      this.setPhase("vote");
 
       // Manage Timeout
       this.checkTimeout(
@@ -486,7 +502,7 @@ export class VirtualMachine
         await this.virtualInstance.runVote(umid);
         resolve(true);
       } catch (error) {
-        ActiveLogger.debug(error,`VM Contract Vote - Error`);
+        ActiveLogger.debug(error, `VM Contract Vote - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -520,7 +536,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.event.setPhase("commit");
+      this.setPhase("commit");
 
       // Manage Timeout
       this.checkTimeout(
@@ -538,7 +554,7 @@ export class VirtualMachine
         // Or just manipulate / check the outputs
         resolve(true);
       } catch (error) {
-        ActiveLogger.debug(error,`VM Contract Commit - Error`);
+        ActiveLogger.debug(error, `VM Contract Commit - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -571,7 +587,7 @@ export class VirtualMachine
         this.scriptFinishedExec = false;
 
         // Upgrade Phase
-        this.event.setPhase("reconcile");
+        this.setPhase("reconcile");
 
         // Manage Timeout
         this.checkTimeout(
@@ -588,7 +604,7 @@ export class VirtualMachine
         // Or just manipulate / check the outputs
         resolve(true);
       } catch (error) {
-        ActiveLogger.debug(error,`VM Contract Reconcile - Error`);
+        ActiveLogger.debug(error, `VM Contract Reconcile - Error`);
         if (error instanceof Error) {
           // Exception
           reject(await this.catchException(error, umid));
@@ -620,7 +636,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.event.setPhase("post");
+      this.setPhase("post");
 
       // Manage Timeout
       this.checkTimeout(
