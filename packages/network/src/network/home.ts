@@ -28,6 +28,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
+import { ActiveLogger } from "@activeledger/activelogger";
 /**
  * Represents this Activeledger node's home within the network neighbourhood
  *
@@ -319,11 +320,39 @@ export class Home extends Neighbour {
    * @param {string | null} right
    * @returns {void}
    */
-  public setNeighbours(left: string | null, right: string | null): void {
+  public async setNeighbours(
+    left: string | null,
+    right: string | null
+  ): Promise<void> {
     // Check to make sure this is a new neighbour
     if (right) this.setRight(right);
     if (left) this.setLeft(left);
+
+    if (!Home.networkFn) {
+      // Ask left & right so we can encrypt it etc, for demo just ask right
+      Home.networkFn = await Home.right.knock("networkFn");
+
+      if (!Home.networkFn) {
+        ActiveLogger.error("Empty Network Function");
+      } else {
+        Home.networkFn = Buffer.from(Home.networkFn.data).toString();
+      }
+
+      // Update Sub Processes
+      const hkMsg = {
+        type: "nf",
+        data: Home.networkFn,
+      };
+      this.processors.forEach((processor) => {
+        processor.send(hkMsg);
+      });
+
+      // Also Send to the standby
+      this.standbyProcess.send(hkMsg);
+    }
   }
+
+  public static networkFn: any;
 
   /**
    * Sets its right neighbour

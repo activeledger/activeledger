@@ -359,7 +359,6 @@ export class Host extends Home {
     this.standbyProcess.send(latestSetupMsg);
     console.log(`PID : ${this.standbyProcess.pid}`);
 
-
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
 
@@ -1270,6 +1269,13 @@ export class Host extends Home {
           case "/a/all": // All Stream Management
             if (this.firewallCheck(requester, req)) {
               response = Endpoints.all(this.dbConnection);
+            } else {
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
+            break;
+          case "/a/networkFn": // Stream Data Management (Activerestore)
+            if (true || this.firewallCheck(requester, req)) {
+              response = Endpoints.networkFn();
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }

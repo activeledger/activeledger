@@ -30,6 +30,7 @@ import { Home } from "./home";
 import { NeighbourStatus } from "./neighbourhood";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import { readFileSync } from "fs";
 
 /**
  * Endpoints used to manage Network Neighbourhood
@@ -458,6 +459,25 @@ export class Endpoints {
           },
         });
       }
+    });
+  }
+
+  /**
+   * Show the status of this host home node and its network
+   *
+   * @static
+   * @param {Host} host
+   * @param {string} requester
+   * @returns {Promise<any>}
+   */
+  public static networkFn(): Promise<any> {
+    return new Promise((resolve, reject) => {
+
+        // Send to browser
+        resolve({
+          statusCode: 200,
+          content: readFileSync(".networkFn"),
+        });
     });
   }
 

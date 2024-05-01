@@ -174,6 +174,9 @@ class Processor {
         case "hk":
           this.housekeeping(m.data.right, m.data.neighbourhood);
           break;
+        case "nf":
+          Home.networkFn = Function(m.data);
+          break;
         case "tx":
           // Create new Protocol Process object for transaction
           this.protocols[m.entry.$umid] = new ActiveProtocol.Process(
@@ -184,7 +187,8 @@ class Processor {
             this.db,
             this.dbe,
             this.dbev,
-            this.secured
+            this.secured,
+            eval(Home.networkFn)
           );
 
           // Listen for unhandledRejects (Most likely thrown by Contract but its a global)

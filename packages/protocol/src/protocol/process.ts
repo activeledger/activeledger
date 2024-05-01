@@ -254,7 +254,8 @@ export class Process extends EventEmitter {
     private db: ActiveDSConnect,
     private dbe: ActiveDSConnect,
     private dbev: ActiveDSConnect,
-    private secured: ActiveCrypto.Secured
+    private secured: ActiveCrypto.Secured,
+    private networkFn: any
   ) {
     super();
 
@@ -269,7 +270,8 @@ export class Process extends EventEmitter {
         this.selfHost,
         this.secured,
         this.db,
-        this.dbev
+        this.dbev,
+        this.networkFn
       );
 
       Process.generalContractVM.initialiseVirtualMachine();
@@ -718,7 +720,8 @@ export class Process extends EventEmitter {
           this.selfHost,
           this.secured,
           this.db,
-          this.dbev
+          this.dbev,
+          this.networkFn
         );
         // Create VM with all access it needs
         Process.defaultContractsVM.initialiseVirtualMachine(
@@ -761,7 +764,8 @@ export class Process extends EventEmitter {
           this.selfHost,
           this.secured,
           this.db,
-          this.dbev
+          this.dbev,
+          this.networkFn
         );
 
         Process.singleContractVMHolder[

@@ -25,12 +25,12 @@ import { symlinkSync, existsSync } from "fs";
 import {
   ActiveHttpd,
   IActiveHttpIp,
-  IActiveHttpIncoming
+  IActiveHttpIncoming,
 } from "@activeledger/httpd";
 import {
   ActiveDSConnect,
   ActiveOptions,
-  ActiveRequest
+  ActiveRequest,
 } from "@activeledger/activeoptions";
 import { IUpstreamNode } from "./interfaces/hybrid.interface";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -154,9 +154,7 @@ export class HybridNode {
           if (!this.authTokenCheck(req.headers)) return resolve({});
 
           // Create new Protocol and process transaction
-          this.contractProcessor(tx)
-            .then(resolve)
-            .catch(reject);
+          this.contractProcessor(tx).then(resolve).catch(reject);
         } else {
           // Standard Transaction, So just forward to upstream and return!
           ActiveRequest.send(
@@ -166,7 +164,7 @@ export class HybridNode {
             tx,
             true
           )
-            .then(r => resolve(r.data))
+            .then((r) => resolve(r.data))
             .catch(reject);
         }
       } else {
@@ -207,7 +205,7 @@ export class HybridNode {
         // Which documents can be changed
         const changable = new Set<string>([
           ...Object.keys(tx.$tx.$i || {}),
-          ...Object.keys(tx.$tx.$o || {})
+          ...Object.keys(tx.$tx.$o || {}),
         ]);
 
         // Streams that can be forced purged and updated
@@ -241,7 +239,7 @@ export class HybridNode {
             if (
               !(
                 await this.dbConnection.allDocs({
-                  key: stream.id
+                  key: stream.id,
                 })
               ).rows.length
             ) {
@@ -262,7 +260,7 @@ export class HybridNode {
         if (writableStreams.length) {
           ActiveLogger.info(`Writing ${writableStreams.length} streams`);
           await this.dbConnection.bulkDocs(writableStreams, {
-            new_edits: false
+            new_edits: false,
           });
 
           // Write Contracts
@@ -279,11 +277,7 @@ export class HybridNode {
             if (writableContractCode.length === 1) {
               const contract = writableContractCode[0] as any;
               // Check it doesn't exist
-              if (
-                !existsSync(
-                  `./${tx.$tx.$contract}.js`
-                )
-              ) {
+              if (!existsSync(`./${tx.$tx.$contract}.js`)) {
                 symlinkSync(
                   `./${contract._id}.js`,
                   `./contracts/${contract.namespace}/${tx.$tx.$contract}.js`,
@@ -321,7 +315,7 @@ export class HybridNode {
       for (let i = txs.length; i--; ) {
         const tx: ActiveDefinitions.LedgerEntry = JSON.parse(txs[i]);
         this.contractProcessor(tx)
-          .then(result => {
+          .then((result) => {
             if (result.status === "ok") {
               ActiveLogger.info(`${tx.$umid} Transaction Caught Up`);
             } else {
@@ -368,8 +362,8 @@ export class HybridNode {
     this.dbConnection
       .createIndex({
         index: {
-          fields: ["namespace", "type", "_id"]
-        }
+          fields: ["namespace", "type", "_id"],
+        },
       })
       .then(() => {
         const [, port] = ActiveOptions.get<String>("host", ":5260").split(":");
@@ -424,7 +418,12 @@ export class HybridNode {
         this.dbErrorConnection,
         this.dbEventConnection,
         // Developers can't target Hybrid for encryption / decryption but can still use stream public keys
-        new ActiveCrypto.Secured(ActiveOptions.get<any>("db", false), {}, {})
+        new ActiveCrypto.Secured(
+          ActiveOptions.get<any>("db", false),
+          {},
+          {},
+        ),
+        ""
       );
 
       // Simpler UnhandledRejects Processing
@@ -436,7 +435,7 @@ export class HybridNode {
           processed: false,
           transaction: tx,
           reason: "Unhandled Rejection",
-          streamState: {}
+          streamState: {},
         });
 
         // Let mainnet node know, It will send the latest state for us to consider
@@ -458,14 +457,14 @@ export class HybridNode {
           processed: false,
           transaction: tx,
           reason: error,
-          streamState: {}
+          streamState: {},
         });
 
         // Ready Main net response
         const response = {
           status: "failed",
           streamState: result,
-          contract: 0
+          contract: 0,
         };
 
         // Are we missing the contract?
@@ -526,8 +525,8 @@ export class HybridNode {
     tx.$nodes = {
       hybrid: {
         vote: false,
-        commit: false
-      }
+        commit: false,
+      },
     };
 
     // Make sure it isn't a broadcast transaction

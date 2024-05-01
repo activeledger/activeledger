@@ -124,7 +124,8 @@ export class VirtualMachine
     private selfHost: string,
     private secured: ActiveCrypto.Secured,
     private db: ActiveDSConnect,
-    private dbev: ActiveDSConnect
+    private dbev: ActiveDSConnect,
+    private networkFn: any
   ) {
     super();
 
@@ -187,6 +188,9 @@ export class VirtualMachine
       });
     }
 
+    console.log(this.networkFn);
+    console.log(eval(this.networkFn));
+
     // Create limited VM
     this.virtual = new NodeVM({
       // This prevents data return using the new code, but might turn out to be needed after some testing
@@ -196,6 +200,7 @@ export class VirtualMachine
         crypto: ActiveCrypto,
         secured: this.secured,
         self: this.selfHost,
+        networkFn: eval(this.networkFn)
       },
       require: {
         context: "sandbox",
