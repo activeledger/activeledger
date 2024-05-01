@@ -348,7 +348,6 @@ export class Host extends Home {
       // Add process into array
       const processor = this.createProcessor(cpuTotal);
       // Add to list
-      console.log(`PID : ${processor.pid}`);
       this.processors.push(processor);
       // Setup
       processor.send(latestSetupMsg);
@@ -357,7 +356,6 @@ export class Host extends Home {
     // Create temporary ready to swap out (So it is already set up)
     this.standbyProcess = this.createProcessor(cpuTotal);
     this.standbyProcess.send(latestSetupMsg);
-    console.log(`PID : ${this.standbyProcess.pid}`);
 
 
     // Setup Iterator
