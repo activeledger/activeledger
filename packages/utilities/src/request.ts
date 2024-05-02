@@ -76,6 +76,7 @@ export class ActiveRequest {
         port: urlParsed.port,
         method: type.toUpperCase(),
         headers: {},
+        rejectUnauthorized: false
       };
 
       // Compressable?
