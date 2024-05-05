@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activetoolkits",
-  "version": "2.15.0",
+  "version": "2.15.5",
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",
@@ -46,6 +46,6 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeutilities": "^2.13.5"
+    "@activeledger/activeutilities": "^2.15.5"
   }
 }
