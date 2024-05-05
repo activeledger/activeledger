@@ -536,7 +536,7 @@ export class Host extends Home {
           }
           break;
         case "broadcast":
-          this.broadcast(m.data.umid);
+          this.broadcast(m.data.umid, m.data.early);
           break;
         case "reload":
           this.reload();
@@ -682,7 +682,7 @@ export class Host extends Home {
    * @private
    * @param {string} umid
    */
-  private broadcast(umid: string): void {
+  private broadcast(umid: string, early = false): void {
     // Final check object exists
     if (
       this.processPending[umid]?.entry &&
@@ -699,12 +699,16 @@ export class Host extends Home {
       let promises: any[] = [];
 
       // We only want to send our value
-      const data = Object.assign(this.processPending[umid].entry, {
-        $nodes: {
-          [this.reference]:
-            this.processPending[umid].entry.$nodes[this.reference],
-        },
-      });
+      const data = !early
+        ? Object.assign(this.processPending[umid].entry, {
+            $nodes: {
+              [this.reference]:
+                this.processPending[umid].entry.$nodes[this.reference],
+            },
+          })
+        : Object.assign(this.processPending[umid].entry, {
+            $nodes: {},
+          });
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
