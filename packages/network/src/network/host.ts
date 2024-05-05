@@ -83,6 +83,16 @@ interface setup {
 }
 
 /**
+ * Extend  ChildProcess and add stoppable flag
+ *
+ * @interface StoppableChildProcess
+ * @extends {ChildProcess}
+ */
+interface StoppableChildProcess extends ChildProcess {
+  stop: boolean;
+}
+
+/**
  * Hosted process for API and Protocol management
  *
  * @export
@@ -357,7 +367,6 @@ export class Host extends Home {
     this.standbyProcess = this.createProcessor(cpuTotal);
     this.standbyProcess.send(latestSetupMsg);
 
-
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
 
@@ -398,7 +407,10 @@ export class Host extends Home {
     const pFork = fork(`${__dirname}/process.js`, [], {
       cwd: process.cwd(),
       stdio: "inherit",
-    });
+    }) as StoppableChildProcess;
+
+    // Set useful default
+    pFork.stop = false;
 
     // Prevent multiple runs, Could overwrite method instead
     let unloadHandled = false;
@@ -406,23 +418,13 @@ export class Host extends Home {
     // Reusable restart process from error with current scope
     const unloadProcessorSafely = (...error: any[]) => {
       if (unloadHandled) {
-        ActiveLogger.fatal("Processor Crashed - Already Shutting Down");
+        ActiveLogger.fatal(error, "Processor Crashed - Already Shutting Down");
       } else {
-        unloadHandled = true;
+        pFork.stop = unloadHandled = true;
         ActiveLogger.fatal(error, "Processor Crashed");
-        process.exit();
 
         // Push standby process
         this.processors.push(this.standbyProcess);
-
-        // Find the bad process
-        const pos = this.processors.findIndex((processor) => {
-          return processor.pid === pFork.pid;
-        });
-        // Remove from processors list and create new
-        if (pos !== -1) {
-          this.processors.splice(pos, 1);
-        }
 
         // We should now create a new standby processor
         this.standbyProcess = this.createProcessor();
@@ -468,6 +470,21 @@ export class Host extends Home {
           ActiveLogger.fatal(pFork, "Will Kill in " + KILL_PROC_SHUTDOWN);
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
+            //Find the bad process
+            for(let i = this.processors.length; i--;) {
+              if(this.processors[i].pid === pFork.pid) {
+                this.processors.splice(i, 1);
+                break;
+              }
+            }
+            // const pos = this.processors.findIndex((processor) => {
+            //   return processor.pid === pFork.pid;
+            // });
+
+            // // Remove from processors list and create new
+            // if (pos !== -1) {
+            //   this.processors.splice(pos, 1, this.standbyProcess);
+            // }
             pFork.kill();
           }, KILL_PROC_SHUTDOWN);
           // Contracts which extend timeout will still be at risk hence the above
@@ -954,8 +971,14 @@ export class Host extends Home {
     // Do we need to reset?
     if (!robin) {
       this.processorIterator = this.processors[Symbol.iterator]();
-      return this.processorIterator.next().value;
+      return this.getRobin();
     }
+
+    // Has this processor been told to stop
+    if (robin.stop) {
+      return this.getRobin();
+    }
+
     return robin;
   }
 
