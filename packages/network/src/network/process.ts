@@ -136,6 +136,13 @@ class Processor {
   } = {};
 
   /**
+   * Cache we already sent the stop sending tx signal
+   *
+   * @private
+   */
+  private maxMemoryReached = false;
+
+  /**
    * Holds the latest version number for a generic contract request
    *
    * @private
@@ -268,7 +275,8 @@ class Processor {
       // Check memory usage let host know if its high
       // VM needs improving to release its memory, This is temporary solution to let this process
       // finish and then be swapped out with the waiting one.
-      if (process.memoryUsage.rss() > MAX_MEMORY_MB) {
+      if (!this.maxMemoryReached && process.memoryUsage.rss() > MAX_MEMORY_MB) {
+        this.maxMemoryReached = true;
         this.send("memory", process.memoryUsage());
       }
     });
@@ -348,7 +356,7 @@ class Processor {
       umid: entry.$umid,
       nodes: entry.$nodes,
       revs: entry.$revs,
-      early
+      early,
     });
   }
 
