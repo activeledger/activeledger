@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "2.15.4",
+  "version": "2.15.5",
   "description": "Underlying protocol which handles consensus and the smart contract virtual machine of Activeledger",
   "keywords": [
     "blockchain",
@@ -43,9 +43,9 @@
     "@activeledger/activecrypto": "^2.15.0",
     "@activeledger/activedefinitions": "^2.15.0",
     "@activeledger/activelogger": "^2.14.6",
-    "@activeledger/activeoptions": "^2.15.0",
+    "@activeledger/activeoptions": "^2.15.5",
     "@activeledger/activequery": "^2.15.0",
-    "@activeledger/activetoolkits": "^2.15.0",
+    "@activeledger/activetoolkits": "^2.15.5",
     "@activeledger/vm2": "^3.9.20",
     "@types/node": "18.0.0",
     "typescript": "4.7.3"

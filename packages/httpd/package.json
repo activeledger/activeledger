@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/httpd",
-  "version": "2.14.6",
+  "version": "2.15.5",
   "description": "Lightweight portable HTTP server used by Activeledger",
   "publishConfig": {
     "access": "public"
@@ -43,6 +43,6 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.14.6",
-    "@activeledger/activeutilities": "^2.13.5"
+    "@activeledger/activeutilities": "^2.15.5"
   }
 }
