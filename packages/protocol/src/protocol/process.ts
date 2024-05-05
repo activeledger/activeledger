@@ -839,7 +839,7 @@ export class Process extends EventEmitter {
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
-      this.shared.raiseLedgerError(1310, new Error(error));
+      this.shared.raiseLedgerError(1310, error);
 
       // Stop processing
       continueProcessing = false;

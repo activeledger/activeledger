@@ -141,7 +141,7 @@ export class Shared {
    */
   public filterPrefix(stream: string, skipMap = false): string {
     if (!skipMap && this.filterMap[stream]) {
-        return this.filterMap[stream];
+      return this.filterMap[stream];
     }
 
     // Remove any suffix like :volatile :stream :umid
@@ -227,7 +227,7 @@ export class Shared {
         this.emitter.emitFailed({
           status: this._errorOut.code,
           error,
-        })
+        });
       }
     } catch (error) {
       // Problem could be serious (Database down?)
@@ -260,13 +260,12 @@ export class Shared {
     reason: Error,
     priority: number = 0
   ): Promise<any> {
-    const getReason = () =>
-      reason && reason.message ? reason.message : reason;
+    // const getReason = () =>
+    //   reason && reason.message ? reason.message : reason;
 
     if (priority >= this._errorOut.priority) {
       this._errorOut.code = code;
-
-      this._errorOut.reason = getReason() as string;
+      this._errorOut.reason = this.getGlobalReason(reason) as string;
 
       this._errorOut.priority = priority;
     }
@@ -287,7 +286,7 @@ export class Shared {
         processed: this._storeSingleError,
         umid: this.entry.$umid,
         transaction: tmpEntry, // Need to clear this.entry.$nodes["sss"].incomms
-        reason: getReason(),
+        reason: this.getGlobalReason(reason),
       };
 
       // Now if we store another error it won't be processed
@@ -297,6 +296,22 @@ export class Shared {
     } else {
       return Promise.resolve(this._storedSingleErrorDoc);
     }
+  }
+
+  /**
+   * Get best string based error
+   * TODO : resolve the any typing! Allowing here as it is trying to explore the object
+   * 
+   * @private
+   * @param {*} reason
+   * @returns
+   */
+  private getGlobalReason(reason: any) {
+    return reason.message
+      ? reason.message
+      : reason.error
+      ? reason.error
+      : reason;
   }
 
   /**
