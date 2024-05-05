@@ -936,6 +936,13 @@ export class Process extends EventEmitter {
     contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
+      // Transaction should be fully described now (revs etc)
+      // we can now broadcast it before voting that way voting rounds will not lock up 
+      // if calling a 3rd party and awaiting multiple calls.
+      if(this.entry.$broadcast) {
+        this.emit("broadcast", true);
+      }
+
       // Get readonly data
       const readonly = await this.getReadOnlyStreams();
 

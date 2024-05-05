@@ -35,7 +35,7 @@ import { EventEngine } from "@activeledger/activequery";
 
 // Maximum memory used in VM processor
 const MAX_MEMORY_MB =
-  ActiveOptions.get<number>("max_memory", 1000) * 1024 * 1024;
+  ActiveOptions.get<number>("max_memory", 1500) * 1024 * 1024;
 
 /**
  * Bare minimum data needed to make a home
@@ -213,8 +213,8 @@ class Processor {
           });
 
           // Event: Manage broadcast
-          this.protocols[m.entry.$umid].on("broadcast", () => {
-            this.broadcast(m.entry);
+          this.protocols[m.entry.$umid].on("broadcast", (early) => {
+            this.broadcast(m.entry, early);
           });
 
           // Event: Manage Reload Requests
@@ -342,12 +342,13 @@ class Processor {
    * @private
    * @param {*} entry
    */
-  private broadcast(entry: any): void {
+  private broadcast(entry: any, early = false): void {
     // Pass back to host to respond
     this.send("broadcast", {
       umid: entry.$umid,
       nodes: entry.$nodes,
       revs: entry.$revs,
+      early
     });
   }
 
