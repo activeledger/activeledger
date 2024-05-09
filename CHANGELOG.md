@@ -1,5 +1,26 @@
 # Activeledger Changelog
 
+## [2.15.6]
+
+### Fix
+* **Protocol** : Prevent overwritting of the GeneralContractVM instance. (No more dropped / lost transactions)
+
+## [2.15.5]
+
+### New
+* **Network / Protocol** : Broadcast transaction right away no longer waits for vote response.
+
+### Fix
+* **Network** : Improve processor memory management.
+* **Protocol** : Improves general error handling and messaging.
+* **Utilities** : Allow all HTTPS certificates.
+
+## [2.15.4]
+
+### Fix
+* **Network** : Make sure processor exists and running correctly before sending next update.
+* **Protocol** : Fix event engine from interrupting valid transactions from completing.
+
 ## [2.15.3]
 
 ### Fix
