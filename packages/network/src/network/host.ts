@@ -471,8 +471,8 @@ export class Host extends Home {
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
             //Find the bad process
-            for(let i = this.processors.length; i--;) {
-              if(this.processors[i].pid === pFork.pid) {
+            for (let i = this.processors.length; i--; ) {
+              if (this.processors[i].pid === pFork.pid) {
                 this.processors.splice(i, 1);
                 break;
               }
