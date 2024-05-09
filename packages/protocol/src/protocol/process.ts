@@ -265,14 +265,16 @@ export class Process extends EventEmitter {
 
     try {
       // Initialise the general contract VM
-      Process.generalContractVM = new VirtualMachine(
-        this.selfHost,
-        this.secured,
-        this.db,
-        this.dbev
-      );
+      if (!Process.generalContractVM) {
+        Process.generalContractVM = new VirtualMachine(
+          this.selfHost,
+          this.secured,
+          this.db,
+          this.dbev
+        );
 
-      Process.generalContractVM.initialiseVirtualMachine();
+        Process.generalContractVM.initialiseVirtualMachine();
+      }
     } catch (error) {
       throw new Error(error);
     }
@@ -650,9 +652,13 @@ export class Process extends EventEmitter {
    * Updates VM transaction entry from other node broadcasts
    *
    * @param {*} node
-   * @returns {ActiveDefinitions.INodeResponse}
+   * @returns {void}
    */
-  public updatedFromBroadcast(node?: any): ActiveDefinitions.INodeResponse {
+  public updatedFromBroadcast(node?: any): void {
+    if (this.isCommiting()) {
+      return;
+    }
+
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
     if (this.willEmit) {
@@ -686,8 +692,6 @@ export class Process extends EventEmitter {
           : this.commit(Process.generalContractVM);
       }
     }
-
-    return this.nodeResponse;
   }
 
   /**
@@ -800,7 +804,10 @@ export class Process extends EventEmitter {
       // Continue Execution of consensus
       // Update Error (Keep same format as before to not be a breaking change)
       this.nodeResponse.error = "Vote Failure - " + JSON.stringify(error);
-      ActiveLogger.debug(this.nodeResponse.error, `Handle Vote Error ${payload.umid}`);
+      ActiveLogger.debug(
+        this.nodeResponse.error,
+        `Handle Vote Error ${payload.umid}`
+      );
 
       // With broadcast mode this isn't picked up on the vote failure round
       // Not an issue to keep recalling this as it only extract from the same place within the VM
@@ -835,7 +842,7 @@ export class Process extends EventEmitter {
     try {
       if (continueProcessing)
         ActiveLogger.debug(`Calling Contract Verify - ${payload.umid}`);
-        await virtualMachine.verify(this.entry.$selfsign, payload.umid);
+      await virtualMachine.verify(this.entry.$selfsign, payload.umid);
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
@@ -851,7 +858,7 @@ export class Process extends EventEmitter {
       try {
         if (continueProcessing)
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
-          await virtualMachine.vote(this.entry.$nodes, payload.umid);
+        await virtualMachine.vote(this.entry.$nodes, payload.umid);
       } catch (error) {
         // Do something with the error
         handleVoteError(error);
@@ -937,9 +944,9 @@ export class Process extends EventEmitter {
   ): Promise<void> {
     try {
       // Transaction should be fully described now (revs etc)
-      // we can now broadcast it before voting that way voting rounds will not lock up 
+      // we can now broadcast it before voting that way voting rounds will not lock up
       // if calling a 3rd party and awaiting multiple calls.
-      if(this.entry.$broadcast) {
+      if (this.entry.$broadcast) {
         this.emit("broadcast", true);
       }
 
@@ -1088,7 +1095,9 @@ export class Process extends EventEmitter {
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
-        ActiveLogger.debug("Attempting commit with too early commit callback (to send right");
+        ActiveLogger.debug(
+          "Attempting commit with too early commit callback (to send right"
+        );
         this.commit(virtualMachine, async () => {
           try {
             // catch wait retry x 3? (broadcast not really affected other nodes will send it)
@@ -1120,7 +1129,7 @@ export class Process extends EventEmitter {
               }
 
               // Run the Commit Phase
-              ActiveLogger.debug("Sending Commit without callback")
+              ActiveLogger.debug("Sending Commit without callback");
               this.commit(virtualMachine);
             }
           } catch (error) {
@@ -1211,13 +1220,17 @@ export class Process extends EventEmitter {
    */
   private async initRightKnock(retries = 0): Promise<any> {
     try {
-      ActiveLogger.debug(`Sending -> ${this.right.reference} - ${this.entry.$umid}`);
+      ActiveLogger.debug(
+        `Sending -> ${this.right.reference} - ${this.entry.$umid}`
+      );
       return await this.right.knock("init", this.entry);
     } catch (e) {
       // Manage E? (Should partly self manage if node goes down)
       if (retries <= 2) {
         await this.sleep(1000);
-        ActiveLogger.debug(`Sending -> ${this.right.reference} - ${this.entry.$umid} attempt ${retries}`);
+        ActiveLogger.debug(
+          `Sending -> ${this.right.reference} - ${this.entry.$umid} attempt ${retries}`
+        );
         return await this.initRightKnock(++retries);
       } else {
         throw new Error("3x Right Knock Error");
@@ -1282,7 +1295,7 @@ export class Process extends EventEmitter {
     earlyCommit?: Function
   ): Promise<void> {
     // If we haven't commited process as normal
-    if (!this.nodeResponse.commit) {
+    if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
       if (this.canCommit() && this.nodeResponse.vote) {
         // Consensus reached commit phase
@@ -1313,7 +1326,9 @@ export class Process extends EventEmitter {
           );
 
           // Return Data for this nodes contract run
-          ActiveLogger.debug(`Calling Contract Return Data X2 - ${this.entry.$umid}`);
+          ActiveLogger.debug(
+            `Calling Contract Return Data X2 - ${this.entry.$umid}`
+          );
           this.nodeResponse.return = virtualMachine.getReturnContractData(
             this.entry.$umid
           );
@@ -1396,7 +1411,9 @@ export class Process extends EventEmitter {
             );
 
             try {
-              ActiveLogger.debug(`Calling Contract Reconcile - ${this.entry.$umid}`);
+              ActiveLogger.debug(
+                `Calling Contract Reconcile - ${this.entry.$umid}`
+              );
               const reconciled: boolean = await virtualMachine.reconcile(
                 this.entry.$nodes,
                 this.entry.$umid

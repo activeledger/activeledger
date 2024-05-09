@@ -218,8 +218,8 @@ class ContractControl implements IVMObject {
   ): Promise<boolean> {
     try {
       return this.smartContracts[umid].commit(possibleTerritoriality);
-    } catch {
-      return Promise.resolve(false);
+    } catch (e) {
+      return Promise.reject("Commit Try/Catch Failed");
     }
   }
 
