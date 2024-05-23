@@ -47,8 +47,7 @@ import { createInterface } from "readline";
  */
 export class VirtualMachine
   extends events.EventEmitter
-  implements IVirtualMachine
-{
+  implements IVirtualMachine {
   /**
    * Virtual Machine Object
    *
@@ -499,8 +498,7 @@ export class VirtualMachine
 
       try {
         // Run Vote Phase
-        await this.virtualInstance.runVote(umid);
-        resolve(true);
+        resolve(await this.virtualInstance.runVote(umid));
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Vote - Error`);
         if (error instanceof Error) {
@@ -764,9 +762,9 @@ export class VirtualMachine
         // Has it extended its timeout
         !this.hasBeenExtended(umid)
           ? // Hasn't been extended so call function
-            timedout()
+          timedout()
           : // Check again later
-            this.checkTimeout(type, timedout, umid);
+          this.checkTimeout(type, timedout, umid);
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }
@@ -916,4 +914,4 @@ export class VirtualMachine
  *
  * @class MockBuiltinSecurity
  */
-class MockBuiltinSecurity {}
+class MockBuiltinSecurity { }
