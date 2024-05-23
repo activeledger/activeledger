@@ -473,7 +473,9 @@ export class StreamUpdater {
     }
 
     // Broadcast commit & returns
-    this.emitter.emit("broadcast");
+    if(!this.nodeResponse.leader) {
+      this.emitter.emit("broadcast");
+    }
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 

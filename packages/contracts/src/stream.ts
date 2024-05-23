@@ -1097,7 +1097,9 @@ export class ActiveCrypto {
    */
   private static reference = (global as unknown as any).crypto;
 
-  public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
+  public static Hash: DefaultActiveCrypto.Hash = DefaultActiveCrypto.Hash;
+  //public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
+
   public static KeyPair: DefaultActiveCrypto.KeyPair =
     ActiveCrypto.reference.KeyPair;
   public static Secured: DefaultActiveCrypto.Secured =

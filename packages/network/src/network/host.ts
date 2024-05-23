@@ -183,7 +183,9 @@ export class Host extends Home {
         if (this.processPending[entry.$umid]) {
           ActiveLogger.debug("Broadcast Recieved : " + entry.$umid);
           // Process Assigned?
-          if (this.processPending[entry.$umid].pid) {
+          if (this.processPending[entry.$umid].pid &&
+              // If a lead/er we don't need to let sub processor know
+              !this.processPending[entry.$umid].entry?.$nodes[this.reference]?.leader) {
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
               this.processPending[entry.$umid].pid
@@ -202,7 +204,7 @@ export class Host extends Home {
           }
           return resolve({
             status: 200,
-            data: this.processPending[entry.$umid].entry,
+            //data: this.processPending[entry.$umid].entry,
           });
         }
       }
@@ -268,7 +270,7 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--; ) {
+      for (let i = this.hybridHosts.length; i--;) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
@@ -295,7 +297,6 @@ export class Host extends Home {
         req.on("end", async () => {
           // Join the buffer storing the data
           let data = Buffer.concat(body);
-
           // gzipped?
           // Sometimes internal transactions fail to be decompressed
           // the header shouldn't be missing but added magic number check as a back
@@ -312,14 +313,13 @@ export class Host extends Home {
               // with the original non-gzip compliant data
             }
           }
-
           // All posted data should be JSON
           // Convert data for potential encryption
           Endpoints.postConvertor(
             this,
             data.toString(),
             (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-              false
+            false
           )
             .then((body) => {
               // Post Converted, Continue processing
@@ -327,6 +327,7 @@ export class Host extends Home {
             })
             .catch((error) => {
               // Failed to convery respond;
+              ActiveLogger.error(error, "Server POST Parser 500");
               this.writeResponse(
                 res,
                 error.statusCode || 500,
@@ -471,7 +472,7 @@ export class Host extends Home {
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
             //Find the bad process
-            for (let i = this.processors.length; i--; ) {
+            for (let i = this.processors.length; i--;) {
               if (this.processors[i].pid === pFork.pid) {
                 this.processors.splice(i, 1);
                 break;
@@ -571,7 +572,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                      ActiveInterfaces.getBindingDetails("port")
+                    ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -718,14 +719,14 @@ export class Host extends Home {
       // We only want to send our value
       const data = !early
         ? Object.assign(this.processPending[umid].entry, {
-            $nodes: {
-              [this.reference]:
-                this.processPending[umid].entry.$nodes[this.reference],
-            },
-          })
+          $nodes: {
+            [this.reference]:
+              this.processPending[umid].entry.$nodes[this.reference],
+          },
+        })
         : Object.assign(this.processPending[umid].entry, {
-            $nodes: {},
-          });
+          $nodes: {},
+        });
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
@@ -803,7 +804,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       // Stream label or self
       out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
     }
@@ -1141,9 +1142,8 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${
-                        tx.$tx.$namespace
-                      }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
+                        }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -1155,7 +1155,7 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--; ) {
+                    for (let i = keys.length; i--;) {
                       tmp.push(keys[i] + ":stream");
                     }
 
@@ -1235,7 +1235,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -1355,7 +1355,7 @@ export class Host extends Home {
               this,
               body,
               (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-                false,
+              false,
               this.dbConnection
             );
             // Pass db conntection
@@ -1419,6 +1419,7 @@ export class Host extends Home {
       .catch((error: any) => {
         // Write Header
         // Basic error handling for now. As a lot of errors will still be sent as ok responses.
+        ActiveLogger.error(error, "Failed to send response back");
         this.writeResponse(
           res,
           error.statusCode || 500,
@@ -1476,7 +1477,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-          (req.connection.remoteAddress as string)
+        (req.connection.remoteAddress as string)
       )
     );
   }

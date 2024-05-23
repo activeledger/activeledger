@@ -38,6 +38,8 @@ import {
   IVirtualMachine,
 } from "./interfaces/vm.interface";
 import { createInterface } from "readline";
+//import { ContractControl } from "./vmscript";
+import * as XXX from "./vmscript";
 
 /**
  * Contract Virtual Machine Controller
@@ -146,73 +148,75 @@ export class VirtualMachine
     extraMocks?: string[]
   ): void {
     // Toolkit Availability Check
-    let toolkitAvailable = true;
-    try {
-      // Keep this check for backward compatibility
-      // to prevent any corrupt / mix install bases from crashing
-      require.resolve("@activeledger/activetoolkits");
-    } catch (error) {
-      // Toolkits not installed
-      toolkitAvailable = false;
-    }
+    // let toolkitAvailable = true;
+    // try {
+    //   // Keep this check for backward compatibility
+    //   // to prevent any corrupt / mix install bases from crashing
+    //   require.resolve("@activeledger/activetoolkits");
+    // } catch (error) {
+    //   // Toolkits not installed
+    //   toolkitAvailable = false;
+    // }
 
-    // Manage Externals & builtin & mocks
-    let external: string[] = ["@activeledger/activecontracts"];
-    let builtin: string[] = ["buffer"];
-    let mock: { [index: string]: MockBuiltinSecurity } = {};
+    // // Manage Externals & builtin & mocks
+    // let external: string[] = ["@activeledger/activecontracts"];
+    // let builtin: string[] = ["buffer"];
+    // let mock: { [index: string]: MockBuiltinSecurity } = {};
 
-    // With toolkit allow additional externals & builtin
-    if (toolkitAvailable) {
-      external.push(
-        "@activeledger/activeutilities",
-        "@activeledger/activetoolkits"
-      );
-      builtin.push("http", "https", "url", "zlib");
-    }
+    // // With toolkit allow additional externals & builtin
+    // if (toolkitAvailable) {
+    //   external.push(
+    //     "@activeledger/activeutilities",
+    //     "@activeledger/activetoolkits"
+    //   );
+    //   builtin.push("http", "https", "url", "zlib");
+    // }
 
-    // Add additional External & builtin by namespace if provided
-    if (extraExternals) {
-      external = [...external, ...extraExternals];
-    }
+    // // Add additional External & builtin by namespace if provided
+    // if (extraExternals) {
+    //   external = [...external, ...extraExternals];
+    // }
 
-    if (extraBuiltins) {
-      builtin = [...builtin, ...extraBuiltins];
-    }
+    // if (extraBuiltins) {
+    //   builtin = [...builtin, ...extraBuiltins];
+    // }
 
-    // Create Mocks
-    if (extraMocks) {
-      extraMocks.forEach((libPackage) => {
-        mock[libPackage] = MockBuiltinSecurity;
-      });
-    }
+    // // Create Mocks
+    // if (extraMocks) {
+    //   extraMocks.forEach((libPackage) => {
+    //     mock[libPackage] = MockBuiltinSecurity;
+    //   });
+    // }
 
-    // Create limited VM
-    this.virtual = new NodeVM({
-      // This prevents data return using the new code, but might turn out to be needed after some testing
-      // wrapper: "none",
-      sandbox: {
-        logger: ActiveLogger,
-        crypto: ActiveCrypto,
-        secured: this.secured,
-        self: this.selfHost,
-      },
-      require: {
-        context: "sandbox",
-        builtin,
-        external,
-        mock,
-      },
-      // Disable Wasm to avoid sandbox escapes
-      wasm: false,
-    });
+    // // Create limited VM
+    // this.virtual = new NodeVM({
+    //   // This prevents data return using the new code, but might turn out to be needed after some testing
+    //   // wrapper: "none",
+    //   sandbox: {
+    //     logger: ActiveLogger,
+    //     crypto: ActiveCrypto,
+    //     secured: this.secured,
+    //     self: this.selfHost,
+    //   },
+    //   require: {
+    //     context: "sandbox",
+    //     builtin,
+    //     external,
+    //     mock,
+    //   },
+    //   // Disable Wasm to avoid sandbox escapes
+    //   wasm: false,
+    // });
 
-    // Pull in the code to use for the VMScript
-    const script = new VMScript(
-      fs.readFileSync(__dirname + "/vmscript.js", "utf-8")
-    );
+    // // Pull in the code to use for the VMScript
+    // const script = new VMScript(
+    //   fs.readFileSync(__dirname + "/vmscript.js", "utf-8")
+    // );
 
-    // Initialise the virtual object using the VMScript
-    this.virtualInstance = this.virtual.run(script);
+    // // Initialise the virtual object using the VMScript
+    // this.virtualInstance = this.virtual.run(script);
+    //this.virtualInstance = new ContractControl()
+    this.virtualInstance = (XXX as any).default;
   }
 
   /**

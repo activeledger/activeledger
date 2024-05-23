@@ -50,6 +50,9 @@ class ContractControl implements IVMObject {
     this.smartContracts = {};
   }
 
+
+  private contracts = {} as any;
+
   // #region Contract controls
 
   /**
@@ -68,10 +71,15 @@ class ContractControl implements IVMObject {
     // doesn't just get null
     const contractData = payload.contractData?.data ? payload.contractData : {};
 
+
+    if (!this.contracts[payload.contractLocation]) {
+      this.contracts[payload.contractLocation] = require(payload.contractLocation).default
+    }
+
     // We don't need to verify the code unless we suspect server has been
     // comprimised. We will verify with the "install" routine
     this.smartContracts[payload.umid] =
-      new (require(payload.contractLocation).default)(
+      new this.contracts[payload.contractLocation](
         payload.date,
         payload.remoteAddress,
         payload.umid,

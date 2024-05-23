@@ -1091,7 +1091,9 @@ export class Process extends EventEmitter {
         this.entry.$nodes[this.reference].error = error.reason;
       }
       // Let all other nodes know about this transaction and our opinion
-      this.emit("broadcast");
+      if (!this.nodeResponse.leader) {
+        this.emit("broadcast");
+      }
 
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {
