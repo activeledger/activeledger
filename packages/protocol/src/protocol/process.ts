@@ -482,8 +482,8 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = this.isDefault
       ? Process.defaultContractsVM
       : this.contractRef
-      ? Process.singleContractVMHolder[this.contractRef]
-      : Process.generalContractVM;
+        ? Process.singleContractVMHolder[this.contractRef]
+        : Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -617,7 +617,7 @@ export class Process extends EventEmitter {
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " +
-                      inputs[i]
+                    inputs[i]
                   )
                 );
               }
@@ -669,7 +669,7 @@ export class Process extends EventEmitter {
         this.emitFailed(this.willEmitData);
       } else {
         // Waiting on commit confirmation for streams
-        for (let i = nodes.length; i--; ) {
+        for (let i = nodes.length; i--;) {
           if (this.entry.$nodes[nodes[i]].streams) {
             // We have 1 nodes $stream record can fast forward the error throwing
             this.emitFailed(this.willEmitData);
@@ -688,8 +688,8 @@ export class Process extends EventEmitter {
         this.isDefault
           ? this.commit(Process.defaultContractsVM)
           : this.contractRef
-          ? this.commit(Process.singleContractVMHolder[this.contractRef])
-          : this.commit(Process.generalContractVM);
+            ? this.commit(Process.singleContractVMHolder[this.contractRef])
+            : this.commit(Process.generalContractVM);
       }
     }
   }
@@ -858,7 +858,15 @@ export class Process extends EventEmitter {
       try {
         if (continueProcessing)
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
-        await virtualMachine.vote(this.entry.$nodes, payload.umid);
+        const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
+
+        if (typeof (vote) !== 'boolean' && vote.leader) {
+          this.nodeResponse.vote = this.nodeResponse.leader = true;
+          // If leader we can run straight to the commit
+          // The data still gets sent on as part of a broadcast commit
+          this.commit(virtualMachine);
+          return;
+        }
       } catch (error) {
         // Do something with the error
         handleVoteError(error);
@@ -964,7 +972,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--; ) {
+        for (let i = sigKeys.length; i--;) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -1140,13 +1148,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                  error.status || 1502,
-                  new Error(error.error || error)
-                ) // rethrow same error
+                error.status || 1502,
+                new Error(error.error || error)
+              ) // rethrow same error
               : this.shared.raiseLedgerError(
-                  1501,
-                  new Error("Bad Knock Transaction")
-                ); // Generic error 404/ 500
+                1501,
+                new Error("Bad Knock Transaction")
+              ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1263,7 +1271,7 @@ export class Process extends EventEmitter {
 
     // Small performance boost if we voted no
     //if (skipBoost /*|| this.nodeResponse.vote*/) {
-    for (let i = networkNodes.length; i--; ) {
+    for (let i = networkNodes.length; i--;) {
       if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
     }
     //}
@@ -1277,8 +1285,8 @@ export class Process extends EventEmitter {
     return (
       (this.currentVotes /
         ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-        100 >=
-        percent || false
+      100 >=
+      percent || false
     );
   }
 
@@ -1297,7 +1305,7 @@ export class Process extends EventEmitter {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
-      if (this.canCommit() && this.nodeResponse.vote) {
+      if (this.nodeResponse.vote && (this.nodeResponse.leader || this.canCommit())) {
         // Consensus reached commit phase
         this.commiting = true;
 
@@ -1372,15 +1380,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-                1302,
-                new Error(
-                  "Commit Failure - " + JSON.stringify(error.message || error)
-                )
+              1302,
+              new Error(
+                "Commit Failure - " + JSON.stringify(error.message || error)
               )
+            )
             : this.shared.raiseLedgerError(
-                1301,
-                new Error("Failed Commit Transaction")
-              );
+              1301,
+              new Error("Failed Commit Transaction")
+            );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1649,7 +1657,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];

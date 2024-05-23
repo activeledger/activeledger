@@ -82,6 +82,7 @@ export interface INodes {
 export interface INodeResponse {
   vote: boolean;
   commit: boolean;
+  leader?: boolean;
   streams?:IStreams
   post?: any;
   incomms?: any;
