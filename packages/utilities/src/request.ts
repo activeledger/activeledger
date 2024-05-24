@@ -90,18 +90,21 @@ export class ActiveRequest {
       // convert data to string if object
       if (typeof data === "object") {
         data = Buffer.from(JSON.stringify(data), "utf8");
-        (options.headers as any)["Content-Type"] = "application/json";
+        (options.headers as any)["content-type"] = "application/json";
       }
 
       // Compressable?
       if (enableGZip) {
         // Compress
         data = await ActiveGZip.gzip(data);
-        (options.headers as any)["Content-Encoding"] = "gzip";
+        (options.headers as any)["content-encoding"] = "gzip";
+        // options.headers.push("Content-Encoding: gzip")
+        // options.headers.push("Content-Encoding-2: gzip")
       }
 
       // Additional Post headers
       //(options.headers as any)["Content-Length"] = data.length;
+      //(options.headers as any)["Content-Length-x2"] = data.length;
 
       options.body = data
     }
@@ -113,12 +116,12 @@ export class ActiveRequest {
 
     try {
       // Back Compat gzip support
-      //if (headers['content-encoding'] === 'gzip') {
-      // const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
-      // return { data: JSON.parse(data.toString()) }
-      //} else {
+      if (headers['content-encoding'] === 'gzip') {
+      const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
+      return { data: JSON.parse(data.toString()) }
+      } else {
         return { data: await body.json() }
-      //}
+      }
     } catch (e) {
       return { data: null }
     }

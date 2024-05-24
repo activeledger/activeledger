@@ -299,82 +299,69 @@ export class Host extends Home {
 
 
         if (method === "POST") {
-          console.log("CHECKING POST");
           // Only support content length (this is lowercase! I  think lower case all) as I am not setting
-          const body = Buffer.concat(dBuf).subarray(headersEnded + 4)
-          if (body.length >= parseInt(headers['Content-Length'] || headers['content-length'])) {
-            //console.log("HERE");
-            processBody(body)
-          }
-        } else {
-          processBody(Buffer.from(""));
-        }
-      });
-
-      const processBody = async (bodyContent: Buffer) => {
-
-        //dBuf = [];
-
-        let req = {
-          headers,
-          method,
-          url: path,
-          connection: {
-            remoteAddress: socket.remoteAddress?.toString() || "unknown"
-          }
-        };
-
-        //console.log(bodyContent.join());
-        if (method.toLowerCase() === "post") {
-          // Holds the body
-          let data = bodyContent as Buffer
-
-          // gzipped?
-          // Sometimes internal transactions fail to be decompressed
-          // the header shouldn't be missing but added magic number check as a back
-          // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
-          if (
-            headers["Content-Encoding"] == "gzip" ||
-            (data[0] == 0x1f && data[1] == 0x8b)
-          ) {
-            try {
-              data = await ActiveGZip.ungzip(data);
-
-            } catch (e) {
-              // Just incase the magic number still invalid gzip
-              // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
-              // with the original non-gzip compliant data
+          const contentLength = parseInt(headers['Content-Length'] || headers['content-length']);
+          let body = Buffer.concat(dBuf).subarray(headersEnded + 4, contentLength + headersEnded + 4);
+          if (body.length >= contentLength) {
+            // gzipped?
+            // Sometimes internal transactions fail to be decompressed
+            // the header shouldn't be missing but added magic number check as a back
+            // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+            if (
+              headers["content-encoding"] == "gzip" ||
+              (body[0] == 0x1f && body[1] == 0x8b)
+            ) {
+              try {
+                body = await ActiveGZip.ungzip(body);
+              } catch (e) {
+                // Just incase the magic number still invalid gzip
+                // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+                // with the original non-gzip compliant data
+              }
             }
-          }
 
-          // All posted data should be JSON
-          // Convert data for potential encryption
-          Endpoints.postConvertor(
-            this,
-            data.toString(),
-            (headers["x-activeledger-encrypt"] as unknown as boolean) ||
-            false
-          )
-            .then((body) => {
-              // Post Converted, Continue processing
-              this.processEndpoints(req, socket, body.body, body.from);
-            })
-            .catch((error) => {
-              // Failed to convery respond;
-              ActiveLogger.error(error, "Server POST Parser 500");
-              this.writeResponse(
-                socket,
-                error.statusCode || 500,
-                JSON.stringify(error.content || {}),
-                headers["Accept-Encoding"] as string
-              );
-            });
+            // All posted data should be JSON
+            // Convert data for potential encryption
+            Endpoints.postConvertor(
+              this,
+              body.toString(),
+              (headers["x-activeledger-encrypt"] as unknown as boolean) ||
+              false
+            )
+              .then((body) => {
+                // Post Converted, Continue processing
+                this.processEndpoints({
+                  headers,
+                  method,
+                  url: path,
+                  connection: {
+                    remoteAddress: socket.remoteAddress?.toString() || "unknown"
+                  }
+                }, socket, body.body, body.from);
+              })
+              .catch((error) => {
+                // Failed to convery respond;
+                ActiveLogger.error(error, "Server POST Parser 500");
+                this.writeResponse(
+                  socket,
+                  error.statusCode || 500,
+                  JSON.stringify(error.content || {}),
+                  headers["Accept-Encoding"] as string
+                );
+              });
+          }
         } else {
           // Simple get, Continue Processing
-          this.processEndpoints(req, socket);
+          this.processEndpoints({
+            headers,
+            method,
+            url: path,
+            connection: {
+              remoteAddress: socket.remoteAddress?.toString() || "unknown"
+            }
+          }, socket);
         }
-      }
-
+      });
     });
 
     // Create HTTP server for managing transaction requests
@@ -1458,7 +1445,6 @@ export class Host extends Home {
         // Different endpoints switched on calling path
         switch (req.url) {
           case "/": // Setup for accepting external transactions
-            console.log("HERE");
             response = Endpoints.ExternalInitalise(
               this,
               body,
@@ -1581,31 +1567,25 @@ export class Host extends Home {
     if (!res.writableEnded) {
 
       res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-      res.write(`Content-Type: application/json\r\n`);
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 
       if (content) {
+        res.write(`Content-Type: application/json\r\n`);
         if (encoding == "gzip") {
           //headers["Content-Encoding"] = "gzip";
-          //res.write(`Content-Encoding: gzip\r\n`);
-
-          //content = await ActiveGZip.gzip(content);
-          // console.log(content);
+          res.write(`Content-Encoding: gzip\r\n`);
+          content = await ActiveGZip.gzip(content);
         } else {
           res.write(`Content-Encoding: none\r\n`);
         }
 
         res.write(`Content-Length: ${content.length}\r\n`);
         res.write(`\r\n`);
-
         res.write(content);
 
-        console.log("I HAVE CALLED END");
       }
       res.end();
-    }else{
-      console.log("WE HAVE CLOSED");
     }
   }
 
