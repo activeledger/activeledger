@@ -1560,7 +1560,7 @@ export class Host extends Home {
         //     (req.headers["access-control-request-headers"] as string) || "*",
         //   "X-Powered-By": "Activeledger",
         // });
-        res.end();
+        //res.end();
         return;
       default:
         return this.writeResponse(res, 404, "Not Found", gzipAccepted);
@@ -1633,25 +1633,33 @@ export class Host extends Home {
 
     // Write the response
     //res.writeHead(statusCode, headers);
-    res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-    res.write(`Content-Type: application/json\r\n`);
-    //res.write(`Content-Encoding: none\r\n`);
-    res.write(`Access-Control-Allow-Origin: *\r\n`);
 
-    if (encoding == "gzip") {
-      //headers["Content-Encoding"] = "gzip";
-      res.write(`Content-Encoding: gzip\r\n`);
+    //need to work out why! 
+    if (!res.writableEnded) {
 
-      content = await ActiveGZip.gzip(content);
-      // console.log(content);
-    } else {
-      res.write(`Content-Encoding: none\r\n`);
+      res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
+      res.write(`Content-Type: application/json\r\n`);
+      //res.write(`Content-Encoding: none\r\n`);
+      res.write(`Access-Control-Allow-Origin: *\r\n`);
+
+      if (encoding == "gzip") {
+        //headers["Content-Encoding"] = "gzip";
+        //res.write(`Content-Encoding: gzip\r\n`);
+
+        //content = await ActiveGZip.gzip(content);
+        // console.log(content);
+      } else {
+        res.write(`Content-Encoding: none\r\n`);
+      }
+
+      res.write(`Content-Length: ${content.length}\r\n`);
+      res.write(`\r\n`);
+
+      res.write(content);
+
+      // console.log("I HAVE CALLED END");
+      res.end();
     }
-
-    res.write(`\r\n`);
-
-    res.write(content);
-    res.end();
   }
 
   /**
