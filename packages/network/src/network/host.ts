@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { Server, IncomingMessage, ServerResponse, createServer } from "http";
+//import { Server, IncomingMessage, ServerResponse, createServer } from "http";
 import { fork, ChildProcess } from "child_process";
 import { readlinkSync } from "fs";
 import { basename } from "path";
@@ -41,6 +41,7 @@ import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
+import { createServer, Socket, Server } from "net"
 
 const RELEASE_SHUTDOWN_TIMEOUT = 5 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
@@ -184,8 +185,8 @@ export class Host extends Home {
           ActiveLogger.debug("Broadcast Recieved : " + entry.$umid);
           // Process Assigned?
           if (this.processPending[entry.$umid].pid &&
-              // If a lead/er we don't need to let sub processor know
-              !this.processPending[entry.$umid].entry?.$nodes[this.reference]?.leader) {
+            // If a lead/er we don't need to let sub processor know
+            !this.processPending[entry.$umid].entry?.$nodes[this.reference]?.leader) {
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
               this.processPending[entry.$umid].pid
@@ -276,75 +277,233 @@ export class Host extends Home {
       }
     }
 
-    // Create HTTP server for managing transaction requests
-    this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
-      // Log Request
-      ActiveLogger.debug(
-        `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
-      );
+    //   function* splitBuffer(buffer, delim){
+    //     let start = 0;
+    //     while(true){
+    //         let nxt = buffer.indexOf(delim, start);
+    //         let chunk;
+    //         if(nxt == -1){
+    //             chunk = buffer.slice(start);
+    //             yield chunk;
+    //             break;
+    //         } else {
+    //             chunk = buffer.slice(start, nxt);
+    //             yield chunk;
+    //         }
+    //         start = nxt+1;
+    //     }
+    // }
+    this.api = createServer(socket => {
+      socket.on('data', async (data) => {
+        //const [requestHeader, ...bodyContent] = data.toString().split('\r\n\r\n');
+        //const buffets = splitBuffer(data, '\n');
+        const x = data.indexOf('\r\n\r\n');
+        const requestHeader = data.subarray(0, x).toString()
+        const bodyContent = data.subarray(x + 4);
 
-      // Capture POST data
-      if (req.method == "POST") {
-        // Holds the body
-        const body: Buffer[] = [];
+        const [firstLine, ...otherLines] = requestHeader.split('\n');
+        const [method, path, httpVersion] = firstLine.trim().split(' ');
+        const headers = Object.fromEntries(otherLines.filter(_ => _)
+          .map(line => line.split(':').map(part => part.trim()))
+          .map(([name, ...rest]) => [name, rest.join(' ')]));
 
-        // Reads body data
-        req.on("data", (chunk) => {
-          body.push(chunk);
-        });
 
-        // When read has compeleted continue
-        req.on("end", async () => {
-          // Join the buffer storing the data
-          let data = Buffer.concat(body);
+
+        // console.log(buffets);
+
+        // let bodyContent;
+        // let method = "", path = "", httpVersion = "";
+        // let headers = {} as any;
+
+        // for (let i = buffets.length; i--;) {
+        //   const buf = buffets[i];
+
+        //   if (i == buffets.length - 1) {
+        //     bodyContent = buf;
+        //   } else if
+
+        //     (i == 0) {
+        //     let tmp = buf.toString().trim().split(' ');
+        //     method = tmp[0];
+        //     path = tmp[1];
+        //     httpVersion = tmp[2];
+        //   } else {
+        //     let tmp = buf.toString().split(':');
+        //     headers[tmp[0]] = tmp[1];
+        //   }
+        // }
+
+
+        //const [firstLine, ...otherLines] = requestHeader.split('\n');
+        //const [method, path, httpVersion] = firstLine.trim().split(' ');
+        // const headers = Object.fromEntries(otherLines.filter(_ => _)
+        //   .map(line => line.split(':').map(part => part.trim()))
+        //   .map(([name, ...rest]) => [name, rest.join(' ')]));
+
+        // var body;
+        // try {
+        //   body = JSON.parse(bodyContent);
+        // } catch (err) {/* ignore */ }
+
+
+        // const request = {
+        //   method,
+        //   path,
+        //   httpVersion,
+        //   headers,
+        // };
+
+        let req = {
+          headers,
+          method,
+          url: path,
+          connection: {
+            remoteAddress: socket.remoteAddress?.toString() || "unknown"
+          }
+        };
+
+        //console.log(bodyContent.join());
+        if (method.toLowerCase() === "post") {
+          // Holds the body
+          let data = bodyContent as Buffer
+
+          // console.log(headers);
+          // console.log(data);
+
+          // console.log(data);
+          // console.log(headers);
+
           // gzipped?
           // Sometimes internal transactions fail to be decompressed
           // the header shouldn't be missing but added magic number check as a back
           // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
           if (
-            req.headers["content-encoding"] == "gzip" ||
+            headers["Content-Encoding"] == "gzip" ||
             (data[0] == 0x1f && data[1] == 0x8b)
           ) {
             try {
+              // console.log("DECODING");
+              // console.log(data);
               data = await ActiveGZip.ungzip(data);
-            } catch {
+              // console.log(data);
+              // console.log("DATA BOVE ME")
+
+            } catch (e) {
               // Just incase the magic number still invalid gzip
               // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
               // with the original non-gzip compliant data
+              console.log(e);
             }
           }
 
+          // console.log("Why are we here?");
+          // console.log(data);
           // console.log(req.headers);
           // console.log("====");
+
 
           // All posted data should be JSON
           // Convert data for potential encryption
           Endpoints.postConvertor(
             this,
             data.toString(),
-            (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
+            (headers["x-activeledger-encrypt"] as unknown as boolean) ||
             false
           )
             .then((body) => {
               // Post Converted, Continue processing
-              this.processEndpoints(req, res, body.body, body.from);
+              this.processEndpoints(req, socket, body.body, body.from);
             })
             .catch((error) => {
               // Failed to convery respond;
               ActiveLogger.error(error, "Server POST Parser 500");
               this.writeResponse(
-                res,
+                socket,
                 error.statusCode || 500,
                 JSON.stringify(error.content || {}),
-                req.headers["Accept-Encoding"] as string
+                headers["Accept-Encoding"] as string
               );
             });
-        });
-      } else {
-        // Simple get, Continue Processing
-        this.processEndpoints(req, res);
-      }
+        } else {
+          // Simple get, Continue Processing
+          this.processEndpoints(req, socket);
+        }
+
+        // console.log(request)
+        // socket.write(`HTTP/1.1 200 OK\n\nhallo ${request.body.name}`)
+        // socket.end((err) => { console.log(err) })
+      });
     });
+
+    // Create HTTP server for managing transaction requests
+    // this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
+    //   // Log Request
+    //   ActiveLogger.debug(
+    //     `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
+    //   );
+
+    //   // Capture POST data
+    //   if (req.method == "POST") {
+    //     // Holds the body
+    //     const body: Buffer[] = [];
+
+    //     // Reads body data
+    //     req.on("data", (chunk) => {
+    //       body.push(chunk);
+    //     });
+
+    //     // When read has compeleted continue
+    //     req.on("end", async () => {
+    //       // Join the buffer storing the data
+    //       let data = Buffer.concat(body);
+    //       // gzipped?
+    //       // Sometimes internal transactions fail to be decompressed
+    //       // the header shouldn't be missing but added magic number check as a back
+    //       // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+    //       if (
+    //         req.headers["content-encoding"] == "gzip" ||
+    //         (data[0] == 0x1f && data[1] == 0x8b)
+    //       ) {
+    //         try {
+    //           data = await ActiveGZip.ungzip(data);
+    //         } catch {
+    //           // Just incase the magic number still invalid gzip
+    //           // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+    //           // with the original non-gzip compliant data
+    //         }
+    //       }
+
+    //       // console.log(req.headers);
+    //       // console.log("====");
+
+    //       // All posted data should be JSON
+    //       // Convert data for potential encryption
+    //       Endpoints.postConvertor(
+    //         this,
+    //         data.toString(),
+    //         (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
+    //         false
+    //       )
+    //         .then((body) => {
+    //           // Post Converted, Continue processing
+    //           this.processEndpoints(req, res, body.body, body.from);
+    //         })
+    //         .catch((error) => {
+    //           // Failed to convery respond;
+    //           ActiveLogger.error(error, "Server POST Parser 500");
+    //           this.writeResponse(
+    //             res,
+    //             error.statusCode || 500,
+    //             JSON.stringify(error.content || {}),
+    //             req.headers["Accept-Encoding"] as string
+    //           );
+    //         });
+    //     });
+    //   } else {
+    //     // Simple get, Continue Processing
+    //     this.processEndpoints(req, res);
+    //   }
+    // });
 
     // Create Index
     // this.dbConnection
@@ -1259,14 +1418,23 @@ export class Host extends Home {
    * @param {*} [body]
    */
   private processEndpoints(
-    req: IncomingMessage,
-    res: ServerResponse,
+    req: {
+      headers: {
+        [index: string]: string;
+      }
+      method: string;
+      url: string;
+      connection: {
+        remoteAddress: string
+      }
+    },
+    res: Socket,
     body?: any,
     from?: string
   ) {
     //console.log(req.headers);
     // Internal or External Request
-    let requester = (req.headers["x-activeledger"] as string) || "NA";
+    let requester = (req.headers["X-Activeledger"] as string) || "NA";
 
     // Promise Response
     let response: Promise<any>;
@@ -1385,13 +1553,13 @@ export class Host extends Home {
         break;
       case "OPTIONS":
         // Accept all for now (Return Request Headers)
-        res.writeHead(200, {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST",
-          "Access-Control-Allow-Headers":
-            (req.headers["access-control-request-headers"] as string) || "*",
-          "X-Powered-By": "Activeledger",
-        });
+        // res.writeHead(200, {
+        //   "Access-Control-Allow-Origin": "*",
+        //   "Access-Control-Allow-Methods": "GET, POST",
+        //   "Access-Control-Allow-Headers":
+        //     (req.headers["access-control-request-headers"] as string) || "*",
+        //   "X-Powered-By": "Activeledger",
+        // });
         res.end();
         return;
       default:
@@ -1444,27 +1612,44 @@ export class Host extends Home {
    * @param {string} encoding
    */
   private async writeResponse(
-    res: ServerResponse,
+    res: Socket,
     statusCode: number,
     content: string | Buffer,
     encoding: string
   ) {
     // Setup Default Headers
-    let headers = {
-      "Content-Type": "application/json",
-      "Content-Encoding": "none",
-      "Access-Control-Allow-Origin": "*",
-      "X-Powered-By": "Activeledger",
-    };
+    // let headers = {
+    //   "Content-Type": "application/json",
+    //   "Content-Encoding": "none",
+    //   "Access-Control-Allow-Origin": "*",
+    //   "X-Powered-By": "Activeledger",
+    // };
 
     // Modify output if can compress
-    if (encoding == "gzip") {
-      headers["Content-Encoding"] = "gzip";
-      content = await ActiveGZip.gzip(content);
-    }
+    // if (encoding == "gzip") {
+    //   //headers["Content-Encoding"] = "gzip";
+    //   content = await ActiveGZip.gzip(content);
+    // }
 
     // Write the response
-    res.writeHead(statusCode, headers);
+    //res.writeHead(statusCode, headers);
+    res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
+    res.write(`Content-Type: application/json\r\n`);
+    //res.write(`Content-Encoding: none\r\n`);
+    res.write(`Access-Control-Allow-Origin: *\r\n`);
+
+    if (encoding == "gzip") {
+      //headers["Content-Encoding"] = "gzip";
+      res.write(`Content-Encoding: gzip\r\n`);
+
+      content = await ActiveGZip.gzip(content);
+      // console.log(content);
+    } else {
+      res.write(`Content-Encoding: none\r\n`);
+    }
+
+    res.write(`\r\n`);
+
     res.write(content);
     res.end();
   }
@@ -1477,7 +1662,7 @@ export class Host extends Home {
    * @param {IncomingMessage} req
    * @returns {boolean}
    */
-  private firewallCheck(requester: string, req: IncomingMessage): boolean {
+  private firewallCheck(requester: string, req: any): boolean {
     return (
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
