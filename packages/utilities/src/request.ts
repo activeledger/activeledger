@@ -25,6 +25,10 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import { ActiveGZip } from "./gzip";
+import {
+  Dispatcher, request, setGlobalDispatcher,
+  Agent
+} from 'undici'
 
 /**
  * Returned HTTP Resonse data
@@ -32,9 +36,15 @@ import { ActiveGZip } from "./gzip";
  * @interface IHTTPResponse
  */
 interface IHTTPResponse {
-  raw: string;
-  data?: unknown;
+  //raw: string;
+  data: unknown;
 }
+
+setGlobalDispatcher(new Agent({
+  connect: {
+    rejectUnauthorized: false
+  }
+}))
 
 /**
  * Simple HTTP Request Object
@@ -43,6 +53,72 @@ interface IHTTPResponse {
  * @class ActiveRequest
  */
 export class ActiveRequest {
+
+  public static async send2(
+    reqUrl: string,
+    type: string,
+    header?: string[],
+    data?: any,
+    enableGZip: boolean = false
+  ): Promise<IHTTPResponse> {
+
+    const options: Omit<Dispatcher.RequestOptions, 'path'> = {
+      method: type.toUpperCase() as any, // Fix
+      headers: {},
+    }
+
+    // Compressable?
+    if (enableGZip) {
+      (options.headers as any)["Accept-Encoding"] = "gzip";
+    }
+
+    // Add Headers
+    if (header) {
+      let i = header.length;
+      while (i--) {
+        // Split Headers
+        const [name, value] = header[i].split(":");
+        // Asign to Header
+        (options.headers as any)[name] = value;
+      }
+    }
+
+    // Manage Data
+    if (data && (options.method == "POST" || options.method == "PUT")) {
+      // convert data to string if object
+      if (typeof data === "object") {
+        data = Buffer.from(JSON.stringify(data), "utf8");
+        (options.headers as any)["Content-Type"] = "application/json";
+      }
+
+      // Compressable?
+      if (enableGZip) {
+        // Compress
+        data = await ActiveGZip.gzip(data);
+        (options.headers as any)["Content-Encoding"] = "gzip";
+      }
+
+      // Additional Post headers
+      //(options.headers as any)["Content-Length"] = data.length;
+
+      options.body = data
+    }
+
+    const {
+      body
+    } = await request(reqUrl, options)
+
+    try {
+    return { data: body.json() }
+    }catch(e){
+      console.log("response error");
+      console.log(body)
+      console.log(e);
+      return { data: null }
+    }
+  }
+
+
   /**
    * Send HTTP(S) GET/POST JSON Request
    *
@@ -60,7 +136,7 @@ export class ActiveRequest {
     header?: string[],
     data?: any,
     enableGZip: boolean = false
-  ): Promise<IHTTPResponse> {
+  ): Promise<any> {
     // return new pending promise
     return new Promise(async (resolve, reject) => {
       // Parse URL

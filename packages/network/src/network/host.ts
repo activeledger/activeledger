@@ -313,6 +313,10 @@ export class Host extends Home {
               // with the original non-gzip compliant data
             }
           }
+
+          // console.log(req.headers);
+          // console.log("====");
+
           // All posted data should be JSON
           // Convert data for potential encryption
           Endpoints.postConvertor(
@@ -332,7 +336,7 @@ export class Host extends Home {
                 res,
                 error.statusCode || 500,
                 JSON.stringify(error.content || {}),
-                req.headers["accept-encoding"] as string
+                req.headers["Accept-Encoding"] as string
               );
             });
         });
@@ -1260,6 +1264,7 @@ export class Host extends Home {
     body?: any,
     from?: string
   ) {
+    //console.log(req.headers);
     // Internal or External Request
     let requester = (req.headers["x-activeledger"] as string) || "NA";
 
@@ -1267,7 +1272,7 @@ export class Host extends Home {
     let response: Promise<any>;
 
     // Can we return compressed data?
-    let gzipAccepted = req.headers["accept-encoding"] as string;
+    let gzipAccepted = req.headers["Accept-Encoding"] as string;
 
     // Diffrent endpoints VERB
     switch (req.method) {
