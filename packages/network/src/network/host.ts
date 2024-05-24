@@ -277,81 +277,43 @@ export class Host extends Home {
       }
     }
 
-    //   function* splitBuffer(buffer, delim){
-    //     let start = 0;
-    //     while(true){
-    //         let nxt = buffer.indexOf(delim, start);
-    //         let chunk;
-    //         if(nxt == -1){
-    //             chunk = buffer.slice(start);
-    //             yield chunk;
-    //             break;
-    //         } else {
-    //             chunk = buffer.slice(start, nxt);
-    //             yield chunk;
-    //         }
-    //         start = nxt+1;
-    //     }
-    // }
-    this.api = createServer(socket => {
+    this.api = createServer({ allowHalfOpen: true }, socket => {
+
+      let dBuf: Buffer[] = [];
+      let headersEnded: number;
+      let method: string, path: string, headers: any, httpVersion: string;
+
       socket.on('data', async (data) => {
-        //const [requestHeader, ...bodyContent] = data.toString().split('\r\n\r\n');
-        //const buffets = splitBuffer(data, '\n');
-        const x = data.indexOf('\r\n\r\n');
-        const requestHeader = data.subarray(0, x).toString()
-        const bodyContent = data.subarray(x + 4);
+        // Store as it "may not be enough"
+        dBuf.push(data);
 
-        const [firstLine, ...otherLines] = requestHeader.split('\n');
-        const [method, path, httpVersion] = firstLine.trim().split(' ');
-        const headers = Object.fromEntries(otherLines.filter(_ => _)
-          .map(line => line.split(':').map(part => part.trim()))
-          .map(([name, ...rest]) => [name, rest.join(' ')]));
-
-
-
-        // console.log(buffets);
-
-        // let bodyContent;
-        // let method = "", path = "", httpVersion = "";
-        // let headers = {} as any;
-
-        // for (let i = buffets.length; i--;) {
-        //   const buf = buffets[i];
-
-        //   if (i == buffets.length - 1) {
-        //     bodyContent = buf;
-        //   } else if
-
-        //     (i == 0) {
-        //     let tmp = buf.toString().trim().split(' ');
-        //     method = tmp[0];
-        //     path = tmp[1];
-        //     httpVersion = tmp[2];
-        //   } else {
-        //     let tmp = buf.toString().split(':');
-        //     headers[tmp[0]] = tmp[1];
-        //   }
-        // }
+        if (!headersEnded) {
+          headersEnded = data.indexOf('\r\n\r\n');
+          const requestHeader = data.subarray(0, headersEnded).toString()
+          const [firstLine, ...otherLines] = requestHeader.split('\n');
+          [method, path, httpVersion] = firstLine.trim().split(' ');
+          headers = Object.fromEntries(otherLines.filter(_ => _)
+            .map(line => line.split(':').map(part => part.trim()))
+            .map(([name, ...rest]) => [name, rest.join(' ')]));
+        }
 
 
-        //const [firstLine, ...otherLines] = requestHeader.split('\n');
-        //const [method, path, httpVersion] = firstLine.trim().split(' ');
-        // const headers = Object.fromEntries(otherLines.filter(_ => _)
-        //   .map(line => line.split(':').map(part => part.trim()))
-        //   .map(([name, ...rest]) => [name, rest.join(' ')]));
+        if (method === "POST") {
+          console.log("CHECKING POST");
+          // Only support content length (this is lowercase! I  think lower case all) as I am not setting
+          const body = Buffer.concat(dBuf).subarray(headersEnded + 4)
+          if (body.length >= parseInt(headers['Content-Length'] || headers['content-length'])) {
+            //console.log("HERE");
+            processBody(body)
+          }
+        } else {
+          processBody(Buffer.from(""));
+        }
+      });
 
-        // var body;
-        // try {
-        //   body = JSON.parse(bodyContent);
-        // } catch (err) {/* ignore */ }
+      const processBody = async (bodyContent: Buffer) => {
 
-
-        // const request = {
-        //   method,
-        //   path,
-        //   httpVersion,
-        //   headers,
-        // };
+        //dBuf = [];
 
         let req = {
           headers,
@@ -367,12 +329,6 @@ export class Host extends Home {
           // Holds the body
           let data = bodyContent as Buffer
 
-          // console.log(headers);
-          // console.log(data);
-
-          // console.log(data);
-          // console.log(headers);
-
           // gzipped?
           // Sometimes internal transactions fail to be decompressed
           // the header shouldn't be missing but added magic number check as a back
@@ -382,25 +338,14 @@ export class Host extends Home {
             (data[0] == 0x1f && data[1] == 0x8b)
           ) {
             try {
-              // console.log("DECODING");
-              // console.log(data);
               data = await ActiveGZip.ungzip(data);
-              // console.log(data);
-              // console.log("DATA BOVE ME")
 
             } catch (e) {
               // Just incase the magic number still invalid gzip
               // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
               // with the original non-gzip compliant data
-              console.log(e);
             }
           }
-
-          // console.log("Why are we here?");
-          // console.log(data);
-          // console.log(req.headers);
-          // console.log("====");
-
 
           // All posted data should be JSON
           // Convert data for potential encryption
@@ -428,11 +373,8 @@ export class Host extends Home {
           // Simple get, Continue Processing
           this.processEndpoints(req, socket);
         }
+      }
 
-        // console.log(request)
-        // socket.write(`HTTP/1.1 200 OK\n\nhallo ${request.body.name}`)
-        // socket.end((err) => { console.log(err) })
-      });
     });
 
     // Create HTTP server for managing transaction requests
@@ -1516,6 +1458,7 @@ export class Host extends Home {
         // Different endpoints switched on calling path
         switch (req.url) {
           case "/": // Setup for accepting external transactions
+            console.log("HERE");
             response = Endpoints.ExternalInitalise(
               this,
               body,
@@ -1642,23 +1585,27 @@ export class Host extends Home {
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 
-      if (encoding == "gzip") {
-        //headers["Content-Encoding"] = "gzip";
-        //res.write(`Content-Encoding: gzip\r\n`);
+      if (content) {
+        if (encoding == "gzip") {
+          //headers["Content-Encoding"] = "gzip";
+          //res.write(`Content-Encoding: gzip\r\n`);
 
-        //content = await ActiveGZip.gzip(content);
-        // console.log(content);
-      } else {
-        res.write(`Content-Encoding: none\r\n`);
+          //content = await ActiveGZip.gzip(content);
+          // console.log(content);
+        } else {
+          res.write(`Content-Encoding: none\r\n`);
+        }
+
+        res.write(`Content-Length: ${content.length}\r\n`);
+        res.write(`\r\n`);
+
+        res.write(content);
+
+        console.log("I HAVE CALLED END");
       }
-
-      res.write(`Content-Length: ${content.length}\r\n`);
-      res.write(`\r\n`);
-
-      res.write(content);
-
-      // console.log("I HAVE CALLED END");
       res.end();
+    }else{
+      console.log("WE HAVE CLOSED");
     }
   }
 
