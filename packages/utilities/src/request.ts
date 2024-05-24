@@ -54,13 +54,15 @@ setGlobalDispatcher(new Agent({
  */
 export class ActiveRequest {
 
-  public static async send2(
+  public static async send(
     reqUrl: string,
     type: string,
     header?: string[],
     data?: any,
     enableGZip: boolean = false
   ): Promise<IHTTPResponse> {
+
+    //enableGZip = false;
 
     const options: Omit<Dispatcher.RequestOptions, 'path'> = {
       method: type.toUpperCase() as any, // Fix
@@ -130,7 +132,7 @@ export class ActiveRequest {
    * @param {boolean} [enableGZip=false]
    * @returns {Promise<any>}
    */
-  public static send(
+  public static send2(
     reqUrl: string,
     type: string,
     header?: string[],
