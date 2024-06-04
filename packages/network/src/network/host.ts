@@ -357,6 +357,10 @@ export class Host extends Home {
                   headers["Accept-Encoding"] as string
                 );
               });
+            // reuse if not closed
+            dBuf = [];
+            headersEnded = 0;
+            method = path = httpVersion = "";
           }
         } else {
           // Simple get, Continue Processing
@@ -368,10 +372,11 @@ export class Host extends Home {
               remoteAddress: socket.remoteAddress?.toString() || "unknown"
             }
           }, socket);
+          // reuse if not closed
+          dBuf = [];
+          headersEnded = 0;
+          method = path = httpVersion = "";
         }
-        //reuse if not closed
-        dBuf = [];
-        headersEnded = 0;
       });
     });
 

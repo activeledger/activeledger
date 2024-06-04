@@ -202,24 +202,27 @@ export class ActiveHttpd {
               }
             }
             body = JSON.parse(body.toString());
+            httpd.processListen(
+              {
+                url: pathSegments,
+                query: querystring.parse(parsedUrl.query as string),
+                body,
+                ip
+              },
+              {
+                headers,
+                method,
+                url: path,
+                connection: {
+                  remoteAddress: socket.remoteAddress?.toString() || "unknown"
+                }
+              }, socket
+            );
+            // reuse if not closed
+            dBuf = [];
+            headersEnded = 0;
+            method = path = httpVersion = "";
           };
-
-          httpd.processListen(
-            {
-              url: pathSegments,
-              query: querystring.parse(parsedUrl.query as string),
-              body,
-              ip
-            },
-            {
-              headers,
-              method,
-              url: path,
-              connection: {
-                remoteAddress: socket.remoteAddress?.toString() || "unknown"
-              }
-            }, socket
-          );
         } else {
           httpd.processListen(
             {
@@ -237,10 +240,11 @@ export class ActiveHttpd {
               }
             }, socket
           );
+          // reuse if not closed
+          dBuf = [];
+          headersEnded = 0;
+          method = path = httpVersion = "";
         }
-        dBuf = [];
-        headersEnded = 0;
-        method = path = httpVersion = "";
       });
     });
 
