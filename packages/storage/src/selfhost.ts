@@ -25,6 +25,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
+import { Socket } from "net";
 
 (function () {
   // Fauxton Path
@@ -70,9 +71,9 @@ import { LevelMe } from "./levelme";
     a
       ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
       : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
-          /[018]/g,
-          uuidGenV4
-        );
+        /[018]/g,
+        uuidGenV4
+      );
 
   /**
    * Checks for the existant of _id if not ads it and returns
@@ -220,11 +221,11 @@ import { LevelMe } from "./levelme";
       incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
     }
     const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
-    for (let i = txs.rows.length; i--; ) {
+    for (let i = txs.rows.length; i--;) {
       const [timestamp, umid] = txs.rows[i]._id.split(",");
       txs.rows[i] = {
         umid,
-        timestamp: timestamp.replace('umid:',''),
+        timestamp: timestamp.replace('umid:', ''),
       };
     }
     return txs;
@@ -700,15 +701,25 @@ import { LevelMe } from "./levelme";
   // Fauxton
   const fauxton = (
     incoming: IActiveHttpIncoming,
-    req: http.IncomingMessage,
-    res: http.ServerResponse
+    req: {
+      headers: {
+        [index: string]: string;
+      }
+      method: string;
+      url: string;
+      connection: {
+        remoteAddress: string
+      }
+    },
+    res: Socket,
   ) => {
     // We want to force /_utils to /_utils/ as this is the CouchDB behavior
     if (req.url === "/_utils") {
-      res.writeHead(301, {
-        Location: "/_utils/",
-      });
-      return;
+      // res.writeHead(301, {
+      //   Location: "/_utils/",
+      // });
+      // return;
+      req.url = '/_utils/';
     }
 
     // File to send
@@ -720,12 +731,12 @@ import { LevelMe } from "./levelme";
     }
 
     if (fs.existsSync(file)) {
-      res.setHeader(
-        "Content-type",
-        ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-      );
+      // res.setHeader(
+      //   "Content-type",
+      //   ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+      // );
       // Convert To Stream
-      return fs.readFileSync(file);
+      return { mime: `Content-type: ${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"}`, data: fs.readFileSync(file) };
     }
   };
   http.use("_utils", "GET", fauxton);
