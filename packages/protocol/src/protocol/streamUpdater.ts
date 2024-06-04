@@ -409,7 +409,8 @@ export class StreamUpdater {
       emit = true;
 
     try {
-      await Promise.all([
+      Promise.all([
+      //await Promise.all([
         this.db.bulkDocs(this.docs),
         this.dbev.post({
           _id: `umid:${new Date(this.entry.$datetime).getTime()},${
@@ -473,7 +474,9 @@ export class StreamUpdater {
     }
 
     // Broadcast commit & returns
-    this.emitter.emit("broadcast");
+    if(!this.nodeResponse.leader) {
+      this.emitter.emit("broadcast");
+    }
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 
