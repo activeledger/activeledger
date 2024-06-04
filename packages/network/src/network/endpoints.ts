@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect, ActiveGZip } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -127,7 +127,7 @@ export class Endpoints {
 
               // Get nodes to count
               let nodes = Object.keys(tx.$nodes);
-              for (let i = nodes.length; i--; ) {
+              for (let i = nodes.length; i--;) {
                 summary.total++;
                 if (tx.$nodes[nodes[i]].vote) summary.vote++;
                 if (tx.$nodes[nodes[i]].commit) summary.commit++;
@@ -661,7 +661,7 @@ export class Endpoints {
     body: string,
     encryptHeader: boolean
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Is this an encrypted external transaction that need passing.
       if (encryptHeader) {
         // Decrypt & Parse
@@ -682,8 +682,12 @@ export class Endpoints {
       } else {
         // body should now be a json string to be converted, However check
         // that it still isn't in its Buffer form!
-        const bodyObject = this.makeSureNotBuffer(JSON.parse(body)) as any;
-
+        let bodyObject;
+        try {
+          bodyObject = await this.makeSureNotBuffer(JSON.parse(body)) as any;
+        } catch (e) {
+          throw e;
+        }
         // Internal Transaction Messesing (Encrypted & Signing Security)
         if (bodyObject.$neighbour && bodyObject.$packet) {
           ActiveLogger.debug("Converting Signed for Post");
@@ -748,15 +752,19 @@ export class Endpoints {
    * @param { { type: string; data: number[] }} obj
    * @returns {unknown}
    */
-  private static makeSureNotBuffer(obj: unknown): unknown;
-  private static makeSureNotBuffer(obj: { type: string; data: number[] }): unknown {
+  private static async makeSureNotBuffer(obj: unknown): Promise<unknown>;
+  private static async makeSureNotBuffer(obj: { type: string; data: number[] }): Promise<unknown> {
     if (obj.type === "Buffer" && obj.data?.length) {
       // This shouldn't be like that
       // Question is why and where this happens. This solution comes across in research
       // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
-      const tmp = JSON.parse(Buffer.from(obj.data).toString());
-      ActiveLogger.error(tmp, "Buffer Found");
-      return tmp;
+      // Appears to be compressed then turned into a buffer string that gets parsed 
+      // so probably writer converting but It isn't everytime? 
+      //ActiveLogger.error(tmp, "Buffer Found");
+      if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
+        return JSON.parse(((await ActiveGZip.ungzip(Buffer.from(obj.data))).toString()));
+      }
+      return JSON.parse(Buffer.from(obj.data).toString());
     }
     // It should be normal just return!
     return obj;
