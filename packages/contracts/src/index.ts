@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { Stream, Activity, ActiveLogger, ActiveCrypto } from "./stream";
+import { Stream, Activity } from "./stream";
 import Standard from "./standard";
 import Query from "./query";
 import Event from "./event";
@@ -30,6 +30,8 @@ import PostProcess from "./postprocess";
 import PostProcessQuery from "./postprocessquery";
 import PostProcessEvent from "./postprocessevent";
 import PostProcessQueryEvent from "./postprocessqueryevent";
+import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger } from "@activeledger/activelogger";
 export {
   Activity,
   Stream,

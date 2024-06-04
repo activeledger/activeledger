@@ -22,8 +22,8 @@
  */
 
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveLogger as DefaultActiveLogger } from "@activeledger/activelogger";
-import { ActiveCrypto as DefaultActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveCrypto } from "@activeledger/activecrypto";
 import { EventEmitter } from "events";
 
 /**
@@ -204,7 +204,7 @@ export class Stream {
    * @returns {Promise<{}>}
    */
   public attemptDecrypt(
-    data: DefaultActiveCrypto.ISecuredData | {},
+    data: ActiveCrypto.ISecuredData | {},
     safeMode = true
   ): Promise<{}> {
     return new Promise((resolve, reject) => {
@@ -222,7 +222,8 @@ export class Stream {
       }
 
       // Run Decryption (On success return only data)
-      ActiveCrypto.Secured.decrypt(data as DefaultActiveCrypto.ISecuredData)
+      //@ts-ignore this may need to be deprecated
+      ActiveCrypto.Secured.decrypt(data as ActiveCrypto.ISecuredData)
         .then((results: any) => {
           resolve(results.data);
         })
@@ -985,7 +986,7 @@ export class Activity {
       if (this.volatile) {
         try {
           resolve(this.makeVolatileSafe());
-        } catch(e) {
+        } catch (e) {
           // Most likely not found bad json rethrow
           reject("Volatile Data - Invalid");
         }
@@ -1005,7 +1006,7 @@ export class Activity {
             this.volatile = volatile;
             try {
               resolve(this.makeVolatileSafe());
-            } catch(e) {
+            } catch (e) {
               // Most likely not found bad json rethrow
               reject("Volatile Data - Invalid");
             }
@@ -1088,83 +1089,83 @@ export class Activity {
  * @export
  * @class ActiveCrypto
  */
-export class ActiveCrypto {
-  /**
-   * Typed reference to external crypto object
-   *
-   * @private
-   * @static
-   */
-  private static reference = (global as unknown as any).crypto;
+// export class ActiveCrypto {
+//   /**
+//    * Typed reference to external crypto object
+//    *
+//    * @private
+//    * @static
+//    */
+//   //private static reference = (global as unknown as any).crypto;
 
-  public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
-  public static KeyPair: DefaultActiveCrypto.KeyPair =
-    ActiveCrypto.reference.KeyPair;
-  public static Secured: DefaultActiveCrypto.Secured =
-    ActiveCrypto.reference.Secured;
-}
+//   public static Hash: DefaultActiveCrypto.Hash = DefaultActiveCrypto.Hash;
+//   //public static Hash: DefaultActiveCrypto.Hash = ActiveCrypto.reference.Hash;
 
-/**
- * Rexport ActiveLogger via wrapper to change console log output colour
- *
- * @export
- * @class ActiveLogger
- */
-export class ActiveLogger {
-  /**
-   * Typed reference to external logger object
-   *
-   * @private
-   * @static
-   */
-  private static reference = (global as unknown as any)
-    .logger as DefaultActiveLogger;
+//   //@ts-ignore
+//   public static KeyPair: DefaultActiveCrypto.KeyPair = DefaultActiveCrypto.KeyPair;
+//   //@ts-ignore
+//   public static Secured: DefaultActiveCrypto.Secured = DefaultActiveCrypto.Secured;
+// }
 
-  public static trace(msg: string): void;
-  public static trace(obj: object, msg?: string): void;
-  public static trace(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.trace(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
+// /**
+//  * Rexport ActiveLogger via wrapper to change console log output colour
+//  *
+//  * @export
+//  * @class ActiveLogger
+//  */
+// export class ActiveLogger {
+//   /**
+//    * Typed reference to external logger object
+//    *
+//    * @private
+//    * @static
+//    */
 
-  public static debug(msg: string): void;
-  public static debug(obj: object, msg?: string): void;
-  public static debug(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.debug(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
+//   public static trace(msg: string): void;
+//   public static trace(obj: object, msg?: string): void;
+//   public static trace(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.trace(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
 
-  public static info(msg: string): void;
-  public static info(obj: object, msg?: string): void;
-  public static info(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.info(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
+//   public static debug(msg: string): void;
+//   public static debug(obj: object, msg?: string): void;
+//   public static debug(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.debug(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
 
-  public static warn(msg: string): void;
-  public static warn(obj: object, msg?: string): void;
-  public static warn(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.warn(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
+//   public static info(msg: string): void;
+//   public static info(obj: object, msg?: string): void;
+//   public static info(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.info(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
 
-  public static error(msg: string): void;
-  public static error(obj: object, msg?: string): void;
-  public static error(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.error(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
+//   public static warn(msg: string): void;
+//   public static warn(obj: object, msg?: string): void;
+//   public static warn(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.warn(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
 
-  public static fatal(msg: string): void;
-  public static fatal(obj: object, msg?: string): void;
-  public static fatal(p1: any, p2?: any): void {
-    ActiveLogger.reference.setVMRuntime(true);
-    ActiveLogger.reference.fatal(p1, p2);
-    ActiveLogger.reference.setVMRuntime(false);
-  }
-}
+//   public static error(msg: string): void;
+//   public static error(obj: object, msg?: string): void;
+//   public static error(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.error(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
+
+//   public static fatal(msg: string): void;
+//   public static fatal(obj: object, msg?: string): void;
+//   public static fatal(p1: any, p2?: any): void {
+//     DefaultActiveLogger.setVMRuntime(true);
+//     DefaultActiveLogger.fatal(p1, p2);
+//     DefaultActiveLogger.setVMRuntime(false);
+//   }
+// }
