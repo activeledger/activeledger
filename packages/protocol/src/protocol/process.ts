@@ -537,33 +537,33 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          let contractData: ActiveDefinitions.IContractData | undefined =
-            undefined;
+          //let contractData: ActiveDefinitions.IContractData | undefined =
+          //  undefined;
 
-          // Default Contracts don't use context and are not available from the database
-          if (!this.isDefault) {
-            try {
-              const contractDataStreams = await this.permissionChecker.process(
-                [`${this.contractId}:data`],
-                false
-              );
+          // // Default Contracts don't use context and are not available from the database
+          // if (!this.isDefault) {
+          //   try {
+          //     const contractDataStreams = await this.permissionChecker.process(
+          //       [`${this.contractId}:data`],
+          //       false
+          //     );
 
-              if (contractDataStreams.length > 0) {
-                contractData = contractDataStreams[0]
-                  .state as unknown as ActiveDefinitions.IContractData;
-              }
-            } catch (e) {
-              // This catch block is used for when a contract doesn't have a data file yet
-              // Need to make sure we still restore correctly if it is just a single node missing
-              // the data file for that contract.
-              if (e.code === 1200) {
-                // 1200 means the _rev map didn't match so position error (defaults as output)
-                throw e;
-              }
-            }
-          }
+          //     if (contractDataStreams.length > 0) {
+          //       contractData = contractDataStreams[0]
+          //         .state as unknown as ActiveDefinitions.IContractData;
+          //     }
+          //   } catch (e) {
+          //     // This catch block is used for when a contract doesn't have a data file yet
+          //     // Need to make sure we still restore correctly if it is just a single node missing
+          //     // the data file for that contract.
+          //     if (e.code === 1200) {
+          //       // 1200 means the _rev map didn't match so position error (defaults as output)
+          //       throw e;
+          //     }
+          //   }
+          // }
 
-          this.process(inputStreams, outputStreams, contractData);
+          this.process(inputStreams, outputStreams);
         } catch (error) {
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
@@ -630,7 +630,7 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process([], outputStreams, undefined);
+          this.process([], outputStreams);
         } catch (error) {
           // Forward Error On
           this.postVote(virtualMachine, {
@@ -943,12 +943,12 @@ export class Process extends EventEmitter {
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[],
-    contractData: ActiveDefinitions.IContractData | undefined
+    //contractData: ActiveDefinitions.IContractData | undefined
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[] = [],
-    contractData: ActiveDefinitions.IContractData | undefined = undefined
+   // contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
       // Transaction should be fully described now (revs etc)
@@ -992,7 +992,7 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: Math.floor(Math.random() * 100),
-        contractData,
+        //contractData,
       };
 
       // Check if the security data has been cached
@@ -1091,7 +1091,9 @@ export class Process extends EventEmitter {
         this.entry.$nodes[this.reference].error = error.reason;
       }
       // Let all other nodes know about this transaction and our opinion
-      this.emit("broadcast");
+      if (!this.nodeResponse.leader) {
+        this.emit("broadcast");
+      }
 
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {

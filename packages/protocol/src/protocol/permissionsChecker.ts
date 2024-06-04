@@ -99,8 +99,8 @@ export class PermissionsChecker {
       const filteredPrefix = this.shared.filterPrefix(this.data[i], true);
 
       // Are we looking at contract data?
-      const suffix = this.data[i].split(":")[1];
-      contractDataIncluded = suffix === "data";
+      //const suffix = this.data[i].split(":")[1];
+      //contractDataIncluded = suffix === "data";
 
       // Maybe use set instead of checking?
       if(keys.indexOf(filteredPrefix) === -1) {
