@@ -25,6 +25,10 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import { ActiveGZip } from "./gzip";
+import {
+  Dispatcher, request, setGlobalDispatcher,
+  Agent
+} from 'undici'
 
 /**
  * Returned HTTP Resonse data
@@ -32,9 +36,15 @@ import { ActiveGZip } from "./gzip";
  * @interface IHTTPResponse
  */
 interface IHTTPResponse {
-  raw: string;
-  data?: unknown;
+  //raw: string;
+  data: unknown;
 }
+
+setGlobalDispatcher(new Agent({
+  connect: {
+    rejectUnauthorized: false
+  }
+}))
 
 /**
  * Simple HTTP Request Object
@@ -43,6 +53,81 @@ interface IHTTPResponse {
  * @class ActiveRequest
  */
 export class ActiveRequest {
+
+  public static async send(
+    reqUrl: string,
+    type: string,
+    header?: string[],
+    data?: any,
+    enableGZip: boolean = false
+  ): Promise<IHTTPResponse> {
+
+    //enableGZip = false;
+
+    const options: Omit<Dispatcher.RequestOptions, 'path'> = {
+      method: type.toUpperCase() as any, // Fix
+      headers: {},
+    }
+
+    // Compressable?
+    if (enableGZip) {
+      (options.headers as any)["Accept-Encoding"] = "gzip";
+    }
+
+    // Add Headers
+    if (header) {
+      let i = header.length;
+      while (i--) {
+        // Split Headers
+        const [name, value] = header[i].split(":");
+        // Asign to Header
+        (options.headers as any)[name] = value;
+      }
+    }
+
+    // Manage Data
+    if (data && (options.method == "POST" || options.method == "PUT")) {
+      // convert data to string if object
+      if (typeof data === "object") {
+        data = Buffer.from(JSON.stringify(data), "utf8");
+        (options.headers as any)["content-type"] = "application/json";
+      }
+
+      // Compressable?
+      if (enableGZip) {
+        // Compress
+        data = await ActiveGZip.gzip(data);
+        (options.headers as any)["content-encoding"] = "gzip";
+        // options.headers.push("Content-Encoding: gzip")
+        // options.headers.push("Content-Encoding-2: gzip")
+      }
+
+      // Additional Post headers
+      //(options.headers as any)["Content-Length"] = data.length;
+      //(options.headers as any)["Content-Length-x2"] = data.length;
+
+      options.body = data
+    }
+
+    const {
+      headers,
+      body,
+    } = await request(reqUrl, options)
+
+    try {
+      // Back Compat gzip support
+      if (headers['content-encoding'] === 'gzip') {
+      const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
+      return { data: JSON.parse(data.toString()) }
+      } else {
+        return { data: await body.json() }
+      }
+    } catch (e) {
+      return { data: null }
+    }
+  }
+
+
   /**
    * Send HTTP(S) GET/POST JSON Request
    *
@@ -54,13 +139,13 @@ export class ActiveRequest {
    * @param {boolean} [enableGZip=false]
    * @returns {Promise<any>}
    */
-  public static send(
+  public static send2(
     reqUrl: string,
     type: string,
     header?: string[],
     data?: any,
     enableGZip: boolean = false
-  ): Promise<IHTTPResponse> {
+  ): Promise<any> {
     // return new pending promise
     return new Promise(async (resolve, reject) => {
       // Parse URL
