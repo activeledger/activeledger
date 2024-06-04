@@ -58,6 +58,8 @@ export class Provider {
 
   public static database: ActiveDSConnect;
 
+  public static eventDatabase: ActiveDSConnect;
+
   public static archiveDatabase: ActiveDSConnect;
 
   public static errorArchive: ActiveDSConnect;
@@ -199,6 +201,10 @@ export class Provider {
   private static setupDB(dbConfig: any) {
     this.setupErrorDB(dbConfig);
     //this.setupArchiveDB(dbConfig);
+
+    this.eventDatabase = new ActiveDSConnect(
+      `${dbConfig.url}/${dbConfig.error}events`
+    );
   }
 
   /**
