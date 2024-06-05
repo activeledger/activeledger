@@ -147,8 +147,8 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         );
 
         // Loop and cache
-        for (let i = (result.data as any).length; i--;) {
-          const data = (result.data as any)[i];
+        for (let i = (result.data as any).rows.length; i--;) {
+          const data = (result.data as any).rows[i].doc;
 
           this.secondaryCache[data._id] = {
             data: data,

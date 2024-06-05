@@ -543,7 +543,6 @@ export class LevelMe {
     for (let i = keys.length; i--;) {
       if (!this.memory[keys[i]]) {
         tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-        console.log(`FETCHING MANY : ${keys[i]}`);
       } else {
         cached.push({ doc: this.memory[keys[i]].data });
         this.memory[keys[i]].create = now;
