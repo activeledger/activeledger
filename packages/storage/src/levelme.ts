@@ -92,6 +92,8 @@ interface schema extends document {
   seq: number;
 }
 
+const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
+
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
  *
@@ -183,6 +185,26 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
+    this.timerUnCache();
+  }
+
+  /**
+   * Clears Cache
+   *
+   * @private
+   */
+  private timerUnCache() {
+    setTimeout(() => {
+      const memory = Object.keys(this.memory);
+      const nowMinus5 = new Date(Date.now() - REMOVE_CACHE_TIMER * 2);
+      for (let i = memory.length; i--;) {
+        if (this.memory[memory[i]].data < nowMinus5) {
+          // 5 minutes has passed without accessing it so lets clear
+          delete this.memory[memory[i]];
+        }
+      }
+      this.timerUnCache();
+    }, REMOVE_CACHE_TIMER);
   }
 
   /**
@@ -395,16 +417,17 @@ export class LevelMe {
         await this.open();
 
         // Cache rows to be returned
-        const rows: any[] = [];
+        let rows: any[] = [];
 
         // For checking on end
         const promises: Promise<document>[] = [];
 
         if (options.keys) {
-          for (let i = options.keys.length; i--; ) {
-            rows.push({ doc: await this.get(options.keys[i]) });
-          }
+          // for (let i = options.keys.length; i--;) {
+          //   rows.push({ doc: await this.get(options.keys[i]) });
+          // }
 
+          rows = await this.getMany(options.keys);
           // Don't think much perfomance gain by a single await vs multi
           //await Promise.all(promises);
           return resolve({
@@ -456,7 +479,7 @@ export class LevelMe {
             .on("error", (err: unknown) => {
               reject(err);
             })
-            .on("close", () => {})
+            .on("close", () => { })
             .on("end", async () => {
               await Promise.all(promises);
               resolve({
@@ -472,6 +495,14 @@ export class LevelMe {
     });
   }
 
+
+  private memory: {
+    [index: string]: {
+      data: any;
+      create: Date
+    }
+  } = {}
+
   /**
    * Get a specific data document
    *
@@ -479,15 +510,62 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    await this.open();
-    // Allow errors to bubble up?
-    let doc = await this.levelUp.get(LevelMe.DOC_PREFIX + key);
-    if (raw) {
-      return JSON.parse(doc);
-    } else {
-      doc = JSON.parse(doc) as schema;
-      return await this.seqDocFromRoot(doc);
+    if (!this.memory[key]) {
+      await this.open();
+      // Allow errors to bubble up?
+      let doc = await this.levelUp.get(LevelMe.DOC_PREFIX + key);
+      if (raw) {
+        this.memory[key] = {
+          data: JSON.parse(doc),
+          create: new Date()
+        }
+      } else {
+        doc = JSON.parse(doc) as schema;
+        this.memory[key] = {
+          data: await this.seqDocFromRoot(doc),
+          create: new Date()
+        }
+      }
     }
+    this.memory[key].create = new Date();
+    return this.memory[key].data;
+  }
+
+  public async getMany(keys: string[]): Promise<any[]> {
+    // for (let i = keys.length; i--;) {
+    //   keys[i] = LevelMe.DOC_PREFIX + keys[i];
+    // }
+
+    // return await this.levelUp.getMany(keys);
+    let tmpKeys = [];
+    let cached = [];
+    const now = new Date();
+    for (let i = keys.length; i--;) {
+      if (!this.memory[keys[i]]) {
+        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+        console.log(`FETCHING MANY : ${keys[i]}`);
+      } else {
+        cached.push({ doc: this.memory[keys[i]].data });
+        this.memory[keys[i]].create = now;
+      }
+    }
+
+    const result = await this.levelUp.getMany(tmpKeys);
+
+    // Loop and cache
+    for (let i = result.length; i--;) {
+      const data = JSON.parse(result[i]);
+
+      this.memory[data._id] = {
+        data: data,
+        create: new Date()
+      }
+      cached.push({ doc: data });
+    }
+    return cached;
+    // Faster Concat? maybe push(...)?
+    // return [...cached, ...await this.levelUp.getMany(tmpKeys)];
+
   }
 
   /**
@@ -540,7 +618,7 @@ export class LevelMe {
     try {
       await writer.chain.write();
       // Emit Changed Doc
-      this.changeEmitter.emit("change", writer.changes);
+      //this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount--;
@@ -601,7 +679,7 @@ export class LevelMe {
     await this.open();
     const batch = await this.levelUp.batch();
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       batch.del(LevelMe.SEQ_PREFIX + keys[i]);
     }
 
@@ -685,7 +763,7 @@ export class LevelMe {
         .on("error", (err: unknown) => {
           reject(err);
         })
-        .on("close", () => {})
+        .on("close", () => { })
         .on("end", async () => {
           await Promise.all(promises);
           resolve({
@@ -720,7 +798,7 @@ export class LevelMe {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
     const changes = [];
-    for (let i = docs.length; i--; ) {
+    for (let i = docs.length; i--;) {
       // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
       //if (docs[i]._deleted) {
       //  await this.del(docs[i]._id);
@@ -734,7 +812,7 @@ export class LevelMe {
     try {
       await batch.write();
       // Emit Changed Docs
-      this.changeEmitter.emit("change", changes);
+      //this.changeEmitter.emit("change", changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount = this.docCount - docs.length;
@@ -819,7 +897,7 @@ export class LevelMe {
         doc._rev = newRev;
         //currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this
         //  .docUpdateSeq;
-      }else{
+      } else {
         throw { msg: "Revision Mismatch Type 2", throw: 1 };
       }
     } catch (e) {
@@ -883,6 +961,13 @@ export class LevelMe {
     // if (newDoc) {
     //   chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
     // }
+
+    // Should be able to assume,  maybe not what if restarted, So set object!
+    // Maybe only store data and :stream? Or just store everything and delete when older than X?
+    this.memory[doc._id] = {
+      data: doc,
+      create: new Date()
+    };
 
     return {
       chain,
