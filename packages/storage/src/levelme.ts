@@ -550,17 +550,20 @@ export class LevelMe {
       }
     }
 
-    const result = await this.levelUp.getMany(tmpKeys);
+    // Get uncached keys
+    if (tmpKeys.length) {
+      const result = await this.levelUp.getMany(tmpKeys);
 
-    // Loop and cache
-    for (let i = result.length; i--;) {
-      const data = JSON.parse(result[i]);
+      // Loop and cache
+      for (let i = result.length; i--;) {
+        const data = JSON.parse(result[i]);
 
-      this.memory[data._id] = {
-        data: data,
-        create: new Date()
+        this.memory[data._id] = {
+          data: data,
+          create: new Date()
+        }
+        cached.push({ doc: data });
       }
-      cached.push({ doc: data });
     }
     return cached;
     // Faster Concat? maybe push(...)?

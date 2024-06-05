@@ -26,6 +26,8 @@ import { ActiveRequest } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
 import { ActiveOptions } from "./options";
 
+const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
+
 /**
  * Sends HTTP requests to the data store
  *
@@ -40,6 +42,26 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   constructor(private location: string) {
     // Search to make sure the database exists
+    this.timerUnCache();
+  }
+
+  /**
+ * Clears Cache
+ *
+ * @private
+ */
+  private timerUnCache() {
+    setTimeout(() => {
+      const memory = Object.keys(this.secondaryCache);
+      const nowMinus5 = new Date(Date.now() - REMOVE_CACHE_TIMER * 2);
+      for (let i = memory.length; i--;) {
+        if (this.secondaryCache[memory[i]].data < nowMinus5) {
+          // 5 minutes has passed without accessing it so lets clear
+          delete this.secondaryCache[memory[i]];
+        }
+      }
+      this.timerUnCache();
+    }, REMOVE_CACHE_TIMER);
   }
 
   /**
@@ -82,6 +104,13 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     });
   }
 
+  private secondaryCache: {
+    [index: string]: {
+      data: any;
+      create: Date
+    }
+  } = {}
+
   /**
    * Returns all the documents in the database
    *
@@ -89,17 +118,62 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @returns
    */
 
-  public allDocs(options?: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ActiveRequest.send(
+  public async allDocs(options?: any): Promise<any> {
+    //return new Promise(async (resolve, reject) => {
+
+
+
+    if (options.keys) {
+      let tmpKeys = [];
+      let cached = [];
+      const now = new Date();
+
+      for (let i = options.keys.length; i--;) {
+        if (!this.secondaryCache[options.keys[i]]) {
+          tmpKeys.push(options.keys[i]);
+        } else {
+          cached.push({ doc: this.secondaryCache[options.keys[i]] });
+          this.secondaryCache[options.keys[i]].create = now;
+        }
+      }
+
+      // Get uncached
+      if (tmpKeys) {
+        const result = await ActiveRequest.send(
+          `${this.location}/_all_docs`,
+          options ? "POST" : "GET",
+          undefined,
+          { ...options, keys: tmpKeys }
+        );
+
+        // Loop and cache
+        for (let i = (result.data as any).length; i--;) {
+          const data = (result.data as any)[i];
+
+          this.secondaryCache[data._id] = {
+            data: data,
+            create: new Date()
+          }
+          cached.push({ doc: data });
+        }
+      }
+
+      // TODO: Track offset?
+      return { total_rows: cached.length, offset: 0, rows: cached };
+    } else {
+      const x = await ActiveRequest.send(
         `${this.location}/_all_docs`,
         options ? "POST" : "GET",
         undefined,
         options
-      )
-        .then((response: any) => resolve(response.data))
-        .catch(reject);
-    });
+      );
+      return x.data;
+    }
+
+
+    //  .then((response: any) => resolve(response.data))
+    //  .catch(reject);
+    //});
   }
 
   /**
@@ -109,12 +183,15 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {*} [options={}]
    * @returns
    */
-  public get(id: string, options: any = {}): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
-        .then((response: any) => resolve(response.data))
-        .catch(reject);
-    });
+  public async get(id: string, options: any = {}): Promise<any> {
+    if (!this.secondaryCache[id]) {
+      const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+      this.secondaryCache[id] = {
+        data: response.data,
+        create: new Date()
+      } // TODO Error Handling now?
+    }
+    return this.secondaryCache[id].data;
   }
 
   /**
@@ -177,7 +254,20 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         docs,
         options
       })
-        .then((response: any) => resolve(response.data))
+        .then((response: any) => {
+
+          resolve(response.data);
+
+          // Update cache
+          const create = new Date();
+          for (let i = docs.length; i--;) {
+            this.secondaryCache[docs[i]._id] = {
+              data: docs[i],
+              create
+            }
+          }
+
+        })
         .catch(reject);
     });
   }
@@ -191,7 +281,14 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   public post(doc: {}): Promise<any> {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(this.location, "POST", undefined, doc)
-        .then((response: any) => resolve(response.data))
+        .then((response: any) => {
+          resolve(response.data)
+          this.secondaryCache[(doc as any)._id] = {
+            data: doc,
+            create: new Date()
+          }
+
+        })
         .catch(reject);
     });
   }
@@ -205,7 +302,14 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   public put(doc: { _id: string; _rev?: string }): Promise<any> {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
-        .then((response: any) => resolve(response.data))
+        .then((response: any) => {
+          resolve(response.data)
+          this.secondaryCache[(doc as any)._id] = {
+            data: doc,
+            create: new Date()
+          }
+
+        })
         .catch(reject);
     });
   }
@@ -318,8 +422,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
  */
 export class ActiveDSChanges
   extends EventEmitter
-  implements ActiveDefinitions.IActiveDSChanges
-{
+  implements ActiveDefinitions.IActiveDSChanges {
   /**
    * Flag for cancelling the next listeing round
    *
@@ -334,7 +437,7 @@ export class ActiveDSChanges
    * @param {boolean} [bulk=false]
    */
   constructor(
-    private opts: { live?: boolean; [opt: string]: any },
+    private opts: { live?: boolean;[opt: string]: any },
     private location: string,
     private bulk: boolean = false
   ) {
