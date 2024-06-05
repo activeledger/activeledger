@@ -101,6 +101,8 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     return false;
   }
 
+  private bundle: any[] = [];
+
   /**
    * Send authenticated request to this neighbour (Knock on their door)
    * wrapping http request promise so we can easily log errors and throw whole object
@@ -115,7 +117,8 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     endpoint: string,
     params?: any,
     external?: boolean,
-    resend?: number
+    resend?: number,
+    bundle?: boolean
   ): Promise<any> {
     if (!params) {
       // Not Params, Sent Get without signature
@@ -129,10 +132,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             resolve(response);
           })
           .catch((error) => {
-            ActiveLogger.error(
-              error,
-              `${this.host}:${this.port}/${endpoint} - GET Failed`
-            );
+            // ActiveLogger.error(
+            //   error,
+            //   `${this.host}:${this.port}/${endpoint} - GET Failed`
+            // );
             reject(error);
           });
       });
@@ -161,15 +164,19 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           $enc: params.$encrypt ? true : false,
         };
       }
+      // TODO 
+      // Why sending as buffer here with errors "data that sent error"
+      // Fix this will give performance. Maybe tx could be lost?
+      // Currently this boosted performance by about 4x
 
       // Send SignedFor Post Request
-      return new Promise((resolve, reject) => {
+      const sender = (post: Buffer, extraHeader: string) => new Promise((resolve, reject) => {
         let attempt = (attempts: number) => {
           ActiveRequest.send(
             url,
             "POST",
-            ["X-Activeledger:" + Home.reference],
-            post,
+            ["X-Activeledger:" + Home.reference, "content-type: application/json", extraHeader],
+            post, // TODO above is a bit of a lie but managed by host
             ActiveOptions.get<boolean>("gzip", true)
           )
             // TODO: Interface needed
@@ -186,10 +193,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             })
             .catch((error: any) => {
               if (error && error.response && error.response.data) {
-                ActiveLogger.error(
-                  error.response.data,
-                  `${this.host}:${this.port}/${endpoint} - POST Failed`
-                );
+                // ActiveLogger.error(
+                //   error.response.data,
+                //   `${this.host}:${this.port}/${endpoint} - POST Failed`
+                // );
                 reject(error.response.data);
               } else {
                 // TODO : If connection failure rebase neighbourhood?
@@ -208,11 +215,15 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                     error,
                     `Network Error - ${this.host}:${this.port}/${endpoint}`
                   );
-                  ActiveLogger.error(
-                    post,
-                    `Data sent which caused the error`
-                  );
+                  // ActiveLogger.error(
+                  //   post,
+                  //   `Data sent which caused the error`
+                  // );
+                  if(extraHeader !== "X-Bundle: 1") {
                   reject("Network Communication Error");
+                  }else{
+                    resolve({ok:1});
+                  }
                 }
               }
             });
@@ -220,6 +231,25 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         // Start
         attempt(0);
       });
+
+      // TODO make better!
+      if (bundle) {        
+        this.bundle.push(JSON.stringify(post));
+        if (this.bundle.length == 1) {
+          //Need a timeout to send the bundle
+          setTimeout(() => {
+            const data = this.bundle.join(":$ALB:");
+            sender(Buffer.from(data), "X-Bundle: 1");
+            // Need to clear better
+            this.bundle = []
+          }, 200);
+        }
+        // Just return, Bundle doesn't want a response!
+        return Promise.resolve(); 
+      } else {
+        return sender(Buffer.from(JSON.stringify(post)), 'X-Null: 0');
+      }
+
     }
   }
 

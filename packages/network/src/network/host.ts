@@ -277,17 +277,17 @@ export class Host extends Home {
       }
     }
 
-    this.api = createServer( socket => {
+    this.api = createServer(socket => {
 
       let dBuf: Buffer[] = [];
       let headersEnded: number;
       let method: string, path: string, headers: any, httpVersion: string;
 
-      socket.on('error', (e)=>{
+      socket.on('error', (e) => {
         socket.destroy();
       })
 
-      socket.on('close', ()=>{
+      socket.on('close', () => {
         socket.end();
       })
 
@@ -328,40 +328,75 @@ export class Host extends Home {
               }
             }
 
-            // All posted data should be JSON
-            // Convert data for potential encryption
-            Endpoints.postConvertor(
-              this,
-              body.toString(),
-              (headers["x-activeledger-encrypt"] as unknown as boolean) ||
-              false
-            )
-              .then((body) => {
-                // Post Converted, Continue processing
-                this.processEndpoints({
-                  headers,
-                  method,
-                  url: path,
-                  connection: {
-                    remoteAddress: socket.remoteAddress?.toString() || "unknown"
-                  }
-                }, socket, body.body, body.from);
-              })
-              .catch((error) => {
-                // Failed to convery respond;
-                ActiveLogger.error(error, "Server POST Parser 500");
-                this.writeResponse(
-                  socket,
-                  error.statusCode || 500,
-                  JSON.stringify(error.content || {}),
-                  headers["Accept-Encoding"] as string
-                );
-              }).finally(() =>{
-                // reuse if not closed
-                dBuf = [];
-                headersEnded = 0;
-                method = path = httpVersion = "";
-              });
+            // TODO
+            // Fix this makesurenot buffer mess I think it is the sending client
+
+            //const bodyString = body.toString();
+            const bodyString = await this.makeSureNotBuffer(body) as any;
+            // console.log(bodyString.substr(0,20));
+
+            // if(bodyString.substr(0,20).indexOf("Buffer") !== -1) {
+            //   console.log("FOUND IT");
+            //   process.exit();
+            // }
+            // could make this nicer
+            let bundles: any[];// = [];
+
+            // TODO we could have the double buffer problem here?
+            // unless this has been solved
+            if (headers["X-Bundle"]) {
+              // console.log("BUNDLED");
+              bundles = bodyString.split(":$ALB:");
+              //console.log(bundles);
+
+              // Now we could also just close the socket! We don't need to reply
+
+              socket.write(`HTTP/1.1 200 OK\r\n`);
+              socket.write(`Content-Type: application/json\r\n`);
+              socket.write(`Content-Length: 2\r\n\r\n`);
+              socket.end("{}");
+
+            } else {
+              bundles = [bodyString];
+            }
+
+            for (let i = bundles.length; i--;) {
+              // All posted data should be JSON
+              // Convert data for potential encryption
+              Endpoints.postConvertor(
+                this,
+                bundles[i],
+                (headers["x-activeledger-encrypt"] as unknown as boolean) ||
+                false
+              )
+                .then((body) => {
+                  // Post Converted, Continue processing
+                  this.processEndpoints({
+                    headers,
+                    method,
+                    url: path,
+                    connection: {
+                      remoteAddress: socket.remoteAddress?.toString() || "unknown"
+                    }
+                  }, socket, body.body, body.from);
+                })
+                .catch((error) => {
+                  // Failed to convery respond;
+                  ActiveLogger.error(error, "Server POST Parser 500");
+                  this.writeResponse(
+                    socket,
+                    error.statusCode || 500,
+                    JSON.stringify(error.content || {}),
+                    headers["Accept-Encoding"] as string
+                  );
+                }).finally(() => {
+                  // reuse if not closed
+                  dBuf = [];
+                  headersEnded = 0;
+                  method = path = httpVersion = "";
+                });
+            }
+
           }
         } else {
           // Simple get, Continue Processing
@@ -487,6 +522,53 @@ export class Host extends Home {
 
     // Start queue failsafe
     this.timerQueue();
+  }
+
+  private async makeSureNotBuffer(obj: unknown): Promise<unknown>;
+  private async makeSureNotBuffer(obj: { type: string; data: number[] }): Promise<unknown> {
+    if (obj.type === "Buffer" && obj.data?.length) {
+      //console.log(obj);
+      // This shouldn't be like that
+      // Question is why and where this happens. This solution comes across in research
+      // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
+      // Appears to be compressed then turned into a buffer string that gets parsed 
+      // so probably writer converting but It isn't everytime? 
+      //ActiveLogger.error(tmp, "Buffer Found");
+      if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
+        return ((await ActiveGZip.ungzip(Buffer.from(obj.data))).toString());
+      }
+      // console.log("NOT GZIP");
+      return Buffer.from(obj.data).toString();
+    }
+
+    if (Buffer.isBuffer(obj)) {
+      // console.log("PLAIN BUFFER maybe?");
+
+
+
+      if (obj[0] == 0x1f && obj[1] == 0x8b) {
+        return ((await ActiveGZip.ungzip(obj)).toString());
+      }
+      // console.log("NOT GZIP");
+      const tmp = obj.toString();
+
+      if (tmp.startsWith('{"type":"Buffer"')) {
+        // console.log("NOT PLAIN!!!!");
+        const asBufferObj = JSON.parse(tmp);
+
+        if (asBufferObj.data[0] == 0x1f && asBufferObj.data[1] == 0x8b) {
+          return ((await ActiveGZip.ungzip(Buffer.from(asBufferObj.data))).toString());
+        }
+        // console.log("NOT GZIP");
+        return Buffer.from(asBufferObj.data).toString();
+
+      }
+      // console.log("WAS PLAIN");
+      return obj.toString();
+    }
+
+    // It should be normal just return!
+    return obj;
   }
 
   /**
@@ -843,7 +925,7 @@ export class Host extends Home {
               this.processPending[umid].entry.$nodes[this.reference],
           },
         })
-        : Object.assign( this.processPending[umid].entry, {
+        : Object.assign(this.processPending[umid].entry, {
           $nodes: {},
         });
 
@@ -862,7 +944,7 @@ export class Host extends Home {
             (node.reference !== this.reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/)) {
             //console.log(`sending ${i} - ${node.reference} ${this.reference}`);
             // Need to detect if we have already sent and got response for nodes for performance
-            promises.push(node.knock("init", data));
+            promises.push(node.knock("init", data, false, 0, true));
           }
         }
       }
