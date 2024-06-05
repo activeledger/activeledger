@@ -156,8 +156,7 @@ export class ActiveHttpd {
             .map(([name, ...rest]) => [name, rest.join(' ')]));
         }
 
-        //if (log) ActiveLogger.info(`${method} - ${path}`);
-        ActiveLogger.info(`${method} - ${path}`);
+        if (log) ActiveLogger.info(`${method} - ${path}`);
 
         const parsedUrl = url.parse(path as string || "/");
         const pathSegments = (parsedUrl.pathname as string)

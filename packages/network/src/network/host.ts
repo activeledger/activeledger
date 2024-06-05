@@ -356,22 +356,28 @@ export class Host extends Home {
                   JSON.stringify(error.content || {}),
                   headers["Accept-Encoding"] as string
                 );
+              }).finally(() =>{
+                // reuse if not closed
+                dBuf = [];
+                headersEnded = 0;
+                method = path = httpVersion = "";
               });
-            // reuse if not closed
-            dBuf = [];
-            headersEnded = 0;
-            method = path = httpVersion = "";
           }
         } else {
           // Simple get, Continue Processing
-          this.processEndpoints({
+          // should be safe to await here to capture undefined and promises to clear below
+          // TODO actually make this flow better as when undefined its an internal then
+          // process which *could* still be running. Although even if it is resetting below
+          // should still be safe.
+          await this.processEndpoints({
             headers,
             method,
             url: path,
             connection: {
               remoteAddress: socket.remoteAddress?.toString() || "unknown"
             }
-          }, socket);
+          }, socket)
+
           // reuse if not closed
           dBuf = [];
           headersEnded = 0;
