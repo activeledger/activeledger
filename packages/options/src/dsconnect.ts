@@ -42,7 +42,8 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   constructor(private location: string) {
     // Search to make sure the database exists
-    this.timerUnCache();
+    // DISABLED
+    //this.timerUnCache();
   }
 
   /**
@@ -104,6 +105,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     });
   }
 
+// TODO _rev doesn't go up correct
+// for now disabling this cache
+
   private secondaryCache: {
     [index: string]: {
       data: any;
@@ -132,7 +136,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         if (!this.secondaryCache[options.keys[i]]) {
           tmpKeys.push(options.keys[i]);
         } else {
-          cached.push({ doc: this.secondaryCache[options.keys[i]] });
+          cached.push({ doc: this.secondaryCache[options.keys[i]].data });
           this.secondaryCache[options.keys[i]].create = now;
         }
       }
@@ -150,10 +154,11 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         for (let i = (result.data as any).rows.length; i--;) {
           const data = (result.data as any).rows[i].doc;
 
-          this.secondaryCache[data._id] = {
-            data: data,
-            create: new Date()
-          }
+          // DISABLED
+          // this.secondaryCache[data._id] = {
+          //   data: data,
+          //   create: new Date()
+          // }
           cached.push({ doc: data });
         }
       }
@@ -185,11 +190,13 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public async get(id: string, options: any = {}): Promise<any> {
     if (!this.secondaryCache[id]) {
-      const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
-      this.secondaryCache[id] = {
-        data: response.data,
-        create: new Date()
-      } // TODO Error Handling now?
+      const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
+      return response.data
+      // DISABLED
+      // this.secondaryCache[id] = {
+      //   data: response.data,
+      //   create: new Date()
+      // } // TODO Error Handling now?
     }
     return this.secondaryCache[id].data;
   }
@@ -261,10 +268,11 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           // Update cache
           const create = new Date();
           for (let i = docs.length; i--;) {
-            this.secondaryCache[docs[i]._id] = {
-              data: docs[i],
-              create
-            }
+            // DISABLED
+            // this.secondaryCache[docs[i]._id] = {
+            //   data: docs[i],
+            //   create
+            // }
           }
 
         })
@@ -283,10 +291,11 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       ActiveRequest.send(this.location, "POST", undefined, doc)
         .then((response: any) => {
           resolve(response.data)
-          this.secondaryCache[(doc as any)._id] = {
-            data: doc,
-            create: new Date()
-          }
+          // DISABLED
+          // this.secondaryCache[(doc as any)._id] = {
+          //   data: doc,
+          //   create: new Date()
+          // }
 
         })
         .catch(reject);
@@ -304,10 +313,11 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
         .then((response: any) => {
           resolve(response.data)
-          this.secondaryCache[(doc as any)._id] = {
-            data: doc,
-            create: new Date()
-          }
+          // DISABLED
+          // this.secondaryCache[(doc as any)._id] = {
+          //   data: doc,
+          //   create: new Date()
+          // }
 
         })
         .catch(reject);
