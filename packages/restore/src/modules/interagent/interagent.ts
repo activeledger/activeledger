@@ -107,35 +107,35 @@ export class Interagent {
     //   Provider.errorFeed.start();
     //   return;
 
-      /*
+    /*
 
-      const changeDoc = change.doc;
+    const changeDoc = change.doc;
 
-      Helper.output("Checking if document already processed.");
+    Helper.output("Checking if document already processed.");
 
-      // Has the document been processed?
-      if (!changeDoc.processed) {
-        try {
-          if (await Provider.errorDatabase.exists(changeDoc._id)) {
-            // Pause error feed to process
-            Provider.errorFeed.pause();
-            this.processDocument(changeDoc);
-            Provider.errorFeed.resume();
-            Helper.output("Restoration complete.");
-          } else {
-            // Stop Start listener to adjust for forced sequence change
-            Provider.errorFeed.stop();
-            Provider.errorFeed.start();
-          }
-        } catch (error) {
-          ActiveLogger.error(error);
+    // Has the document been processed?
+    if (!changeDoc.processed) {
+      try {
+        if (await Provider.errorDatabase.exists(changeDoc._id)) {
+          // Pause error feed to process
+          Provider.errorFeed.pause();
+          this.processDocument(changeDoc);
+          Provider.errorFeed.resume();
+          Helper.output("Restoration complete.");
+        } else {
+          // Stop Start listener to adjust for forced sequence change
+          Provider.errorFeed.stop();
+          Provider.errorFeed.start();
         }
-      } else {
-        // Move to archive
-        await this.archive(changeDoc)
-        Provider.errorFeed.resume();
+      } catch (error) {
+        ActiveLogger.error(error);
       }
-      */
+    } else {
+      // Move to archive
+      await this.archive(changeDoc)
+      Provider.errorFeed.resume();
+    }
+    */
     //});
 
     // Provider.archiveFeed.on("change", async (change: IChange) => {
@@ -163,7 +163,7 @@ export class Interagent {
 
     if (docs.rows.length) {
       // Provider.errorFeed.pause();
-      for (let i = docs.rows.length; i--; ) {
+      for (let i = docs.rows.length; i--;) {
         const doc = docs.rows[i];
         // If doc has been processed just move
         if (doc.processed) {
@@ -361,8 +361,8 @@ export class Interagent {
       return this.isCompatibleTransaction(changeDoc)
         ? this.beginMain(changeDoc, changeDoc.transaction)
         : // If all nodes voted false check the integrity to verify.
-          // They might have voted no because this revision is wrong.
-          this.dataIntegrityCheck(changeDoc);
+        // They might have voted no because this revision is wrong.
+        this.dataIntegrityCheck(changeDoc);
     } else {
       Helper.output("Document has no error code.");
       return this.setProcessed(changeDoc);
@@ -446,7 +446,7 @@ export class Interagent {
       const myError =
         document.transaction.$nodes[document.transaction.$origin]?.error || "unknown";
       // Loop nodes and search for different error
-      for (let i = nodeErrors.length; i--; ) {
+      for (let i = nodeErrors.length; i--;) {
         if (document.transaction.$nodes[nodeErrors[i]].error !== myError) {
           // Only verify 1 error is different instead of a conensus %
           // Continue processing
@@ -493,24 +493,24 @@ export class Interagent {
         Helper.output("Network data", responses);
 
         // Merge streams from responses
-        for (let i = responses.length; i--; ) {
+        for (let i = responses.length; i--;) {
           const response = responses[i];
 
           !this.responseHasError(response)
             ? streamCache.push(...this.createStreamCache(response))
             : !this.attemptUmidDoc
-            ? // The error could be on this node
+              ? // The error could be on this node
               // Attempt to try and add the UMID
               (this.attemptUmidDoc = true)
-            : null;
+              : null;
           //: reject("Unable to retrieve necessary data");
         }
 
         streamCache.length > 0
           ? Helper.output("Stream cache:", streamCache)
           : this.attemptUmidDoc
-          ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
-          : Helper.output("Stream cache empty and not attempting UMID doc.");
+            ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
+            : Helper.output("Stream cache empty and not attempting UMID doc.");
 
         const getId = (data: any) => data.id;
         const revNotStored = (data: any) => {
@@ -526,7 +526,7 @@ export class Interagent {
 
         // Need to add :stream as well
         // As revs is prepopulated we need to go through the revs array and add :stream
-        for (let i = revisions.length; i--; ) {
+        for (let i = revisions.length; i--;) {
           revisions.push(`${revisions[i]}:stream`);
         }
 
@@ -553,20 +553,20 @@ export class Interagent {
       const streams = Object.keys(reducedStreamData);
       const promiseHolder = [];
 
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         const streamIndex = streams[i];
         const stream = reducedStreamData[streamIndex];
 
         const revs = Object.keys(stream);
 
-        for (let i = revs.length; i--; ) {
+        for (let i = revs.length; i--;) {
           const revisionIndex = revs[i];
           const revisionCount = stream[revisionIndex];
 
           Helper.metConsensus(revisionCount, true)
             ? promiseHolder.push(
-                this.handleStreamFixPromise(streamIndex, revisionIndex)
-              )
+              this.handleStreamFixPromise(streamIndex, revisionIndex)
+            )
             : promiseHolder.push(true);
         }
       }
@@ -576,7 +576,7 @@ export class Interagent {
 
         await this.setProcessed(document);
 
-        if (!results.some((e: boolean) => e)) {
+        if (results.some((e: boolean) => e)) {
           ActiveLogger.warn("Data Check - False Positive");
           if (this.attemptUmidDoc) {
             await this.insertUmid(this.umidDoc);
@@ -605,7 +605,19 @@ export class Interagent {
     return new Promise(async (resolve, reject) => {
       if (umidDoc) {
         try {
+          // Create event id for umid 
+          // This one will match all nodes so it could be "missed" by a parser
+          //const _id = `umid:${new Date(umidDoc.umid.$datetime).getTime()},${umidDoc.umid.$umid}`
+          
+          // This method will have the umid "out of order" however a parser will not miss it
+          const _id = `umid:${new Date().getTime()},${umidDoc.umid.$umid}`
+
+          // Save umids to database
           await Provider.database.bulkDocs([umidDoc], { new_edits: false });
+          await Provider.eventDatabase.post({
+            _id
+          }),
+
           ActiveLogger.info("UMID Added");
           resolve();
         } catch (error) {
@@ -715,7 +727,7 @@ export class Interagent {
         const promises: Promise<boolean>[] = [];
         const docProcessed: string[] = [];
 
-        for (let i = streams.length; i--; ) {
+        for (let i = streams.length; i--;) {
           const stream = streams[i];
           if (stream && !stream.error) {
             if (this.isDocMissing(document)) {
@@ -723,7 +735,7 @@ export class Interagent {
             }
             Helper.output(
               "Checking stream correct: " +
-                this.isStreamDefinedAndNotEmptyArray(stream),
+              this.isStreamDefinedAndNotEmptyArray(stream),
               stream ? stream : "No stream data"
             );
             if (this.isStreamDefinedAndNotEmptyArray(stream)) {
@@ -823,7 +835,7 @@ export class Interagent {
 
         let reduction = {};
 
-        for (let i = streamData.length; i--; ) {
+        for (let i = streamData.length; i--;) {
           const streams = streamData[i];
           if (!streams.error) {
             reduction = this.reduceStreamData(streams, reduction);
@@ -850,7 +862,7 @@ export class Interagent {
   private reduceStreamData(streams: any, reduction: any): any {
     Helper.output("Current reduction:", reduction);
     Helper.output("Reducing: ", streams);
-    for (let i = streams.length; i--; ) {
+    for (let i = streams.length; i--;) {
       const stream = streams[i];
 
       if (!reduction) {
