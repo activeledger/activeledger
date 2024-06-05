@@ -357,6 +357,11 @@ export class Process extends EventEmitter {
     return padSorting(a).localeCompare(padSorting(b));
   }
 
+
+  private contractPathCache: {
+    [index: string]: string
+  } = {};
+
   /**
    * Starts the consensus and commit phase processing
    *
@@ -382,83 +387,87 @@ export class Process extends EventEmitter {
       let contract = this.entry.$tx.$contract;
 
       try {
-        let contractId: string;
-        let namespacePath: string;
+        // This Cache won't always fetch latest version need to "defeat it"
+        if (!this.contractPathCache[this.entry.$tx.$contract]) {
+          let contractId: string;
+          let namespacePath: string;
 
-        try {
-          namespacePath = fs.realpathSync(
-            `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
-          );
+          try {
+            namespacePath = fs.realpathSync(
+              `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
+            );
 
-          // Make sure the path is not a symlink
-          const trueContractPath = fs.realpathSync(
-            `${namespacePath}/${contract}.js`
-          );
+            // Make sure the path is not a symlink
+            const trueContractPath = fs.realpathSync(
+              `${namespacePath}/${contract}.js`
+            );
 
-          contractId = path.basename(
-            trueContractPath,
-            path.extname(trueContractPath)
-          );
+            contractId = path.basename(
+              trueContractPath,
+              path.extname(trueContractPath)
+            );
 
-          // We don't want the version number if the contract has one
-          if (contractId.indexOf("@") > -1) {
-            contractId = contractId.split("@")[0];
+            // We don't want the version number if the contract has one
+            if (contractId.indexOf("@") > -1) {
+              contractId = contractId.split("@")[0];
+            }
+          } catch {
+            throw new Error("Contract or Namespace not found");
           }
-        } catch {
-          throw new Error("Contract or Namespace not found");
-        }
 
-        this.contractId = contractId;
+          this.contractId = contractId;
 
-        // Does the string contain @ then we leave it alone
-        if (this.entry.$tx.$contract.indexOf("@") === -1) {
-          if (contractVersion) {
-            contract = contractVersion;
-          } else {
-            try {
-              // Now we find the latest @ in the file system and include
-              // need to remember to update it upon upgrades. This way we don't nned to manage cache
-              // Or the VMs
-              contract =
-                fs
-                  .readdirSync(namespacePath)
-                  .filter((fn) => fn.includes(`${this.contractId}@`))
-                  .sort(this.sortVersions)
-                  .pop()
-                  ?.replace(".js", "") || this.contractId;
+          // Does the string contain @ then we leave it alone
+          if (this.entry.$tx.$contract.indexOf("@") === -1) {
+            if (contractVersion) {
+              contract = contractVersion;
+            } else {
+              try {
+                // Now we find the latest @ in the file system and include
+                // need to remember to update it upon upgrades. This way we don't nned to manage cache
+                // Or the VMs
+                contract =
+                  fs
+                    .readdirSync(namespacePath)
+                    .filter((fn) => fn.includes(`${this.contractId}@`))
+                    .sort(this.sortVersions)
+                    .pop()
+                    ?.replace(".js", "") || this.contractId;
 
-              // Cache it to parent process handler
-              this.emit("contractLatestVersion", {
-                contract: this.entry.$tx.$contract,
-                file: contract,
-              });
-            } catch {
-              throw new Error(`${this.contractId}@latest not found`);
+                // Cache it to parent process handler
+                this.emit("contractLatestVersion", {
+                  contract: this.entry.$tx.$contract,
+                  file: contract,
+                });
+              } catch {
+                throw new Error(`${this.contractId}@latest not found`);
+              }
             }
           }
-        }
 
-        // Check For Locks Global and Version
-        if (fs.existsSync(`${namespacePath}/_LOCK.${this.contractId}`)) {
-          throw new Error("Contract Global Lock");
-        }
+          // Check For Locks Global and Version
+          if (fs.existsSync(`${namespacePath}/_LOCK.${this.contractId}`)) {
+            throw new Error("Contract Global Lock");
+          }
 
-        //
-        if (fs.existsSync(`${namespacePath}/_LOCK.${contract}`)) {
-          throw new Error(
-            `Contract Version Lock ${contract.substring(
-              contract.indexOf("@") + 1
-            )}`
+          //
+          if (fs.existsSync(`${namespacePath}/_LOCK.${contract}`)) {
+            throw new Error(
+              `Contract Version Lock ${contract.substring(
+                contract.indexOf("@") + 1
+              )}`
+            );
+          }
+          // Wrapped in realpathSync to avoid issues with cached contracts
+          // And to allow us to get the ID of the contract if a label (symlink) was
+          // used in the transaction
+          // This needs to be here rather than where trueConrtractPath is as
+          // we need the contract ID at that point to look up the latest version
+          this.contractPathCache[this.entry.$tx.$contract] = fs.realpathSync(
+            `${namespacePath}/${contract}.js`
           );
         }
-        // Wrapped in realpathSync to avoid issues with cached contracts
-        // And to allow us to get the ID of the contract if a label (symlink) was
-        // used in the transaction
-        // This needs to be here rather than where trueConrtractPath is as
-        // we need the contract ID at that point to look up the latest version
-        this.contractLocation = fs.realpathSync(
-          `${namespacePath}/${contract}.js`
-        );
+        this.contractLocation = this.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
         throw e;
       }
@@ -948,7 +957,7 @@ export class Process extends EventEmitter {
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
     outputs: ActiveDefinitions.LedgerStream[] = [],
-   // contractData: ActiveDefinitions.IContractData | undefined = undefined
+    // contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
       // Transaction should be fully described now (revs etc)
