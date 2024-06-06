@@ -920,7 +920,6 @@ export class Host extends Home {
       //this.processPending[umid].entry.$nodes
 
       // We only want to send our value
-      const x = {};
       const data = !early
         ? Object.assign(this.processPending[umid].entry, {
           $nodes: {

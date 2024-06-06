@@ -584,6 +584,9 @@ class Processor {
     right: any,
     neighbours?: { [reference: string]: Neighbour }
   ) {
+
+    // TODO if bundle we need to send it before rewriting this?
+
     // Create new right neighbour with identity if known
     Home.right = new Neighbour(
       right.host,

@@ -173,15 +173,19 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       // Send SignedFor Post Request
       const sender = (post: Buffer, extraHeader: string) => new Promise((resolve, reject) => {
         let attempt = (attempts: number) => {
-          ActiveRequest.send(
+          let response = ActiveRequest.send(
             url,
             "POST",
             ["X-Activeledger:" + Home.reference, "content-type: application/json", extraHeader],
             post, // TODO above is a bit of a lie but managed by host
             ActiveOptions.get<boolean>("gzip", true)
           )
+
+          // Only manage response if there is not a bundle otherwise click and forget
+          if (!bundle) {
+
             // TODO: Interface needed
-            .then((response: any) => {
+            response.then((response: any) => {
               if (response.data.$enc && response.data.$packet) {
                 response.data = JSON.parse(
                   Buffer.from(
@@ -192,42 +196,43 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               }
               resolve(response);
             })
-            .catch((error: any) => {
-              if (error && error.response && error.response.data) {
-                // ActiveLogger.error(
-                //   error.response.data,
-                //   `${this.host}:${this.port}/${endpoint} - POST Failed`
-                // );
-                reject(error.response.data);
-              } else {
-                // TODO : If connection failure rebase neighbourhood?
-                if (
-                  resend &&
-                  resend >= attempts &&
-                  error.code == "ECONNRESET"
-                ) {
-                  // Resend Attempt
-                  ActiveLogger.warn(
-                    "Network Issue : Resending due to unexpected closed socket"
-                  );
-                  attempt(++attempts);
-                } else {
-                  ActiveLogger.fatal(
-                    error,
-                    `Network Error - ${this.host}:${this.port}/${endpoint}`
-                  );
+              .catch((error: any) => {
+                if (error && error.response && error.response.data) {
                   // ActiveLogger.error(
-                  //   post,
-                  //   `Data sent which caused the error`
+                  //   error.response.data,
+                  //   `${this.host}:${this.port}/${endpoint} - POST Failed`
                   // );
-                  if (extraHeader !== "X-Bundle: 1") {
-                    reject("Network Communication Error");
+                  reject(error.response.data);
+                } else {
+                  // TODO : If connection failure rebase neighbourhood?
+                  if (
+                    resend &&
+                    resend >= attempts &&
+                    error.code == "ECONNRESET"
+                  ) {
+                    // Resend Attempt
+                    ActiveLogger.warn(
+                      "Network Issue : Resending due to unexpected closed socket"
+                    );
+                    attempt(++attempts);
                   } else {
-                    resolve({ ok: 1 });
+                    ActiveLogger.fatal(
+                      error,
+                      `Network Error - ${this.host}:${this.port}/${endpoint}`
+                    );
+                    // ActiveLogger.error(
+                    //   post,
+                    //   `Data sent which caused the error`
+                    // );
+                    if (extraHeader !== "X-Bundle: 1") {
+                      reject("Network Communication Error");
+                    } else {
+                      resolve({ ok: 1 });
+                    }
                   }
                 }
-              }
-            });
+              });
+          }
         };
         // Start
         attempt(0);
@@ -266,7 +271,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           }
         } else {
           //if (this.bundle.length === 1) {
-          if(!this.nextSend) {
+          if (!this.nextSend) {
             let x = this.nextSend = setTimeout(() => {
               this.nextSend = null;
               //console.log("SENDING FROM TIMEOUT ("+x+") " + this.bundle.length);

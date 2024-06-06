@@ -426,6 +426,18 @@ export class StreamUpdater {
       this.shared.raiseLedgerError(1510, new Error("Failed to save"));
     }
 
+
+    // Wont get response or returns here from commit
+    if (emit) {
+      // Respond with the possible early commited
+      this.emitter.emit("commited");
+    }
+
+    // Wont get response or returns here
+    // if(!this.nodeResponse.leader) {
+    //   this.emitter.emit("broadcast");
+    // }
+
     if (continueProcessing) {
       // Set datetime to reflect when data is set from memory to disk
       this.nodeResponse.datetime = new Date();
@@ -477,13 +489,15 @@ export class StreamUpdater {
     if(!this.nodeResponse.leader) {
       this.emitter.emit("broadcast");
     }
+
+
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 
-    if (emit) {
-      // Respond with the possible early commited
-      this.emitter.emit("commited");
-    }
+    // if (emit) {
+    //   // Respond with the possible early commited
+    //   this.emitter.emit("commited");
+    // }
   }
 
   private async detectCollisions() {

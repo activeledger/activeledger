@@ -101,11 +101,11 @@ export class Endpoints {
         }
 
         // Make broadcast default, Unless single node network
-        if (host.neighbourhood.count() < 4) {
-          tx.$broadcast = false;
-        } else if (!tx.$territoriality && !tx.$broadcast) {
-          tx.$broadcast = true;
-        }
+        // if (host.neighbourhood.count() < 4) {
+        //   tx.$broadcast = false;
+        // } else if (!tx.$territoriality && !tx.$broadcast) {
+        //   tx.$broadcast = true;
+        // }
 
         // If we got here everything is ok to send into internal
         // Now sending direct reducing http overhead
