@@ -241,6 +241,11 @@ export class PermissionsChecker {
         // Check that the revisions match between nodes
         if (revType && revType[streamId]) {
           if (revType[streamId] !== currentRevision) {
+
+            // Normal and meta
+            this.db.clearCache(streamId);
+            this.db.clearCache(`${streamId}:stream`);
+
             return reject({
               code: 1200,
               reason:
