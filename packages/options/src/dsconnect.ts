@@ -44,7 +44,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   constructor(private location: string) {
     // Search to make sure the database exists
     // DISABLED
-    this.timerUnCache();
+    //this.timerUnCache();
   }
 
   /**
@@ -64,6 +64,17 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       }
       this.timerUnCache();
     }, REMOVE_CACHE_TIMER);
+
+  }
+
+
+  /**
+   * We need a way to clear this cache for Position Incorrect! (Or all errors?)
+   *
+   * @param {string} key
+   */
+  public clearCache(key: string) {
+    delete this.secondaryCache[key];
   }
 
   /**
@@ -105,7 +116,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         .catch(reject);
     });
   }
-
   // TODO _rev doesn't go up correct
   // for now disabling this cache
 
@@ -126,55 +136,62 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   public async allDocs(options?: any): Promise<any> {
     //return new Promise(async (resolve, reject) => {
 
+    const x = await ActiveRequest.send(
+      `${this.location}/_all_docs`,
+      options ? "POST" : "GET",
+      undefined,
+      options
+    );
+    return x.data;
 
 
-    if (options.keys) {
-      let tmpKeys = [];
-      let cached = [];
-      const now = new Date();
+    // if (options.keys) {
+    //   let tmpKeys = options.keys;
+    //   let cached = [];
+    //   //const now = new Date();
 
-      for (let i = options.keys.length; i--;) {
-        if (!this.secondaryCache[options.keys[i]]) {
-          tmpKeys.push(options.keys[i]);
-        } else {
-          cached.push({ doc: this.secondaryCache[options.keys[i]].data });
-          this.secondaryCache[options.keys[i]].create = now;
-        }
-      }
+    //   // for (let i = options.keys.length; i--;) {
+    //   //   if (!this.secondaryCache[options.keys[i]]) {
+    //   //     tmpKeys.push(options.keys[i]);
+    //   //   } else {
+    //   //     cached.push({ doc: this.secondaryCache[options.keys[i]].data });
+    //   //     this.secondaryCache[options.keys[i]].create = now;
+    //   //   }
+    //   // }
 
-      // Get uncached
-      if (tmpKeys) {
-        const result = await ActiveRequest.send(
-          `${this.location}/_all_docs`,
-          options ? "POST" : "GET",
-          undefined,
-          { ...options, keys: tmpKeys }
-        );
+    //   // Get uncached
+    //   if (tmpKeys) {
+    //     const result = await ActiveRequest.send(
+    //       `${this.location}/_all_docs`,
+    //       options ? "POST" : "GET",
+    //       undefined,
+    //       { ...options, keys: tmpKeys }
+    //     );
 
-        // Loop and cache
-        for (let i = (result.data as any).rows.length; i--;) {
-          const data = (result.data as any).rows[i].doc;
+    //     // Loop and cache
+    //     for (let i = (result.data as any).rows.length; i--;) {
+    //       const data = (result.data as any).rows[i].doc;
 
-          // DISABLED
-          this.secondaryCache[data._id] = {
-            data: data,
-            create: new Date()
-          }
-          cached.push({ doc: data });
-        }
-      }
+    //       // DISABLED
+    //       // this.secondaryCache[data._id] = {
+    //       //   data: data,
+    //       //   create: new Date()
+    //       // }
+    //       cached.push({ doc: data });
+    //     }
+    //   }
 
-      // TODO: Track offset?
-      return { total_rows: cached.length, offset: 0, rows: cached };
-    } else {
-      const x = await ActiveRequest.send(
-        `${this.location}/_all_docs`,
-        options ? "POST" : "GET",
-        undefined,
-        options
-      );
-      return x.data;
-    }
+    //   // TODO: Track offset?
+    //   return { total_rows: cached.length, offset: 0, rows: cached };
+    // } else {
+    //   const x = await ActiveRequest.send(
+    //     `${this.location}/_all_docs`,
+    //     options ? "POST" : "GET",
+    //     undefined,
+    //     options
+    //   );
+    //   return x.data;
+    // }
 
 
     //  .then((response: any) => resolve(response.data))
@@ -192,12 +209,12 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   public async get(id: string, options: any = {}): Promise<any> {
     if (!this.secondaryCache[id]) {
       const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
-      //return response.data
+      return response.data
       // DISABLED
-      this.secondaryCache[id] = {
-        data: response.data,
-        create: new Date()
-      } // TODO Error Handling now?
+      // this.secondaryCache[id] = {
+      //   data: response.data,
+      //   create: new Date()
+      // } // TODO Error Handling now?
     }
     return this.secondaryCache[id].data;
   }
@@ -266,21 +283,24 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
 
           resolve(response.data);
           // Update cache
-          const create = new Date();
-          for (let i = docs.length; i--;) {
-            if (docs[i]._rev) {
-              // Update MD5 (We are doing this twice in 2 different processors)
-              const md5 = createHash("md5").update(docs[i]).digest("hex");
-              const pos = parseInt(docs[i]._rev.split("-")[0]) + 1;
-              docs[i]._rev = `${pos}-${md5}`;
-            }
+          // const create = new Date();
+          // for (let i = docs.length; i--;) {
+          //   // Update MD5 (We are doing this twice in 2 different processors)
+          //   const md5 = createHash("md5").update(docs[i]).digest("hex");
+          //   if (docs[i]._rev) {
+          //     const pos = parseInt(docs[i]._rev.split("-")[0]) + 1;
+          //     docs[i]._rev = `${pos}-${md5}`;
+          //   } else {
+          //     // Or just don't cache "new"?
+          //     docs[i]._rev = `1-${md5}`;
+          //   }
 
-            // DISABLED
-            this.secondaryCache[docs[i]._id] = {
-              data: docs[i],
-              create
-            }
-          }
+          //   // DISABLED
+          //   this.secondaryCache[docs[i]._id] = {
+          //     data: docs[i],
+          //     create
+          //   }
+          // }
 
         })
         .catch(reject);
@@ -302,18 +322,23 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           // We need to update _rev here, Should we just fetch in background?
           // Or do we manage md5 ourself
 
-          if ((doc as any)._rev) {
-            // Update MD5 (We are doing this twice in 2 different processors)
-            const md5 = createHash("md5").update((doc as any)).digest("hex");
-            const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
-            (doc as any)._rev = `${pos}-${md5}`;
-          }
+          // Update MD5 (We are doing this twice in 2 different processors)
+          // const md5 = createHash("md5").update((doc as any)).digest("hex");
+          // if ((doc as any)._rev) {
+          //   const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
+          //   (doc as any)._rev = `${pos}-${md5}`;
+          // }
+          // else {
+          //   // Or just don't cache "new"?
+          //   (doc as any)._rev = `1-${md5}`;
+          // }
 
-          // DISABLED
-          this.secondaryCache[(doc as any)._id] = {
-            data: doc,
-            create: new Date()
-          }
+
+          // // DISABLED
+          // this.secondaryCache[(doc as any)._id] = {
+          //   data: doc,
+          //   create: new Date()
+          // }
 
         })
         .catch(reject);
@@ -335,18 +360,18 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           // We need to update _rev here, Should we just fetch in background?
           // Or do we manage md5 ourself
 
-          if ((doc as any)._rev) {
-            // Update MD5 (We are doing this twice in 2 different processors)
-            const md5 = createHash("md5").update((doc as any)).digest("hex");
-            const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
-            (doc as any)._rev = `${pos}-${md5}`;
-          }
+          // if ((doc as any)._rev) {
+          //   // Update MD5 (We are doing this twice in 2 different processors)
+          //   const md5 = createHash("md5").update((doc as any)).digest("hex");
+          //   const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
+          //   (doc as any)._rev = `${pos}-${md5}`;
+          // }
 
-          // DISABLED
-          this.secondaryCache[(doc as any)._id] = {
-            data: doc,
-            create: new Date()
-          }
+          // // DISABLED
+          // this.secondaryCache[(doc as any)._id] = {
+          //   data: doc,
+          //   create: new Date()
+          // }
 
         })
         .catch(reject);

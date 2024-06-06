@@ -513,21 +513,22 @@ export class LevelMe {
     if (!this.memory[key]) {
       await this.open();
       // Allow errors to bubble up?
-      let doc = await this.levelUp.get(LevelMe.DOC_PREFIX + key);
+      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
       if (raw) {
         this.memory[key] = {
-          data: JSON.parse(doc),
+          data: doc,
           create: new Date()
         }
+        //return JSON.parse(doc);
       } else {
-        doc = JSON.parse(doc) as schema;
+        //doc = JSON.parse(doc) as schema;
         this.memory[key] = {
           data: await this.seqDocFromRoot(doc),
           create: new Date()
         }
+        return doc;
       }
     }
-    this.memory[key].create = new Date();
     return this.memory[key].data;
   }
 
@@ -536,7 +537,8 @@ export class LevelMe {
     //   keys[i] = LevelMe.DOC_PREFIX + keys[i];
     // }
 
-    // return await this.levelUp.getMany(keys);
+    //return await this.levelUp.getMany(keys);
+
     let tmpKeys = [];
     let cached = [];
     const now = new Date();
@@ -565,8 +567,8 @@ export class LevelMe {
       }
     }
     return cached;
-    // Faster Concat? maybe push(...)?
-    // return [...cached, ...await this.levelUp.getMany(tmpKeys)];
+    //Faster Concat? maybe push(...)?
+    //return [...cached, ...await this.levelUp.getMany(tmpKeys)];
 
   }
 
@@ -966,10 +968,13 @@ export class LevelMe {
 
     // Should be able to assume,  maybe not what if restarted, So set object!
     // Maybe only store data and :stream? Or just store everything and delete when older than X?
-    this.memory[doc._id] = {
-      data: doc,
-      create: new Date()
-    };
+    // this.memory[doc._id] = {
+    //   data: doc,
+    //   create: new Date()
+    // };
+
+    // Safer for now?
+    delete this.memory[doc._id];
 
     return {
       chain,
