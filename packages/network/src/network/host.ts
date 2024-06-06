@@ -354,7 +354,10 @@ export class Host extends Home {
               socket.write(`HTTP/1.1 200 OK\r\n`);
               socket.write(`Content-Type: application/json\r\n`);
               socket.write(`Content-Length: 2\r\n\r\n`);
-              socket.end("{}");
+              socket.write("{}");
+
+              // Terrible make better just for testing
+              (socket as any).bundled = true;
 
             } else {
               bundles = [bodyString];
@@ -1677,6 +1680,10 @@ export class Host extends Home {
 
     // Write the response
     //res.writeHead(statusCode, headers);
+
+    if((res as any).bundled) {
+      return;
+    }
 
     //need to work out why! 
     if (!res.writableEnded) {
