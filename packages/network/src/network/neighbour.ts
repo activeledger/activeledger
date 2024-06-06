@@ -242,7 +242,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             sender(Buffer.from(data), "X-Bundle: 1");
             // Need to clear better
             this.bundle = []
-          }, 200);
+          }, 100);
         }
         // Just return, Bundle doesn't want a response!
         return Promise.resolve(); 
