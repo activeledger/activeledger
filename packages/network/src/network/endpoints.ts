@@ -289,13 +289,13 @@ export class Endpoints {
   public static InternalInitalise(host: Host, body: any): Promise<any> {
     return new Promise((resolve, reject) => {
       // Is the network stable?
-      if (host.getStatus() != NeighbourStatus.Stable) {
-        ActiveLogger.error("Sent 500 Response (1500)");
-        return resolve({
-          statusCode: 500,
-          content: "Network Not Stable",
-        });
-      }
+      // if (host.getStatus() != NeighbourStatus.Stable) {
+      //   ActiveLogger.error("Sent 500 Response (1500)");
+      //   return resolve({
+      //     statusCode: 500,
+      //     content: "Network Not Stable",
+      //   });
+      // }
 
       // Cast Body
       let tx = body as ActiveDefinitions.LedgerEntry;
@@ -335,11 +335,11 @@ export class Endpoints {
   ): Promise<any> {
     return new Promise<any>((resolve, reject) => {
       // Is the network stable?
-      if (host.getStatus() != NeighbourStatus.Stable)
-        return reject({
-          status: 100,
-          error: "Network Not Stable",
-        });
+      // if (host.getStatus() != NeighbourStatus.Stable)
+      //   return reject({
+      //     status: 100,
+      //     error: "Network Not Stable",
+      //   });
 
       // Targetted territoriality mapper
       if (tx.$territoriality) {
