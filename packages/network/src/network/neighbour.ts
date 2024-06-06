@@ -102,6 +102,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   }
 
   private bundle: any[] = [];
+  private nextSend: NodeJS.Timeout | null;
 
   /**
    * Send authenticated request to this neighbour (Knock on their door)
@@ -219,10 +220,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                   //   post,
                   //   `Data sent which caused the error`
                   // );
-                  if(extraHeader !== "X-Bundle: 1") {
-                  reject("Network Communication Error");
-                  }else{
-                    resolve({ok:1});
+                  if (extraHeader !== "X-Bundle: 1") {
+                    reject("Network Communication Error");
+                  } else {
+                    resolve({ ok: 1 });
                   }
                 }
               }
@@ -232,21 +233,80 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         attempt(0);
       });
 
+      // Now can we detect "response broadcast, not waiting maybe faster?"
+      // or possibly waiting less
+
+      // Another idea is dynamic settimeout keep changing it? Such as "wait 10ms +10ms if sending again"
+
       // TODO make better!
-      if (bundle) {        
+      if (bundle) {
+
+        // if(Buffer.isBuffer(post)) {
+        //   console.log("POST IS ALREADY A BUFFER!!!!!");
+        //   console.trace();
+        // }
+
         this.bundle.push(JSON.stringify(post));
-        if (this.bundle.length == 1) {
-          //Need a timeout to send the bundle
-          setTimeout(() => {
-            const data = this.bundle.join(":$ALB:");
-            sender(Buffer.from(data), "X-Bundle: 1");
-            // Need to clear better
-            this.bundle = []
-          }, 100);
+
+        if (this.bundle.length >= 80) {
+          // Cancel & Just Send
+          // if (this.nextSend) {
+          //   clearTimeout(this.nextSend);
+          //   this.nextSend = null;
+          // }
+          //console.log("SENDING FROM LIMIT " + this.bundle.length);
+          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1");
+          this.bundle = []
+          // Need to clear better
+
+          // Cancel & Just Send
+          if (this.nextSend) {
+            clearTimeout(this.nextSend);
+            this.nextSend = null;
+          }
+        } else {
+          //if (this.bundle.length === 1) {
+          if(!this.nextSend) {
+            let x = this.nextSend = setTimeout(() => {
+              this.nextSend = null;
+              //console.log("SENDING FROM TIMEOUT ("+x+") " + this.bundle.length);
+              sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1");
+              this.bundle = []
+              // Need to clear better
+            }, 80);
+
+          }
+
+          // maybe a/b bundles?
+
+          //this.bundle.push(JSON.stringify(post));
+
         }
+
+
+        // this.bundle.push(JSON.stringify(post));
+        // if (this.bundle.length == 1) {
+
+        //   // Now lets try and be smart!
+
+
+
+        //   //Need a timeout to send the bundle
+        //   setTimeout(() => {
+        //     const data = this.bundle.join(":$ALB:");
+        //     sender(Buffer.from(data), "X-Bundle: 1");
+        //     // Need to clear better
+        //     this.bundle = []
+        //   }, 50);
+        // }
         // Just return, Bundle doesn't want a response!
-        return Promise.resolve(); 
+        return Promise.resolve();
       } else {
+
+        // if(Buffer.isBuffer(post)) {
+        //   console.log("POST IS ALREADY A BUFFER!!!!!");
+        //   console.trace();
+        // }
         return sender(Buffer.from(JSON.stringify(post)), 'X-Null: 0');
       }
 
