@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 import * as querystring from "querystring";
+import { createHash } from "crypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveRequest } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
@@ -43,7 +44,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   constructor(private location: string) {
     // Search to make sure the database exists
     // DISABLED
-    //this.timerUnCache();
+    this.timerUnCache();
   }
 
   /**
@@ -105,8 +106,8 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     });
   }
 
-// TODO _rev doesn't go up correct
-// for now disabling this cache
+  // TODO _rev doesn't go up correct
+  // for now disabling this cache
 
   private secondaryCache: {
     [index: string]: {
@@ -155,10 +156,10 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           const data = (result.data as any).rows[i].doc;
 
           // DISABLED
-          // this.secondaryCache[data._id] = {
-          //   data: data,
-          //   create: new Date()
-          // }
+          this.secondaryCache[data._id] = {
+            data: data,
+            create: new Date()
+          }
           cached.push({ doc: data });
         }
       }
@@ -191,12 +192,12 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   public async get(id: string, options: any = {}): Promise<any> {
     if (!this.secondaryCache[id]) {
       const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
-      return response.data
+      //return response.data
       // DISABLED
-      // this.secondaryCache[id] = {
-      //   data: response.data,
-      //   create: new Date()
-      // } // TODO Error Handling now?
+      this.secondaryCache[id] = {
+        data: response.data,
+        create: new Date()
+      } // TODO Error Handling now?
     }
     return this.secondaryCache[id].data;
   }
@@ -264,15 +265,21 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         .then((response: any) => {
 
           resolve(response.data);
-
           // Update cache
           const create = new Date();
           for (let i = docs.length; i--;) {
+            if (docs[i]._rev) {
+              // Update MD5 (We are doing this twice in 2 different processors)
+              const md5 = createHash("md5").update(docs[i]).digest("hex");
+              const pos = parseInt(docs[i]._rev.split("-")[0]) + 1;
+              docs[i]._rev = `${pos}-${md5}`;
+            }
+
             // DISABLED
-            // this.secondaryCache[docs[i]._id] = {
-            //   data: docs[i],
-            //   create
-            // }
+            this.secondaryCache[docs[i]._id] = {
+              data: docs[i],
+              create
+            }
           }
 
         })
@@ -291,11 +298,22 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       ActiveRequest.send(this.location, "POST", undefined, doc)
         .then((response: any) => {
           resolve(response.data)
+
+          // We need to update _rev here, Should we just fetch in background?
+          // Or do we manage md5 ourself
+
+          if ((doc as any)._rev) {
+            // Update MD5 (We are doing this twice in 2 different processors)
+            const md5 = createHash("md5").update((doc as any)).digest("hex");
+            const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
+            (doc as any)._rev = `${pos}-${md5}`;
+          }
+
           // DISABLED
-          // this.secondaryCache[(doc as any)._id] = {
-          //   data: doc,
-          //   create: new Date()
-          // }
+          this.secondaryCache[(doc as any)._id] = {
+            data: doc,
+            create: new Date()
+          }
 
         })
         .catch(reject);
@@ -313,11 +331,22 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
         .then((response: any) => {
           resolve(response.data)
+
+          // We need to update _rev here, Should we just fetch in background?
+          // Or do we manage md5 ourself
+
+          if ((doc as any)._rev) {
+            // Update MD5 (We are doing this twice in 2 different processors)
+            const md5 = createHash("md5").update((doc as any)).digest("hex");
+            const pos = parseInt((doc as any)._rev.split("-")[0]) + 1;
+            (doc as any)._rev = `${pos}-${md5}`;
+          }
+
           // DISABLED
-          // this.secondaryCache[(doc as any)._id] = {
-          //   data: doc,
-          //   create: new Date()
-          // }
+          this.secondaryCache[(doc as any)._id] = {
+            data: doc,
+            create: new Date()
+          }
 
         })
         .catch(reject);
