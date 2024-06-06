@@ -218,7 +218,8 @@ export class Maintain {
               // Still the same network?
               if (currentRef == Home.reference) {
                 // Node isn't home (Any error is a bad error)
-                neighbour.isHome = false;
+                // TODO redo all of this
+                //neighbour.isHome = false;
               }
               // This isn't a failure so resolve to move on.
               resolve();
@@ -318,7 +319,13 @@ export class Maintain {
         { left: isleft.reference, right: isRight.reference },
         "New Neighbour Update"
       );
-      Maintain.home.setNeighbours(isleft.reference, isRight.reference);
+      try {
+        Maintain.home.setNeighbours(isleft.reference, isRight.reference);
+      }catch{
+        ActiveLogger.fatal("Problem setting Right, Try again next loop");
+        //this.pairing();
+        // Not major problem we only use broadcast
+      }
     }
 
     // No longer checking
