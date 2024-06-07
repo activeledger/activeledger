@@ -322,17 +322,17 @@ export class Process extends EventEmitter {
     // Make sure broadcast timeout is cleared
     clearTimeout(this.broadcastTimeout);
 
-    Process.generalContractVM.destroy(umid)
+    //Process.generalContractVM.destroy(umid)
 
     // Close VM and entry (cirular reference)
-    // if (this.isDefault) {
-    //   // DefaultVM created?
-    //   if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
-    // } else {
-    //   this.contractRef
-    //     ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
-    //     : Process.generalContractVM.destroy(umid);
-    // }
+    if (this.isDefault) {
+      // DefaultVM created?
+      if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+    } else {
+      this.contractRef
+        ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+        : Process.generalContractVM.destroy(umid);
+    }
 
     // Quick solution to delete rules
     delete (this as any).entry;
@@ -490,15 +490,15 @@ export class Process extends EventEmitter {
     }
 
     // Setup the virtual machine for this process
-    // const virtualMachine: IVirtualMachine = this.isDefault
-    //   ? Process.defaultContractsVM
-    //   : this.contractRef
-    //     ? Process.singleContractVMHolder[this.contractRef]
-    //     : Process.generalContractVM;
+    const virtualMachine: IVirtualMachine = this.isDefault
+      ? Process.defaultContractsVM
+      : this.contractRef
+        ? Process.singleContractVMHolder[this.contractRef]
+        : Process.generalContractVM;
 
 
     // Without vm2 we can just use one then maybe remove it as well?
-    const virtualMachine: IVirtualMachine = Process.generalContractVM;
+    //const virtualMachine: IVirtualMachine = Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -699,14 +699,14 @@ export class Process extends EventEmitter {
         this.nodeResponse = this.entry.$nodes[this.reference];
         // Try run commit!
 
-        this.commit(Process.generalContractVM)
+        //this.commit(Process.generalContractVM)
 
         // Get the correct VM instance reference
-        // this.isDefault
-        //   ? this.commit(Process.defaultContractsVM)
-        //   : this.contractRef
-        //     ? this.commit(Process.singleContractVMHolder[this.contractRef])
-        //     : this.commit(Process.generalContractVM);
+        this.isDefault
+          ? this.commit(Process.defaultContractsVM)
+          : this.contractRef
+            ? this.commit(Process.singleContractVMHolder[this.contractRef])
+            : this.commit(Process.generalContractVM);
       }
     }
   }
@@ -757,6 +757,8 @@ export class Process extends EventEmitter {
 
   /**
    * Handle the initialisation and pass through of data for unsafe contracts
+   * 
+   * TODO we only need oone VM now. First attempt was broken with get inputs
    *
    * @private
    * @param {IVMDataPayload} payload
@@ -1022,56 +1024,56 @@ export class Process extends EventEmitter {
         // Use the Default contract VM (for contracts that are built into Activeledger)
         this.processDefaultContracts(payload, contractName);
       } else {
-        this.handleVM(Process.generalContractVM, payload, contractName);
-        // Check Namespace
-        // if (
-        //   this.securityCache &&
-        //   this.securityCache.namespace &&
-        //   this.securityCache.namespace[payload.transaction.$namespace]
-        // ) {
-        //   const builtin: string[] = [];
-        //   const external: string[] = [];
-        //   const mocks: string[] = [];
-        //   // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-        //   const namespaceExtras =
-        //     this.securityCache.namespace[payload.transaction.$namespace];
+        //this.handleVM(Process.generalContractVM, payload, contractName);
+        //Check Namespace
+        if (
+          this.securityCache &&
+          this.securityCache.namespace &&
+          this.securityCache.namespace[payload.transaction.$namespace]
+        ) {
+          const builtin: string[] = [];
+          const external: string[] = [];
+          const mocks: string[] = [];
+          // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
+          // const namespaceExtras =
+          //   this.securityCache.namespace[payload.transaction.$namespace];
 
-        //   if (namespaceExtras) {
-        //     // Built in
-        //     if (namespaceExtras.std) {
-        //       namespaceExtras.std.forEach((item: string) => {
-        //         builtin.push(item);
-        //       });
-        //     }
+          // if (namespaceExtras) {
+          //   // Built in
+          //   if (namespaceExtras.std) {
+          //     namespaceExtras.std.forEach((item: string) => {
+          //       builtin.push(item);
+          //     });
+          //   }
 
-        //     // Now for any approved external
-        //     if (namespaceExtras.external) {
-        //       namespaceExtras.external.forEach((item: string) => {
-        //         external.push(item);
-        //       });
-        //     }
+          //   // Now for any approved external
+          //   if (namespaceExtras.external) {
+          //     namespaceExtras.external.forEach((item: string) => {
+          //       external.push(item);
+          //     });
+          //   }
 
-        //     // Now for any pakcages needing mocking
-        //     if (namespaceExtras.mock) {
-        //       namespaceExtras.mock.forEach((item: string) => {
-        //         mocks.push(item);
-        //       });
-        //     }
-        //   }
+          //   // Now for any pakcages needing mocking
+          //   if (namespaceExtras.mock) {
+          //     namespaceExtras.mock.forEach((item: string) => {
+          //       mocks.push(item);
+          //     });
+          //   }
+          // }
 
-        //   // Initialise the unsafe contract VM
-        //   this.processUnsafeContracts(
-        //     payload,
-        //     payload.transaction.$namespace,
-        //     contractName,
-        //     builtin,
-        //     external,
-        //     mocks
-        //   );
-        // } else {
-        //   // Use the General contract VM
-        //   this.handleVM(Process.generalContractVM, payload, contractName);
-        // }
+          // Initialise the unsafe contract VM
+          this.processUnsafeContracts(
+            payload,
+            payload.transaction.$namespace,
+            contractName,
+            builtin,
+            external,
+            mocks
+          );
+        } else {
+          // Use the General contract VM
+          this.handleVM(Process.generalContractVM, payload, contractName);
+        }
       }
     } catch (error) {
       // error fetch read only streams
@@ -1362,18 +1364,18 @@ export class Process extends EventEmitter {
           );
 
           // Clearing All node comms?#
-          this.entry = this.shared.clearAllComms(
-            virtualMachine,
-            this.nodeResponse.incomms
-          );
+          // this.entry = this.shared.clearAllComms(
+          //   virtualMachine,
+          //   this.nodeResponse.incomms
+          // );
 
-          // Are we throwing to another ledger(s)?
-          let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
+          // // Are we throwing to another ledger(s)?
+          // let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
 
-          // Emit to network handler
-          if (throws && throws.length) {
-            this.emit("throw", { locations: throws });
-          }
+          // // Emit to network handler
+          // if (throws && throws.length) {
+          //   this.emit("throw", { locations: throws });
+          // }
 
           // Update Streams
           const streamUpdater = new StreamUpdater(
@@ -1394,7 +1396,6 @@ export class Process extends EventEmitter {
         } catch (error) {
           // Don't let local error stop other nodes
           if (earlyCommit) earlyCommit();
-
           ActiveLogger.debug(error, "VM Commit Failure");
 
           // If debug mode forward full error
