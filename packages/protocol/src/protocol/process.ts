@@ -66,7 +66,7 @@ export class Process extends EventEmitter {
    * @static
    * @type {VirtualMachine}
    */
-  private static defaultContractsVM: VirtualMachine;
+  //private static defaultContractsVM: VirtualMachine;
 
   /**
    * Holds an object of individual VM controller instances for unsafe contracts
@@ -76,7 +76,7 @@ export class Process extends EventEmitter {
    * @static
    * @type {IVMContractHolder}
    */
-  private static singleContractVMHolder: IVMContractHolder = {};
+  //private static singleContractVMHolder: IVMContractHolder = {};
 
   /**
    * Is this instance of Process dealing with a default contract
@@ -116,7 +116,7 @@ export class Process extends EventEmitter {
    * @private
    * @type {boolean}
    */
-  private checkRevs: boolean = true;
+  //private checkRevs: boolean = true;
 
   /**
    * Contains reference to this nodes node response
@@ -280,15 +280,15 @@ export class Process extends EventEmitter {
     }
 
     // Check if the security data has been cached
-    if (!this.securityCache) {
+    //if (!this.securityCache) {
       this.securityCache = ActiveOptions.get<any>("security", null);
-    }
+    //}
 
     // Initialise the permission checker
     this.permissionChecker = new PermissionsChecker(
       this.entry,
       this.db,
-      this.checkRevs,
+      //this.checkRevs,
       this.securityCache as ISecurityCache,
       this.shared
     );
@@ -322,17 +322,17 @@ export class Process extends EventEmitter {
     // Make sure broadcast timeout is cleared
     clearTimeout(this.broadcastTimeout);
 
-    //Process.generalContractVM.destroy(umid)
+    Process.generalContractVM.destroy(umid)
 
     // Close VM and entry (cirular reference)
-    if (this.isDefault) {
-      // DefaultVM created?
-      if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
-    } else {
-      this.contractRef
-        ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
-        : Process.generalContractVM.destroy(umid);
-    }
+    // if (this.isDefault) {
+    //   // DefaultVM created?
+    //   if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+    // } else {
+    //   this.contractRef
+    //     ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+    //     : Process.generalContractVM.destroy(umid);
+    // }
 
     // Quick solution to delete rules
     delete (this as any).entry;
@@ -490,15 +490,15 @@ export class Process extends EventEmitter {
     }
 
     // Setup the virtual machine for this process
-    const virtualMachine: IVirtualMachine = this.isDefault
-      ? Process.defaultContractsVM
-      : this.contractRef
-        ? Process.singleContractVMHolder[this.contractRef]
-        : Process.generalContractVM;
+    // const virtualMachine: IVirtualMachine = this.isDefault
+    //   ? Process.defaultContractsVM
+    //   : this.contractRef
+    //     ? Process.singleContractVMHolder[this.contractRef]
+    //     : Process.generalContractVM;
 
 
     // Without vm2 we can just use one then maybe remove it as well?
-    //const virtualMachine: IVirtualMachine = Process.generalContractVM;
+    const virtualMachine: IVirtualMachine = Process.generalContractVM;
 
     // Get contract file (Or From Database)
     if (fs.existsSync(this.contractLocation)) {
@@ -528,7 +528,7 @@ export class Process extends EventEmitter {
 
       // Are we checking revisions or setting?
       if (!this.entry.$revs) {
-        this.checkRevs = false;
+        //this.checkRevs = false;
         this.entry.$revs = {
           $i: {},
           $o: {},
@@ -699,14 +699,14 @@ export class Process extends EventEmitter {
         this.nodeResponse = this.entry.$nodes[this.reference];
         // Try run commit!
 
-        //this.commit(Process.generalContractVM)
+        this.commit(Process.generalContractVM)
 
         // Get the correct VM instance reference
-        this.isDefault
-          ? this.commit(Process.defaultContractsVM)
-          : this.contractRef
-            ? this.commit(Process.singleContractVMHolder[this.contractRef])
-            : this.commit(Process.generalContractVM);
+        // this.isDefault
+        //   ? this.commit(Process.defaultContractsVM)
+        //   : this.contractRef
+        //     ? this.commit(Process.singleContractVMHolder[this.contractRef])
+        //     : this.commit(Process.generalContractVM);
       }
     }
   }
@@ -727,33 +727,33 @@ export class Process extends EventEmitter {
    * @param {IVMDataPayload} payload
    * @param {string} contractName
    */
-  private processDefaultContracts(
-    payload: IVMDataPayload,
-    contractName: string
-  ) {
-    // Check if the holder needs to be initialised
-    if (!Process.defaultContractsVM) {
-      // Setup for default contracts
-      try {
-        Process.defaultContractsVM = new VirtualMachine(
-          this.selfHost,
-          this.secured,
-          this.db,
-          this.dbev
-        );
-        // Create VM with all access it needs
-        Process.defaultContractsVM.initialiseVirtualMachine(
-          ["fs", "path", "os", "crypto"],
-          ["typescript"]
-        );
-      } catch (error) {
-        throw new Error(error);
-      }
-    }
+  // private processDefaultContracts(
+  //   payload: IVMDataPayload,
+  //   contractName: string
+  // ) {
+  //   // Check if the holder needs to be initialised
+  //   if (!Process.defaultContractsVM) {
+  //     // Setup for default contracts
+  //     try {
+  //       Process.defaultContractsVM = new VirtualMachine(
+  //         this.selfHost,
+  //         this.secured,
+  //         this.db,
+  //         this.dbev
+  //       );
+  //       // Create VM with all access it needs
+  //       Process.defaultContractsVM.initialiseVirtualMachine(
+  //         ["fs", "path", "os", "crypto"],
+  //         ["typescript"]
+  //       );
+  //     } catch (error) {
+  //       throw new Error(error);
+  //     }
+  //   }
 
-    // Pass through the VM holder and data to the VM Handler
-    this.handleVM(Process.defaultContractsVM, payload, contractName);
-  }
+  //   // Pass through the VM holder and data to the VM Handler
+  //   this.handleVM(Process.defaultContractsVM, payload, contractName);
+  // }
 
   /**
    * Handle the initialisation and pass through of data for unsafe contracts
@@ -766,42 +766,42 @@ export class Process extends EventEmitter {
    * @param {string} contractName
    * @param {string[]} extraBuiltins
    */
-  private processUnsafeContracts(
-    payload: IVMDataPayload,
-    namespace: string,
-    contractName: string,
-    extraBuiltins: string[],
-    extraExternals: string[],
-    extraMocks: string[]
-  ) {
-    this.contractRef = namespace;
+  // private processUnsafeContracts(
+  //   payload: IVMDataPayload,
+  //   namespace: string,
+  //   contractName: string,
+  //   extraBuiltins: string[],
+  //   extraExternals: string[],
+  //   extraMocks: string[]
+  // ) {
+  //   this.contractRef = namespace;
 
-    // If we have initialised an instance for this namespace reuse it
-    // Otherwise we should create an instance for it
-    if (!Process.singleContractVMHolder[this.contractRef]) {
-      try {
-        Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
-          this.selfHost,
-          this.secured,
-          this.db,
-          this.dbev
-        );
+  //   // If we have initialised an instance for this namespace reuse it
+  //   // Otherwise we should create an instance for it
+  //   if (!Process.singleContractVMHolder[this.contractRef]) {
+  //     try {
+  //       Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
+  //         this.selfHost,
+  //         this.secured,
+  //         this.db,
+  //         this.dbev
+  //       );
 
-        Process.singleContractVMHolder[
-          this.contractRef
-        ].initialiseVirtualMachine(extraBuiltins, extraExternals, extraMocks);
-      } catch (error) {
-        throw new Error(error);
-      }
-    }
+  //       Process.singleContractVMHolder[
+  //         this.contractRef
+  //       ].initialiseVirtualMachine(extraBuiltins, extraExternals, extraMocks);
+  //     } catch (error) {
+  //       throw new Error(error);
+  //     }
+  //   }
 
-    // Pass VM instance and data to the VM Handler
-    this.handleVM(
-      Process.singleContractVMHolder[this.contractRef],
-      payload,
-      contractName
-    );
-  }
+  //   // Pass VM instance and data to the VM Handler
+  //   this.handleVM(
+  //     Process.singleContractVMHolder[this.contractRef],
+  //     payload,
+  //     contractName
+  //   );
+  // }
 
   /**
    * Handler processing of a transaction using a specified pre-initialised VM instance
@@ -1015,66 +1015,68 @@ export class Process extends EventEmitter {
       };
 
       // Check if the security data has been cached
-      if (!this.securityCache) {
-        this.securityCache = ActiveOptions.get<any>("security", null);
-      }
+      // if (!this.securityCache) {
+      //   this.securityCache = ActiveOptions.get<any>("security", null);
+      // }
 
       // Which VM to run transaction in
-      if (payload.transaction.$namespace === "default") {
-        // Use the Default contract VM (for contracts that are built into Activeledger)
-        this.processDefaultContracts(payload, contractName);
-      } else {
-        //this.handleVM(Process.generalContractVM, payload, contractName);
-        //Check Namespace
-        if (
-          this.securityCache &&
-          this.securityCache.namespace &&
-          this.securityCache.namespace[payload.transaction.$namespace]
-        ) {
-          const builtin: string[] = [];
-          const external: string[] = [];
-          const mocks: string[] = [];
-          // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-          // const namespaceExtras =
-          //   this.securityCache.namespace[payload.transaction.$namespace];
+      this.handleVM(Process.generalContractVM, payload, contractName);
 
-          // if (namespaceExtras) {
-          //   // Built in
-          //   if (namespaceExtras.std) {
-          //     namespaceExtras.std.forEach((item: string) => {
-          //       builtin.push(item);
-          //     });
-          //   }
+      // if (payload.transaction.$namespace === "default") {
+      //   // Use the Default contract VM (for contracts that are built into Activeledger)
+      //   this.processDefaultContracts(payload, contractName);
+      // } else {
+      //   //this.handleVM(Process.generalContractVM, payload, contractName);
+      //   //Check Namespace
+      //   if (
+      //     this.securityCache &&
+      //     this.securityCache.namespace &&
+      //     this.securityCache.namespace[payload.transaction.$namespace]
+      //   ) {
+      //     const builtin: string[] = [];
+      //     const external: string[] = [];
+      //     const mocks: string[] = [];
+      //     // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
+      //     // const namespaceExtras =
+      //     //   this.securityCache.namespace[payload.transaction.$namespace];
 
-          //   // Now for any approved external
-          //   if (namespaceExtras.external) {
-          //     namespaceExtras.external.forEach((item: string) => {
-          //       external.push(item);
-          //     });
-          //   }
+      //     // if (namespaceExtras) {
+      //     //   // Built in
+      //     //   if (namespaceExtras.std) {
+      //     //     namespaceExtras.std.forEach((item: string) => {
+      //     //       builtin.push(item);
+      //     //     });
+      //     //   }
 
-          //   // Now for any pakcages needing mocking
-          //   if (namespaceExtras.mock) {
-          //     namespaceExtras.mock.forEach((item: string) => {
-          //       mocks.push(item);
-          //     });
-          //   }
-          // }
+      //     //   // Now for any approved external
+      //     //   if (namespaceExtras.external) {
+      //     //     namespaceExtras.external.forEach((item: string) => {
+      //     //       external.push(item);
+      //     //     });
+      //     //   }
 
-          // Initialise the unsafe contract VM
-          this.processUnsafeContracts(
-            payload,
-            payload.transaction.$namespace,
-            contractName,
-            builtin,
-            external,
-            mocks
-          );
-        } else {
-          // Use the General contract VM
-          this.handleVM(Process.generalContractVM, payload, contractName);
-        }
-      }
+      //     //   // Now for any pakcages needing mocking
+      //     //   if (namespaceExtras.mock) {
+      //     //     namespaceExtras.mock.forEach((item: string) => {
+      //     //       mocks.push(item);
+      //     //     });
+      //     //   }
+      //     // }
+
+      //     // Initialise the unsafe contract VM
+      //     this.processUnsafeContracts(
+      //       payload,
+      //       payload.transaction.$namespace,
+      //       contractName,
+      //       builtin,
+      //       external,
+      //       mocks
+      //     );
+      //   } else {
+      //     // Use the General contract VM
+      //     this.handleVM(Process.generalContractVM, payload, contractName);
+      //   }
+      // }
     } catch (error) {
       // error fetch read only streams
       this.shared.raiseLedgerError(1210, new Error("Read Only Stream Error"));

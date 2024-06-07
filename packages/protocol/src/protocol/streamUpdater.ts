@@ -147,6 +147,14 @@ export class StreamUpdater {
       this.entry.$territoriality = this.reference;
     }
 
+    // Return Data for this nodes contract run
+    this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+      this.entry.$umid
+    );
+
+    // Respond with the possible early commited
+    this.emitter.emit("commited");
+
     // Manage Post Processing (If Exists)
     try {
       this.nodeResponse.post = await this.virtualMachine.postProcess(
@@ -160,11 +168,6 @@ export class StreamUpdater {
         this.entry.$umid
       );
 
-      // Return Data for this nodes contract run
-      this.nodeResponse.return = this.virtualMachine.getReturnContractData(
-        this.entry.$umid
-      );
-
       // Clearing All node comms?
       this.entry = this.shared.clearAllComms(
         this.virtualMachine,
@@ -174,8 +177,8 @@ export class StreamUpdater {
       // Remember to let other nodes know
       if (this.earlyCommit) this.earlyCommit();
 
-      // Respond with the possible early commited
-      this.emitter.emit("commited");
+      // // Respond with the possible early commited
+      // this.emitter.emit("commited");
     } catch (error) {
       // Don't let local error stop other nodes
       if (this.earlyCommit) this.earlyCommit();
@@ -450,6 +453,11 @@ export class StreamUpdater {
       // Update response object to send to client if entry node failed
       this.nodeResponse.streams = this.refStreams;
 
+      // Return Data for this nodes contract run
+      this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+        this.entry.$umid
+      );
+
       // Wont get response or returns here from commit
       if (emit) {
         // Respond with the possible early commited
@@ -458,32 +466,31 @@ export class StreamUpdater {
 
       try {
         // Handle post processing if it exists
-
         //TODO this is just from curious it is needed?
 
-        // const post = await this.virtualMachine.postProcess(
-        //   this.entry.$territoriality === this.reference,
-        //   this.entry.$territoriality,
-        //   this.entry.$umid
-        // );
+        const post = await this.virtualMachine.postProcess(
+          this.entry.$territoriality === this.reference,
+          this.entry.$territoriality,
+          this.entry.$umid
+        );
 
-        // this.nodeResponse.post = post;
+        this.nodeResponse.post = post;
 
-        // // Update in communication (Recommended pre commit only but can be edge use cases)
-        // this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
-        //   this.entry.$umid
-        // );
+        // Update in communication (Recommended pre commit only but can be edge use cases)
+        this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
+          this.entry.$umid
+        );
 
-        // // Return Data for this nodes contract run
-        // this.nodeResponse.return = this.virtualMachine.getReturnContractData(
-        //   this.entry.$umid
-        // );
+        // Return Data for this nodes contract run
+        this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+          this.entry.$umid
+        );
 
-        // // Clearing All node comms?
-        // this.entry = this.shared.clearAllComms(
-        //   this.virtualMachine,
-        //   this.nodeResponse.incomms
-        // );
+        // Clearing All node comms?
+        this.entry = this.shared.clearAllComms(
+          this.virtualMachine,
+          this.nodeResponse.incomms
+        );
       } catch (error) {
         continueProcessing = false;
       }
