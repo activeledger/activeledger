@@ -410,12 +410,11 @@ export class StreamUpdater {
 
     try {
       Promise.all([
-      //await Promise.all([
+        //await Promise.all([
         this.db.bulkDocs(this.docs),
         this.dbev.post({
-          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
-            this.entry.$umid
-          }`,
+          _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
+            }`,
         }),
       ]);
     } catch (error) {
@@ -427,11 +426,7 @@ export class StreamUpdater {
     }
 
 
-    // Wont get response or returns here from commit
-    if (emit) {
-      // Respond with the possible early commited
-      this.emitter.emit("commited");
-    }
+
 
     // Wont get response or returns here
     // if(!this.nodeResponse.leader) {
@@ -455,38 +450,47 @@ export class StreamUpdater {
       // Update response object to send to client if entry node failed
       this.nodeResponse.streams = this.refStreams;
 
+      // Wont get response or returns here from commit
+      if (emit) {
+        // Respond with the possible early commited
+        this.emitter.emit("commited");
+      }
+
       try {
         // Handle post processing if it exists
-        const post = await this.virtualMachine.postProcess(
-          this.entry.$territoriality === this.reference,
-          this.entry.$territoriality,
-          this.entry.$umid
-        );
 
-        this.nodeResponse.post = post;
+        //TODO this is just from curious it is needed?
 
-        // Update in communication (Recommended pre commit only but can be edge use cases)
-        this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
-          this.entry.$umid
-        );
+        // const post = await this.virtualMachine.postProcess(
+        //   this.entry.$territoriality === this.reference,
+        //   this.entry.$territoriality,
+        //   this.entry.$umid
+        // );
 
-        // Return Data for this nodes contract run
-        this.nodeResponse.return = this.virtualMachine.getReturnContractData(
-          this.entry.$umid
-        );
+        // this.nodeResponse.post = post;
 
-        // Clearing All node comms?
-        this.entry = this.shared.clearAllComms(
-          this.virtualMachine,
-          this.nodeResponse.incomms
-        );
+        // // Update in communication (Recommended pre commit only but can be edge use cases)
+        // this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
+        //   this.entry.$umid
+        // );
+
+        // // Return Data for this nodes contract run
+        // this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+        //   this.entry.$umid
+        // );
+
+        // // Clearing All node comms?
+        // this.entry = this.shared.clearAllComms(
+        //   this.virtualMachine,
+        //   this.nodeResponse.incomms
+        // );
       } catch (error) {
         continueProcessing = false;
       }
     }
 
     // Broadcast commit & returns
-    if(!this.nodeResponse.leader) {
+    if (!this.nodeResponse.leader) {
       this.emitter.emit("broadcast");
     }
 
