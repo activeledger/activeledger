@@ -180,7 +180,7 @@ export class Endpoints {
                 // Just pick one for now (should be same?)
                 // I imagine its because commit is called early now so less filter chance
                 output.$responses = [responses[0]];
-                // TODO fix
+                // TODO fix (it wasn't broken just happened to be an array returned)
               }
 
               // Append Debug View
