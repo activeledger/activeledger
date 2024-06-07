@@ -28,7 +28,7 @@ import { Activity } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { NodeVM, VMScript } from "@activeledger/vm2";
+//import { NodeVM, VMScript } from "@activeledger/vm2";
 import { setTimeout } from "timers";
 import * as fs from "fs";
 import { EventEmitter } from "events";
@@ -56,7 +56,7 @@ export class VirtualMachine
    * @private
    * @type {VM}
    */
-  private virtual: NodeVM;
+  //private virtual: NodeVM;
 
   /**
    * Holds the VM instance
@@ -932,12 +932,3 @@ export class VirtualMachine
     return "";
   }
 }
-
-/**
- * This empty class is used to mock builtins that externals may require but are not needed.
- * This is to keep security and performance high not having to load in unknown and unnecessary code into
- * your Activeledger network.
- *
- * @class MockBuiltinSecurity
- */
-class MockBuiltinSecurity { }
