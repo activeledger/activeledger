@@ -526,7 +526,6 @@ export class LevelMe {
           data: await this.seqDocFromRoot(doc),
           create: new Date()
         }
-        return doc;
       }
     }
     return this.memory[key].data;
