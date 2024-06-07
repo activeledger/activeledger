@@ -62,170 +62,213 @@ export class Endpoints {
     body: any,
     ip: string
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
-      // Check Transaction (Basic Validation Tests)
-      if (body && ActiveDefinitions.LedgerTypeChecks.isEntry(body)) {
-        let tx = body as ActiveDefinitions.LedgerEntry;
+    return new Promise(async (resolve, reject) => {
 
-        // Set Date
-        tx.$datetime = new Date();
 
-        // Check transaction hasn't expired
-        if (tx.$tx.$expire && new Date(tx.$tx.$expire) <= tx.$datetime) {
-          return resolve(
-            this.successfulFailure(`Transaction Expired : ${tx.$tx.$expire}`)
-          );
-        }
 
-        // Make sure $sigs exists
-        if (!tx.$sigs) {
-          return resolve(this.successfulFailure(`$sigs not found`));
-        }
+      // Inline var function as a temp implemtnation of batching
+      const process = (body: any) => {
+        return new Promise((resolve, reject) => {
+          // Check Transaction (Basic Validation Tests)
+          if (body && ActiveDefinitions.LedgerTypeChecks.isEntry(body)) {
+            let tx = body as ActiveDefinitions.LedgerEntry;
 
-        // Set Origin
-        tx.$origin = host.reference;
+            // Set Date
+            tx.$datetime = new Date();
 
-        // Set Umid
-        tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
+            // Check transaction hasn't expired
+            if (tx.$tx.$expire && new Date(tx.$tx.$expire) <= tx.$datetime) {
+              return resolve(
+                this.successfulFailure(`Transaction Expired : ${tx.$tx.$expire}`)
+              );
+            }
 
-        // Ip Address sending the transaction
-        tx.$remoteAddr = ip;
+            // Make sure $sigs exists
+            if (!tx.$sigs) {
+              return resolve(this.successfulFailure(`$sigs not found`));
+            }
 
-        // Not supporting mutiple transactions yet
-        if (tx.$multi) {
-          // Multiple
-          return resolve({
-            statusCode: 400,
-            content: "Multiple Transaction Not Implemented",
-          });
-        }
+            // Set Origin
+            tx.$origin = host.reference;
 
-        // Make broadcast default, Unless single node network
-        // if (host.neighbourhood.count() < 4) {
-        //   tx.$broadcast = false;
-        // } else if (!tx.$territoriality && !tx.$broadcast) {
-           tx.$broadcast = true;
-        // }
+            // Set Umid
+            tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
 
-        // If we got here everything is ok to send into internal
-        // Now sending direct reducing http overhead
-        Endpoints.DirectInternalInitalise(host, tx)
-          .then((response: any) => {
-            if (response.status == "200" && !response.data.error) {
-              // Do something with the success response before returning
-              let tx: ActiveDefinitions.LedgerEntry = response.data;
+            // Ip Address sending the transaction
+            tx.$remoteAddr = ip;
 
-              // Build Summary
-              let summary: ActiveDefinitions.ISummary = {
-                total: 0,
-                vote: 0,
-                commit: 0,
-              };
+            // Make broadcast default, Unless single node network
+            // if (host.neighbourhood.count() < 4) {
+            //   tx.$broadcast = false;
+            // } else if (!tx.$territoriality && !tx.$broadcast) {
+            tx.$broadcast = true;
+            // }
 
-              // Any data to send back to the client
-              let responses = [];
+            // If we got here everything is ok to send into internal
+            // Now sending direct reducing http overhead
+            Endpoints.DirectInternalInitalise(host, tx)
+              .then((response: any) => {
+                if (response.status == "200" && !response.data.error) {
+                  // Do something with the success response before returning
+                  let tx: ActiveDefinitions.LedgerEntry = response.data;
 
-              // Get nodes to count
-              let nodes = Object.keys(tx.$nodes);
-              for (let i = nodes.length; i--;) {
-                summary.total++;
-                if (tx.$nodes[nodes[i]].vote) summary.vote++;
-                if (tx.$nodes[nodes[i]].commit) summary.commit++;
+                  // Build Summary
+                  let summary: ActiveDefinitions.ISummary = {
+                    total: 0,
+                    vote: 0,
+                    commit: 0,
+                  };
 
-                // Manage Errors (Hides node on purpose)
-                if (tx.$nodes[nodes[i]].error) {
-                  if (summary.errors) {
-                    summary.errors.push(tx.$nodes[nodes[i]].error as string);
+                  // Any data to send back to the client
+                  let responses = [];
+
+                  // Get nodes to count
+                  let nodes = Object.keys(tx.$nodes);
+                  for (let i = nodes.length; i--;) {
+                    summary.total++;
+                    if (tx.$nodes[nodes[i]].vote) summary.vote++;
+                    if (tx.$nodes[nodes[i]].commit) summary.commit++;
+
+                    // Manage Errors (Hides node on purpose)
+                    if (tx.$nodes[nodes[i]].error) {
+                      if (summary.errors) {
+                        summary.errors.push(tx.$nodes[nodes[i]].error as string);
+                      } else {
+                        summary.errors = [tx.$nodes[nodes[i]].error as string];
+                      }
+                    }
+
+                    // Did this node have data to send to the client
+                    if (tx.$nodes[nodes[i]].return) {
+                      responses.push(tx.$nodes[nodes[i]].return);
+                    }
+
+                    // Any updated streams we may not know about
+                    if (!tx.$streams && tx.$nodes[nodes[i]].streams) {
+                      tx.$streams = tx.$nodes[nodes[i]].streams as IStreams;
+                    }
+                  }
+
+                  // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
+                  // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful
+                  if (tx.$broadcast && summary.vote) {
+                    // TODO - Reusable, not copied from protocol/process
+                    // Allow for full network consensus
+                    const percent = tx.$unanimous
+                      ? 100
+                      : ActiveOptions.get<any>("consensus", {}).reached;
+
+                    // Return if consensus has been reached
+                    if ((summary.vote / summary.total) * 100 >= percent || false) {
+                      // If reach all that voted yes should have committed
+                      summary.commit = summary.vote;
+                    }
+                  }
+
+                  // We have the entire network $tx object. This isn't something we want to return
+                  let output: ActiveDefinitions.LedgerResponse = {
+                    $umid: tx.$umid,
+                    $summary: summary,
+                    $streams: tx.$streams,
+                  };
+
+                  // Optional Responses to add
+                  if (responses.length) {
+                    // Just pick one for now (should be same?)
+                    // I imagine its because commit is called early now so less filter chance
+                    output.$responses = [responses[0]];
+                    // TODO fix (it wasn't broken just happened to be an array returned)
+                  }
+
+                  // Append Debug View
+                  if (ActiveOptions.get<boolean>("debug", false)) {
+                    output.$debug = tx;
+                  }
+
+                  return resolve({
+                    statusCode: 200,
+                    content: output,
+                  });
+                } else {
+                  // If we had to be rebroadcasted this isn't an error
+                  if (response.rebroadcasted) {
+                    return resolve({
+                      statusCode: 200,
+                      content: response.data,
+                    });
                   } else {
-                    summary.errors = [tx.$nodes[nodes[i]].error as string];
+                    // Just return untouched
+                    return resolve({
+                      statusCode: response.status,
+                      content: response.data,
+                    });
                   }
                 }
-
-                // Did this node have data to send to the client
-                if (tx.$nodes[nodes[i]].return) {
-                  responses.push(tx.$nodes[nodes[i]].return);
+              })
+              .catch((error) => {
+                if (error?.status == "100" && error.error) {
+                  return resolve(this.successfulFailure(error.error || error));
+                } else {
+                  ActiveLogger.error(error, "Sent 500 Response (1000)");
+                  return reject({
+                    statusCode: 500,
+                    content: error,
+                  });
                 }
-
-                // Any updated streams we may not know about
-                if (!tx.$streams && tx.$nodes[nodes[i]].streams) {
-                  tx.$streams = tx.$nodes[nodes[i]].streams as IStreams;
-                }
-              }
-
-              // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
-              // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful
-              if (tx.$broadcast && summary.vote) {
-                // TODO - Reusable, not copied from protocol/process
-                // Allow for full network consensus
-                const percent = tx.$unanimous
-                  ? 100
-                  : ActiveOptions.get<any>("consensus", {}).reached;
-
-                // Return if consensus has been reached
-                if ((summary.vote / summary.total) * 100 >= percent || false) {
-                  // If reach all that voted yes should have committed
-                  summary.commit = summary.vote;
-                }
-              }
-
-              // We have the entire network $tx object. This isn't something we want to return
-              let output: ActiveDefinitions.LedgerResponse = {
-                $umid: tx.$umid,
-                $summary: summary,
-                $streams: tx.$streams,
-              };
-
-              // Optional Responses to add
-              if (responses.length) {
-                // Just pick one for now (should be same?)
-                // I imagine its because commit is called early now so less filter chance
-                output.$responses = [responses[0]];
-                // TODO fix (it wasn't broken just happened to be an array returned)
-              }
-
-              // Append Debug View
-              if (ActiveOptions.get<boolean>("debug", false)) {
-                output.$debug = tx;
-              }
-
-              return resolve({
-                statusCode: 200,
-                content: output,
               });
-            } else {
-              // If we had to be rebroadcasted this isn't an error
-              if (response.rebroadcasted) {
-                return resolve({
-                  statusCode: 200,
-                  content: response.data,
-                });
-              } else {
-                // Just return untouched
-                return resolve({
-                  statusCode: response.status,
-                  content: response.data,
-                });
-              }
-            }
-          })
-          .catch((error) => {
-            if (error?.status == "100" && error.error) {
-              return resolve(this.successfulFailure(error.error || error));
-            } else {
-              ActiveLogger.error(error, "Sent 500 Response (1000)");
-              return reject({
-                statusCode: 500,
-                content: error,
-              });
-            }
-          });
-      } else {
-        ActiveLogger.error("Sent 500 Response (1200)");
-        return reject({
-          statusCode: 500,
-          content: "Invalid Transaction",
+          } else {
+            ActiveLogger.error("Sent 500 Response (1200)");
+            return reject({
+              statusCode: 500,
+              content: "Invalid Transaction",
+            });
+          }
         });
       }
+
+      // Not supporting mutiple transactions yet
+      if (body.$multi) {
+        // Multiple
+        // return resolve(
+        //   this.successfulFailure("Multiple Transaction Not Implemented")
+        // );
+
+        // We can either send them all at once or in seq depends on transaction lets default to all at once
+        const results = [] as any[];
+        if (body.$seq) {
+          for (let i = body.$multi.length; i--;) {
+            results.push(await process(body.$multi[i]));
+            // deal with catch problem
+          }
+          const response = [];
+          for (let i = results.length; i--;) {
+            response.push(results[i].content);
+          }
+          resolve({
+            statusCode: 200,
+            content: response,
+          });
+
+        } else {
+          for (let i = body.$multi.length; i--;) {
+            results.push(process(body.$multi[i]));
+          }
+          const results2 = await Promise.all(results) as any[];
+          const response = [];
+          for (let i = results2.length; i--;) {
+            response.push(results2[i].content);
+          }
+          resolve({
+            statusCode: 200,
+            content: response,
+          });
+        }
+
+      } else {
+        // Single normal tx process here for now
+        process(body).then(resolve).catch(reject);
+      }
+
     });
   }
 
