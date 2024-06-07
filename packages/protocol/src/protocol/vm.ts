@@ -247,13 +247,35 @@ export class VirtualMachine
     // Loop each stream and find the marked ones
     while (i--) {
       if (activities[streams[i]].updated) {
-        exported.push(
-          activities[streams[i]].export2Ledger(
-            this.contractReferences[umid].key
-          )
-        );
+
+        // TODO why is this umid now failing?
+
+        // exported.push(
+        //   activities[streams[i]].export2Ledger(
+        //     this.contractReferences[umid].key
+        //   )
+        // );
+
+        // Activities have it referenced now
+        const stream: any = {
+          //@ts-ignore
+          meta: activities[streams[i]].meta,
+          //@ts-ignore
+          state: activities[streams[i]].state
+        }
+
+        if (activities[streams[i]].volatileUpdated) {
+          //@ts-ignore
+          stream.volatile = activities[streams[i]].volatile;
+        }
+
+        exported.push(stream)
+
+        // Have we loaded in a volatile to return
       }
+
     }
+
     return exported;
   }
 
