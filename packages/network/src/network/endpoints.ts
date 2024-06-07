@@ -104,7 +104,7 @@ export class Endpoints {
         // if (host.neighbourhood.count() < 4) {
         //   tx.$broadcast = false;
         // } else if (!tx.$territoriality && !tx.$broadcast) {
-        //   tx.$broadcast = true;
+           tx.$broadcast = true;
         // }
 
         // If we got here everything is ok to send into internal
@@ -177,7 +177,10 @@ export class Endpoints {
 
               // Optional Responses to add
               if (responses.length) {
-                output.$responses = responses;
+                // Just pick one for now (should be same?)
+                // I imagine its because commit is called early now so less filter chance
+                output.$responses = [responses[0]];
+                // TODO fix
               }
 
               // Append Debug View
