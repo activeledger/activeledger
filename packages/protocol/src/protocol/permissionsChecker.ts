@@ -52,7 +52,7 @@ export class PermissionsChecker {
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
     private db: ActiveDSConnect,
-    private checkRevs: boolean,
+    //private checkRevs: boolean,
     private securityCache: ISecurityCache,
     private shared: Shared
   ) { }
