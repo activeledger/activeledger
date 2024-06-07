@@ -206,17 +206,23 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {*} [options={}]
    * @returns
    */
-  public async get(id: string, options: any = {}): Promise<any> {
-    if (!this.secondaryCache[id]) {
-      const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
-      return response.data
-      // DISABLED
-      // this.secondaryCache[id] = {
-      //   data: response.data,
-      //   create: new Date()
-      // } // TODO Error Handling now?
-    }
-    return this.secondaryCache[id].data;
+  public get(id: string, options: any = {}): Promise<any> {
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+        .then((response: any) => resolve(response.data))
+        .catch(reject);
+    });
+    
+    // if (!this.secondaryCache[id]) {
+    //   const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
+    //   return response.data
+    //   // DISABLED
+    //   // this.secondaryCache[id] = {
+    //   //   data: response.data,
+    //   //   create: new Date()
+    //   // } // TODO Error Handling now?
+    // }
+    // return this.secondaryCache[id].data;
   }
 
   /**

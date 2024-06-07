@@ -530,15 +530,29 @@ export class StreamUpdater {
       try {
         const streams = await Promise.all(streamColCheck);
 
-        // Problem streams exist
-        ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+        // This seems to have broken in perfmods but seems the same
+        // as the main branch so temp fix
+        let safe = true;
+        for (let i = streams.length; i--;) {
+          if (streams[i]._id) {
+            safe = false;
+            break;
+          }
+        }
 
-        // Update commit
-        this.nodeResponse.commit = false;
-        this.shared.raiseLedgerError(
-          1530,
-          new Error("Deterministic Stream Name Exists")
-        );
+        if (!safe) {
+          // Problem streams exist
+          ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+
+          // Update commit
+          this.nodeResponse.commit = false;
+          this.shared.raiseLedgerError(
+            1530,
+            new Error("Deterministic Stream Name Exists")
+          );
+        } else {
+          this.append();
+        }
       } catch (error) {
         // ? Continue (Error being document not found)
         this.append();
