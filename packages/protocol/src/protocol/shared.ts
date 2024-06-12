@@ -52,17 +52,17 @@ export class Shared {
     reason: string | Error;
     priority: number;
   } = {
-    code: 0,
-    reason: "",
-    priority: 0,
-  };
+      code: 0,
+      reason: "",
+      priority: 0,
+    };
 
   constructor(
     private _storeSingleError: boolean,
     private entry: ActiveDefinitions.LedgerEntry,
     private dbe: ActiveDSConnect,
     private emitter: Process
-  ) {}
+  ) { }
 
   /**
    * Stores a copy of the single error to return
@@ -208,7 +208,8 @@ export class Shared {
     code: number,
     reason: Error,
     stop: Boolean = false,
-    priority: number = 0
+    priority: number = 0,
+    noWait = false
   ) {
     try {
       // Store in database for activerestore to review
@@ -227,7 +228,7 @@ export class Shared {
         this.emitter.emitFailed({
           status: this._errorOut.code,
           error,
-        });
+        }, noWait);
       }
     } catch (error) {
       // Problem could be serious (Database down?)
@@ -240,7 +241,7 @@ export class Shared {
         this.emitter.emit("failed", {
           status: code,
           error: error,
-        });
+        }, noWait);
       }
     }
   }
@@ -262,7 +263,6 @@ export class Shared {
   ): Promise<any> {
     // const getReason = () =>
     //   reason && reason.message ? reason.message : reason;
-
     if (priority >= this._errorOut.priority) {
       this._errorOut.code = code;
       this._errorOut.reason = this.getGlobalReason(reason) as string;
@@ -277,7 +277,7 @@ export class Shared {
         JSON.stringify(this.entry)
       ) as ActiveDefinitions.LedgerEntry;
       const nodeErrors = Object.keys(tmpEntry.$nodes);
-      for (let i = nodeErrors.length; i--; ) {
+      for (let i = nodeErrors.length; i--;) {
         tmpEntry.$nodes[nodeErrors[i]].incomms = null;
       }
       // Build document for database
@@ -310,8 +310,8 @@ export class Shared {
     return reason.message
       ? reason.message
       : reason.error
-      ? reason.error
-      : reason;
+        ? reason.error
+        : reason;
   }
 
   /**
