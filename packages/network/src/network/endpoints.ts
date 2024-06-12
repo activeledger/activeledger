@@ -150,20 +150,24 @@ export class Endpoints {
                   }
 
                   // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
-                  // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful
-                  if (tx.$broadcast && summary.vote) {
-                    // TODO - Reusable, not copied from protocol/process
-                    // Allow for full network consensus
-                    const percent = tx.$unanimous
-                      ? 100
-                      : ActiveOptions.get<any>("consensus", {}).reached;
+                  // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful#
 
-                    // Return if consensus has been reached
-                    if ((summary.vote / summary.total) * 100 >= percent || false) {
-                      // If reach all that voted yes should have committed
-                      summary.commit = summary.vote;
-                    }
-                  }
+                  // TODO : Has this been fixed elsewhere? Deterministic stream collision fails it here
+                  // I think in willfair commiting false has removed the need for this.
+
+                  // if (tx.$broadcast && summary.vote) {
+                  //   // TODO - Reusable, not copied from protocol/process
+                  //   // Allow for full network consensus
+                  //   const percent = tx.$unanimous
+                  //     ? 100
+                  //     : ActiveOptions.get<any>("consensus", {}).reached;
+
+                  //   // Return if consensus has been reached
+                  //   if ((summary.vote / summary.total) * 100 >= percent || false) {
+                  //     // If reach all that voted yes should have committed
+                  //     summary.commit = summary.vote;
+                  //   }
+                  // }
 
                   // We have the entire network $tx object. This isn't something we want to return
                   let output: ActiveDefinitions.LedgerResponse = {
@@ -176,7 +180,8 @@ export class Endpoints {
                   if (responses.length) {
                     // Just pick one for now (should be same?)
                     // I imagine its because commit is called early now so less filter chance
-                    output.$responses = [responses[0]];
+                    //output.$responses = [responses[0]];
+                    output.$responses = responses;
                     // TODO fix (it wasn't broken just happened to be an array returned)
                   }
 

@@ -281,7 +281,7 @@ export class Process extends EventEmitter {
 
     // Check if the security data has been cached
     //if (!this.securityCache) {
-      this.securityCache = ActiveOptions.get<any>("security", null);
+    this.securityCache = ActiveOptions.get<any>("security", null);
     //}
 
     // Initialise the permission checker
@@ -1201,10 +1201,11 @@ export class Process extends EventEmitter {
    *
    * @param {*} [data]
    */
-  public emitFailed(data?: { status: number; error: string | Error }) {
-    if (this.willEmit) {
+  public emitFailed(data?: { status: number; error: string | Error }, noWait?: boolean) {
+    this.commiting = false;
+    if (this.willEmit || noWait) {
       clearTimeout(this.willEmit);
-      this.emit("failed", this.willEmitData);
+      this.emit("failed", this.willEmitData || data);
     } else {
       // Only delay for broadcast method and if it has outstanding votes to count
       // or waiting for streams if can commit

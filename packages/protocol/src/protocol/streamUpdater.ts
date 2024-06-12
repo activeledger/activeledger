@@ -548,7 +548,10 @@ export class StreamUpdater {
           this.nodeResponse.commit = false;
           this.shared.raiseLedgerError(
             1530,
-            new Error("Deterministic Stream Name Exists")
+            new Error("Deterministic Stream Name Exists"),
+            false,
+            0,
+            true
           );
         } else {
           this.append();
