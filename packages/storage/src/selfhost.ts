@@ -26,6 +26,7 @@ import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
 import { Socket } from "net";
+import { SSE } from "./sse";
 
 (function () {
   // Fauxton Path
@@ -259,7 +260,6 @@ import { Socket } from "net";
     if (options.keys) {
       options.keys = options.keys.map((id: string) => filterPrefix(id));
     }
-
     return options;
   };
 
@@ -541,8 +541,65 @@ import { Socket } from "net";
     }
   });
 
+
+  http.use(
+    "*/events",
+    "GET",
+    async (
+      incoming: IActiveHttpIncoming,
+      req: http.IncomingMessage,
+      res: Socket
+    ) => {
+      // Get Database
+      let db = getDB(incoming.url[0]);
+
+      const sse = new SSE(res);
+      const lastEventId = req.headers['Last-Event-ID'];
+
+      // Fetch anything newer since then and push
+      if (lastEventId) {
+        // Merge with getTransactionUmids as there is little difference
+        const events = (await db.allDocs(prepareAllDocs({
+          startkey: `event:${lastEventId}`,
+          endkey: `event:`,
+          include_docs: true
+        }))) as any;
+        // Start at 1 to skip the event that was already sent
+        for (let i = 1; i < events.rows.length; i++) {
+          const id = events.rows[i]._id.replace("event:", "");
+          delete events.rows[i]._id;
+          delete events.rows[i]._rev;
+          sse.write(id, events.rows[i]);
+        }
+      }
+
+      // Listener Process event (to turn off)
+      const listener = (change: any) => {
+        if(change.id.startsWith("event:")) {
+          delete change.doc._id;
+          delete change.doc._rev;
+          sse.write(change.id.replace("event:", ""), change.doc);
+        }
+      };
+
+      // Stop listening for changes
+      const cancelChanges = () => {
+        changes.off("change", listener);
+      };
+
+      // Run on close connection
+      res.on("close", cancelChanges);
+
+      // Listening for changes
+      let changes = db.changes().on("change", listener);
+
+      return "handled";
+    }
+  );
+
   // Listen for changes on the database
   http.use(
+
     "*/_changes",
     "GET",
     async (
@@ -572,7 +629,7 @@ import { Socket } from "net";
         } else {
           //Long polling heartbeat
           let hBInterval = setInterval(() => {
-            res.write("\n");
+            //res.write("\n");
           }, incoming.query.heartbeat || 60000);
 
           // Clean up
@@ -582,8 +639,11 @@ import { Socket } from "net";
             }
           };
 
+
           // Set Header
-          res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+          //res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+
+          res.write(`HTTP/1.1 200 OK\r\n\r\n`);
 
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
@@ -605,18 +665,18 @@ import { Socket } from "net";
                   res.write(JSON.stringify(change));
                   res.write('],\n"last_seq":' + change.seq + "}\n");
                 }
-                res.end();
-                cleanUp();
+                //res.end();
+                //cleanUp();
               };
 
               // Stop listening for changes
               const cancelChanges = () => {
                 changes.off("change", listener);
-                req.connection.off("close", cancelChanges);
+                //req.connection.off("close", cancelChanges);
               };
 
               // Run on close connection
-              req.connection.on("close", cancelChanges);
+              //req.connection.on("close", cancelChanges);
 
               // Listening for changes
               let changes = db.changes().on("change", listener);

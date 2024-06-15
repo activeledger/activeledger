@@ -164,8 +164,9 @@ export class EventEngine {
    * @returns {Promise<any>}
    */
   public emit(name: string, data: any): void {
-    // Event object to store
+    // Event object to store 
     let event: any = {
+      _id: `event:${Date.now()}`,
       name: name,
       data: data,
       phase: this.phase,

@@ -157,7 +157,7 @@ export class ActiveChanges extends events.EventEmitter {
             // Start Listening
             this.start();
           })
-          .catch(() => {
+          .catch((e) => {
             // Connection Error, Attempt Reconnect
             setTimeout(() => {
               this.resume(true);
