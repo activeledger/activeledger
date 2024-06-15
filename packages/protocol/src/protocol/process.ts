@@ -319,6 +319,8 @@ export class Process extends EventEmitter {
     //   );
     // }
 
+    if(this.entry.$broadcast) {
+
     // Make sure broadcast timeout is cleared
     clearTimeout(this.broadcastTimeout);
 
@@ -336,6 +338,14 @@ export class Process extends EventEmitter {
 
     // Quick solution to delete rules
     delete (this as any).entry;
+    }else{
+      // early commit calls this to soon so can't send on so simple timeout 
+      setTimeout(() => {
+        Process.generalContractVM.destroy(umid);
+    delete (this as any).entry;
+
+      }, 60000);
+    }
   }
 
   /**
@@ -1128,7 +1138,7 @@ export class Process extends EventEmitter {
         // Send back early if consensus has been reached and not the end of the network
         // (Early commit, Then Forward to network)
         ActiveLogger.debug(
-          "Attempting commit with too early commit callback (to send right"
+          "Attempting commit with too early commit callback (to send right)"
         );
         this.commit(virtualMachine, async () => {
           try {
