@@ -88,7 +88,7 @@ export class Maintain {
     Maintain.createNetworkOrder();
 
     // Start the timer
-    //Maintain.healthTimer(true);
+    Maintain.healthTimer(true);
   }
 
   /**
