@@ -59,14 +59,17 @@ export class ActiveRequest {
     type: string,
     header?: string[],
     data?: any,
-    enableGZip: boolean = false
+    enableGZip: boolean = false,
+    timeout: number = 300 // undici default
   ): Promise<IHTTPResponse> {
 
-    //enableGZip = false;
-
+    //enableGZip = false
+    timeout = timeout * 1000;
     const options: Omit<Dispatcher.RequestOptions, 'path'> = {
       method: type.toUpperCase() as any, // Fix
       headers: {},
+      headersTimeout: timeout,
+      bodyTimeout: timeout,
     }
 
     // Compressable?
