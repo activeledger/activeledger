@@ -538,7 +538,7 @@ export class ActiveDSChanges
         if (!this.stop) {
           // Map last_seq -> seq (Matches Pouch Connector)
           // and update since for next round of listening
-          this.opts.since = response.data.last_seq;
+          this.opts.since = response.id;
 
           if (this.bulk) {
             // Emit all changed data

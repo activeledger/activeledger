@@ -621,7 +621,7 @@ export class LevelMe {
     try {
       await writer.chain.write();
       // Emit Changed Doc
-      //this.changeEmitter.emit("change", writer.changes);
+      this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount--;
@@ -815,7 +815,7 @@ export class LevelMe {
     try {
       await batch.write();
       // Emit Changed Docs
-      //this.changeEmitter.emit("change", changes);
+      this.changeEmitter.emit("change", changes);
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount = this.docCount - docs.length;
