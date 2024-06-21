@@ -712,27 +712,30 @@ export class VirtualMachine
   private incMarshel(nodes: ActiveDefinitions.INodes, umid: string): void {
     // Get Node Keys (Or get from Neighbourhood?)
     let keys = Object.keys(nodes);
-    let i = keys.length;
-    if (i) {
-      let comms: ActiveDefinitions.ICommunications = {};
-      // Quick Flag to check if its worth sending large into VM
-      let sendComms = false;
 
-      // Find any comms
-      while (i--) {
-        if (nodes[keys[i]].incomms) {
-          comms[keys[i]] = nodes[keys[i]].incomms;
-          if (!sendComms) sendComms = true;
+    if (keys) {
+      let i = keys.length;
+      if (i) {
+        let comms: ActiveDefinitions.ICommunications = {};
+        // Quick Flag to check if its worth sending large into VM
+        let sendComms = false;
+
+        // Find any comms
+        while (i--) {
+          if (nodes[keys[i]].incomms) {
+            comms[keys[i]] = nodes[keys[i]].incomms;
+            if (!sendComms) sendComms = true;
+          }
         }
-      }
 
-      // Any Comms to send into VM (Alternative parse directly as JSON)
-      if (sendComms) {
-        return this.virtualInstance.setInternodeComms(
-          umid,
-          comms,
-          this.contractReferences[umid].key
-        );
+        // Any Comms to send into VM (Alternative parse directly as JSON)
+        if (sendComms) {
+          return this.virtualInstance.setInternodeComms(
+            umid,
+            comms,
+            this.contractReferences[umid].key
+          );
+        }
       }
     }
   }

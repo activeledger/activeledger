@@ -352,9 +352,17 @@ export class Host extends Home {
               // Now we could also just close the socket! We don't need to reply
 
               socket.write(`HTTP/1.1 200 OK\r\n`);
+              socket.write(`Connection: close\r\n`);
               socket.write(`Content-Type: application/json\r\n`);
               socket.write(`Content-Length: 2\r\n\r\n`);
               socket.write("{}");
+
+
+
+              // Forces "other side closed" error on the client
+              // socket.write("{}", () => {
+              //   socket.end();
+              // });
 
               // Terrible make better just for testing
               (socket as any).bundled = true;
@@ -581,6 +589,9 @@ export class Host extends Home {
    * @returns {setup}
    */
   private getLatestSetup(): setup {
+    // Temp fix to circular problem on crash?
+    // Problem with this is it assume right may not have changed
+    // everythiung else should be static!
     return {
       type: "setup",
       data: {
@@ -618,7 +629,7 @@ export class Host extends Home {
     // Reusable restart process from error with current scope
     const unloadProcessorSafely = (...error: any[]) => {
       if (unloadHandled) {
-        ActiveLogger.fatal(error, "Processor Crashed - Already Shutting Down");
+        //ActiveLogger.fatal(error, "Processor Crashed - Already Shutting Down");
       } else {
         pFork.stop = unloadHandled = true;
         ActiveLogger.fatal(error, "Processor Crashed");
@@ -629,6 +640,12 @@ export class Host extends Home {
         // We should now create a new standby processor
         this.standbyProcess = this.createProcessor();
         this.standbyProcess.send(this.getLatestSetup());
+
+        // setTimeout(() => {
+        //   this.standbyProcess.send(this.getLatestSetup(), (e) => {
+        //     ActiveLogger.fatal(e as any, "Issue with new Standby Process");
+        //   });
+        // }, 1000);
 
         ActiveLogger.fatal(
           pFork,
@@ -1680,7 +1697,7 @@ export class Host extends Home {
     // Write the response
     //res.writeHead(statusCode, headers);
 
-    if((res as any).bundled) {
+    if ((res as any).bundled) {
       return;
     }
 
@@ -1688,6 +1705,7 @@ export class Host extends Home {
     if (!res.writableEnded) {
 
       res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
+      res.write(`Connection: close\r\n`);
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 

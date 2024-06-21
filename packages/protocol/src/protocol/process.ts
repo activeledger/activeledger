@@ -51,6 +51,16 @@ const BROADCAST_TIMEOUT = 20 * 1000;
 export class Process extends EventEmitter {
   // #region Class variables
 
+
+  /**
+   * Cache total nodes in network
+   * TODO: When increasing nodes on attest we need to adjust this cache
+   *
+   * @private
+   * @static
+   */
+  private static networkNodeLength = 0;
+  
   /**
    * Holds the instance that controls general contracts
    *
@@ -263,6 +273,8 @@ export class Process extends EventEmitter {
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
 
+    Process.networkNodeLength = ActiveOptions.get<Array<any>>("neighbourhood", []).length;
+
     try {
       // Initialise the general contract VM
       if (!Process.generalContractVM) {
@@ -319,30 +331,30 @@ export class Process extends EventEmitter {
     //   );
     // }
 
-    if(this.entry.$broadcast) {
+    if (this.entry.$broadcast) {
 
-    // Make sure broadcast timeout is cleared
-    clearTimeout(this.broadcastTimeout);
+      // Make sure broadcast timeout is cleared
+      clearTimeout(this.broadcastTimeout);
 
-    Process.generalContractVM.destroy(umid)
+      Process.generalContractVM.destroy(umid)
 
-    // Close VM and entry (cirular reference)
-    // if (this.isDefault) {
-    //   // DefaultVM created?
-    //   if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
-    // } else {
-    //   this.contractRef
-    //     ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
-    //     : Process.generalContractVM.destroy(umid);
-    // }
+      // Close VM and entry (cirular reference)
+      // if (this.isDefault) {
+      //   // DefaultVM created?
+      //   if (Process.defaultContractsVM) Process.defaultContractsVM.destroy(umid);
+      // } else {
+      //   this.contractRef
+      //     ? Process.singleContractVMHolder[this.contractRef].destroy(umid)
+      //     : Process.generalContractVM.destroy(umid);
+      // }
 
-    // Quick solution to delete rules
-    delete (this as any).entry;
-    }else{
+      // Quick solution to delete rules
+      delete (this as any).entry;
+    } else {
       // early commit calls this to soon so can't send on so simple timeout 
       setTimeout(() => {
         Process.generalContractVM.destroy(umid);
-    delete (this as any).entry;
+        delete (this as any).entry;
 
       }, 60000);
     }
@@ -1303,26 +1315,30 @@ export class Process extends EventEmitter {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     this.currentVotes = 0;
+    if (networkNodes) {
 
-    // Small performance boost if we voted no
-    //if (skipBoost /*|| this.nodeResponse.vote*/) {
-    for (let i = networkNodes.length; i--;) {
-      if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
+      // Small performance boost if we voted no
+      //if (skipBoost /*|| this.nodeResponse.vote*/) {
+      for (let i = networkNodes.length; i--;) {
+        if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
+      }
+      //}
+
+      // Allow for full network consensus
+      const percent = this.entry.$unanimous
+        ? 100
+        : ActiveOptions.get<any>("consensus", {}).reached;
+
+      // Return if consensus has been reached
+      return (
+        (this.currentVotes /
+          Process.networkNodeLength) *
+        100 >=
+        percent || false
+      );
+    } else {
+      return false;
     }
-    //}
-
-    // Allow for full network consensus
-    const percent = this.entry.$unanimous
-      ? 100
-      : ActiveOptions.get<any>("consensus", {}).reached;
-
-    // Return if consensus has been reached
-    return (
-      (this.currentVotes /
-        ActiveOptions.get<Array<any>>("neighbourhood", []).length) *
-      100 >=
-      percent || false
-    );
   }
 
   /**

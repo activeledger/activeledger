@@ -112,21 +112,26 @@ export class ActiveRequest {
       options.body = data
     }
 
-    const {
-      headers,
-      body,
-    } = await request(reqUrl, options)
-
     try {
-      // Back Compat gzip support
-      if (headers['content-encoding'] === 'gzip') {
-      const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
-      return { data: JSON.parse(data.toString()) }
-      } else {
-        return { data: await body.json() }
+
+      const {
+        headers,
+        body,
+      } = await request(reqUrl, options);
+
+      try {
+        // Back Compat gzip support
+        if (headers['content-encoding'] === 'gzip') {
+          const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
+          return { data: JSON.parse(data.toString()) }
+        } else {
+          return { data: await body.json() }
+        }
+      } catch (e) {
+        return { data: null }
       }
     } catch (e) {
-      return { data: null }
+      throw e;
     }
   }
 
