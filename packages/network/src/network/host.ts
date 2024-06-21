@@ -41,7 +41,7 @@ import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
-import { createServer, Socket, Server } from "net"
+import { createServer, Socket, Server } from "net";
 
 const RELEASE_SHUTDOWN_TIMEOUT = 5 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
@@ -184,9 +184,12 @@ export class Host extends Home {
         if (this.processPending[entry.$umid]) {
           ActiveLogger.debug("Broadcast Recieved : " + entry.$umid);
           // Process Assigned?
-          if (this.processPending[entry.$umid].pid &&
+          if (
+            this.processPending[entry.$umid].pid &&
             // If a lead/er we don't need to let sub processor know
-            !this.processPending[entry.$umid].entry?.$nodes[this.reference]?.leader) {
+            !this.processPending[entry.$umid].entry?.$nodes[this.reference]
+              ?.leader
+          ) {
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
               this.processPending[entry.$umid].pid
@@ -271,45 +274,51 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--;) {
+      for (let i = this.hybridHosts.length; i--; ) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
     }
 
-    this.api = createServer(socket => {
-
+    this.api = createServer((socket) => {
       let dBuf: Buffer[] = [];
       let headersEnded: number;
       let method: string, path: string, headers: any, httpVersion: string;
 
-      socket.on('error', (e) => {
+      socket.on("error", (e) => {
         socket.destroy();
-      })
+      });
 
-      socket.on('close', () => {
+      socket.on("close", () => {
         socket.end();
-      })
+      });
 
-      socket.on('data', async (data) => {
+      socket.on("data", async (data) => {
         // Store as it "may not be enough"
         dBuf.push(data);
 
         if (!headersEnded) {
-          headersEnded = data.indexOf('\r\n\r\n');
-          const requestHeader = data.subarray(0, headersEnded).toString()
-          const [firstLine, ...otherLines] = requestHeader.split('\n');
-          [method, path, httpVersion] = firstLine.trim().split(' ');
-          headers = Object.fromEntries(otherLines.filter(_ => _)
-            .map(line => line.split(':').map(part => part.trim()))
-            .map(([name, ...rest]) => [name, rest.join(' ')]));
+          headersEnded = data.indexOf("\r\n\r\n");
+          const requestHeader = data.subarray(0, headersEnded).toString();
+          const [firstLine, ...otherLines] = requestHeader.split("\n");
+          [method, path, httpVersion] = firstLine.trim().split(" ");
+          headers = Object.fromEntries(
+            otherLines
+              .filter((_) => _)
+              .map((line) => line.split(":").map((part) => part.trim()))
+              .map(([name, ...rest]) => [name, rest.join(" ")])
+          );
         }
-
 
         if (method === "POST") {
           // Only support content length (this is lowercase! I  think lower case all) as I am not setting
-          const contentLength = parseInt(headers['Content-Length'] || headers['content-length']);
-          let body = Buffer.concat(dBuf).subarray(headersEnded + 4, contentLength + headersEnded + 4);
+          const contentLength = parseInt(
+            headers["Content-Length"] || headers["content-length"]
+          );
+          let body = Buffer.concat(dBuf).subarray(
+            headersEnded + 4,
+            contentLength + headersEnded + 4
+          );
           if (body.length >= contentLength) {
             // gzipped?
             // Sometimes internal transactions fail to be decompressed
@@ -332,7 +341,7 @@ export class Host extends Home {
             // Fix this makesurenot buffer mess I think it is the sending client
 
             //const bodyString = body.toString();
-            const bodyString = await this.makeSureNotBuffer(body) as any;
+            const bodyString = (await this.makeSureNotBuffer(body)) as any;
             // console.log(bodyString.substr(0,20));
 
             // if(bodyString.substr(0,20).indexOf("Buffer") !== -1) {
@@ -340,7 +349,7 @@ export class Host extends Home {
             //   process.exit();
             // }
             // could make this nicer
-            let bundles: any[];// = [];
+            let bundles: any[]; // = [];
 
             // TODO we could have the double buffer problem here?
             // unless this has been solved
@@ -352,12 +361,10 @@ export class Host extends Home {
               // Now we could also just close the socket! We don't need to reply
 
               socket.write(`HTTP/1.1 200 OK\r\n`);
-              socket.write(`Connection: close\r\n`);
+              //socket.write(`Connection: close\r\n`);
               socket.write(`Content-Type: application/json\r\n`);
               socket.write(`Content-Length: 2\r\n\r\n`);
               socket.write("{}");
-
-
 
               // Forces "other side closed" error on the client
               // socket.write("{}", () => {
@@ -366,30 +373,35 @@ export class Host extends Home {
 
               // Terrible make better just for testing
               (socket as any).bundled = true;
-
             } else {
               bundles = [bodyString];
             }
 
-            for (let i = bundles.length; i--;) {
+            for (let i = bundles.length; i--; ) {
               // All posted data should be JSON
               // Convert data for potential encryption
               Endpoints.postConvertor(
                 this,
                 bundles[i],
                 (headers["x-activeledger-encrypt"] as unknown as boolean) ||
-                false
+                  false
               )
                 .then((body) => {
                   // Post Converted, Continue processing
-                  this.processEndpoints({
-                    headers,
-                    method,
-                    url: path,
-                    connection: {
-                      remoteAddress: socket.remoteAddress?.toString() || "unknown"
-                    }
-                  }, socket, body.body, body.from);
+                  this.processEndpoints(
+                    {
+                      headers,
+                      method,
+                      url: path,
+                      connection: {
+                        remoteAddress:
+                          socket.remoteAddress?.toString() || "unknown",
+                      },
+                    },
+                    socket,
+                    body.body,
+                    body.from
+                  );
                 })
                 .catch((error) => {
                   // Failed to convery respond;
@@ -400,14 +412,14 @@ export class Host extends Home {
                     JSON.stringify(error.content || {}),
                     headers["Accept-Encoding"] as string
                   );
-                }).finally(() => {
+                })
+                .finally(() => {
                   // reuse if not closed
                   dBuf = [];
                   headersEnded = 0;
                   method = path = httpVersion = "";
                 });
             }
-
           }
         } else {
           // Simple get, Continue Processing
@@ -415,14 +427,17 @@ export class Host extends Home {
           // TODO actually make this flow better as when undefined its an internal then
           // process which *could* still be running. Although even if it is resetting below
           // should still be safe.
-          await this.processEndpoints({
-            headers,
-            method,
-            url: path,
-            connection: {
-              remoteAddress: socket.remoteAddress?.toString() || "unknown"
-            }
-          }, socket)
+          await this.processEndpoints(
+            {
+              headers,
+              method,
+              url: path,
+              connection: {
+                remoteAddress: socket.remoteAddress?.toString() || "unknown",
+              },
+            },
+            socket
+          );
 
           // reuse if not closed
           dBuf = [];
@@ -536,17 +551,20 @@ export class Host extends Home {
   }
 
   private async makeSureNotBuffer(obj: unknown): Promise<unknown>;
-  private async makeSureNotBuffer(obj: { type: string; data: number[] }): Promise<unknown> {
+  private async makeSureNotBuffer(obj: {
+    type: string;
+    data: number[];
+  }): Promise<unknown> {
     if (obj.type === "Buffer" && obj.data?.length) {
       //console.log(obj);
       // This shouldn't be like that
       // Question is why and where this happens. This solution comes across in research
       // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
-      // Appears to be compressed then turned into a buffer string that gets parsed 
-      // so probably writer converting but It isn't everytime? 
+      // Appears to be compressed then turned into a buffer string that gets parsed
+      // so probably writer converting but It isn't everytime?
       //ActiveLogger.error(tmp, "Buffer Found");
       if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
-        return ((await ActiveGZip.ungzip(Buffer.from(obj.data))).toString());
+        return (await ActiveGZip.ungzip(Buffer.from(obj.data))).toString();
       }
       // console.log("NOT GZIP");
       return Buffer.from(obj.data).toString();
@@ -555,10 +573,8 @@ export class Host extends Home {
     if (Buffer.isBuffer(obj)) {
       // console.log("PLAIN BUFFER maybe?");
 
-
-
       if (obj[0] == 0x1f && obj[1] == 0x8b) {
-        return ((await ActiveGZip.ungzip(obj)).toString());
+        return (await ActiveGZip.ungzip(obj)).toString();
       }
       // console.log("NOT GZIP");
       const tmp = obj.toString();
@@ -568,11 +584,12 @@ export class Host extends Home {
         const asBufferObj = JSON.parse(tmp);
 
         if (asBufferObj.data[0] == 0x1f && asBufferObj.data[1] == 0x8b) {
-          return ((await ActiveGZip.ungzip(Buffer.from(asBufferObj.data))).toString());
+          return (
+            await ActiveGZip.ungzip(Buffer.from(asBufferObj.data))
+          ).toString();
         }
         // console.log("NOT GZIP");
         return Buffer.from(asBufferObj.data).toString();
-
       }
       // console.log("WAS PLAIN");
       return obj.toString();
@@ -639,13 +656,16 @@ export class Host extends Home {
 
         // We should now create a new standby processor
         this.standbyProcess = this.createProcessor();
-        this.standbyProcess.send(this.getLatestSetup());
+        //this.standbyProcess.send(this.getLatestSetup());
 
-        // setTimeout(() => {
-        //   this.standbyProcess.send(this.getLatestSetup(), (e) => {
-        //     ActiveLogger.fatal(e as any, "Issue with new Standby Process");
-        //   });
-        // }, 1000);
+        setTimeout(() => {
+          this.standbyProcess.send(this.getLatestSetup(), (e) => {
+            if (e) {
+              ActiveLogger.fatal(e as any, "Issue with new Standby Process");
+              // Send it again?
+            }
+          });
+        }, 1000);
 
         ActiveLogger.fatal(
           pFork,
@@ -688,7 +708,7 @@ export class Host extends Home {
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
             //Find the bad process
-            for (let i = this.processors.length; i--;) {
+            for (let i = this.processors.length; i--; ) {
               if (this.processors[i].pid === pFork.pid) {
                 this.processors.splice(i, 1);
                 break;
@@ -788,7 +808,7 @@ export class Host extends Home {
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                    ActiveInterfaces.getBindingDetails("port")
+                      ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -805,10 +825,12 @@ export class Host extends Home {
             // Remove Locks
             this.release(pending);
           }
-          // End process and create new subprocess
-          unloadProcessorSafely(
-            "unhandledrejection - Already Handled, Tidying up processes"
-          );
+          if (!m.data.recoverable) {
+            // End process and create new subprocess
+            unloadProcessorSafely(
+              "unhandledrejection - Already Handled, Tidying up processes"
+            );
+          }
           break;
         case "contractLatestVersion":
           // Let other processes know of new version
@@ -932,21 +954,21 @@ export class Host extends Home {
       let i = nodes.length;
       let promises: any[] = [];
 
-      // Skip sending if leader 
+      // Skip sending if leader
       // TODO detect leader!
       //this.processPending[umid].entry.$nodes
 
       // We only want to send our value
       const data = !early
         ? Object.assign(this.processPending[umid].entry, {
-          $nodes: {
-            [this.reference]:
-              this.processPending[umid].entry.$nodes[this.reference],
-          },
-        })
+            $nodes: {
+              [this.reference]:
+                this.processPending[umid].entry.$nodes[this.reference],
+            },
+          })
         : Object.assign(this.processPending[umid].entry, {
-          $nodes: {},
-        });
+            $nodes: {},
+          });
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
@@ -957,10 +979,13 @@ export class Host extends Home {
           let node = neighbourhood[nodes[i]];
           // TODO the entry.$nodes check only valid for leader? It can probably be reduced for non leaders
 
-
           // Make sure they're home and not us
-          if (node.isHome &&
-            (node.reference !== this.reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/)) {
+          if (
+            node.isHome &&
+            node.reference !==
+              this
+                .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
+          ) {
             //console.log(`sending ${i} - ${node.reference} ${this.reference}`);
             // Need to detect if we have already sent and got response for nodes for performance
             promises.push(node.knock("init", data, false, 0, true));
@@ -1030,7 +1055,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--;) {
+    for (let i = keys.length; i--; ) {
       // Stream label or self
       out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
     }
@@ -1368,8 +1393,9 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
-                        }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${
+                        tx.$tx.$namespace
+                      }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -1381,7 +1407,7 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--;) {
+                    for (let i = keys.length; i--; ) {
                       tmp.push(keys[i] + ":stream");
                     }
 
@@ -1461,7 +1487,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -1484,12 +1510,12 @@ export class Host extends Home {
     req: {
       headers: {
         [index: string]: string;
-      }
+      };
       method: string;
       url: string;
       connection: {
-        remoteAddress: string
-      }
+        remoteAddress: string;
+      };
     },
     res: Socket,
     body?: any,
@@ -1591,7 +1617,7 @@ export class Host extends Home {
               this,
               body,
               (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-              false,
+                false,
               this.dbConnection
             );
             // Pass db conntection
@@ -1701,11 +1727,10 @@ export class Host extends Home {
       return;
     }
 
-    //need to work out why! 
+    //need to work out why!
     if (!res.writableEnded) {
-
       res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-      res.write(`Connection: close\r\n`);
+      //res.write(`Connection: close\r\n`);
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 
@@ -1721,7 +1746,6 @@ export class Host extends Home {
 
         res.write(`Content-Length: ${content.length}\r\n\r\n`);
         res.write(content);
-
       }
       //res.end();
     }
@@ -1740,7 +1764,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-        (req.connection.remoteAddress as string)
+          (req.connection.remoteAddress as string)
       )
     );
   }
