@@ -644,6 +644,7 @@ import { SSE } from "./sse";
           //res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
 
           res.write(`HTTP/1.1 200 OK\r\n\r\n`);
+          res.write(`Connection: close\r\n`);
 
           // Read Type
           incoming.query.live = incoming.query.continuous = false;

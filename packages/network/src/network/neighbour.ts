@@ -128,7 +128,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           `http://${this.host}:${this.port}/a/${endpoint}`,
           "GET",
           ["X-Activeledger:" + Home.reference],
-          null, false, 5
+          null, false, 15
         )
           .then((response) => {
             resolve(response);
@@ -180,14 +180,15 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             ["X-Activeledger:" + Home.reference, "content-type: application/json", extraHeader],
             post, // TODO above is a bit of a lie but managed by host
             ActiveOptions.get<boolean>("gzip", true),
-            5
+            15
           )
 
           // Only manage response if there is not a bundle otherwise click and forget
-          if (!bundle) {
 
-            // TODO: Interface needed
-            response.then((response: any) => {
+
+          // TODO: Interface needed
+          response.then((response: any) => {
+            if (!bundle) {
               if (response.data.$enc && response.data.$packet) {
                 response.data = JSON.parse(
                   Buffer.from(
@@ -197,44 +198,45 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                 );
               }
               resolve(response);
-            })
-              .catch((error: any) => {
-                if (error && error.response && error.response.data) {
-                  // ActiveLogger.error(
-                  //   error.response.data,
-                  //   `${this.host}:${this.port}/${endpoint} - POST Failed`
-                  // );
-                  reject(error.response.data);
+            }
+          })
+            .catch((error: any) => {
+              if (error && error.response && error.response.data) {
+                // ActiveLogger.error(
+                //   error.response.data,
+                //   `${this.host}:${this.port}/${endpoint} - POST Failed`
+                // );
+                reject(error.response.data);
+              } else {
+                // TODO : If connection failure rebase neighbourhood?
+                if (
+                  resend &&
+                  resend >= attempts &&
+                  error.code == "ECONNRESET"
+                ) {
+                  // Resend Attempt
+                  ActiveLogger.warn(
+                    "Network Issue : Resending due to unexpected closed socket"
+                  );
+                  attempt(++attempts);
                 } else {
-                  // TODO : If connection failure rebase neighbourhood?
-                  if (
-                    resend &&
-                    resend >= attempts &&
-                    error.code == "ECONNRESET"
-                  ) {
-                    // Resend Attempt
-                    ActiveLogger.warn(
-                      "Network Issue : Resending due to unexpected closed socket"
-                    );
-                    attempt(++attempts);
+                  ActiveLogger.fatal(
+                    error,
+                    `Network Error - ${this.host}:${this.port}/${endpoint}`
+                  );
+                  // ActiveLogger.error(
+                  //   post,
+                  //   `Data sent which caused the error`
+                  // );
+                  if (extraHeader !== "X-Bundle: 1") {
+                    reject("Network Communication Error");
                   } else {
-                    ActiveLogger.fatal(
-                      error,
-                      `Network Error - ${this.host}:${this.port}/${endpoint}`
-                    );
-                    // ActiveLogger.error(
-                    //   post,
-                    //   `Data sent which caused the error`
-                    // );
-                    if (extraHeader !== "X-Bundle: 1") {
-                      reject("Network Communication Error");
-                    } else {
-                      resolve({ ok: 1 });
-                    }
+                    resolve({ ok: 1 });
                   }
                 }
-              });
-          }
+              }
+            });
+
         };
         // Start
         attempt(0);
@@ -251,7 +253,9 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         this.bundle.push(JSON.stringify(post));
 
         if (this.bundle.length >= 80) {
-          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1");
+          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(() => {
+            ActiveLogger.warn("X-Bundle Error");
+          });
           this.bundle = []
           // Need to clear better
 
@@ -265,7 +269,9 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           if (!this.nextSend) {
             this.nextSend = setTimeout(() => {
               this.nextSend = null;
-              sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1");
+              sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(() => {
+                ActiveLogger.warn("X-Bundle Error");
+              });
               this.bundle = []
               // Need to clear better
             }, 80);
