@@ -198,8 +198,14 @@ class Processor {
           // While it is global we need to manage it here to keep the encapsulation
           this.unhandledRejection[m.entry.$umid] = (reason: Error) => {
             // Make sure the object exists
-            if (this.protocols[m.entry.$umid]) {
+            if (
+              this.protocols[m.entry.$umid] &&
+              !(this.protocols[m.entry.$umid] as any).unhandled
+            ) {
+              ActiveLogger.warn(reason, "UnhandledRejection - " + m.entry.$umid);
               this.unhandled(m.entry, reason);
+              // Only call once (TODO remove any)
+              (this.protocols[m.entry.$umid] as any).unhandled = true;
             }
           };
 
@@ -452,13 +458,15 @@ class Processor {
    * @param {Error} error
    */
   private unhandled(entry: any, error: Error): void {
-    ActiveLogger.warn(error, "UnhandledRejection");
+    //ActiveLogger.warn(error, "UnhandledRejection - " + entry.$umid);
     // Store error (if we can)
+    let recoverable = false;
     if (entry.$nodes) {
       const errMsg =
         "(Unhandled Contract Error) " + JSON.stringify(error || "unknown");
       // unhandled may happen before object created
       if (Home.reference) {
+        recoverable = true;
         if (entry.$nodes[Home.reference]?.error) {
           entry.$nodes[Home.reference].error = errMsg;
         } else {
@@ -483,6 +491,7 @@ class Processor {
     this.send("unhandledrejection", {
       umid: entry.$umid,
       nodes: entry.$nodes,
+      recoverable
     });
 
     if (!entry.$broadcast) {
@@ -498,10 +507,15 @@ class Processor {
    * @param {unknown} data
    */
   private send(type: string, data: unknown): void {
-    (process as any).send({
-      type,
-      data,
-    });
+    (process as any)?.send(
+      {
+        type,
+        data,
+      },
+      (e: Error | null) => {
+        // Most likely channel has been closed.
+      }
+    );
   }
 
   /**
@@ -584,7 +598,6 @@ class Processor {
     right: any,
     neighbours?: { [reference: string]: Neighbour }
   ) {
-
     // TODO if bundle we need to send it before rewriting this?
 
     // Create new right neighbour with identity if known

@@ -25,10 +25,7 @@ import * as http from "http";
 import * as https from "https";
 import * as url from "url";
 import { ActiveGZip } from "./gzip";
-import {
-  Dispatcher, request, setGlobalDispatcher,
-  Agent
-} from 'undici'
+import { Dispatcher, request, setGlobalDispatcher, Agent } from "undici";
 
 /**
  * Returned HTTP Resonse data
@@ -40,11 +37,13 @@ interface IHTTPResponse {
   data: unknown;
 }
 
-setGlobalDispatcher(new Agent({
-  connect: {
-    rejectUnauthorized: false
-  }
-}))
+setGlobalDispatcher(
+  new Agent({
+    connect: {
+      rejectUnauthorized: false,
+    },
+  })
+);
 
 /**
  * Simple HTTP Request Object
@@ -53,7 +52,6 @@ setGlobalDispatcher(new Agent({
  * @class ActiveRequest
  */
 export class ActiveRequest {
-
   public static async send(
     reqUrl: string,
     type: string,
@@ -62,29 +60,32 @@ export class ActiveRequest {
     enableGZip: boolean = false,
     timeout: number = 300 // undici default
   ): Promise<IHTTPResponse> {
-
     //enableGZip = false
     timeout = timeout * 1000;
-    const options: Omit<Dispatcher.RequestOptions, 'path'> = {
+    const options: Omit<Dispatcher.RequestOptions, "path"> = {
       method: type.toUpperCase() as any, // Fix
       headers: {},
       headersTimeout: timeout,
       bodyTimeout: timeout,
-    }
+    };
 
     // Compressable?
     if (enableGZip) {
       (options.headers as any)["Accept-Encoding"] = "gzip";
     }
 
+    let bundled = false;
+
     // Add Headers
     if (header) {
-      let i = header.length;
-      while (i--) {
+      for (let i = header.length; i--; ) {
         // Split Headers
         const [name, value] = header[i].split(":");
         // Asign to Header
         (options.headers as any)[name] = value;
+        if (!bundled && name == "X-Bundle") {
+          bundled = true;
+        }
       }
     }
 
@@ -109,32 +110,40 @@ export class ActiveRequest {
       //(options.headers as any)["Content-Length"] = data.length;
       //(options.headers as any)["Content-Length-x2"] = data.length;
 
-      options.body = data
+      options.body = data;
     }
 
     try {
-
-      const {
-        headers,
-        body,
-      } = await request(reqUrl, options);
+      const { headers, body } = await request(reqUrl, options);
 
       try {
         // Back Compat gzip support
-        if (headers['content-encoding'] === 'gzip') {
-          const data = await ActiveGZip.ungzip(Buffer.from(await body.arrayBuffer()));
-          return { data: JSON.parse(data.toString()) }
+        if (headers["content-encoding"] === "gzip") {
+          const data = await ActiveGZip.ungzip(
+            Buffer.from(await body.arrayBuffer())
+          );
+          return { data: JSON.parse(data.toString()) };
         } else {
-          return { data: await body.json() }
+          return { data: await body.json() };
         }
       } catch (e) {
-        return { data: null }
+        return { data: null };
       }
     } catch (e) {
-      throw e;
+      if (!bundled) {
+        // console.log(options);
+        // console.log(e);
+        // console.error("Not Bundled - " + reqUrl);
+        //throw e;
+        return { data: null };
+      } else {
+        // Circular Dependency issue
+        // console.log(e);
+        // console.error(`HTTP Bundle Error`);
+        return { data: null };
+      }
     }
   }
-
 
   /**
    * Send HTTP(S) GET/POST JSON Request
@@ -169,7 +178,7 @@ export class ActiveRequest {
         port: urlParsed.port,
         method: type.toUpperCase(),
         headers: {},
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
       };
 
       // Compressable?

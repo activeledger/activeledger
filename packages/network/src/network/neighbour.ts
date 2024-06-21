@@ -128,18 +128,12 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           `http://${this.host}:${this.port}/a/${endpoint}`,
           "GET",
           ["X-Activeledger:" + Home.reference],
-          null, false, 15
+          null,
+          false,
+          60
         )
-          .then((response) => {
-            resolve(response);
-          })
-          .catch((error) => {
-            // ActiveLogger.error(
-            //   error,
-            //   `${this.host}:${this.port}/${endpoint} - GET Failed`
-            // );
-            reject(error);
-          });
+          .then(resolve)
+          .catch(reject);
       });
     } else {
       // Default vars for request
@@ -166,81 +160,80 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           $enc: params.$encrypt ? true : false,
         };
       }
-      // TODO 
+      // TODO
       // Why sending as buffer here with errors "data that sent error"
       // Fix this will give performance. Maybe tx could be lost?
       // Currently this boosted performance by about 4x
 
       // Send SignedFor Post Request
-      const sender = (post: Buffer, extraHeader: string) => new Promise((resolve, reject) => {
-        let attempt = (attempts: number) => {
-          let response = ActiveRequest.send(
-            url,
-            "POST",
-            ["X-Activeledger:" + Home.reference, "content-type: application/json", extraHeader],
-            post, // TODO above is a bit of a lie but managed by host
-            ActiveOptions.get<boolean>("gzip", true),
-            15
-          )
-
-          // Only manage response if there is not a bundle otherwise click and forget
-
-
-          // TODO: Interface needed
-          response.then((response: any) => {
-            if (!bundle) {
-              if (response.data.$enc && response.data.$packet) {
-                response.data = JSON.parse(
-                  Buffer.from(
-                    Home.identity.decrypt(response.data.$packet),
-                    "base64"
-                  ).toString()
-                );
-              }
-              resolve(response);
-            }
-          })
-            .catch((error: any) => {
-              if (error && error.response && error.response.data) {
-                // ActiveLogger.error(
-                //   error.response.data,
-                //   `${this.host}:${this.port}/${endpoint} - POST Failed`
-                // );
-                reject(error.response.data);
-              } else {
-                // TODO : If connection failure rebase neighbourhood?
-                if (
-                  resend &&
-                  resend >= attempts &&
-                  error.code == "ECONNRESET"
-                ) {
-                  // Resend Attempt
-                  ActiveLogger.warn(
-                    "Network Issue : Resending due to unexpected closed socket"
-                  );
-                  attempt(++attempts);
-                } else {
-                  ActiveLogger.fatal(
-                    error,
-                    `Network Error - ${this.host}:${this.port}/${endpoint}`
-                  );
+      const sender = (post: Buffer, extraHeader: string) =>
+        new Promise((resolve, reject) => {
+          let attempt = (attempts: number) => {
+            ActiveRequest.send(
+              url,
+              "POST",
+              [
+                "X-Activeledger:" + Home.reference,
+                "content-type: application/json",
+                extraHeader,
+              ],
+              post, // TODO above is a bit of a lie but managed by host
+              ActiveOptions.get<boolean>("gzip", true),
+              60
+            )
+              .then((response: any) => {
+                if (!bundle) {
+                  if (response.data.$enc && response.data.$packet) {
+                    response.data = JSON.parse(
+                      Buffer.from(
+                        Home.identity.decrypt(response.data.$packet),
+                        "base64"
+                      ).toString()
+                    );
+                  }
+                  resolve(response);
+                }
+              })
+              .catch((error: any) => {
+                if (error && error.response && error.response.data) {
                   // ActiveLogger.error(
-                  //   post,
-                  //   `Data sent which caused the error`
+                  //   error.response.data,
+                  //   `${this.host}:${this.port}/${endpoint} - POST Failed`
                   // );
-                  if (extraHeader !== "X-Bundle: 1") {
-                    reject("Network Communication Error");
+                  reject(error.response.data);
+                } else {
+                  // TODO : If connection failure rebase neighbourhood?
+                  if (
+                    resend &&
+                    resend >= attempts &&
+                    error.code == "ECONNRESET"
+                  ) {
+                    // Resend Attempt
+                    ActiveLogger.warn(
+                      "Network Issue : Resending due to unexpected closed socket"
+                    );
+                    attempt(++attempts);
                   } else {
-                    resolve({ ok: 1 });
+                    ActiveLogger.fatal(
+                      error,
+                      `Network Error - ${this.host}:${this.port}/${endpoint}`
+                    );
+                    // ActiveLogger.error(
+                    //   post,
+                    //   `Data sent which caused the error`
+                    // );
+                    if (extraHeader !== "X-Bundle: 1") {
+                      reject("Network Communication Error");
+                    } else {
+                      resolve({ ok: 1 });
+                    }
                   }
                 }
-              }
-            });
-
-        };
-        // Start
-        attempt(0);
-      });
+              });
+          };
+          // Start
+          attempt(0);
+        });
 
       // Now can we detect "response broadcast, not waiting maybe faster?"
       // or possibly waiting less
@@ -249,14 +242,15 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
       // TODO make better!
       if (bundle) {
-
         this.bundle.push(JSON.stringify(post));
 
         if (this.bundle.length >= 80) {
-          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(() => {
-            ActiveLogger.warn("X-Bundle Error");
-          });
-          this.bundle = []
+          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(
+            () => {
+              ActiveLogger.warn("X-Bundle Error");
+            }
+          );
+          this.bundle = [];
           // Need to clear better
 
           // Cancel & Just Send
@@ -269,22 +263,23 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           if (!this.nextSend) {
             this.nextSend = setTimeout(() => {
               this.nextSend = null;
-              sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(() => {
+              sender(
+                Buffer.from(this.bundle.join(":$ALB:")),
+                "X-Bundle: 1"
+              ).catch(() => {
                 ActiveLogger.warn("X-Bundle Error");
               });
-              this.bundle = []
+              this.bundle = [];
               // Need to clear better
             }, 80);
-
           }
 
           // maybe a/b bundles?
         }
         return Promise.resolve();
       } else {
-        return sender(Buffer.from(JSON.stringify(post)), 'X-Null: 0');
+        return sender(Buffer.from(JSON.stringify(post)), "X-Null: 0");
       }
-
     }
   }
 

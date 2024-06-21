@@ -611,7 +611,7 @@ export class ActiveHttpd {
     if (!res.writableEnded) {
 
       res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-      res.write(`Connection: close\r\n`);
+      //res.write(`Connection: close\r\n`);
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 
