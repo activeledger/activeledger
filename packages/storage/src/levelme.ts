@@ -185,7 +185,7 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    this.timerUnCache();
+    //this.timerUnCache();
   }
 
   /**
@@ -510,25 +510,27 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    if (!this.memory[key]) {
+    //if (!this.memory[key]) {
       await this.open();
       // Allow errors to bubble up?
       let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
       if (raw) {
-        this.memory[key] = {
-          data: doc,
-          create: new Date()
-        }
+        return doc;
+        // this.memory[key] = {
+        //   data: doc,
+        //   create: new Date()
+        // }
         //return JSON.parse(doc);
       } else {
+        return await this.seqDocFromRoot(doc);
         //doc = JSON.parse(doc) as schema;
-        this.memory[key] = {
-          data: await this.seqDocFromRoot(doc),
-          create: new Date()
-        }
+        // this.memory[key] = {
+        //   data: await this.seqDocFromRoot(doc),
+        //   create: new Date()
+        // }
       }
-    }
-    return this.memory[key].data;
+    //}
+    //return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -538,33 +540,33 @@ export class LevelMe {
 
     //return await this.levelUp.getMany(keys);
 
-    let tmpKeys = [];
-    let cached = [];
-    const now = new Date();
-    for (let i = keys.length; i--;) {
-      if (!this.memory[keys[i]]) {
-        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      } else {
-        cached.push({ doc: this.memory[keys[i]].data });
-        this.memory[keys[i]].create = now;
-      }
+     let tmpKeys = [];
+     let cached = [];
+    // const now = new Date();
+     for (let i = keys.length; i--;) {
+    //   if (!this.memory[keys[i]]) {
+       tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+    //   } else {
+    //     cached.push({ doc: this.memory[keys[i]].data });
+    //     this.memory[keys[i]].create = now;
+    //   }
     }
 
     // Get uncached keys
-    if (tmpKeys.length) {
+    //if (tmpKeys.length) {
       const result = await this.levelUp.getMany(tmpKeys);
 
       // Loop and cache
       for (let i = result.length; i--;) {
         const data = JSON.parse(result[i]);
 
-        this.memory[data._id] = {
-          data: data,
-          create: new Date()
-        }
+        // this.memory[data._id] = {
+        //   data: data,
+        //   create: new Date()
+        // }
         cached.push({ doc: data });
       }
-    }
+    //}
     return cached;
     //Faster Concat? maybe push(...)?
     //return [...cached, ...await this.levelUp.getMany(tmpKeys)];
@@ -973,7 +975,7 @@ export class LevelMe {
     // };
 
     // Safer for now?
-    delete this.memory[doc._id];
+    //delete this.memory[doc._id];
 
     return {
       chain,
