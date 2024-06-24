@@ -43,7 +43,7 @@ import { PhysicalCores } from "./cpus";
 import * as process from "process";
 import { createServer, Socket, Server } from "net";
 
-const RELEASE_SHUTDOWN_TIMEOUT = 5 * 60 * 1000;
+const RELEASE_SHUTDOWN_TIMEOUT = 0.5 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
 const TIMER_QUEUE_INTERVAL = 10 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
