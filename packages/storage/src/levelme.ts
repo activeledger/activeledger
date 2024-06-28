@@ -92,7 +92,7 @@ interface schema extends document {
   seq: number;
 }
 
-const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
+const REMOVE_CACHE_TIMER = 0.5 * 60 * 1000;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -185,7 +185,7 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    //this.timerUnCache();
+    this.timerUnCache();
   }
 
   /**
@@ -196,15 +196,15 @@ export class LevelMe {
   private timerUnCache() {
     setTimeout(() => {
       const memory = Object.keys(this.memory);
-      const nowMinus5 = new Date(Date.now() - REMOVE_CACHE_TIMER * 2);
-      for (let i = memory.length; i--;) {
-        if (this.memory[memory[i]].data < nowMinus5) {
-          // 5 minutes has passed without accessing it so lets clear
+      const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
+      for (let i = memory.length; i--; ) {
+        if (this.memory[memory[i]].data < nowMinus) {
+          // 30 seconds has passed without accessing it so lets clear
           delete this.memory[memory[i]];
         }
       }
       this.timerUnCache();
-    }, REMOVE_CACHE_TIMER);
+    }, REMOVE_CACHE_TIMER * 2);
   }
 
   /**
@@ -479,7 +479,7 @@ export class LevelMe {
             .on("error", (err: unknown) => {
               reject(err);
             })
-            .on("close", () => { })
+            .on("close", () => {})
             .on("end", async () => {
               await Promise.all(promises);
               resolve({
@@ -495,13 +495,12 @@ export class LevelMe {
     });
   }
 
-
   private memory: {
     [index: string]: {
       data: any;
-      create: Date
-    }
-  } = {}
+      create: Date;
+    };
+  } = {};
 
   /**
    * Get a specific data document
@@ -510,27 +509,27 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    //if (!this.memory[key]) {
+    if (!this.memory[key]) {
       await this.open();
       // Allow errors to bubble up?
       let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
       if (raw) {
-        return doc;
-        // this.memory[key] = {
-        //   data: doc,
-        //   create: new Date()
-        // }
+        //return doc;
+        this.memory[key] = {
+          data: doc,
+          create: new Date(),
+        };
         //return JSON.parse(doc);
       } else {
-        return await this.seqDocFromRoot(doc);
-        //doc = JSON.parse(doc) as schema;
-        // this.memory[key] = {
-        //   data: await this.seqDocFromRoot(doc),
-        //   create: new Date()
-        // }
+        //return await this.seqDocFromRoot(doc);
+        doc = JSON.parse(doc) as schema;
+        this.memory[key] = {
+          data: await this.seqDocFromRoot(doc),
+          create: new Date(),
+        };
       }
-    //}
-    //return this.memory[key].data;
+    }
+    return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -540,37 +539,36 @@ export class LevelMe {
 
     //return await this.levelUp.getMany(keys);
 
-     let tmpKeys = [];
-     let cached = [];
-    // const now = new Date();
-     for (let i = keys.length; i--;) {
-    //   if (!this.memory[keys[i]]) {
-       tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-    //   } else {
-    //     cached.push({ doc: this.memory[keys[i]].data });
-    //     this.memory[keys[i]].create = now;
-    //   }
+    let tmpKeys = [];
+    let cached = [];
+    const now = new Date();
+    for (let i = keys.length; i--; ) {
+      if (!this.memory[keys[i]]) {
+        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+      } else {
+        cached.push({ doc: this.memory[keys[i]].data });
+        this.memory[keys[i]].create = now;
+      }
     }
 
     // Get uncached keys
     //if (tmpKeys.length) {
-      const result = await this.levelUp.getMany(tmpKeys);
+    const result = await this.levelUp.getMany(tmpKeys);
 
-      // Loop and cache
-      for (let i = result.length; i--;) {
-        const data = JSON.parse(result[i]);
+    // Loop and cache
+    for (let i = result.length; i--; ) {
+      const data = JSON.parse(result[i]);
 
-        // this.memory[data._id] = {
-        //   data: data,
-        //   create: new Date()
-        // }
-        cached.push({ doc: data });
-      }
+      this.memory[data._id] = {
+        data: data,
+        create: new Date(),
+      };
+      cached.push({ doc: data });
+    }
     //}
     return cached;
     //Faster Concat? maybe push(...)?
     //return [...cached, ...await this.levelUp.getMany(tmpKeys)];
-
   }
 
   /**
@@ -585,7 +583,7 @@ export class LevelMe {
 
   /**
    * Compact the database to reduce storage space
-   * 
+   *
    * Will keep compact for now, Will later update to compact direct written files no more sequence
    *
    * @returns
@@ -684,7 +682,7 @@ export class LevelMe {
     await this.open();
     const batch = await this.levelUp.batch();
 
-    for (let i = keys.length; i--;) {
+    for (let i = keys.length; i--; ) {
       batch.del(LevelMe.SEQ_PREFIX + keys[i]);
     }
 
@@ -768,7 +766,7 @@ export class LevelMe {
         .on("error", (err: unknown) => {
           reject(err);
         })
-        .on("close", () => { })
+        .on("close", () => {})
         .on("end", async () => {
           await Promise.all(promises);
           resolve({
@@ -803,7 +801,7 @@ export class LevelMe {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
     const changes = [];
-    for (let i = docs.length; i--;) {
+    for (let i = docs.length; i--; ) {
       // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
       //if (docs[i]._deleted) {
       //  await this.del(docs[i]._id);
@@ -884,7 +882,8 @@ export class LevelMe {
       //if (doc._rev !== `${twig.pos}-${twig.branch[0]}`) {
 
       // We need to pull out the right revision
-      const currentRev = currentDocRoot._rev || currentDocRoot.winningRev as string
+      const currentRev =
+        currentDocRoot._rev || (currentDocRoot.winningRev as string);
 
       // Replace with winning rev instead of branch crawling
       if (currentRev) {
@@ -969,10 +968,10 @@ export class LevelMe {
 
     // Should be able to assume,  maybe not what if restarted, So set object!
     // Maybe only store data and :stream? Or just store everything and delete when older than X?
-    // this.memory[doc._id] = {
-    //   data: doc,
-    //   create: new Date()
-    // };
+    this.memory[doc._id] = {
+      data: doc,
+      create: new Date()
+    };
 
     // Safer for now?
     //delete this.memory[doc._id];
