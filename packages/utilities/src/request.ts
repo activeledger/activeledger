@@ -131,15 +131,9 @@ export class ActiveRequest {
       }
     } catch (e) {
       if (!bundled) {
-        // console.log(options);
-        // console.log(e);
-        // console.error("Not Bundled - " + reqUrl);
-        //throw e;
         return { data: null };
       } else {
         // Circular Dependency issue
-        // console.log(e);
-        // console.error(`HTTP Bundle Error`);
         return { data: null };
       }
     }

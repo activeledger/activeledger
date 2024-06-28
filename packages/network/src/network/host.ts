@@ -342,21 +342,14 @@ export class Host extends Home {
 
             //const bodyString = body.toString();
             const bodyString = (await this.makeSureNotBuffer(body)) as any;
-            // console.log(bodyString.substr(0,20));
-
-            // if(bodyString.substr(0,20).indexOf("Buffer") !== -1) {
-            //   console.log("FOUND IT");
-            //   process.exit();
-            // }
+           
             // could make this nicer
             let bundles: any[]; // = [];
 
             // TODO we could have the double buffer problem here?
             // unless this has been solved
             if (headers["X-Bundle"]) {
-              // console.log("BUNDLED");
               bundles = bodyString.split(":$ALB:");
-              //console.log(bundles);
 
               // Now we could also just close the socket! We don't need to reply
 
@@ -418,6 +411,7 @@ export class Host extends Home {
                   dBuf = [];
                   headersEnded = 0;
                   method = path = httpVersion = "";
+                  (socket as any).bundled = false;
                 });
             }
           }
@@ -446,85 +440,6 @@ export class Host extends Home {
         }
       });
     });
-
-    // Create HTTP server for managing transaction requests
-    // this.api = createServer((req: IncomingMessage, res: ServerResponse) => {
-    //   // Log Request
-    //   ActiveLogger.debug(
-    //     `Request - ${req.connection.remoteAddress} @ ${req.method}:${req.url}`
-    //   );
-
-    //   // Capture POST data
-    //   if (req.method == "POST") {
-    //     // Holds the body
-    //     const body: Buffer[] = [];
-
-    //     // Reads body data
-    //     req.on("data", (chunk) => {
-    //       body.push(chunk);
-    //     });
-
-    //     // When read has compeleted continue
-    //     req.on("end", async () => {
-    //       // Join the buffer storing the data
-    //       let data = Buffer.concat(body);
-    //       // gzipped?
-    //       // Sometimes internal transactions fail to be decompressed
-    //       // the header shouldn't be missing but added magic number check as a back
-    //       // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
-    //       if (
-    //         req.headers["content-encoding"] == "gzip" ||
-    //         (data[0] == 0x1f && data[1] == 0x8b)
-    //       ) {
-    //         try {
-    //           data = await ActiveGZip.ungzip(data);
-    //         } catch {
-    //           // Just incase the magic number still invalid gzip
-    //           // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
-    //           // with the original non-gzip compliant data
-    //         }
-    //       }
-
-    //       // console.log(req.headers);
-    //       // console.log("====");
-
-    //       // All posted data should be JSON
-    //       // Convert data for potential encryption
-    //       Endpoints.postConvertor(
-    //         this,
-    //         data.toString(),
-    //         (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-    //         false
-    //       )
-    //         .then((body) => {
-    //           // Post Converted, Continue processing
-    //           this.processEndpoints(req, res, body.body, body.from);
-    //         })
-    //         .catch((error) => {
-    //           // Failed to convery respond;
-    //           ActiveLogger.error(error, "Server POST Parser 500");
-    //           this.writeResponse(
-    //             res,
-    //             error.statusCode || 500,
-    //             JSON.stringify(error.content || {}),
-    //             req.headers["Accept-Encoding"] as string
-    //           );
-    //         });
-    //     });
-    //   } else {
-    //     // Simple get, Continue Processing
-    //     this.processEndpoints(req, res);
-    //   }
-    // });
-
-    // Create Index
-    // this.dbConnection
-    //   .createIndex({
-    //     index: {
-    //       fields: ["namespace", "type", "_id"],
-    //     },
-    //   })
-    //   .then(() => {
     // How many threads (Cache so we can check on ready)
     const cpuTotal = PhysicalCores.count();
 
@@ -556,7 +471,6 @@ export class Host extends Home {
     data: number[];
   }): Promise<unknown> {
     if (obj.type === "Buffer" && obj.data?.length) {
-      //console.log(obj);
       // This shouldn't be like that
       // Question is why and where this happens. This solution comes across in research
       // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
@@ -566,21 +480,16 @@ export class Host extends Home {
       if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
         return (await ActiveGZip.ungzip(Buffer.from(obj.data))).toString();
       }
-      // console.log("NOT GZIP");
       return Buffer.from(obj.data).toString();
     }
 
     if (Buffer.isBuffer(obj)) {
-      // console.log("PLAIN BUFFER maybe?");
-
       if (obj[0] == 0x1f && obj[1] == 0x8b) {
         return (await ActiveGZip.ungzip(obj)).toString();
       }
-      // console.log("NOT GZIP");
       const tmp = obj.toString();
 
       if (tmp.startsWith('{"type":"Buffer"')) {
-        // console.log("NOT PLAIN!!!!");
         const asBufferObj = JSON.parse(tmp);
 
         if (asBufferObj.data[0] == 0x1f && asBufferObj.data[1] == 0x8b) {
@@ -588,10 +497,8 @@ export class Host extends Home {
             await ActiveGZip.ungzip(Buffer.from(asBufferObj.data))
           ).toString();
         }
-        // console.log("NOT GZIP");
         return Buffer.from(asBufferObj.data).toString();
       }
-      // console.log("WAS PLAIN");
       return obj.toString();
     }
 
@@ -973,8 +880,6 @@ export class Host extends Home {
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
         // Loop them all and broadcast the transaction
-        //console.log(JSON.stringify(this.processPending[umid].entry, null, 2));
-
         while (i--) {
           let node = neighbourhood[nodes[i]];
           // TODO the entry.$nodes check only valid for leader? It can probably be reduced for non leaders
@@ -986,7 +891,6 @@ export class Host extends Home {
               this
                 .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
           ) {
-            //console.log(`sending ${i} - ${node.reference} ${this.reference}`);
             // Need to detect if we have already sent and got response for nodes for performance
             promises.push(node.knock("init", data, false, 0, true));
           }
@@ -1521,7 +1425,6 @@ export class Host extends Home {
     body?: any,
     from?: string
   ) {
-    //console.log(req.headers);
     // Internal or External Request
     let requester = (req.headers["X-Activeledger"] as string) || "NA";
 
