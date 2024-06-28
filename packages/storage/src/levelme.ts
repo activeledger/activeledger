@@ -185,7 +185,7 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    this.timerUnCache();
+    //this.timerUnCache();
   }
 
   /**
@@ -509,27 +509,27 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    if (!this.memory[key]) {
-      await this.open();
-      // Allow errors to bubble up?
-      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
-      if (raw) {
-        //return doc;
-        this.memory[key] = {
-          data: doc,
-          create: new Date(),
-        };
-        //return JSON.parse(doc);
-      } else {
-        //return await this.seqDocFromRoot(doc);
-        doc = JSON.parse(doc) as schema;
-        this.memory[key] = {
-          data: await this.seqDocFromRoot(doc),
-          create: new Date(),
-        };
-      }
+    //if (!this.memory[key]) {
+    await this.open();
+    // Allow errors to bubble up?
+    let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+    if (raw) {
+      return doc;
+      // this.memory[key] = {
+      //   data: doc,
+      //   create: new Date()
+      // }
+      //return JSON.parse(doc);
+    } else {
+      return await this.seqDocFromRoot(doc);
+      //doc = JSON.parse(doc) as schema;
+      // this.memory[key] = {
+      //   data: await this.seqDocFromRoot(doc),
+      //   create: new Date()
+      // }
     }
-    return this.memory[key].data;
+    //}
+    //return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -541,14 +541,14 @@ export class LevelMe {
 
     let tmpKeys = [];
     let cached = [];
-    const now = new Date();
+    // const now = new Date();
     for (let i = keys.length; i--; ) {
-      if (!this.memory[keys[i]]) {
-        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      } else {
-        cached.push({ doc: this.memory[keys[i]].data });
-        this.memory[keys[i]].create = now;
-      }
+      //   if (!this.memory[keys[i]]) {
+      tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+      //   } else {
+      //     cached.push({ doc: this.memory[keys[i]].data });
+      //     this.memory[keys[i]].create = now;
+      //   }
     }
 
     // Get uncached keys
@@ -559,10 +559,10 @@ export class LevelMe {
     for (let i = result.length; i--; ) {
       const data = JSON.parse(result[i]);
 
-      this.memory[data._id] = {
-        data: data,
-        create: new Date(),
-      };
+      // this.memory[data._id] = {
+      //   data: data,
+      //   create: new Date()
+      // }
       cached.push({ doc: data });
     }
     //}
@@ -968,10 +968,10 @@ export class LevelMe {
 
     // Should be able to assume,  maybe not what if restarted, So set object!
     // Maybe only store data and :stream? Or just store everything and delete when older than X?
-    this.memory[doc._id] = {
-      data: doc,
-      create: new Date()
-    };
+    // this.memory[doc._id] = {
+    //   data: doc,
+    //   create: new Date()
+    // };
 
     // Safer for now?
     //delete this.memory[doc._id];
