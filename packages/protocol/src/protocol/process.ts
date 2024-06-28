@@ -1032,7 +1032,7 @@ export class Process extends EventEmitter {
         inputs,
         outputs,
         readonly,
-        key: Math.floor(Math.random() * 100),
+        key: 0,
         //contractData,
       };
 
