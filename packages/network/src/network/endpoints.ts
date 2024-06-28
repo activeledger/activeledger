@@ -21,13 +21,16 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions, ActiveDSConnect, ActiveGZip } from "@activeledger/activeoptions";
+import {
+  ActiveOptions,
+  ActiveDSConnect,
+  ActiveGZip,
+} from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
-import { NeighbourStatus } from "./neighbourhood";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 
@@ -63,9 +66,6 @@ export class Endpoints {
     ip: string
   ): Promise<any> {
     return new Promise(async (resolve, reject) => {
-
-
-
       // Inline var function as a temp implemtnation of batching
       const process = (body: any) => {
         return new Promise((resolve, reject) => {
@@ -79,7 +79,9 @@ export class Endpoints {
             // Check transaction hasn't expired
             if (tx.$tx.$expire && new Date(tx.$tx.$expire) <= tx.$datetime) {
               return resolve(
-                this.successfulFailure(`Transaction Expired : ${tx.$tx.$expire}`)
+                this.successfulFailure(
+                  `Transaction Expired : ${tx.$tx.$expire}`
+                )
               );
             }
 
@@ -125,7 +127,7 @@ export class Endpoints {
 
                   // Get nodes to count
                   let nodes = Object.keys(tx.$nodes);
-                  for (let i = nodes.length; i--;) {
+                  for (let i = nodes.length; i--; ) {
                     summary.total++;
                     if (tx.$nodes[nodes[i]].vote) summary.vote++;
                     if (tx.$nodes[nodes[i]].commit) summary.commit++;
@@ -133,7 +135,9 @@ export class Endpoints {
                     // Manage Errors (Hides node on purpose)
                     if (tx.$nodes[nodes[i]].error) {
                       if (summary.errors) {
-                        summary.errors.push(tx.$nodes[nodes[i]].error as string);
+                        summary.errors.push(
+                          tx.$nodes[nodes[i]].error as string
+                        );
                       } else {
                         summary.errors = [tx.$nodes[nodes[i]].error as string];
                       }
@@ -230,7 +234,7 @@ export class Endpoints {
             });
           }
         });
-      }
+      };
 
       // Not supporting mutiple transactions yet
       if (body.$multi) {
@@ -242,26 +246,25 @@ export class Endpoints {
         // We can either send them all at once or in seq depends on transaction lets default to all at once
         const results = [] as any[];
         if (body.$seq) {
-          for (let i = body.$multi.length; i--;) {
+          for (let i = body.$multi.length; i--; ) {
             results.push(await process(body.$multi[i]));
             // deal with catch problem
           }
           const response = [];
-          for (let i = results.length; i--;) {
+          for (let i = results.length; i--; ) {
             response.push(results[i].content);
           }
           resolve({
             statusCode: 200,
             content: response,
           });
-
         } else {
-          for (let i = body.$multi.length; i--;) {
+          for (let i = body.$multi.length; i--; ) {
             results.push(process(body.$multi[i]));
           }
-          const results2 = await Promise.all(results) as any[];
+          const results2 = (await Promise.all(results)) as any[];
           const response = [];
-          for (let i = results2.length; i--;) {
+          for (let i = results2.length; i--; ) {
             response.push(results2[i].content);
           }
           resolve({
@@ -269,12 +272,10 @@ export class Endpoints {
             content: response,
           });
         }
-
       } else {
         // Single normal tx process here for now
         process(body).then(resolve).catch(reject);
       }
-
     });
   }
 
@@ -408,14 +409,14 @@ export class Endpoints {
 
         // Do we know this territory node address
         if (sending) {
-          ActiveLogger.info("Rebroadcasting to : " + sending);
           // If not ourselves intercept
           if (sending !== host.reference) {
+            ActiveLogger.info("Rebroadcasting to : " + sending);
             // We need to rebroadcast to sending node
             let rebroadcast = host.neighbourhood.get(sending);
             // Send and wait on their response
             rebroadcast
-              .knock("", tx, true)
+              .knock("", tx, true, 0, false)
               .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;
@@ -736,7 +737,7 @@ export class Endpoints {
         // that it still isn't in its Buffer form!
         let bodyObject;
         try {
-          bodyObject = await this.makeSureNotBuffer(JSON.parse(body)) as any;
+          bodyObject = (await this.makeSureNotBuffer(JSON.parse(body))) as any;
         } catch (e) {
           throw e;
         }
@@ -805,16 +806,21 @@ export class Endpoints {
    * @returns {unknown}
    */
   private static async makeSureNotBuffer(obj: unknown): Promise<unknown>;
-  private static async makeSureNotBuffer(obj: { type: string; data: number[] }): Promise<unknown> {
+  private static async makeSureNotBuffer(obj: {
+    type: string;
+    data: number[];
+  }): Promise<unknown> {
     if (obj.type === "Buffer" && obj.data?.length) {
       // This shouldn't be like that
       // Question is why and where this happens. This solution comes across in research
       // as a global coverage as so far "$i undefined" has has a Buffer with $i instead!
-      // Appears to be compressed then turned into a buffer string that gets parsed 
-      // so probably writer converting but It isn't everytime? 
+      // Appears to be compressed then turned into a buffer string that gets parsed
+      // so probably writer converting but It isn't everytime?
       //ActiveLogger.error(tmp, "Buffer Found");
       if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
-        return JSON.parse(((await ActiveGZip.ungzip(Buffer.from(obj.data))).toString()));
+        return JSON.parse(
+          (await ActiveGZip.ungzip(Buffer.from(obj.data))).toString()
+        );
       }
       return JSON.parse(Buffer.from(obj.data).toString());
     }
