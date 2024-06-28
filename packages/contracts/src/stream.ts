@@ -151,7 +151,7 @@ export class Stream {
       );
 
       // Set Secret Key
-      this.activities[this.inputs[i].state._id as string].setKey(this.key);
+      //this.activities[this.inputs[i].state._id as string].setKey(this.key);
     }
 
     // Output Steam Activities
@@ -167,7 +167,7 @@ export class Stream {
       );
 
       // Set Secret Key
-      this.activities[this.outputs[i].state._id as string].setKey(this.key);
+      //this.activities[this.outputs[i].state._id as string].setKey(this.key);
     }
   }
 
@@ -251,7 +251,7 @@ export class Stream {
       );
 
       // Set Secret Key
-      activity.setKey(this.key);
+      //activity.setKey(this.key);
       // TODO: Convert name into a umid string and alert dev
       return (this.activities[name] = activity);
     }
@@ -551,6 +551,13 @@ export class Activity {
   public updated: boolean = false;
 
   /**
+   * Has Meta been updated (Authorities Only)
+   *
+   * @type {boolean}
+   */
+  public updatedMeta: boolean = false;
+
+  /**
    * Has the activity had a volatile data change
    *
    * @type {boolean}
@@ -563,7 +570,7 @@ export class Activity {
    * @private
    * @type {number}
    */
-  private key: number;
+  //private key: number;
 
   /**
    * Post decryption, Safe mode tries to ensure total network
@@ -607,15 +614,18 @@ export class Activity {
 
       // Create default Volatile
       this.volatile = { _id: stream + ":volatile", _rev: null };
-      this.volatileUpdated = true;
 
       // Flag for search filtering
       // $ notation should be treated like a reservation for Activelegder
-      this.meta.$stream = true;
+      //this.meta.$stream = true;
 
       // Add name and umid to the meta (For Dev Reference)
       this.meta.umid = umid;
       this.meta.name = name;
+
+      // Flag up everything
+      this.updatedMeta = this.volatileUpdated = this.updated = true;
+
     }
   }
 
@@ -634,33 +644,37 @@ export class Activity {
    * @param {number} secret
    * @returns {ActiveDefinitions.LedgerStream}
    */
-  public export2Ledger(secret: number): ActiveDefinitions.LedgerStream {
-    if (this.key == secret) {
-      const stream: ActiveDefinitions.LedgerStream = {
-        meta: this.meta,
-        state: this.state as ActiveDefinitions.IFullState,
-      };
+  // public export2Ledger(secret: number): ActiveDefinitions.LedgerStream {
+  //   if (this.key == secret) {
+  //     const stream: ActiveDefinitions.LedgerStream = {
+  //       // meta: this.meta,
+  //       state: this.state as ActiveDefinitions.IFullState,
+  //     };
 
-      // Have we loaded in a volatile to return
-      if (this.volatile && this.volatileUpdated) {
-        stream.volatile = this.volatile;
-      }
+  //     if(this.updatedMeta) {
+  //       stream.meta = this.meta;
+  //     }
 
-      return stream;
-    }
-    throw new Error("Secret Key Needed");
-  }
+  //     // Have we loaded in a volatile to return
+  //     if (this.volatile && this.volatileUpdated) {
+  //       stream.volatile = this.volatile;
+  //     }
+
+  //     return stream;
+  //   }
+  //   throw new Error("Secret Key Needed");
+  // }
 
   /**
    * Set secret access key
    *
    * @param {number} secret
    */
-  public setKey(secret: number): void {
-    if (!this.key) {
-      this.key = secret;
-    }
-  }
+  // public setKey(secret: number): void {
+  //   if (!this.key) {
+  //     this.key = secret;
+  //   }
+  // }
 
   /**
    * Set access control of this stream (Contract Managed)
@@ -669,9 +683,9 @@ export class Activity {
    * @param {string} name
    * @param {string} stream
    */
-  public setACL(name: string, stream: string) {
-    throw new Error("setACL has been deprecated : Use setAuthorities");
-  }
+  // public setACL(name: string, stream: string) {
+  //   throw new Error("setACL has been deprecated : Use setAuthorities");
+  // }
 
   /**
    * Confirms access type and assigned stream
@@ -680,9 +694,9 @@ export class Activity {
    * @param {string} name
    * @returns {boolean}
    */
-  public hasACL(name: string): boolean {
-    throw new Error("hasACL has been deprecated : Use getAuthorities");
-  }
+  // public hasACL(name: string): boolean {
+  //   throw new Error("hasACL has been deprecated : Use getAuthorities");
+  // }
 
   /**
    * Does this activity stream have a signature for this transaction
@@ -719,7 +733,7 @@ export class Activity {
           },
         ];
         // Set Update Flag
-        this.updated = true;
+        this.updatedMeta = this.updated = true;
       } else {
         throw new Error("Cannot set new authority on output stream");
       }
@@ -774,7 +788,7 @@ export class Activity {
         );
 
         // Set Update Flag
-        this.updated = true;
+        this.updatedMeta = this.updated = true;
       } else {
         throw new Error("Cannot set new authorities on output stream");
       }

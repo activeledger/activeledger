@@ -194,7 +194,7 @@ export class StreamUpdater {
 
     // Any inputs left (Means not modified, Unmodified outputs can be ignored)
     // Now we need to append transaction to the inputs of the transaction
-    if (this.inputs && this.inputs.length) this.handleInputs();
+    //if (this.inputs && this.inputs.length) this.handleInputs();
 
     // Create umid document containing the transaction details
     this.docs.push({
@@ -224,61 +224,61 @@ export class StreamUpdater {
     };
   }
 
-  private handleInputs() {
-    const notInSkip = (index: number) =>
-      this.skip.indexOf(this.inputs[index].meta._id as string) === -1;
+  // private handleInputs() {
+  //   const notInSkip = (index: number) =>
+  //     this.skip.indexOf(this.inputs[index].meta._id as string) === -1;
 
-    let i = this.inputs.length;
-    while (i--) {
-      if (
-        notInSkip(i) &&
-        this.inputs[i].meta.txs &&
-        this.inputs[i].meta.txs.length
-      ) {
-        // Add compact transaction
-        this.inputs[i].meta.txs.push(this.entry.$umid);
+  //   let i = this.inputs.length;
+  //   while (i--) {
+  //     if (
+  //       notInSkip(i) &&
+  //       this.inputs[i].meta.txs &&
+  //       this.inputs[i].meta.txs.length
+  //     ) {
+  //       // Add compact transaction
+  //       this.inputs[i].meta.txs.push(this.entry.$umid);
 
-        // Hardened keys?
-        if (this.inputs[i].state._id && this.nhkpCheck) {
-          this.handleNHPK(this.inputs[i]);
-        }
+  //       // Hardened keys?
+  //       if (this.inputs[i].state._id && this.nhkpCheck) {
+  //         this.handleNHPK(this.inputs[i]);
+  //       }
 
-        // Push the metadata to the docs array
-        this.docs.push(this.inputs[i].meta);
-      }
-    }
-  }
+  //       // Push the metadata to the docs array
+  //       this.docs.push(this.inputs[i].meta);
+  //     }
+  //   }
+  // }
 
-  private handleNHPK(input: any) {
-    const inputLabel = this.shared.getLabelIOMap(
-      true,
-      input.state._id as string
-    );
-    const nhpk = this.entry.$tx.$i[inputLabel].$nhpk;
+  // private handleNHPK(input: any) {
+  //   const inputLabel = this.shared.getLabelIOMap(
+  //     true,
+  //     input.state._id as string
+  //   );
+  //   const nhpk = this.entry.$tx.$i[inputLabel].$nhpk;
 
-    // Loop Signatures as they should be rewritten with authoritied nested
-    // That way if any new auths were added they will be skipped
-    const txSigAuthKeys = Object.keys(
-      this.entry.$sigs[input.state._id as string]
-    );
+  //   // Loop Signatures as they should be rewritten with authoritied nested
+  //   // That way if any new auths were added they will be skipped
+  //   const txSigAuthKeys = Object.keys(
+  //     this.entry.$sigs[input.state._id as string]
+  //   );
 
-    const authorities = input.meta.authorities;
-    const keys = Object.keys(authorities);
+  //   const authorities = input.meta.authorities;
+  //   const keys = Object.keys(authorities);
 
-    // Loop all authorities to try and find a match
-    let i = keys.length;
-    while (i--) {
-      const authority: ActiveDefinitions.ILedgerAuthority =
-        authorities[keys[i]];
+  //   // Loop all authorities to try and find a match
+  //   let i = keys.length;
+  //   while (i--) {
+  //     const authority: ActiveDefinitions.ILedgerAuthority =
+  //       authorities[keys[i]];
 
-      // Get tx auth signature if existed
-      const txSigAuthKey = txSigAuthKeys.indexOf(authority.hash as string);
+  //     // Get tx auth signature if existed
+  //     const txSigAuthKey = txSigAuthKeys.indexOf(authority.hash as string);
 
-      if (txSigAuthKey === -1) {
-        authority.public = nhpk[txSigAuthKeys[txSigAuthKey]];
-      }
-    }
-  }
+  //     if (txSigAuthKey === -1) {
+  //       authority.public = nhpk[txSigAuthKeys[txSigAuthKey]];
+  //     }
+  //   }
+  // }
 
   /**
    * Handle data that is to be stored specifically against a contract
@@ -319,7 +319,7 @@ export class StreamUpdater {
 
       // New or Updating?
       // New streams will have a volatile set as {}
-      if (!this.streams[i].meta._rev) {
+      if (this.streams[i].meta && !this.streams[i].meta._rev) {
         // Make sure we have an id
         if (!this.streams[i].meta._id) {
           // New (Need to set ids)
@@ -329,10 +329,10 @@ export class StreamUpdater {
             this.streams[i].state._id + ":volatile";
         }
 
-        // Need to add transaction to all meta documents
+        // Need to add transaction to all meta documents Lets keep the root transaction still
         this.streams[i].meta.txs = [this.entry.$umid];
         // Also set as intalisiser stream (stream constructor)
-        this.streams[i].meta.$constructor = true;
+        //this.streams[i].meta.$constructor = true;
 
         // Need to remove rev
         delete this.streams[i].state._rev;
@@ -352,54 +352,58 @@ export class StreamUpdater {
       } else {
         // Updated Streams, These could be inputs
         // So update the transaction and remove for inputs for later processing
-        if (this.streams[i].meta.txs && this.streams[i].meta.txs.length) {
-          this.streams[i].meta.txs.push(this.entry.$umid);
-          this.skip.push(this.streams[i].meta._id as string);
-        }
 
-        // Hardened Keys?
-        if (this.streams[i].state._id && this.nhkpCheck) {
-          // Get nhpk
-          let nhpk =
-            this.entry.$tx.$i[
-              this.shared.getLabelIOMap(
-                true,
-                this.streams[i].state._id as string
-              )
-            ].$nhpk;
+        // TEMP Remove txs?
+        // if (this.streams[i].meta.txs && this.streams[i].meta.txs.length) {
+        //   //this.streams[i].meta.txs.push(this.entry.$umid);
+        //   this.skip.push(this.streams[i].meta._id as string);
+        // }
 
-          // Loop Signatures as they should be rewritten with authoritied nested
-          // That way if any new auths were added they will be skipped
-          let txSigAuthsKeys = Object.keys(
-            this.entry.$sigs[this.streams[i].state._id as string]
-          );
+        // Hardened Keys? Can probably use above func
+        // if (this.streams[i].state._id && this.nhkpCheck) {
+        //   // Get nhpk
+        //   let nhpk =
+        //     this.entry.$tx.$i[
+        //       this.shared.getLabelIOMap(
+        //         true,
+        //         this.streams[i].state._id as string
+        //       )
+        //     ].$nhpk;
 
-          // Loop all authorities to try and find a match
-          this.streams[i].meta.authorities.forEach(
-            (authority: ActiveDefinitions.ILedgerAuthority) => {
-              // Get tx auth signature if existed
-              const txSigAuthKey = txSigAuthsKeys.indexOf(
-                authority.hash as string
-              );
-              if (txSigAuthKey !== -1) {
-                (authority as any).public = nhpk[txSigAuthsKeys[txSigAuthKey]];
-              }
-            }
-          );
-        }
+        //   // Loop Signatures as they should be rewritten with authoritied nested
+        //   // That way if any new auths were added they will be skipped
+        //   let txSigAuthsKeys = Object.keys(
+        //     this.entry.$sigs[this.streams[i].state._id as string]
+        //   );
+
+        //   // Loop all authorities to try and find a match
+        //   this.streams[i].meta.authorities.forEach(
+        //     (authority: ActiveDefinitions.ILedgerAuthority) => {
+        //       // Get tx auth signature if existed
+        //       const txSigAuthKey = txSigAuthsKeys.indexOf(
+        //         authority.hash as string
+        //       );
+        //       if (txSigAuthKey !== -1) {
+        //         (authority as any).public = nhpk[txSigAuthsKeys[txSigAuthKey]];
+        //       }
+        //     }
+        //   );
+        // }
 
         // Add to reference
         this.refStreams.updated.push({
           id: this.shared.filterPrefix(this.streams[i].state._id as string),
-          name: this.streams[i].meta.name,
+          // TODO We should have this ion memory elsewhere
+          //name: this.streams[i].meta.name,
         });
       }
 
       // Data State (Developers Control)
       if (this.streams[i].state._id) this.docs.push(this.streams[i].state);
 
+      // TODO can we detect if this has been changed?
       // Meta (Stream Data) for internal usage
-      if (this.streams[i].meta._id) this.docs.push(this.streams[i].meta);
+      if (this.streams[i].meta?._id) this.docs.push(this.streams[i].meta);
 
       // Volatile data which cannot really be trusted
       if (this.streams[i].volatile && this.streams[i].volatile!._id)
@@ -416,8 +420,9 @@ export class StreamUpdater {
         //await Promise.all([
         this.db.bulkDocs(this.docs),
         this.dbev.post({
-          _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
-            }`,
+          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
+            this.entry.$umid
+          }`,
         }),
       ]);
     } catch (error) {
@@ -427,9 +432,6 @@ export class StreamUpdater {
       // TODO: Put in shared
       this.shared.raiseLedgerError(1510, new Error("Failed to save"));
     }
-
-
-
 
     // Wont get response or returns here
     // if(!this.nodeResponse.leader) {
@@ -501,7 +503,6 @@ export class StreamUpdater {
       this.emitter.emit("broadcast");
     }
 
-
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 
@@ -533,7 +534,7 @@ export class StreamUpdater {
         // This seems to have broken in perfmods but seems the same
         // as the main branch so temp fix
         let safe = true;
-        for (let i = streams.length; i--;) {
+        for (let i = streams.length; i--; ) {
           if (streams[i]._id) {
             safe = false;
             break;

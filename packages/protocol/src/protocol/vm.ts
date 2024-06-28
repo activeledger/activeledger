@@ -259,9 +259,14 @@ export class VirtualMachine
         // Activities have it referenced now
         const stream: any = {
           //@ts-ignore
-          meta: activities[streams[i]].meta,
+          //meta: activities[streams[i]].meta,
           //@ts-ignore
           state: activities[streams[i]].state
+        }
+        
+        if (activities[streams[i]].updatedMeta) {
+          //@ts-ignore
+          stream.meta = activities[streams[i]].meta;
         }
 
         if (activities[streams[i]].volatileUpdated) {
