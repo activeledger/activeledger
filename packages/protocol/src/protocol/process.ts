@@ -995,7 +995,7 @@ export class Process extends EventEmitter {
       // Transaction should be fully described now (revs etc)
       // we can now broadcast it before voting that way voting rounds will not lock up
       // if calling a 3rd party and awaiting multiple calls.
-      if (this.entry.$broadcast) {
+      if (this.entry.$broadcast && !(this.entry as any).$wait) {
         this.emit("broadcast", true);
       }
 
