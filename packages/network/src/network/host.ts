@@ -342,7 +342,7 @@ export class Host extends Home {
 
             //const bodyString = body.toString();
             const bodyString = (await this.makeSureNotBuffer(body)) as any;
-           
+
             // could make this nicer
             let bundles: any[]; // = [];
 
@@ -416,22 +416,26 @@ export class Host extends Home {
             }
           }
         } else {
-          // Simple get, Continue Processing
-          // should be safe to await here to capture undefined and promises to clear below
-          // TODO actually make this flow better as when undefined its an internal then
-          // process which *could* still be running. Although even if it is resetting below
-          // should still be safe.
-          await this.processEndpoints(
-            {
-              headers,
-              method,
-              url: path,
-              connection: {
-                remoteAddress: socket.remoteAddress?.toString() || "unknown",
+          if (method === "OPTIONS") {
+            await this.writeResponse(socket, 200, '{}', '', true);
+          } else {
+            // Simple get, Continue Processing
+            // should be safe to await here to capture undefined and promises to clear below
+            // TODO actually make this flow better as when undefined its an internal then
+            // process which *could* still be running. Although even if it is resetting below
+            // should still be safe.
+            await this.processEndpoints(
+              {
+                headers,
+                method,
+                url: path,
+                connection: {
+                  remoteAddress: socket.remoteAddress?.toString() || "unknown",
+                },
               },
-            },
-            socket
-          );
+              socket
+            );
+          }
 
           // reuse if not closed
           dBuf = [];
@@ -1607,7 +1611,8 @@ export class Host extends Home {
     res: Socket,
     statusCode: number,
     content: string | Buffer,
-    encoding: string
+    encoding: string,
+    cors = false
   ) {
     // Setup Default Headers
     // let headers = {
@@ -1636,6 +1641,11 @@ export class Host extends Home {
       //res.write(`Connection: close\r\n`);
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
+
+      if(cors) {
+        res.write(`Access-Control-Allow-Methods: GET, POST\r\n`);
+        res.write(`Access-Control-Allow-Headers: *\r\n`);
+      }
 
       if (content) {
         res.write(`Content-Type: application/json\r\n`);
