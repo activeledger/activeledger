@@ -512,7 +512,7 @@ import { SSE } from "./sse";
     let [streamId, suffix] = stream.split(":");
 
     // If id length more than 64 trim the start
-    if (streamId.length > 64) {
+    if (streamId.length > 64 && !streamId.startsWith("0x")) {
       streamId = streamId.slice(-64);
     }
 
