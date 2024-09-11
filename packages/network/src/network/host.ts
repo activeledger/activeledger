@@ -417,7 +417,7 @@ export class Host extends Home {
           }
         } else {
           if (method === "OPTIONS") {
-            await this.writeResponse(socket, 200, '{}', '', true);
+            await this.writeResponse(socket, 200, "{}", "", true);
           } else {
             // Simple get, Continue Processing
             // should be safe to await here to capture undefined and promises to clear below
@@ -1001,15 +1001,23 @@ export class Host extends Home {
     // let output = Object.keys(v.$tx.$o || {});
 
     // Ask for locks
+    // Use set to filter unique then back to array (or in loop)
+
+    let a:any[] = this.labelOrKey(v.$tx.$o);
+
     if (
-      v.$selfsign ||
-      // Use set to filter unique then back to array (or in loop)
-      Locker.hold([
-        ...new Set([
-          ...this.labelOrKey(v.$tx.$i),
-          ...this.labelOrKey(v.$tx.$o),
-        ]),
-      ])
+      // Selfsigning and can lock on output if any
+      // don't need to use set for unique
+      (v.$selfsign &&
+        Locker.hold(this.labelOrKey(v.$tx.$o))) ||
+      // Or not selfsigning and can lock on both inputs and outputs
+      (!v.$selfsign &&
+        Locker.hold([
+          ...new Set([
+            ...this.labelOrKey(v.$tx.$i),
+            ...this.labelOrKey(v.$tx.$o),
+          ]),
+        ]))
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -1642,7 +1650,7 @@ export class Host extends Home {
       //res.write(`Content-Encoding: none\r\n`);
       res.write(`Access-Control-Allow-Origin: *\r\n`);
 
-      if(cors) {
+      if (cors) {
         res.write(`Access-Control-Allow-Methods: GET, POST\r\n`);
         res.write(`Access-Control-Allow-Headers: *\r\n`);
       }

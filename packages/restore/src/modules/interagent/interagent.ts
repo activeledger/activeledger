@@ -472,6 +472,8 @@ export class Interagent {
       Helper.output("Getting revisions");
       const transaction = document.transaction;
 
+// TODO maybe get from $i $o rev maybe wrong?
+
       let revisions: string[] = [
         ...(Object.keys(transaction.$revs?.$i || {}) as string[]),
         ...(Object.keys(transaction.$revs?.$o || {}) as string[]),
