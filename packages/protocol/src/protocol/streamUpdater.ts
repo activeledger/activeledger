@@ -461,10 +461,10 @@ export class StreamUpdater {
       );
 
       // Wont get response or returns here from commit
-      if (emit) {
-        // Respond with the possible early commited
-        this.emitter.emit("commited");
-      }
+      // if (emit) {
+      //   // Respond with the possible early commited
+      //   this.emitter.emit("commited");
+      // }
 
       try {
         // Handle post processing if it exists
@@ -477,6 +477,11 @@ export class StreamUpdater {
         );
 
         this.nodeResponse.post = post;
+
+        if (emit) {
+          // Respond with the possible early commited
+          this.emitter.emit("commited");
+        }
 
         // Update in communication (Recommended pre commit only but can be edge use cases)
         this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
