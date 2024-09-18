@@ -23,6 +23,17 @@
 
 import * as process from "process";
 
+let tracer: any;
+
+if (process.env.ddReady) {
+  //@ts-ignore
+  import("dd-trace")
+    .then((dd) => {
+      tracer = dd.tracer;
+    })
+    .catch();
+}
+
 /**
  * Simplified Logging
  *
@@ -222,6 +233,20 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
+    if (process.env.ddReady && tracer) {
+      const span = tracer.scope().active();
+      if (span) {
+        const parent = (span.context() as any)._trace.started[0];
+        if (parent) {
+          parent.addTags({
+            "error.msg": (p1 as any).message,
+            "error.stack": (p1 as any).stack,
+            "error.type": (p1 as any).name,
+          });
+        }
+      }
+    }
+
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
