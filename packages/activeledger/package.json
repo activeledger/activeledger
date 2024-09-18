@@ -54,7 +54,8 @@
     "@activeledger/activenetwork": "^2.15.7",
     "@activeledger/activeoptions": "^2.15.7",
     "@activeledger/activestorage": "^2.15.7",
-    "@activeledger/activetoolkits": "^2.15.7"
+    "@activeledger/activetoolkits": "^2.15.7",
+    "dd-trace": "^5.22.0"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
 }
