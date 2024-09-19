@@ -22,7 +22,23 @@
  */
 
 import * as process from "process";
+import {tracer} from 'dd-trace';
+import { createLogger, format, transports } from 'winston';
 
+const httpTransportOptions = {
+  host: 'http-intake.logs.datadoghq.com',
+  path: '/api/v2/logs?dd-api-key=<DATADOG_API_KEY>&ddsource=nodejs&service=<APPLICATION_NAME>',
+  ssl: true
+};
+
+const logger = createLogger({
+  level: 'info',
+  exitOnError: false,
+  format: format.json(),
+  transports: [
+    new transports.Http(httpTransportOptions),
+  ],
+});
 /**
  * Simplified Logging
  *
@@ -58,6 +74,7 @@ export class ActiveLogger {
   public static trace(msg: string, ...args: any[]): void;
   public static trace(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
+      logger.debug(p1);
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -101,6 +118,7 @@ export class ActiveLogger {
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
+      logger.debug(p1);
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -142,6 +160,7 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
+    logger.info(p1);
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -182,6 +201,7 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
+    logger.warn(p1);
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -222,6 +242,19 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
+    logger.error(p1)
+    const span = tracer.scope().active();
+    if (span) {
+      const parent = (span.context() as any)._trace.started[0];
+      if (parent) {
+        parent.addTags({
+          'error.msg': p1.message,
+          'error.stack': p1.stack,
+          'error.type': p1.name,
+        });
+      }
+    }
+
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -263,6 +296,7 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
+    logger.error(p1)
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
