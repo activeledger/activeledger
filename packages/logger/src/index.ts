@@ -22,6 +22,7 @@
  */
 
 import * as process from "process";
+import { trace, context } from '@opentelemetry/api';
 
 /**
  * Simplified Logging
@@ -58,6 +59,11 @@ export class ActiveLogger {
   public static trace(msg: string, ...args: any[]): void;
   public static trace(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
+      const activeSpan = trace.getSpan(context.active());
+      activeSpan?.addEvent('log', {
+        'log.severity': 'trace',
+        'log.message': p1,
+      });
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -101,6 +107,11 @@ export class ActiveLogger {
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
+      const activeSpan = trace.getSpan(context.active());
+      activeSpan?.addEvent('log', {
+        'log.severity': 'debug',
+        'log.message': p1,
+      });
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -142,6 +153,11 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
+    const activeSpan = trace.getSpan(context.active());
+    activeSpan?.addEvent('log', {
+      'log.severity': 'info',
+      'log.message': p1,
+    });
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -182,6 +198,11 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
+    const activeSpan = trace.getSpan(context.active());
+    activeSpan?.addEvent('log', {
+      'log.severity': 'warn',
+      'log.message': p1,
+    });
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -222,6 +243,12 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
+    const activeSpan = trace.getSpan(context.active());
+    activeSpan?.addEvent('log', {
+      'log.severity': 'error',
+      'log.message': p1,
+    });
+
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
@@ -263,6 +290,11 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
+    const activeSpan = trace.getSpan(context.active());
+    activeSpan?.addEvent('log', {
+      'log.severity': 'fatal',
+      'log.message': p1,
+    });
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
