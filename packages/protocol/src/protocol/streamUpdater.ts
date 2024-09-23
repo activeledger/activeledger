@@ -134,10 +134,11 @@ export class StreamUpdater {
     this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
   }
 
-  public updateStreams(earlyCommit?: Function): void {
+  // TODO - manage async if it is really needed
+  public async updateStreams(earlyCommit?: Function): Promise<void> {
     if (earlyCommit) this.earlyCommit = earlyCommit;
 
-    this.streams.length ? this.processStreams() : this.processNoStreams();
+    this.streams.length ? await this.processStreams() : await this.processNoStreams();
   }
 
   private async processNoStreams() {
@@ -187,7 +188,8 @@ export class StreamUpdater {
     }
   }
 
-  private processStreams() {
+  // TODO - manage async if it is really needed
+  private async processStreams() {
     this.docs = [];
 
     this.buildReferenceStreams();
@@ -416,8 +418,7 @@ export class StreamUpdater {
       emit = true;
 
     try {
-      Promise.all([
-        //await Promise.all([
+        await Promise.all([
         this.db.bulkDocs(this.docs),
         this.dbev.post({
           _id: `umid:${new Date(this.entry.$datetime).getTime()},${
@@ -461,10 +462,10 @@ export class StreamUpdater {
       );
 
       // Wont get response or returns here from commit
-      // if (emit) {
-      //   // Respond with the possible early commited
-      //   this.emitter.emit("commited");
-      // }
+      if (emit) {
+        // Respond with the possible early commited
+        this.emitter.emit("commited");
+      }
 
       try {
         // Handle post processing if it exists
@@ -478,10 +479,10 @@ export class StreamUpdater {
 
         this.nodeResponse.post = post;
 
-        if (emit) {
-          // Respond with the possible early commited
-          this.emitter.emit("commited");
-        }
+        // if (emit) {
+        //   // Respond with the possible early commited
+        //   this.emitter.emit("commited");
+        // }
 
         // Update in communication (Recommended pre commit only but can be edge use cases)
         this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
