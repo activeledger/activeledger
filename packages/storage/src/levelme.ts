@@ -92,7 +92,7 @@ interface schema extends document {
   seq: number;
 }
 
-const REMOVE_CACHE_TIMER = 0.5 * 60 * 1000;
+const REMOVE_CACHE_TIMER = 1.5 * 60 * 1000;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -185,7 +185,7 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    //this.timerUnCache();
+    this.timerUnCache();
   }
 
   /**
@@ -509,27 +509,27 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    //if (!this.memory[key]) {
-    await this.open();
-    // Allow errors to bubble up?
-    let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
-    if (raw) {
-      return doc;
-      // this.memory[key] = {
-      //   data: doc,
-      //   create: new Date()
-      // }
-      //return JSON.parse(doc);
-    } else {
-      return await this.seqDocFromRoot(doc);
-      //doc = JSON.parse(doc) as schema;
-      // this.memory[key] = {
-      //   data: await this.seqDocFromRoot(doc),
-      //   create: new Date()
-      // }
+    if (!this.memory[key]) {
+      await this.open();
+      // Allow errors to bubble up?
+      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+      if (raw) {
+        //return doc;
+        this.memory[key] = {
+          data: doc,
+          create: new Date(),
+        };
+        //return JSON.parse(doc);
+      } else {
+        //return await this.seqDocFromRoot(doc);
+        //doc = JSON.parse(doc) as schema;
+        this.memory[key] = {
+          data: await this.seqDocFromRoot(doc),
+          create: new Date(),
+        };
+      }
     }
-    //}
-    //return this.memory[key].data;
+    return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -541,14 +541,14 @@ export class LevelMe {
 
     let tmpKeys = [];
     let cached = [];
-    // const now = new Date();
+    const now = new Date();
     for (let i = keys.length; i--; ) {
-      //   if (!this.memory[keys[i]]) {
-      tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      //   } else {
-      //     cached.push({ doc: this.memory[keys[i]].data });
-      //     this.memory[keys[i]].create = now;
-      //   }
+      if (!this.memory[keys[i]]) {
+        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+      } else {
+        cached.push({ doc: this.memory[keys[i]].data });
+        this.memory[keys[i]].create = now;
+      }
     }
 
     // Get uncached keys
@@ -559,10 +559,10 @@ export class LevelMe {
     for (let i = result.length; i--; ) {
       const data = JSON.parse(result[i]);
 
-      // this.memory[data._id] = {
-      //   data: data,
-      //   create: new Date()
-      // }
+      this.memory[data._id] = {
+        data: data,
+        create: new Date(),
+      };
       cached.push({ doc: data });
     }
     //}
@@ -619,9 +619,16 @@ export class LevelMe {
   public async post(doc: document) {
     const writer = await this.prepareForWrite(doc, this.levelUp.batch());
     try {
-      await writer.chain.write();
-      // Emit Changed Doc
-      this.changeEmitter.emit("change", writer.changes);
+      //await writer.chain.write();
+
+      // memory allows us to not need awaiting
+      writer.chain
+        .write()
+        .then(() => {
+          // Emit Changed Doc
+          this.changeEmitter.emit("change", writer.changes);
+        })
+        .catch(() => {});
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount--;
@@ -936,6 +943,11 @@ export class LevelMe {
       //   seq,
       // };
     }
+
+    this.memory[doc._id] = {
+      data: doc,
+      create: new Date(),
+    };
 
     // submit as bulk
     // 1. sequence data file
