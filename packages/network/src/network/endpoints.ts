@@ -63,26 +63,47 @@ export class Endpoints {
   public static ExternalInitalise(
     host: Host,
     body: any,
-    ip: string
+    ip: string,
+    db: ActiveDSConnect
   ): Promise<any> {
     return new Promise(async (resolve, reject) => {
       // Inline var function as a temp implemtnation of batching
       const process = (body: any) => {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
           // Check Transaction (Basic Validation Tests)
           if (body && ActiveDefinitions.LedgerTypeChecks.isEntry(body)) {
             let tx = body as ActiveDefinitions.LedgerEntry;
-
-            // Set Date
-            tx.$datetime = new Date();
+            const now = new Date();
 
             // Check transaction hasn't expired
-            if (tx.$tx.$expire && new Date(tx.$tx.$expire) <= tx.$datetime) {
-              return resolve(
-                this.successfulFailure(
-                  `Transaction Expired : ${tx.$tx.$expire}`
-                )
-              );
+            if (tx.$tx.$expire) {
+              if (new Date(tx.$tx.$expire) <= now) {
+                return resolve(
+                  this.successfulFailure(
+                    `Transaction Expired : ${tx.$tx.$expire}`
+                  )
+                );
+              } else {
+                // Check and return transaction exists in a consensus friendly way
+                tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
+
+                if(await db.exists(`${tx.$umid}:umid`)) {
+                  // Can you this as its not an internal error to throw
+                  return resolve(
+                    this.successfulFailure(
+                      `Transaction Exists : ${tx.$umid}`
+                    )
+                  );
+                } 
+
+                // Now safe to set datetime 
+                tx.$datetime = now;
+              }
+            } else {
+              // Set Date
+              tx.$datetime = now;
+              // Set Umid
+              tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
             }
 
             // Make sure $sigs exists
@@ -92,9 +113,6 @@ export class Endpoints {
 
             // Set Origin
             tx.$origin = host.reference;
-
-            // Set Umid
-            tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
 
             // Ip Address sending the transaction
             tx.$remoteAddr = ip;
