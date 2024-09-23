@@ -51,7 +51,6 @@ const BROADCAST_TIMEOUT = 20 * 1000;
 export class Process extends EventEmitter {
   // #region Class variables
 
-
   /**
    * Cache total nodes in network
    * TODO: When increasing nodes on attest we need to adjust this cache
@@ -60,7 +59,7 @@ export class Process extends EventEmitter {
    * @static
    */
   private static networkNodeLength = 0;
-  
+
   /**
    * Holds the instance that controls general contracts
    *
@@ -273,7 +272,10 @@ export class Process extends EventEmitter {
     // Reference node response
     this.nodeResponse = entry.$nodes[reference];
 
-    Process.networkNodeLength = ActiveOptions.get<Array<any>>("neighbourhood", []).length;
+    Process.networkNodeLength = ActiveOptions.get<Array<any>>(
+      "neighbourhood",
+      []
+    ).length;
 
     try {
       // Initialise the general contract VM
@@ -332,11 +334,10 @@ export class Process extends EventEmitter {
     // }
 
     if (this.entry.$broadcast) {
-
       // Make sure broadcast timeout is cleared
       clearTimeout(this.broadcastTimeout);
 
-      Process.generalContractVM.destroy(umid)
+      Process.generalContractVM.destroy(umid);
 
       // Close VM and entry (cirular reference)
       // if (this.isDefault) {
@@ -351,11 +352,10 @@ export class Process extends EventEmitter {
       // Quick solution to delete rules
       delete (this as any).entry;
     } else {
-      // early commit calls this to soon so can't send on so simple timeout 
+      // early commit calls this to soon so can't send on so simple timeout
       setTimeout(() => {
         Process.generalContractVM.destroy(umid);
         delete (this as any).entry;
-
       }, 60000);
     }
   }
@@ -381,9 +381,8 @@ export class Process extends EventEmitter {
     return padSorting(a).localeCompare(padSorting(b));
   }
 
-
   private contractPathCache: {
-    [index: string]: string
+    [index: string]: string;
   } = {};
 
   /**
@@ -491,7 +490,8 @@ export class Process extends EventEmitter {
             `${namespacePath}/${contract}.js`
           );
         }
-        this.contractLocation = this.contractPathCache[this.entry.$tx.$contract];
+        this.contractLocation =
+          this.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
         throw e;
       }
@@ -517,7 +517,6 @@ export class Process extends EventEmitter {
     //   : this.contractRef
     //     ? Process.singleContractVMHolder[this.contractRef]
     //     : Process.generalContractVM;
-
 
     // Without vm2 we can just use one then maybe remove it as well?
     const virtualMachine: IVirtualMachine = Process.generalContractVM;
@@ -654,7 +653,7 @@ export class Process extends EventEmitter {
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " +
-                    inputs[i]
+                      inputs[i]
                   )
                 );
               }
@@ -706,7 +705,7 @@ export class Process extends EventEmitter {
         this.emitFailed(this.willEmitData);
       } else {
         // Waiting on commit confirmation for streams
-        for (let i = nodes.length; i--;) {
+        for (let i = nodes.length; i--; ) {
           if (this.entry.$nodes[nodes[i]].streams) {
             // We have 1 nodes $stream record can fast forward the error throwing
             this.emitFailed(this.willEmitData);
@@ -721,7 +720,7 @@ export class Process extends EventEmitter {
         this.nodeResponse = this.entry.$nodes[this.reference];
         // Try run commit!
 
-        this.commit(Process.generalContractVM)
+        this.commit(Process.generalContractVM);
 
         // Get the correct VM instance reference
         // this.isDefault
@@ -779,7 +778,7 @@ export class Process extends EventEmitter {
 
   /**
    * Handle the initialisation and pass through of data for unsafe contracts
-   * 
+   *
    * TODO we only need oone VM now. First attempt was broken with get inputs
    *
    * @private
@@ -901,7 +900,7 @@ export class Process extends EventEmitter {
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
         const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
 
-        if (typeof (vote) !== 'boolean' && vote.leader) {
+        if (typeof vote !== "boolean" && vote.leader) {
           this.nodeResponse.vote = this.nodeResponse.leader = true;
           // If leader we can run straight to the commit
           // The data still gets sent on as part of a broadcast commit
@@ -983,12 +982,12 @@ export class Process extends EventEmitter {
   ): Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[],
-    //contractData: ActiveDefinitions.IContractData | undefined
-  ): Promise<void>;
+    outputs: ActiveDefinitions.LedgerStream[]
+  ): //contractData: ActiveDefinitions.IContractData | undefined
+  Promise<void>;
   private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[] = [],
+    outputs: ActiveDefinitions.LedgerStream[] = []
     // contractData: ActiveDefinitions.IContractData | undefined = undefined
   ): Promise<void> {
     try {
@@ -1013,7 +1012,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--;) {
+        for (let i = sigKeys.length; i--; ) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -1194,13 +1193,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                error.status || 1502,
-                new Error(error.error || error)
-              ) // rethrow same error
+                  error.status || 1502,
+                  new Error(error.error || error)
+                ) // rethrow same error
               : this.shared.raiseLedgerError(
-                1501,
-                new Error("Bad Knock Transaction")
-              ); // Generic error 404/ 500
+                  1501,
+                  new Error("Bad Knock Transaction")
+                ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1223,7 +1222,10 @@ export class Process extends EventEmitter {
    *
    * @param {*} [data]
    */
-  public emitFailed(data?: { status: number; error: string | Error }, noWait?: boolean) {
+  public emitFailed(
+    data?: { status: number; error: string | Error },
+    noWait?: boolean
+  ) {
     this.commiting = false;
     if (this.willEmit || noWait) {
       clearTimeout(this.willEmit);
@@ -1316,10 +1318,9 @@ export class Process extends EventEmitter {
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     this.currentVotes = 0;
     if (networkNodes) {
-
       // Small performance boost if we voted no
       //if (skipBoost /*|| this.nodeResponse.vote*/) {
-      for (let i = networkNodes.length; i--;) {
+      for (let i = networkNodes.length; i--; ) {
         if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
       }
       //}
@@ -1331,10 +1332,8 @@ export class Process extends EventEmitter {
 
       // Return if consensus has been reached
       return (
-        (this.currentVotes /
-          Process.networkNodeLength) *
-        100 >=
-        percent || false
+        (this.currentVotes / Process.networkNodeLength) * 100 >= percent ||
+        false
       );
     } else {
       return false;
@@ -1356,7 +1355,10 @@ export class Process extends EventEmitter {
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
-      if (this.nodeResponse.vote && (this.nodeResponse.leader || this.canCommit())) {
+      if (
+        this.nodeResponse.vote &&
+        (this.nodeResponse.leader || this.canCommit())
+      ) {
         // Consensus reached commit phase
         this.commiting = true;
 
@@ -1419,9 +1421,8 @@ export class Process extends EventEmitter {
             this.contractId
           );
 
-          earlyCommit
-            ? streamUpdater.updateStreams(earlyCommit)
-            : streamUpdater.updateStreams();
+          // TODO - manage async if it is really needed
+          await streamUpdater.updateStreams(earlyCommit);
         } catch (error) {
           // Don't let local error stop other nodes
           if (earlyCommit) earlyCommit();
@@ -1430,15 +1431,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-              1302,
-              new Error(
-                "Commit Failure - " + JSON.stringify(error.message || error)
+                1302,
+                new Error(
+                  "Commit Failure - " + JSON.stringify(error.message || error)
+                )
               )
-            )
             : this.shared.raiseLedgerError(
-              1301,
-              new Error("Failed Commit Transaction")
-            );
+                1301,
+                new Error("Failed Commit Transaction")
+              );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1491,7 +1492,7 @@ export class Process extends EventEmitter {
                   this.shared,
                   this.contractId
                 );
-                streamUpdater.updateStreams();
+                await streamUpdater.updateStreams();
               } else {
                 // No move onto internal attempts
                 // Upgrade error code so restore will process it
@@ -1707,7 +1708,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];

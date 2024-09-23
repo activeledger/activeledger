@@ -525,20 +525,23 @@ class Processor {
    * @param {string} umid
    */
   private clear(umid: string) {
-    ActiveLogger.debug("Removing from memory : " + umid);
-    // Clear Listners & Destory Early
-    if (this.protocols[umid]) {
-      this.protocols[umid].destroy(umid);
-      this.protocols[umid].removeAllListeners();
-      // Clear
-      delete this.protocols[umid];
-    }
-
-    // No longer need to handle unhandled rejections
-    if (this.unhandledRejection[umid]) {
-      process.off("unhandledRejection", this.unhandledRejection[umid]);
-      delete this.unhandledRejection[umid];
-    }
+    // TODO 5000 maybe not long enough or actually to long this set for testing with commit pre postprocessing
+    setTimeout(() => {
+      ActiveLogger.debug("Removing from memory : " + umid);
+      // Clear Listners & Destory Early
+      if (this.protocols[umid]) {
+        this.protocols[umid].destroy(umid);
+        this.protocols[umid].removeAllListeners();
+        // Clear
+        delete this.protocols[umid];
+      }
+  
+      // No longer need to handle unhandled rejections
+      if (this.unhandledRejection[umid]) {
+        process.off("unhandledRejection", this.unhandledRejection[umid]);
+        delete this.unhandledRejection[umid];
+      }
+    }, 5000);
   }
 
   /**
