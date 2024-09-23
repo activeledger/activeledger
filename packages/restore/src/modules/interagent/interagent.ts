@@ -100,13 +100,11 @@ export class Interagent {
   private listener(): void {
     // Provider.errorFeed.on("change", async (change: IChange) => {
     //   Helper.output("Change event received, pausing error feed.");
-
     //   // Temporary solution while resolving resequencing to purges
     //   Provider.errorFeed.stop();
     //   await this.skippedChecker();
     //   Provider.errorFeed.start();
     //   return;
-
     /*
 
     const changeDoc = change.doc;
@@ -137,10 +135,8 @@ export class Interagent {
     }
     */
     //});
-
     // Provider.archiveFeed.on("change", async (change: IChange) => {
     //   Helper.output("Change event received, pausing error feed.");
-
     //   // Temporary solution while resolving resequencing to purges
     //   Provider.archiveFeed.stop();
     //   await this.skippedArchieveChecker();
@@ -163,7 +159,7 @@ export class Interagent {
 
     if (docs.rows.length) {
       // Provider.errorFeed.pause();
-      for (let i = docs.rows.length; i--;) {
+      for (let i = docs.rows.length; i--; ) {
         const doc = docs.rows[i];
         // If doc has been processed just move
         if (doc.processed) {
@@ -233,7 +229,7 @@ export class Interagent {
    *
    * @private
    */
-  private hasVote = (data: any) => (!!data.vote);
+  private hasVote = (data: any) => !!data.vote;
 
   /**
    * Handle consensus not being met
@@ -288,7 +284,7 @@ export class Interagent {
    *
    * @private
    */
-  private responseHasError = (data: any) => (!!data.error);
+  private responseHasError = (data: any) => !!data.error;
 
   /**
    * Create a cache of streams
@@ -325,12 +321,14 @@ export class Interagent {
    * @private
    */
   private isDocMissing = (document: any) =>
-    !!(document.error &&
+    !!(
+      document.error &&
       document.status &&
       document.message &&
       document.docId &&
       document.status === 404 &&
-      document.message === "missing");
+      document.message === "missing"
+    );
 
   /**
    * Check if the stream data is in a correct format
@@ -361,8 +359,8 @@ export class Interagent {
       return this.isCompatibleTransaction(changeDoc)
         ? this.beginMain(changeDoc, changeDoc.transaction)
         : // If all nodes voted false check the integrity to verify.
-        // They might have voted no because this revision is wrong.
-        this.dataIntegrityCheck(changeDoc);
+          // They might have voted no because this revision is wrong.
+          this.dataIntegrityCheck(changeDoc);
     } else {
       Helper.output("Document has no error code.");
       return this.setProcessed(changeDoc);
@@ -444,9 +442,10 @@ export class Interagent {
       // Sometimes a node doesn't attach correctly, Defaulting to unknown should trigger this to
       // still be checked as a last resort.
       const myError =
-        document.transaction.$nodes[document.transaction.$origin]?.error || "unknown";
+        document.transaction.$nodes[document.transaction.$origin]?.error ||
+        "unknown";
       // Loop nodes and search for different error
-      for (let i = nodeErrors.length; i--;) {
+      for (let i = nodeErrors.length; i--; ) {
         if (document.transaction.$nodes[nodeErrors[i]].error !== myError) {
           // Only verify 1 error is different instead of a conensus %
           // Continue processing
@@ -472,7 +471,7 @@ export class Interagent {
       Helper.output("Getting revisions");
       const transaction = document.transaction;
 
-// TODO maybe get from $i $o rev maybe wrong?
+      // TODO maybe get from $i $o rev maybe wrong?
 
       let revisions: string[] = [
         ...(Object.keys(transaction.$revs?.$i || {}) as string[]),
@@ -495,24 +494,24 @@ export class Interagent {
         Helper.output("Network data", responses);
 
         // Merge streams from responses
-        for (let i = responses.length; i--;) {
+        for (let i = responses.length; i--; ) {
           const response = responses[i];
 
           !this.responseHasError(response)
             ? streamCache.push(...this.createStreamCache(response))
             : !this.attemptUmidDoc
-              ? // The error could be on this node
+            ? // The error could be on this node
               // Attempt to try and add the UMID
               (this.attemptUmidDoc = true)
-              : null;
+            : null;
           //: reject("Unable to retrieve necessary data");
         }
 
         streamCache.length > 0
           ? Helper.output("Stream cache:", streamCache)
           : this.attemptUmidDoc
-            ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
-            : Helper.output("Stream cache empty and not attempting UMID doc.");
+          ? Helper.output("Attempting UMID doc? " + this.attemptUmidDoc)
+          : Helper.output("Stream cache empty and not attempting UMID doc.");
 
         const getId = (data: any) => data.id;
         const revNotStored = (data: any) => {
@@ -528,7 +527,7 @@ export class Interagent {
 
         // Need to add :stream as well
         // As revs is prepopulated we need to go through the revs array and add :stream
-        for (let i = revisions.length; i--;) {
+        for (let i = revisions.length; i--; ) {
           revisions.push(`${revisions[i]}:stream`);
         }
 
@@ -555,20 +554,20 @@ export class Interagent {
       const streams = Object.keys(reducedStreamData);
       const promiseHolder = [];
 
-      for (let i = streams.length; i--;) {
+      for (let i = streams.length; i--; ) {
         const streamIndex = streams[i];
         const stream = reducedStreamData[streamIndex];
 
         const revs = Object.keys(stream);
 
-        for (let i = revs.length; i--;) {
+        for (let i = revs.length; i--; ) {
           const revisionIndex = revs[i];
           const revisionCount = stream[revisionIndex];
 
           Helper.metConsensus(revisionCount, true)
             ? promiseHolder.push(
-              this.handleStreamFixPromise(streamIndex, revisionIndex)
-            )
+                this.handleStreamFixPromise(streamIndex, revisionIndex)
+              )
             : promiseHolder.push(true);
         }
       }
@@ -576,13 +575,14 @@ export class Interagent {
       try {
         const results: unknown[] = await Promise.all(promiseHolder);
 
-        await this.setProcessed(document);
-
         if (results.some((e: boolean) => e)) {
           ActiveLogger.warn("Data Check - False Positive");
-          if (this.attemptUmidDoc) {
+          if (this.attemptUmidDoc || (await this.verifyUmid(this.umidDoc))) {
             await this.insertUmid(this.umidDoc);
           }
+          await this.setProcessed(document, true);
+        } else {
+          await this.setProcessed(document);
         }
 
         resolve();
@@ -598,6 +598,16 @@ export class Interagent {
   }
 
   /**
+   * Verify UMID exists
+   *
+   * @private
+   * @param {*} umidDoc
+   */
+  private async verifyUmid(umidDoc: any): Promise<boolean> {
+    return !(await Provider.database.exists(umidDoc.umid.$umid + ":umid"));
+  }
+
+  /**
    * Insert the UMID into the database
    *
    * @private
@@ -607,20 +617,19 @@ export class Interagent {
     return new Promise(async (resolve, reject) => {
       if (umidDoc) {
         try {
-          // Create event id for umid 
+          // Create event id for umid
           // This one will match all nodes so it could be "missed" by a parser
           //const _id = `umid:${new Date(umidDoc.umid.$datetime).getTime()},${umidDoc.umid.$umid}`
-          
+
           // This method will have the umid "out of order" however a parser will not miss it
-          const _id = `umid:${new Date().getTime()},${umidDoc.umid.$umid}`
+          const _id = `umid:${new Date().getTime()},${umidDoc.umid.$umid}`;
 
           // Save umids to database
           await Provider.database.bulkDocs([umidDoc], { new_edits: false });
           await Provider.eventDatabase.post({
-            _id
+            _id,
           }),
-
-          ActiveLogger.info("UMID Added");
+            ActiveLogger.info("UMID Added");
           resolve();
         } catch (error) {
           ActiveLogger.info(error || umidDoc, "Adding UMID failed");
@@ -729,7 +738,7 @@ export class Interagent {
         const promises: Promise<boolean>[] = [];
         const docProcessed: string[] = [];
 
-        for (let i = streams.length; i--;) {
+        for (let i = streams.length; i--; ) {
           const stream = streams[i];
           if (stream && !stream.error) {
             if (this.isDocMissing(document)) {
@@ -737,7 +746,7 @@ export class Interagent {
             }
             Helper.output(
               "Checking stream correct: " +
-              this.isStreamDefinedAndNotEmptyArray(stream),
+                this.isStreamDefinedAndNotEmptyArray(stream),
               stream ? stream : "No stream data"
             );
             if (this.isStreamDefinedAndNotEmptyArray(stream)) {
@@ -837,7 +846,7 @@ export class Interagent {
 
         let reduction = {};
 
-        for (let i = streamData.length; i--;) {
+        for (let i = streamData.length; i--; ) {
           const streams = streamData[i];
           if (!streams.error) {
             reduction = this.reduceStreamData(streams, reduction);
@@ -864,7 +873,7 @@ export class Interagent {
   private reduceStreamData(streams: any, reduction: any): any {
     Helper.output("Current reduction:", reduction);
     Helper.output("Reducing: ", streams);
-    for (let i = streams.length; i--;) {
+    for (let i = streams.length; i--; ) {
       const stream = streams[i];
 
       if (!reduction) {
@@ -894,7 +903,10 @@ export class Interagent {
    * @param {IChangeDocument} document
    * @returns {Promise<void>}
    */
-  private setProcessed(document: IChangeDocument): Promise<void> {
+  private setProcessed(
+    document: IChangeDocument,
+    falsePos?: boolean
+  ): Promise<void> {
     return new Promise(async (resolve, reject) => {
       Helper.output("Setting document processed flag to true");
       document.processed = true;
@@ -902,7 +914,7 @@ export class Interagent {
 
       try {
         // Move to archive
-        await this.archive(document);
+        await this.archive(document, falsePos);
 
         Helper.output("Document updated");
         resolve();
@@ -923,13 +935,20 @@ export class Interagent {
    * @param {IChangeDocument} document
    * @returns {Promise<void>}
    */
-  private async archive(document: IChangeDocument): Promise<void> {
+  private async archive(
+    document: IChangeDocument,
+    falsePos?: boolean
+  ): Promise<void> {
     await Provider.errorDatabase.purge(document);
 
-    // Sometimes there is similair auto id with revision collisions
-    // Instead of rewrite revision (as this data is not important) we will create a new
-    // timestamped document everytime so we can track all errors which have processed.
-    document._id = document._id + ":" + Date.now();
-    await Provider.errorArchive.put(document);
+    // Store only data changing in archive
+    if (!falsePos) {
+      // Sometimes there is similair auto id with revision collisions
+      // Instead of rewrite revision (as this data is not important) we will create a new
+      // timestamped document everytime so we can track all errors which have processed.
+      //document._id = document._id + ":" + Date.now();
+      document._id = Date.now() + ":" + document._id;
+      await Provider.errorArchive.put(document);
+    }
   }
 }
