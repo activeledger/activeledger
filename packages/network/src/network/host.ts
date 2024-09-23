@@ -45,7 +45,7 @@ import { createServer, Socket, Server } from "net";
 
 const RELEASE_SHUTDOWN_TIMEOUT = 0.5 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
-const TIMER_QUEUE_INTERVAL = 5 * 1000;
+const TIMER_QUEUE_INTERVAL = 2 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 
@@ -165,6 +165,7 @@ export class Host extends Home {
    * @type {[]}
    */
   private busyLocksQueue: {
+    running: boolean;
     entry: ActiveDefinitions.LedgerEntry;
     retry: number;
   }[] = [];
@@ -177,7 +178,7 @@ export class Host extends Home {
     entry: ActiveDefinitions.LedgerEntry,
     internal = false
   ): Promise<any> {
-    return new Promise<any>((resolve, reject) => {
+    return new Promise<any>(async (resolve, reject) => {
       // Broadcasting or Territoriality Mode
       if (entry.$broadcast) {
         // We may already have the $umid in memory
@@ -232,6 +233,32 @@ export class Host extends Home {
         };
         // Ask for hold
         //this.hold(entry);
+
+        // Need to check it doesn't exist
+        if (entry.$tx.$expire) {
+          if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
+            if (entry.$nodes) {
+              entry.$nodes[this.reference] = {
+                vote: false,
+                commit: false,
+                error: `Transaction Exists : ${entry.$umid}`,
+              };
+            } else {
+              entry.$nodes = {
+                [this.reference]: {
+                  vote: false,
+                  commit: false,
+                  error: `Transaction Exists : ${entry.$umid}`,
+                },
+              };
+            }
+            return this.processPending[entry.$umid].resolve({
+              status: 200,
+              data: entry,
+            });
+          }
+        }
+
         this.processQueue(entry, internal);
       } else {
         // If we have it and didn't find it, Lets return this request, However
@@ -600,15 +627,13 @@ export class Host extends Home {
               // Assign general error
               pending.entry.$nodes[this.reference].error =
                 "(Contract Thread Error) Unknown - Try Again";
-
+              // Remove Locks
+              this.release(pending);
               // Resolve to return oprhened transactions
               pending.resolve({
                 status: 200,
                 data: pending.entry,
               });
-
-              // Remove Locks
-              this.release(pending);
             }
           });
 
@@ -669,13 +694,13 @@ export class Host extends Home {
       switch (m.type) {
         case "failed":
           if (!pending) return; // Fail safe, May happen when process being closed
+          // Remove Locks
+          this.release(pending);
           // So if we send as resolve it should still work (Will it keep our error?)
           pending.resolve({
             status: 200,
             data: pending.entry,
           });
-          // Remove Locks
-          this.release(pending);
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
@@ -685,13 +710,13 @@ export class Host extends Home {
           break;
         case "commited":
           if (!pending) return; // Fail safe, May happen when process being closed
+          // Remove Locks
+          this.release(pending);
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
             data: { ...pending.entry, ...m.data.entry },
           });
-          // Remove Locks
-          this.release(pending);
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
@@ -729,12 +754,12 @@ export class Host extends Home {
           break;
         case "unhandledrejection":
           if (pending) {
+            // Remove Locks
+            this.release(pending);
             pending.resolve({
               status: 200,
               data: { ...pending.entry, ...m.data.entry },
             });
-            // Remove Locks
-            this.release(pending);
           }
           if (!m.data.recoverable) {
             // End process and create new subprocess
@@ -1003,21 +1028,15 @@ export class Host extends Home {
     // Ask for locks
     // Use set to filter unique then back to array (or in loop)
 
-    let a:any[] = this.labelOrKey(v.$tx.$o);
+    let a: any[] = this.labelOrKey(v.$tx.$o);
 
     if (
       // Selfsigning and can lock on output if any
       // don't need to use set for unique
-      (v.$selfsign &&
-        Locker.hold(this.labelOrKey(v.$tx.$o))) ||
+      (v.$selfsign && Locker.hold(a)) ||
       // Or not selfsigning and can lock on both inputs and outputs
       (!v.$selfsign &&
-        Locker.hold([
-          ...new Set([
-            ...this.labelOrKey(v.$tx.$i),
-            ...this.labelOrKey(v.$tx.$o),
-          ]),
-        ]))
+        Locker.hold([...new Set([...this.labelOrKey(v.$tx.$i), ...a])]))
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -1051,17 +1070,18 @@ export class Host extends Home {
       if (retries === 0) {
         // Push to the end of the queue
         this.busyLocksQueue.push({
+          running: false,
           entry: v,
           retry: 1,
         });
       } else {
         // Detect internal transaction read below for more information
         const internal = v.$revs ? true : false;
-        const maxRetries = internal
-          ? 2
-          : ActiveOptions.get<number>("queue_retry", 5);
+        // const maxRetries = internal
+        //   ? 2
+        //   : ActiveOptions.get<number>("queue_retry", 5);
 
-        if (retries > maxRetries) {
+        if (retries > ActiveOptions.get<number>("queue_retry", 25)) {
           // $origin check will mean if this is the entry node and is locked it will
           // still send around the network. Broadcast will fail. So for now if entry is locked
           // defaulting to queue attempt to unlock. Otherwise busy locks could be spammed. Doesn't mean
@@ -1176,7 +1196,7 @@ export class Host extends Home {
     setTimeout(() => {
       // Check the lock queue
       this.processQueue();
-    }, 100);
+    }, 200);
   }
 
   /**
@@ -1204,11 +1224,16 @@ export class Host extends Home {
         ) {
           // Success, Can remove from queue
           // cannot splice as still looping and looping in order
-          delete this.busyLocksQueue[i];
+          this.busyLocksQueue[i].running = true;
         }
       }
       // Remove the empty results if any
-      this.busyLocksQueue = this.busyLocksQueue.filter((n) => n);
+      //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
+      for (let i = this.busyLocksQueue.length; i--; ) {
+        if (this.busyLocksQueue[i].running) {
+          this.busyLocksQueue.splice(i, 1);
+        }
+      }
     }
 
     // After processing earlier transactions now deal with calling
@@ -1456,7 +1481,7 @@ export class Host extends Home {
             return this.writeResponse(
               res,
               200,
-              JSON.stringify(Locker.getLocks()),
+              JSON.stringify({ L: Locker.getLocks(), Q: this.busyLocksQueue }),
               gzipAccepted
             );
           case "/a/locks/check": // Network Status Request
@@ -1524,7 +1549,8 @@ export class Host extends Home {
             response = Endpoints.ExternalInitalise(
               this,
               body,
-              req.connection.remoteAddress || "unknown"
+              req.connection.remoteAddress || "unknown",
+              this.dbConnection
             );
             break;
           case "/a/encrypt":
