@@ -248,10 +248,10 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {string} id
    * @returns {(Promise<{} | Boolean>)}
    */
-  public exists(id: string): Promise<{} | Boolean> {
+  public exists(id: string): Promise<Boolean> {
     return new Promise<Boolean>((resolve) => {
       ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, {})
-        .then((response: any) => resolve(response.data))
+        .then((response: any) => resolve(response.data?._id ? true : false))
         .catch(() => {
           resolve(false);
         });
