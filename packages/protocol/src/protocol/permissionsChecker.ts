@@ -243,8 +243,8 @@ export class PermissionsChecker {
           if (revType[streamId] !== currentRevision) {
 
             // Normal and meta
-            this.db.clearCache(streamId);
-            this.db.clearCache(`${streamId}:stream`);
+            // this.db.clearCache(streamId);
+            // this.db.clearCache(`${streamId}:stream`);
 
             return reject({
               code: 1200,
