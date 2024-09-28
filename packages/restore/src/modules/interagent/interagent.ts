@@ -32,6 +32,8 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ErrorCodes } from "./error-codes.enum";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 
+const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
+
 /**
  * Interagent that listens for error events and attempts to fix them
  *
@@ -44,10 +46,10 @@ export class Interagent {
     ErrorCodes.StateNotFound,
     ErrorCodes.VoteFailedNetworkOk,
     ErrorCodes.InternalBusyLocked,
-    ErrorCodes.StreamPositionIncorrect,
+    //ErrorCodes.StreamPositionIncorrect,// never came
     ErrorCodes.ReadOnlyStreamNotFound,
-    ErrorCodes.NodeFinalReject,
-    ErrorCodes.FailedToSave,
+    //ErrorCodes.NodeFinalReject, // They voted no as their data was different?
+    //ErrorCodes.FailedToSave, // We do position incorrect fix real time
     ErrorCodes.Unknown,
     ErrorCodes.FailedToGetResponse,
   ];
@@ -70,15 +72,26 @@ export class Interagent {
   private skippedErrorInterval: Function;
 
   /**
+   * Sometimes multiple entries occur, This will filter them out
+   *
+   * @private
+   * @type {{
+   *     [index:string]: Date;
+   *   }}
+   */
+  private processedUmid: {
+    [index: string]: Date;
+  } = {};
+
+  /**
    * Creates an instance of Interagent.
    */
   constructor() {
-    this.listener();
-
     // Routine check for any documents missed due to restarts
     this.skippedErrorInterval = async () => {
       await this.skippedChecker();
-      //await this.skippedArchieveChecker();
+
+      // Loop processedUmid remove older than X
 
       // Next loop delay
       setTimeout(() => {
@@ -89,60 +102,27 @@ export class Interagent {
     // Start up delay
     setTimeout(() => {
       this.skippedErrorInterval();
+      this.timerUnCache();
     }, 5000);
   }
 
   /**
-   * Begins listenning to the errorfeed
+   * Clears Cache
    *
    * @private
    */
-  private listener(): void {
-    // Provider.errorFeed.on("change", async (change: IChange) => {
-    //   Helper.output("Change event received, pausing error feed.");
-    //   // Temporary solution while resolving resequencing to purges
-    //   Provider.errorFeed.stop();
-    //   await this.skippedChecker();
-    //   Provider.errorFeed.start();
-    //   return;
-    /*
-
-    const changeDoc = change.doc;
-
-    Helper.output("Checking if document already processed.");
-
-    // Has the document been processed?
-    if (!changeDoc.processed) {
-      try {
-        if (await Provider.errorDatabase.exists(changeDoc._id)) {
-          // Pause error feed to process
-          Provider.errorFeed.pause();
-          this.processDocument(changeDoc);
-          Provider.errorFeed.resume();
-          Helper.output("Restoration complete.");
-        } else {
-          // Stop Start listener to adjust for forced sequence change
-          Provider.errorFeed.stop();
-          Provider.errorFeed.start();
+  private timerUnCache() {
+    setTimeout(() => {
+      const umids = Object.keys(this.processedUmid);
+      const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
+      for (let i = umids.length; i--; ) {
+        if (this.processedUmid[umids[i]] < nowMinus) {
+          // 30 seconds has passed without accessing it so lets clear
+          delete this.processedUmid[umids[i]];
         }
-      } catch (error) {
-        ActiveLogger.error(error);
       }
-    } else {
-      // Move to archive
-      await this.archive(changeDoc)
-      Provider.errorFeed.resume();
-    }
-    */
-    //});
-    // Provider.archiveFeed.on("change", async (change: IChange) => {
-    //   Helper.output("Change event received, pausing error feed.");
-    //   // Temporary solution while resolving resequencing to purges
-    //   Provider.archiveFeed.stop();
-    //   await this.skippedArchieveChecker();
-    //   Provider.archiveFeed.start();
-    //   return;
-    // });
+      this.timerUnCache();
+    }, REMOVE_CACHE_TIMER);
   }
 
   /**
@@ -238,14 +218,10 @@ export class Interagent {
    */
   private handleConsensusNotMet(changeDoc: any): Promise<void> {
     Helper.output("Conensus not met.");
-    if (
-      changeDoc.code === ErrorCodes.StreamPositionIncorrect ||
-      changeDoc.code === ErrorCodes.StreamNotFound ||
-      changeDoc.code === ErrorCodes.InternalBusyLocked
-    ) {
+    if (changeDoc.code === ErrorCodes.StreamNotFound) {
       return this.dataIntegrityCheck(changeDoc);
     } else {
-      return this.setProcessed(changeDoc);
+      return this.setProcessed(changeDoc, true);
     }
     // return changeDoc.code === ErrorCodes.StreamPositionIncorrect // 1200
     //   ? this.dataIntegrityCheck(changeDoc)
@@ -270,6 +246,7 @@ export class Interagent {
     changeDoc.code !== ErrorCodes.NodeFinalReject && // 1505
     changeDoc.code !== ErrorCodes.VoteFailed && // 1000
     !changeDoc.transaction.$broadcast;
+  //changeDoc.transaction.reason.indexOf("Stream Position") === -1;
 
   /**
    * Check if revision already stored
@@ -310,9 +287,32 @@ export class Interagent {
    *
    * @private
    */
-  private handleStreamFixPromise = (streamIndex: any, revisionIndex: any) => {
-    ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
-    return this.fixStream(streamIndex, revisionIndex);
+  private handleStreamFixPromise = async (
+    streamIndex: any,
+    revisionIndex: any
+  ) => {
+    if (this.myStreamVersion[streamIndex] === revisionIndex) {
+      ActiveLogger.info(`${streamIndex}@${revisionIndex} - Already Matching`);
+      return;
+    } else {
+      // Check we are still the same
+      // const myStreams = (await Provider.network.knock("stream", {
+      //   $streams:[streamIndex],
+      // })).data as { _id: string; _rev: string }[];
+
+      // for (let i = myStreams.length; i--; ) {
+      //   console.log(`Checking : ${this.myStreamVersion[streamIndex]} !== ${myStreams[i]._rev}`)
+      //   if(this.myStreamVersion[streamIndex] !== myStreams[i]._rev)
+      //   {
+      //     // They were fine for another transaction so continue
+      //     ActiveLogger.info(`${streamIndex}@${revisionIndex} - New Revision Skip (${myStreams[i]._rev})`);
+      //     return;
+      //   }
+      // }
+
+      //ActiveLogger.info(`WW🐔D - ${streamIndex}@${revisionIndex}`);
+      return this.fixStream(streamIndex, revisionIndex);
+    }
   };
 
   /**
@@ -347,7 +347,11 @@ export class Interagent {
   private processDocument(changeDoc: any): Promise<void> {
     Helper.output("Document not yet processed.");
     // Check the error codes
-    if (this.hasErrorCode(changeDoc)) {
+    if (
+      this.hasErrorCode(changeDoc) &&
+      !this.processedUmid[changeDoc.umid] &&
+      changeDoc.reason.indexOf("Stream Position") === -1
+    ) {
       Helper.output("Document has errored.");
 
       Helper.output(
@@ -362,8 +366,13 @@ export class Interagent {
           // They might have voted no because this revision is wrong.
           this.dataIntegrityCheck(changeDoc);
     } else {
+      // If Stream Position error should try umid recovery! Or maybe always try to recover?
+      // if (await this.verifyUmid(this.umidDoc)) {
+      //   await this.insertUmid(this.umidDoc);
+      // }
+
       Helper.output("Document has no error code.");
-      return this.setProcessed(changeDoc);
+      return this.setProcessed(changeDoc, true);
     }
   }
 
@@ -394,17 +403,13 @@ export class Interagent {
    */
   private async dataIntegrityCheck(document: IChangeDocument): Promise<void> {
     return new Promise((resolve, reject) => {
-      ActiveLogger.info("Data Check - Blocking Network");
-
       // Delay to allow network to finish processing
       setTimeout(async () => {
-        ActiveLogger.info("Data Check - Resuming");
-
         try {
           // Did the nodes error together?
           Helper.output("Error Mismatch finder");
           if (!this.errorMismatchFinder(document)) {
-            await this.setProcessed(document);
+            await this.setProcessed(document, true);
             return resolve();
           }
 
@@ -576,11 +581,14 @@ export class Interagent {
         const results: unknown[] = await Promise.all(promiseHolder);
 
         if (results.some((e: boolean) => e)) {
-          ActiveLogger.warn("Data Check - False Positive");
-          if (this.attemptUmidDoc || (await this.verifyUmid(this.umidDoc))) {
+          if (
+            this.attemptUmidDoc ||
+            (this.umidDoc && (await this.verifyUmid(this.umidDoc)))
+          ) {
             await this.insertUmid(this.umidDoc);
           }
-          await this.setProcessed(document, true);
+          // Not strictly false positive
+          await this.setProcessed(document);
         } else {
           await this.setProcessed(document);
         }
@@ -659,6 +667,7 @@ export class Interagent {
         if (document._rev === revision) {
           resolve(false);
         } else {
+          ActiveLogger.info(`WW🐔D - ${streamId}@${revision}`);
           Helper.output("Revision not found fixing", document);
 
           try {
@@ -707,18 +716,22 @@ export class Interagent {
     });
   }
 
+  private myStreamVersion: {
+    [index: string]: string;
+  } = {};
+
   /**
    * Using data from the network rebuild the broken stream
    *
    * @private
-   * @param {IChangeDocument} document
+   * @param {any} document
    * @param {string} $stream
    * @param {string} $rev
    * @param {boolean} volatile
    * @returns {Promise<any>}
    */
   private rebuildData(
-    document: IChangeDocument,
+    document: any,
     $stream: string,
     $rev: string,
     volatile: boolean
@@ -760,13 +773,8 @@ export class Interagent {
 
               if (docProcessed.indexOf(docContent) === -1) {
                 docProcessed.push(docContent);
-                if (Provider.isSelfhost) {
-                  Helper.output("Self host enabled, rebuilding self.");
-                  promises.push(this.rebuildSelf(document, stream));
-                } else {
-                  Helper.output("Rebuilding remote.");
-                  promises.push(this.rebuildRemote(document, stream, volatile));
-                }
+                Helper.output("Self host enabled, rebuilding self.");
+                promises.push(this.rebuildSelf(document, stream));
               }
             }
           } else {
@@ -787,24 +795,6 @@ export class Interagent {
   }
 
   /**
-   * Rebuild data on a node that is not running locally to this restore instance
-   *
-   * @private
-   * @param {*} document
-   * @param {*} stream
-   * @param {boolean} volatile
-   * @returns {Promise<any>}
-   */
-  private rebuildRemote(
-    document: any,
-    stream: any,
-    volatile: boolean
-  ): Promise<any> {
-    // With purge support in couchdb 2.3 should be able to follow same pattern
-    return this.rebuildSelf(document, stream);
-  }
-
-  /**
    * Rebuild data on node running locally to this instance
    *
    * @private
@@ -817,10 +807,24 @@ export class Interagent {
       Helper.output("Beginning data rebuild process on self");
 
       try {
-        await Provider.database.purge(document);
+        //await Provider.database.purge(document);
+        //await Provider.database.bulkDocs([stream], { new_edits: false });
+        if (document._rev) {
+          ActiveLogger.info(
+            `Overwriting with current _rev ${document._id}@${document._rev}`
+          );
+          await Provider.database.bulkDocs(
+            [{ ...stream, _rev: document._rev }],
+            { force_rev: stream._rev }
+          );
+        } else {
+          ActiveLogger.info(`Purging ${document._id} with new_edits`);
+          await Provider.database.purge(document);
+          await Provider.database.bulkDocs([stream], { new_edits: false });
+        }
 
-        await Provider.database.bulkDocs([stream], { new_edits: false });
         Helper.output("Finished self data rebuild");
+        this.processedUmid[document.umid] = new Date();
         resolve(true);
       } catch (error) {
         reject(error);
@@ -838,6 +842,17 @@ export class Interagent {
   private getNetworkStreamData($streams: string[]): Promise<any> {
     return new Promise(async (resolve, reject) => {
       try {
+        // TODO extract from knockall
+        const myStreams = (
+          await Provider.network.knock("stream", {
+            $streams,
+          })
+        ).data as { _id: string; _rev: string }[];
+
+        for (let i = myStreams.length; i--; ) {
+          this.myStreamVersion[myStreams[i]._id] = myStreams[i]._rev;
+        }
+
         const streamData: any = await Provider.network.neighbourhood.knockAll(
           "stream",
           { $streams },

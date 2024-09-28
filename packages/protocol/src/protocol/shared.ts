@@ -52,17 +52,17 @@ export class Shared {
     reason: string | Error;
     priority: number;
   } = {
-      code: 0,
-      reason: "",
-      priority: 0,
-    };
+    code: 0,
+    reason: "",
+    priority: 0,
+  };
 
   constructor(
     private _storeSingleError: boolean,
     private entry: ActiveDefinitions.LedgerEntry,
     private dbe: ActiveDSConnect,
     private emitter: Process
-  ) { }
+  ) {}
 
   /**
    * Stores a copy of the single error to return
@@ -212,6 +212,30 @@ export class Shared {
     noWait = false
   ) {
     try {
+      // CSVE - contract skip vote error db
+      console.log("Tracing marker #1");
+      try {
+        if (reason && this.getGlobalReason(reason)?.indexOf("#CSVEDB") !== -1) {
+      console.log("Tracing marker #2");
+
+          this.emitter.emitFailed(
+            {
+              status: code,
+              error: this.getGlobalReason(reason) as string,
+            },
+            noWait
+          );
+          return;
+        }
+      } catch (e) {
+      console.log("Tracing marker #4");
+
+        ActiveLogger.error(reason, "Global Reason Empty");
+        throw e;
+      }
+
+      console.log("Tracing marker #5");
+
       // Store in database for activerestore to review
       const dbDoc = (this._storedSingleErrorDoc = await this.storeError(
         code,
@@ -225,10 +249,14 @@ export class Shared {
         if (dbDoc.id) {
           error += " - Error " + dbDoc.id;
         }
-        this.emitter.emitFailed({
-          status: this._errorOut.code,
-          error,
-        }, noWait);
+        console.log("EMIT FAILED #1");
+        this.emitter.emitFailed(
+          {
+            status: this._errorOut.code,
+            error,
+          },
+          noWait
+        );
       }
     } catch (error) {
       // Problem could be serious (Database down?)
@@ -238,10 +266,15 @@ export class Shared {
       // Emit failed event for execution
       if (!stop) {
         // Skip over delay send it right away
-        this.emitter.emit("failed", {
-          status: code,
-          error: error,
-        }, noWait);
+        console.log("EMIT FAILED #1");
+        this.emitter.emit(
+          "failed",
+          {
+            status: code,
+            error: error,
+          },
+          noWait
+        );
       }
     }
   }
@@ -261,6 +294,8 @@ export class Shared {
     reason: Error,
     priority: number = 0
   ): Promise<any> {
+    console.log("Tracing marker #5");
+
     // const getReason = () =>
     //   reason && reason.message ? reason.message : reason;
     if (priority >= this._errorOut.priority) {
@@ -277,7 +312,7 @@ export class Shared {
         JSON.stringify(this.entry)
       ) as ActiveDefinitions.LedgerEntry;
       const nodeErrors = Object.keys(tmpEntry.$nodes);
-      for (let i = nodeErrors.length; i--;) {
+      for (let i = nodeErrors.length; i--; ) {
         tmpEntry.$nodes[nodeErrors[i]].incomms = null;
       }
       // Build document for database
@@ -301,17 +336,19 @@ export class Shared {
   /**
    * Get best string based error
    * TODO : resolve the any typing! Allowing here as it is trying to explore the object
-   * 
+   *
    * @private
    * @param {*} reason
    * @returns
    */
   private getGlobalReason(reason: any) {
     return reason.message
-      ? reason.message
+      ? reason.message.toString()
       : reason.error
-        ? reason.error
-        : reason;
+      ? reason.error.toString()
+      : reason
+      ? reason.toString()
+      : "Unknown Reason";
   }
 
   /**

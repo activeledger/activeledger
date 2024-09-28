@@ -223,6 +223,10 @@ export class StreamUpdater {
       $revs: this.entry.$revs,
       $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false,
       $datetime: this.entry.$datetime,
+      $nodes: this.entry.$nodes,
+      $origin: this.entry.$origin,
+      $counter: this.entry.$counter,
+      $remoteAddr: this.entry.$remoteAddr
     };
   }
 
@@ -462,10 +466,10 @@ export class StreamUpdater {
       );
 
       // Wont get response or returns here from commit
-      if (emit) {
-        // Respond with the possible early commited
-        this.emitter.emit("commited");
-      }
+      // if (emit) {
+      //   // Respond with the possible early commited
+      //   this.emitter.emit("commited");
+      // }
 
       try {
         // Handle post processing if it exists
@@ -512,10 +516,10 @@ export class StreamUpdater {
     // Remember to let other nodes know
     if (this.earlyCommit) this.earlyCommit();
 
-    // if (emit) {
-    //   // Respond with the possible early commited
-    //   this.emitter.emit("commited");
-    // }
+    if (emit) {
+      // Respond with the possible early commited
+      this.emitter.emit("commited");
+    }
   }
 
   private async detectCollisions() {

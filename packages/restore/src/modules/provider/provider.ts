@@ -203,7 +203,7 @@ export class Provider {
     //this.setupArchiveDB(dbConfig);
 
     this.eventDatabase = new ActiveDSConnect(
-      `${dbConfig.url}/${dbConfig.error}events`
+      `${dbConfig.url}/${dbConfig.error}`
     );
   }
 
