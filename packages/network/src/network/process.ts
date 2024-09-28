@@ -183,65 +183,95 @@ class Processor {
           break;
         case "tx":
           // Create new Protocol Process object for transaction
-          this.protocols[m.entry.$umid] = new ActiveProtocol.Process(
-            m.entry,
-            Home.host,
-            Home.reference,
-            Home.right,
-            this.db,
-            this.dbe,
-            this.dbev,
-            this.secured
-          );
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`] =
+            new ActiveProtocol.Process(
+              m.entry,
+              Home.host,
+              Home.reference,
+              Home.right,
+              this.db,
+              this.dbe,
+              this.dbev,
+              this.secured
+            );
 
           // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
           // While it is global we need to manage it here to keep the encapsulation
-          this.unhandledRejection[m.entry.$umid] = (reason: Error) => {
+          this.unhandledRejection[`${m.entry.$umid}#${m.entry.$counter}`] = (
+            reason: Error
+          ) => {
             // Make sure the object exists
             if (
-              this.protocols[m.entry.$umid] &&
-              !(this.protocols[m.entry.$umid] as any).unhandled
+              this.protocols[`${m.entry.$umid}#${m.entry.$counter}`] &&
+              !(this.protocols[`${m.entry.$umid}#${m.entry.$counter}`] as any)
+                .unhandled
             ) {
-              ActiveLogger.warn(reason, "UnhandledRejection - " + m.entry.$umid);
+              ActiveLogger.warn(
+                reason,
+                "UnhandledRejection - " + `${m.entry.$umid}#${m.entry.$counter}`
+              );
               this.unhandled(m.entry, reason);
               // Only call once (TODO remove any)
-              (this.protocols[m.entry.$umid] as any).unhandled = true;
+              (
+                this.protocols[`${m.entry.$umid}#${m.entry.$counter}`] as any
+              ).unhandled = true;
             }
           };
 
           // Event: Manage Unhandled Rejections from VM
           process.on(
             "unhandledRejection",
-            this.unhandledRejection[m.entry.$umid]
+            this.unhandledRejection[`${m.entry.$umid}#${m.entry.$counter}`]
           );
 
           // Event: Manage Commits
-          this.protocols[m.entry.$umid].on("commited", (response: any) => {
-            this.committed(m.entry, response);
-          });
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
+            "commited",
+            (response: any) => {
+              console.log("COMITTED");
+              this.committed(m.entry, response);
+            }
+          );
 
           // Event: Manage Failed
-          this.protocols[m.entry.$umid].on("failed", (error: any) => {
-            this.failed(m.entry, error.error);
-          });
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
+            "failed",
+            (error: any) => {
+              console.log("FAILED");
+
+              this.failed(m.entry, error.error);
+            }
+          );
 
           // Event: Manage broadcast
-          this.protocols[m.entry.$umid].on("broadcast", (early) => {
-            this.broadcast(m.entry, early);
-          });
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
+            "broadcast",
+            (early) => {
+              console.log("broadcasted");
+              console.log(m.entry);
+
+              this.broadcast(m.entry, early);
+            }
+          );
 
           // Event: Manage Reload Requests
-          this.protocols[m.entry.$umid].on("reload", () => {
-            this.reloadUp(m.entry.$umid);
-          });
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
+            "reload",
+            () => {
+              this.reloadUp(m.entry.$umid);
+            }
+          );
 
           // Event: Manage Throw Transactions
-          this.protocols[m.entry.$umid].on("throw", (response: any) => {
-            this.throw(m.entry, response);
-          });
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
+            "throw",
+            (response: any) => {
+              this.throw(m.entry, response);
+            }
+          );
 
           // Event: Latest Contract Version
-          this.protocols[m.entry.$umid].on(
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].on(
             "contractLatestVersion",
             (response: { contract: string; file: string }) => {
               if (response) {
@@ -252,13 +282,17 @@ class Processor {
           );
 
           // Start the process
-          this.protocols[m.entry.$umid].start(
+          this.protocols[`${m.entry.$umid}#${m.entry.$counter}`].start(
             this.latestContractVersion[m.entry.$tx.$contract]
           );
           break;
         case "broadcast":
+          console.log("update from broadcastr #1");
+          console.log(m.data);
           if (this.protocols[m.data.umid]) {
             // Update Protocol with network values
+          console.log("update from broadcastr #2")
+
             this.protocols[m.data.umid].updatedFromBroadcast(m.data.nodes);
           }
           break;
@@ -313,6 +347,7 @@ class Processor {
     // Pass back to host to respond.
     this.send("commited", {
       umid: entry.$umid,
+      counter: entry.$counter,
       nodes: entry.$nodes,
       entry: {
         $streams: entry.$streams,
@@ -323,7 +358,7 @@ class Processor {
 
     // Clear Early?
     //if (!entry.$broadcast && !response) {
-      this.clear(entry.$umid);
+    this.clear(`${entry.$umid}#${entry.$counter}`);
     //}
   }
 
@@ -336,17 +371,19 @@ class Processor {
    */
   private failed(entry: any, error: Error): void {
     ActiveLogger.debug(error, "TX Failed");
+    console.log(entry);
     // Store error
     entry.$nodes[Home.reference].error = error?.toString();
 
     // Pass back to host to respond
     this.send("commited", {
-      umid: entry.$umid,
+      umid: entry.$umid,  // HERE
+      counter: entry.$counter,
       nodes: entry.$nodes,
     });
 
     if (!entry.$broadcast) {
-      this.clear(entry.$umid);
+      this.clear(`${entry.$umid}#${entry.$counter}`);
     }
   }
 
@@ -357,9 +394,12 @@ class Processor {
    * @param {*} entry
    */
   private broadcast(entry: any, early = false): void {
+    console.log("Counter is what?");
+    console.log(entry);
     // Pass back to host to respond
     this.send("broadcast", {
       umid: entry.$umid,
+      counter: entry.$counter, // TODO work out why $counter is now counter
       nodes: entry.$nodes,
       revs: entry.$revs,
       early,
@@ -490,12 +530,13 @@ class Processor {
     // Pass back to host to respond
     this.send("unhandledrejection", {
       umid: entry.$umid,
+      counter: entry.$counter,
       nodes: entry.$nodes,
-      recoverable
+      recoverable,
     });
 
     if (!entry.$broadcast) {
-      this.clear(entry.$umid);
+      this.clear(`${entry.$umid}#${entry.$counter}`);
     }
   }
 
@@ -535,7 +576,7 @@ class Processor {
         // Clear
         delete this.protocols[umid];
       }
-  
+
       // No longer need to handle unhandled rejections
       if (this.unhandledRejection[umid]) {
         process.off("unhandledRejection", this.unhandledRejection[umid]);

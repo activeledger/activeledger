@@ -92,7 +92,7 @@ interface schema extends document {
   seq: number;
 }
 
-const REMOVE_CACHE_TIMER = 1.5 * 60 * 1000;
+const REMOVE_CACHE_TIMER = 3 * 60 * 1000;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -185,7 +185,7 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    this.timerUnCache();
+    //this.timerUnCache();
   }
 
   /**
@@ -193,19 +193,19 @@ export class LevelMe {
    *
    * @private
    */
-  private timerUnCache() {
-    setTimeout(() => {
-      const memory = Object.keys(this.memory);
-      const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
-      for (let i = memory.length; i--; ) {
-        if (this.memory[memory[i]].data < nowMinus) {
-          // 30 seconds has passed without accessing it so lets clear
-          delete this.memory[memory[i]];
-        }
-      }
-      this.timerUnCache();
-    }, REMOVE_CACHE_TIMER * 2);
-  }
+  // private timerUnCache() {
+  //   setTimeout(() => {
+  //     const memory = Object.keys(this.memory);
+  //     const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
+  //     for (let i = memory.length; i--; ) {
+  //       if (this.memory[memory[i]].data < nowMinus) {
+  //         // 30 seconds has passed without accessing it so lets clear
+  //         delete this.memory[memory[i]];
+  //       }
+  //     }
+  //     this.timerUnCache();
+  //   }, REMOVE_CACHE_TIMER * 2);
+  // }
 
   /**
    * Attempts to fetch document, If fails returns default
@@ -495,12 +495,12 @@ export class LevelMe {
     });
   }
 
-  private memory: {
-    [index: string]: {
-      data: any;
-      create: Date;
-    };
-  } = {};
+  // private memory: {
+  //   [index: string]: {
+  //     data: any;
+  //     create: Date;
+  //   };
+  // } = {};
 
   /**
    * Get a specific data document
@@ -509,27 +509,29 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    if (!this.memory[key]) {
-      await this.open();
-      // Allow errors to bubble up?
-      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
-      if (raw) {
-        //return doc;
-        this.memory[key] = {
-          data: doc,
-          create: new Date(),
-        };
-        //return JSON.parse(doc);
-      } else {
-        //return await this.seqDocFromRoot(doc);
-        //doc = JSON.parse(doc) as schema;
-        this.memory[key] = {
-          data: await this.seqDocFromRoot(doc),
-          create: new Date(),
-        };
-      }
+    //if (!this.memory[key]) {
+    await this.open();
+    // Allow errors to bubble up?
+    let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+    if (raw) {
+      return doc;
+      // this.memory[key] = {
+      //   data: doc,
+      //   create: new Date(),
+      // };
+      //return JSON.parse(doc);
+    } else {
+      return await this.seqDocFromRoot(doc);
+      //doc = JSON.parse(doc) as schema;
+      // this.memory[key] = {
+      //   data: await this.seqDocFromRoot(doc),
+      //   create: new Date(),
+      // };
     }
-    return this.memory[key].data;
+    // }else{
+    //   this.memory[key].create = new Date()
+    // }
+    // return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -537,18 +539,18 @@ export class LevelMe {
     //   keys[i] = LevelMe.DOC_PREFIX + keys[i];
     // }
 
-    //return await this.levelUp.getMany(keys);
+    // return await this.levelUp.getMany(keys);
 
     let tmpKeys = [];
     let cached = [];
     const now = new Date();
     for (let i = keys.length; i--; ) {
-      if (!this.memory[keys[i]]) {
-        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      } else {
-        cached.push({ doc: this.memory[keys[i]].data });
-        this.memory[keys[i]].create = now;
-      }
+      //if (!this.memory[keys[i]]) {
+      tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+      //} else {
+      //  cached.push({ doc: this.memory[keys[i]].data });
+      //  this.memory[keys[i]].create = now;
+      //}
     }
 
     // Get uncached keys
@@ -559,10 +561,10 @@ export class LevelMe {
     for (let i = result.length; i--; ) {
       const data = JSON.parse(result[i]);
 
-      this.memory[data._id] = {
-        data: data,
-        create: new Date(),
-      };
+      // this.memory[data._id] = {
+      //   data: data,
+      //   create: new Date(),
+      // };
       cached.push({ doc: data });
     }
     //}
@@ -619,16 +621,17 @@ export class LevelMe {
   public async post(doc: document) {
     const writer = await this.prepareForWrite(doc, this.levelUp.batch());
     try {
-      //await writer.chain.write();
+      await writer.chain.write();
+      this.changeEmitter.emit("change", writer.changes);
 
       // memory allows us to not need awaiting
-      writer.chain
-        .write()
-        .then(() => {
-          // Emit Changed Doc
-          this.changeEmitter.emit("change", writer.changes);
-        })
-        .catch(() => {});
+      // writer.chain
+      //   .write()
+      //   .then(() => {
+      //     // Emit Changed Doc
+      //     this.changeEmitter.emit("change", writer.changes);
+      //   })
+      //   .catch(() => {});
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount--;
@@ -803,7 +806,7 @@ export class LevelMe {
    */
   public async bulkDocs(
     docs: document[],
-    options: { new_edits: boolean }
+    options: { new_edits: boolean; force_rev?: string }
   ): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
@@ -842,7 +845,7 @@ export class LevelMe {
   private async prepareForWrite(
     doc: document,
     chain: LevelUpChain<any, any>,
-    options: { new_edits: boolean } = { new_edits: true }
+    options: { new_edits: boolean; force_rev?: string } = { new_edits: true }
   ): Promise<{
     chain: LevelUpChain<any, any>;
     rev: string;
@@ -878,16 +881,6 @@ export class LevelMe {
       currentDocRoot = JSON.parse(
         await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
       ) as schema;
-      // Revision / Tree Checks?
-      // Activeledger does this anyway so can we gain performance not doing it here
-
-      // find the end of the branch
-      // will only have 1 branch which will be first
-      //const twig = this.findBranchEnd(currentDocRoot.rev_tree[0].ids);
-
-      // Check incoming doc has the same revision
-      //if (doc._rev !== `${twig.pos}-${twig.branch[0]}`) {
-
       // We need to pull out the right revision
       const currentRev =
         currentDocRoot._rev || (currentDocRoot.winningRev as string);
@@ -898,16 +891,16 @@ export class LevelMe {
           throw { msg: "Revision Mismatch", throw: 1 };
         }
 
-        // Get more relilable position value (crawler incorrect on auto archive)
-        const pos = parseInt(currentRev.split("-")[0]) + 1;
+        if (!options.force_rev) {
+          // Get more relilable position value (crawler incorrect on auto archive)
+          const pos = parseInt(currentRev.split("-")[0]) + 1;
 
-        // Update rev_* and doc
-        newRev = `${pos}-${md5}`;
-        //twig.branch[2] = [[md5, { status: "available" }, []]];
-        //currentDocRoot.winningRev = doc._rev = newRev;
-        doc._rev = newRev;
-        //currentDocRoot.seq = currentDocRoot.rev_map[newRev] = ++this
-        //  .docUpdateSeq;
+          // Update rev_* and doc
+          newRev = `${pos}-${md5}`;
+          doc._rev = newRev;
+        } else {
+          doc._rev = newRev = options.force_rev;
+        }
       } else {
         throw { msg: "Revision Mismatch Type 2", throw: 1 };
       }
@@ -944,10 +937,10 @@ export class LevelMe {
       // };
     }
 
-    this.memory[doc._id] = {
-      data: doc,
-      create: new Date(),
-    };
+    // this.memory[doc._id] = {
+    //   data: doc,
+    //   create: new Date(),
+    // };
 
     // submit as bulk
     // 1. sequence data file

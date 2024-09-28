@@ -183,7 +183,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             )
               .then((response: any) => {
                 if (!bundle) {
-                  if (response.data.$enc && response.data.$packet) {
+                  if (response.data?.$enc && response.data.$packet) {
                     response.data = JSON.parse(
                       Buffer.from(
                         Home.identity.decrypt(response.data.$packet),

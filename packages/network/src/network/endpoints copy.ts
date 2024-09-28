@@ -34,8 +34,6 @@ import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 
-const MAX_COUNTERS = 10;
-
 /**
  * Endpoints used to manage Network Neighbourhood
  * TODO convert host.Knock to local calls.
@@ -135,13 +133,12 @@ export class Endpoints {
               initTx: ActiveDefinitions.LedgerEntry,
               counter = 0
             ) => {
-              console.log(`resendable counter ${counter} tx ${tx.$counter} and umid ${tx.$umid}`);
               Endpoints.DirectInternalInitalise(host, initTx)
                 .then(async (response: any) => {
-                  console.log("ALMOST OUT");
-                  console.log(response);
-                  
+                  console.log("exec - 10");
+
                   if (response.status == "200" && !response.data?.error) {
+                    console.log("exec - 1000");
                     // Do something with the success response before returning
                     let tx: ActiveDefinitions.LedgerEntry = response.data;
 
@@ -166,6 +163,14 @@ export class Endpoints {
 
                       // Manage Errors (Hides node on purpose)
                       if (tx.$nodes[nodes[i]]?.error) {
+                        // if (
+                        //   tx.$nodes[nodes[i]].error?.indexOf(
+                        //     "Stream Position Incorrect"
+                        //   ) !== -1
+                        // ) {
+                        //   positionIncorrect.push(nodes[i]);
+                        // }
+
                         if (summary.errors) {
                           summary.errors.push(
                             tx.$nodes[nodes[i]].error as string
@@ -188,19 +193,47 @@ export class Endpoints {
                       }
                     }
 
-                    if (!summary.commit && summary.total > 1 && summary.errors && counter <= MAX_COUNTERS) {
+                    ActiveLogger.warn(summary, "How did it go?");
+                    if (
+                      !summary.commit &&
+                      counter <= 20 &&
+                      summary.errors?.some(
+                        (e) =>
+                          //e.indexOf("Stream Position Incorrect") !== -1 ||
+                          e.indexOf("Busy Locks") !== -1 ||
+                          e.indexOf("IBL01") !== -1
+                      )
+                    ) {
+                    console.log("exec - 1002");
+
+                      // If position incorrect maybe force update check instead of waiting on restore!
+                      // This happens because the "middle" node voted for the other one and when this got its turn
+                      // from the queue it is now out of date.
+                      // We can resend it, But we don't want to keep resending it
+                      // Reset as if it was new
+                      delete (initTx as any).$nodes;
+                      delete (initTx as any).$revs;
+                      delete (initTx as any).$streams;
+                      initTx.$counter = ++counter;
                       ActiveLogger.warn(
-                        summary,
-                        `SPI - Didn't commit ${counter} <= ${MAX_COUNTERS}`
+                        initTx,
+                        `SPI Resending ${counter} in 5s`
                       );
+                      setTimeout(() => {
+                        resendable(initTx, counter);
+                      }, 5000);
+                      return;
+                    } else {
+                    console.log("exec - 1006");
+
                       if (
-                        // Other nodes telling me I am wrong (as I am origin)
-                        // so more than 50% should say that otherwise only 1 of them could be wrong
-                        (summary.errors?.filter(
+                        summary.errors?.some(
                           (e) => e.indexOf("Stream Position Incorrect") !== -1
-                        ).length || 0) >=
-                        Math.floor((summary.errors?.length || 0) / 2)
+                        )
                       ) {
+                    console.log("exec - 1009");
+
+                        //(summary as any).counter = counter;
                         const streams = [
                           ...new Set([
                             ...this.labelOrKey(tx.$tx.$i),
@@ -208,53 +241,66 @@ export class Endpoints {
                           ]),
                         ];
 
-                        if (streams.length) {
-                          const networkStreams =
-                            await host.neighbourhood.knockAll("stream", {
-                              $streams: streams,
-                            });
+                        // for (let i = streams.length; i--; ) {
+                        //   if (streams[i].indexOf(":stream") === -1) {
+                        //     streams.push(`${streams[i]}:stream`);
+                        //   }
+                        // }
 
-                          // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                          const consensusReached = Math.ceil(
-                            (ActiveOptions.get<any>("consensus", {}).reached /
-                              100) *
-                              host.neighbourhood.count()
+                        if (streams.length) {
+                          console.log("exec - 1100");
+
+                          // for (let i = streams.length; i--; ) {
+                          //   const streamrROW = streams[i] as any;
+
+                          //   // Is the stream ID already there
+                          //   if (!reduction[streamrROW._id]) {
+                          //     reduction[streamrROW._id] = {};
+                          //   }
+
+                          //   // Is the revision already there
+                          //   if (!reduction[streamrROW._id][streamrROW._rev]) {
+                          //     reduction[streamrROW._id][streamrROW._rev] = 0;
+                          //   }
+
+                          //   reduction[streamrROW._id][streamrROW._rev]++;
+                          // }
+                          // ActiveLogger.fatal(streams);
+
+                          const streamsx = await host.neighbourhood.knockAll(
+                            "stream",
+                            {
+                              $streams: streams,
+                            }
                           );
 
                           // now find the ones that match
-                          const consensus: {
-                            [index: string]: {
-                              [index: string]: number;
-                            };
-                          } = {};
-                          for (let i = networkStreams.length; i--; ) {
-                            const nodeStreams = networkStreams[i];
-                            for (let ii = nodeStreams.length; ii--; ) {
-                              const noodeStream = nodeStreams[ii];
-                              if (consensus[noodeStream._id]) {
-                                const rev = consensus[noodeStream._id];
-                                if (rev[noodeStream._rev]) {
-                                  rev[noodeStream._rev]++;
-                                  if (
-                                    rev[noodeStream._rev] >= consensusReached
-                                  ) {
-                                    break;
-                                  }
+                          let popular: any = {};
+                          for (let i = streamsx.length; i--; ) {
+                            const node = streamsx[i];
+                            for (let ii = node.length; ii--; ) {
+                              const document = node[ii];
+                              if (popular[document._id]) {
+                                const rev = popular[document._id];
+                                if (rev[document._rev]) {
+                                  rev[document._rev]++;
                                 } else {
-                                  rev[noodeStream._rev] = 1;
+                                  rev[document._rev] = 1;
                                 }
                               } else {
-                                consensus[noodeStream._id] = {
-                                  [noodeStream._rev]: 1,
+                                popular[document._id] = {
+                                  [document._rev]: 1,
                                 };
                               }
                             }
                           }
 
+                          ActiveLogger.fatal(popular, "comeon");
+
                           // Now find that document
-                          const docs = Object.keys(consensus);
+                          const docs = Object.keys(popular);
                           for (let i = docs.length; i--; ) {
-                            const doc = consensus[docs[i]];
+                            const doc = popular[docs[i]];
                             var max = 0,
                               x,
                               winner;
@@ -266,22 +312,18 @@ export class Endpoints {
                             }
 
                             // find it
-                            foundWinner: for (
-                              let ii = networkStreams.length;
-                              ii--;
-
-                            ) {
-                              const node = networkStreams[ii];
+                            loop1: for (let ii = streamsx.length; ii--; ) {
+                              const node = streamsx[ii];
                               for (let j = node.length; j--; ) {
                                 const main = node[j];
-                                if (main._id == docs[i] && main._rev == winner) {
+                                if (main._id == docs[i]) {
                                   await host.dbConnection.purge({
                                     _id: main._id,
                                   });
                                   await host.dbConnection.bulkDocs([main], {
                                     new_edits: false,
                                   });
-                                  break foundWinner;
+                                  break loop1;
                                 }
                               }
                             }
@@ -292,51 +334,43 @@ export class Endpoints {
                           delete (initTx as any).$revs;
                           delete (initTx as any).$streams;
                           initTx.$counter = ++counter;
-                          // Should be seen as a new tx
-                          initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx));
-                          ActiveLogger.warn(
-                            initTx,
-                            `SPI (Rewrite#2) Resending ${counter} in 5s`
-                          );
-                          setTimeout(() => {
-                            resendable(initTx, counter);
-                          }, 500);
-                          return;
-                        }
-                      } else {
-                        if (
-                          //counter <= MAX_COUNTERS &&
-                          // can probably do this for all nodes
-                          summary.errors?.some(
-                            (e) =>
-                              //e.indexOf("Stream Position Incorrect") !== -1 ||
-                              e.indexOf("Busy Locks") !== -1 ||
-                              e.indexOf("IBL01") !== -1
-                          )
-                        ) {
-                          // If position incorrect maybe force update check instead of waiting on restore!
-                          // This happens because the "middle" node voted for the other one and when this got its turn
-                          // from the queue it is now out of date.
-                          // We can resend it, But we don't want to keep resending it
-                          // Reset as if it was new
-                          delete (initTx as any).$nodes;
-                          delete (initTx as any).$revs;
-                          delete (initTx as any).$streams;
-                          initTx.$counter = ++counter;
                           ActiveLogger.warn(
                             initTx,
                             `SPI Resending ${counter} in 5s`
                           );
                           setTimeout(() => {
+                    console.log("exec - 1000");
+
                             resendable(initTx, counter);
-                          }, 1000);
+                          }, 500);
                           return;
                         }
                       }
                     }
+                    console.log("exec - 9991");
+
+                    // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
+                    // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful#
+
+                    // TODO : Has this been fixed elsewhere? Deterministic stream collision fails it here
+                    // I think in willfair commiting false has removed the need for this.
+
+                    // if (tx.$broadcast && summary.vote) {
+                    //   // TODO - Reusable, not copied from protocol/process
+                    //   // Allow for full network consensus
+                    //   const percent = tx.$unanimous
+                    //     ? 100
+                    //     : ActiveOptions.get<any>("consensus", {}).reached;
+
+                    //   // Return if consensus has been reached
+                    //   if ((summary.vote / summary.total) * 100 >= percent || false) {
+                    //     // If reach all that voted yes should have committed
+                    //     summary.commit = summary.vote;
+                    //   }
+                    // }
 
                     // We have the entire network $tx object. This isn't something we want to return
-                    const output: ActiveDefinitions.LedgerResponse = {
+                    let output: ActiveDefinitions.LedgerResponse = {
                       $umid: tx.$umid,
                       $summary: summary,
                       $streams: tx.$streams,
@@ -377,11 +411,8 @@ export class Endpoints {
                   }
                 })
                 .catch((error) => {
-                  console.log("WRONG OUT");
-                  console.log(error);
-
                   if (error?.status == 100 && error.error) {
-                    if (counter <= MAX_COUNTERS && error.error === "Busy Locks") {
+                    if (counter <= 30 && error.error === "Busy Locks") {
                       initTx.$counter = ++counter;
                       ActiveLogger.warn(
                         initTx,

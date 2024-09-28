@@ -34,8 +34,6 @@ import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 
-const MAX_COUNTERS = 10;
-
 /**
  * Endpoints used to manage Network Neighbourhood
  * TODO convert host.Knock to local calls.
@@ -77,7 +75,7 @@ export class Endpoints {
             let tx = body as ActiveDefinitions.LedgerEntry;
             const now = new Date();
 
-            if (tx.$datetime) {
+            if(tx.$datetime) {
               this.successfulFailure(`$datetime cannot be preset`);
             }
 
@@ -135,12 +133,8 @@ export class Endpoints {
               initTx: ActiveDefinitions.LedgerEntry,
               counter = 0
             ) => {
-              console.log(`resendable counter ${counter} tx ${tx.$counter} and umid ${tx.$umid}`);
               Endpoints.DirectInternalInitalise(host, initTx)
-                .then(async (response: any) => {
-                  console.log("ALMOST OUT");
-                  console.log(response);
-                  
+                .then((response: any) => {
                   if (response.status == "200" && !response.data?.error) {
                     // Do something with the success response before returning
                     let tx: ActiveDefinitions.LedgerEntry = response.data;
@@ -154,8 +148,6 @@ export class Endpoints {
 
                     // Any data to send back to the client
                     let responses = [];
-
-                    //const positionIncorrect = [];
 
                     // Get nodes to count
                     let nodes = Object.keys(tx.$nodes);
@@ -188,155 +180,187 @@ export class Endpoints {
                       }
                     }
 
-                    if (!summary.commit && summary.total > 1 && summary.errors && counter <= MAX_COUNTERS) {
+                    ActiveLogger.warn(summary, "How did it")
+                    if (
+                      !summary.commit &&
+                      counter <= 20 &&
+                      summary.errors?.some(
+                        (e) =>
+                          //e.indexOf("Stream Position Incorrect") !== -1 ||
+                          e.indexOf("Busy Locks") !== -1 ||
+                          e.indexOf("IBL01") !== -1
+                      )
+                    ) {
+                      // If position incorrect maybe force update check instead of waiting on restore!
+                      // This happens because the "middle" node voted for the other one and when this got its turn
+                      // from the queue it is now out of date.
+                      // We can resend it, But we don't want to keep resending it
+                      // Reset as if it was new
+                      delete (initTx as any).$nodes;
+                      delete (initTx as any).$revs;
+                      delete (initTx as any).$streams;
+                      initTx.$counter = ++counter;
                       ActiveLogger.warn(
-                        summary,
-                        `SPI - Didn't commit ${counter} <= ${MAX_COUNTERS}`
+                        initTx,
+                        `SPI Resending ${counter} in 5s`
                       );
+                      setTimeout(() => {
+                        resendable(initTx, counter);
+                      }, 5000);
+                      return;
+                    } else {
+                      (summary as any).counter = counter;
                       if (
-                        // Other nodes telling me I am wrong (as I am origin)
-                        // so more than 50% should say that otherwise only 1 of them could be wrong
-                        (summary.errors?.filter(
+                        (initTx as any).$sei < 5 &&
+                        summary.errors?.some(
                           (e) => e.indexOf("Stream Position Incorrect") !== -1
-                        ).length || 0) >=
-                        Math.floor((summary.errors?.length || 0) / 2)
+                        )
                       ) {
-                        const streams = [
-                          ...new Set([
-                            ...this.labelOrKey(tx.$tx.$i),
-                            ...this.labelOrKey(tx.$tx.$o),
-                          ]),
-                        ];
+                        // Now we can find one of the servers and send to them instead
+                        for (let i = nodes.length; i--; ) {
+                          if (
+                            tx.$nodes[nodes[i]] &&
+                            tx.$nodes[nodes[i]].error &&
+                            (tx.$nodes[nodes[i]].error as string).indexOf(
+                              "Stream Position Incorrect"
+                            ) !== -1
+                          ) {
+                            // We need to rebroadcast to sending node
+                            let rebroadcast = host.neighbourhood.get(nodes[i]);
+                            // Send and wait on their response
+                            delete (initTx as any).$nodes;
+                            delete (initTx as any).$revs;
+                            delete (initTx as any).$streams;
+                            (initTx as any).$sei = (initTx as any).$sei + 1 || 0;
+                            initTx.$counter = ++counter;
+                            ActiveLogger.warn(
+                              initTx,
+                              "(SEI) Rebroadcasting to : " + nodes[i]
+                            );
+                            rebroadcast
+                              .knock("", initTx, true, 0, false)
+                              .then((ledger) => {
+                                // Add rebroadcast flag
+                                ActiveLogger.warn(ledger, "SEI RETURNED AS");
 
-                        if (streams.length) {
-                          const networkStreams =
-                            await host.neighbourhood.knockAll("stream", {
-                              $streams: streams,
-                            });
-
-                          // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                          const consensusReached = Math.ceil(
-                            (ActiveOptions.get<any>("consensus", {}).reached /
-                              100) *
-                              host.neighbourhood.count()
-                          );
-
-                          // now find the ones that match
-                          const consensus: {
-                            [index: string]: {
-                              [index: string]: number;
-                            };
-                          } = {};
-                          for (let i = networkStreams.length; i--; ) {
-                            const nodeStreams = networkStreams[i];
-                            for (let ii = nodeStreams.length; ii--; ) {
-                              const noodeStream = nodeStreams[ii];
-                              if (consensus[noodeStream._id]) {
-                                const rev = consensus[noodeStream._id];
-                                if (rev[noodeStream._rev]) {
-                                  rev[noodeStream._rev]++;
-                                  if (
-                                    rev[noodeStream._rev] >= consensusReached
-                                  ) {
-                                    break;
-                                  }
+                                if (ledger.data.$summary) {
+                                  resolve({
+                                    statusCode: 200,
+                                    content: ledger.data,
+                                  });
                                 } else {
-                                  rev[noodeStream._rev] = 1;
-                                }
-                              } else {
-                                consensus[noodeStream._id] = {
-                                  [noodeStream._rev]: 1,
-                                };
-                              }
-                            }
-                          }
+                                  // May have to build it depending on its rreturn route
+                                  let tx = ledger.data;
 
-                          // Now find that document
-                          const docs = Object.keys(consensus);
-                          for (let i = docs.length; i--; ) {
-                            const doc = consensus[docs[i]];
-                            var max = 0,
-                              x,
-                              winner;
-                            for (x in doc) {
-                              if (doc[x] > max) {
-                                max = doc[x];
-                                winner = x;
-                              }
-                            }
+                                  if(!tx) {
+                                    return this.successfulFailure(`Internal Queue Busy - Try Again`);
+                                  }
 
-                            // find it
-                            foundWinner: for (
-                              let ii = networkStreams.length;
-                              ii--;
+                                  // Build Summary
+                                  let summary: ActiveDefinitions.ISummary = {
+                                    total: 0,
+                                    vote: 0,
+                                    commit: 0,
+                                  };
 
-                            ) {
-                              const node = networkStreams[ii];
-                              for (let j = node.length; j--; ) {
-                                const main = node[j];
-                                if (main._id == docs[i] && main._rev == winner) {
-                                  await host.dbConnection.purge({
-                                    _id: main._id,
+                                  // TODO make this reusable have to rebuild output again
+
+                                  // Any data to send back to the client
+                                  let responses = [];
+
+                                  // Get nodes to count
+                                  let nodes = Object.keys(tx.$nodes);
+                                  for (let i = nodes.length; i--; ) {
+                                    summary.total++;
+                                    if (tx.$nodes[nodes[i]].vote)
+                                      summary.vote++;
+                                    if (tx.$nodes[nodes[i]].commit)
+                                      summary.commit++;
+
+                                    // Manage Errors (Hides node on purpose)
+                                    if (tx.$nodes[nodes[i]]?.error) {
+                                      if (summary.errors) {
+                                        summary.errors.push(
+                                          tx.$nodes[nodes[i]].error as string
+                                        );
+                                      } else {
+                                        summary.errors = [
+                                          tx.$nodes[nodes[i]].error as string,
+                                        ];
+                                      }
+                                    }
+
+                                    // Did this node have data to send to the client
+                                    if (tx.$nodes[nodes[i]].return) {
+                                      responses.push(
+                                        tx.$nodes[nodes[i]].return
+                                      );
+                                    }
+
+                                    // Any updated streams we may not know about
+                                    if (
+                                      !tx.$streams &&
+                                      tx.$nodes[nodes[i]].streams
+                                    ) {
+                                      tx.$streams = tx.$nodes[nodes[i]]
+                                        .streams as IStreams;
+                                    }
+                                  }
+
+                                  let output: ActiveDefinitions.LedgerResponse =
+                                    {
+                                      $umid: tx.$umid,
+                                      $summary: summary,
+                                      $streams: tx.$streams,
+                                    };
+
+                                  // Optional Responses to add
+                                  if (responses.length) {
+                                    output.$responses = responses;
+                                  }
+
+                                  resolve({
+                                    statusCode: 200,
+                                    content: output,
                                   });
-                                  await host.dbConnection.bulkDocs([main], {
-                                    new_edits: false,
-                                  });
-                                  break foundWinner;
                                 }
-                              }
-                            }
-                          }
+                              })
+                              .catch((error) => {
+                                ActiveLogger.error(
+                                  error,
+                                  "Sent 500 Response (SEI)"
+                                );
 
-                          // retry!
-                          delete (initTx as any).$nodes;
-                          delete (initTx as any).$revs;
-                          delete (initTx as any).$streams;
-                          initTx.$counter = ++counter;
-                          // Should be seen as a new tx
-                          initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx));
-                          ActiveLogger.warn(
-                            initTx,
-                            `SPI (Rewrite#2) Resending ${counter} in 5s`
-                          );
-                          setTimeout(() => {
-                            resendable(initTx, counter);
-                          }, 500);
-                          return;
-                        }
-                      } else {
-                        if (
-                          //counter <= MAX_COUNTERS &&
-                          // can probably do this for all nodes
-                          summary.errors?.some(
-                            (e) =>
-                              //e.indexOf("Stream Position Incorrect") !== -1 ||
-                              e.indexOf("Busy Locks") !== -1 ||
-                              e.indexOf("IBL01") !== -1
-                          )
-                        ) {
-                          // If position incorrect maybe force update check instead of waiting on restore!
-                          // This happens because the "middle" node voted for the other one and when this got its turn
-                          // from the queue it is now out of date.
-                          // We can resend it, But we don't want to keep resending it
-                          // Reset as if it was new
-                          delete (initTx as any).$nodes;
-                          delete (initTx as any).$revs;
-                          delete (initTx as any).$streams;
-                          initTx.$counter = ++counter;
-                          ActiveLogger.warn(
-                            initTx,
-                            `SPI Resending ${counter} in 5s`
-                          );
-                          setTimeout(() => {
-                            resendable(initTx, counter);
-                          }, 1000);
-                          return;
+                                reject({ statusCode: 500, content: error });
+                              });
+                            return;
+                          }
                         }
                       }
                     }
 
+                    // If in broadcast there is a slim chance that commit rebroadcast will be missed so do a total/vote check
+                    // commit may already be caught (as above) however this is a double check and extra broadcasts always be helpful#
+
+                    // TODO : Has this been fixed elsewhere? Deterministic stream collision fails it here
+                    // I think in willfair commiting false has removed the need for this.
+
+                    // if (tx.$broadcast && summary.vote) {
+                    //   // TODO - Reusable, not copied from protocol/process
+                    //   // Allow for full network consensus
+                    //   const percent = tx.$unanimous
+                    //     ? 100
+                    //     : ActiveOptions.get<any>("consensus", {}).reached;
+
+                    //   // Return if consensus has been reached
+                    //   if ((summary.vote / summary.total) * 100 >= percent || false) {
+                    //     // If reach all that voted yes should have committed
+                    //     summary.commit = summary.vote;
+                    //   }
+                    // }
+
                     // We have the entire network $tx object. This isn't something we want to return
-                    const output: ActiveDefinitions.LedgerResponse = {
+                    let output: ActiveDefinitions.LedgerResponse = {
                       $umid: tx.$umid,
                       $summary: summary,
                       $streams: tx.$streams,
@@ -377,11 +401,8 @@ export class Endpoints {
                   }
                 })
                 .catch((error) => {
-                  console.log("WRONG OUT");
-                  console.log(error);
-
                   if (error?.status == 100 && error.error) {
-                    if (counter <= MAX_COUNTERS && error.error === "Busy Locks") {
+                    if (counter <= 30 && error.error === "Busy Locks") {
                       initTx.$counter = ++counter;
                       ActiveLogger.warn(
                         initTx,
@@ -458,28 +479,6 @@ export class Endpoints {
         process(body).then(resolve).catch(reject);
       }
     });
-  }
-
-  public static labelOrKey(txIO: any): string[] {
-    // Get reference for input or output
-    const keys = Object.keys(txIO || {});
-    const out: string[] = [];
-
-    for (let i = keys.length; i--; ) {
-      // Stream label or self
-      out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
-    }
-    return out;
-  }
-
-  public static filterPrefix(streamId: string): string {
-    // If id length more than 64 trim the start
-    if (streamId.length > 64) {
-      streamId = streamId.slice(-64);
-    }
-
-    // Return just the id
-    return streamId;
   }
 
   /**
@@ -763,11 +762,10 @@ export class Endpoints {
             while (i--) {
               // Make sure not an error
               if (docs[i]._id) {
-                // streams.push({
-                //   _id: docs[i]._id,
-                //   _rev: docs[i]._rev,
-                // });
-                streams.push(docs[i]);
+                streams.push({
+                  _id: docs[i]._id,
+                  _rev: docs[i]._rev,
+                });
               }
             }
             return resolve({
