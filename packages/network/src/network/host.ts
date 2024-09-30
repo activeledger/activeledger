@@ -59,7 +59,6 @@ const MAX_RETRIES = 15;
  */
 interface process {
   entry: ActiveDefinitions.LedgerEntry;
-  counter: number;
   resolve: any;
   reject: any;
   pid: number;
@@ -183,47 +182,30 @@ export class Host extends Home {
     internal = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
-      // A way to resend while the old one is supported, without needing
-      // to adjust all the references
-      // if (
-      //   entry.$counter &&
-      //   this.processPending[`${entry.$umid}#${entry.$counter}`]?.counter < entry.$counter
-      // ) {
-
-      //   ActiveLogger.fatal(this.processPending[entry.$umid], "cached");
-      //       ActiveLogger.fatal(entry, "now");
-      //   this.destroy(entry.$umid, true);
-      //   ActiveLogger.fatal(this.processPending[entry.$umid], "was");
-
-      // }
-
       // Broadcasting or Territoriality Mode
       if (entry.$broadcast) {
         // We may already have the $umid in memory
-        if (this.processPending[`${entry.$umid}#${entry.$counter}`]) {
-          ActiveLogger.debug(this.processPending[`${entry.$umid}#${entry.$counter}`],
-            "Broadcast Recieved : " + `${entry.$umid}#${entry.$counter}`
+        if (this.processPending[entry.$umid]) {
+          ActiveLogger.debug(this.processPending[entry.$umid],
+            "Broadcast Recieved : " + entry.$umid
           );
           // Process Assigned?
           if (
-            this.processPending[`${entry.$umid}#${entry.$counter}`].pid &&
+            this.processPending[entry.$umid].pid &&
             // If a lead/er we don't need to let sub processor know
             // TODO sometimes this.reference is nullin $nodes related to the # 
-            !this.processPending[`${entry.$umid}#${entry.$counter}`]?.entry
+            !this.processPending[entry.$umid]?.entry
               ?.$nodes[this.reference]?.leader
           ) {
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
-              this.processPending[`${entry.$umid}#${entry.$counter}`].pid
+              this.processPending[entry.$umid].pid
             );
             if (processor) {
-              console.log("-----------");
-              console.log(entry);
-              console.log("-----------");
               processor.send({
                 type: "broadcast",
                 data: {
-                  umid: `${entry.$umid}#${entry.$counter}`,
+                  umid: entry.$umid,
                   nodes: entry.$nodes,
                 },
               });
@@ -239,14 +221,11 @@ export class Host extends Home {
       }
 
       // Check we don't have it, Process finding may have failed.
-      if (!this.processPending[`${entry.$umid}#${entry.$counter}`]) {
+      if (!this.processPending[entry.$umid]) {
         // Add to pending (Using Promises instead of http request)
-        this.processPending[`${entry.$umid}#${entry.$counter}`] = {
+        this.processPending[entry.$umid] = {
           entry: entry,
-          counter: entry.$counter || 0,
           resolve: (response: unknown) => {
-            console.log("RESOLVING");
-            console.log(JSON.stringify(response,null,2));
             resolve(response);
             // Catch all release (with a response) Impact on broadcast?
             setTimeout(() => {
@@ -255,13 +234,10 @@ export class Host extends Home {
                 resolve: null,
                 reject: null,
                 pid: 0,
-                counter: 0,
               });
             }, 200);
           },
           reject: (response: unknown) => {
-            console.log("REJECITNG");
-            console.log(response);
             reject(response);
             // Catch all release (with a response) Impact on broadcast?
             setTimeout(() => {
@@ -270,15 +246,11 @@ export class Host extends Home {
                 resolve: null,
                 reject: null,
                 pid: 0,
-                counter: 0,
               });
             }, 200);
           },
           pid: 0,
         };
-        // Ask for hold
-        //this.hold(entry);
-
         // Need to check it doesn't exist
         if (entry.$tx.$expire) {
           if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
@@ -297,9 +269,7 @@ export class Host extends Home {
                 },
               };
             }
-            return this.processPending[
-              `${entry.$umid}#${entry.$counter}`
-            ].resolve({
+            return this.processPending[entry.$umid].resolve({
               status: 200,
               data: entry,
             });
@@ -313,7 +283,7 @@ export class Host extends Home {
         // resolve with what we know
         return resolve({
           status: 200,
-          data: this.processPending[`${entry.$umid}#${entry.$counter}`].entry,
+          data: this.processPending[entry.$umid].entry,
         });
       }
     });
@@ -720,17 +690,12 @@ export class Host extends Home {
     // Listen for message to respond to waiting http
     pFork.on("message", (m: any) => {
       // Cache Pending Reference
-      console.log("GET PENDING - " +m.type);
-      console.log(m.data);
-      const pending = this.processPending[`${m.data.umid}#${m.data.counter}`]; //MENOW
+      const pending = this.processPending[m.data.umid];
 
       // Process may have been cleared by unhandleded process crashing
       if (pending) {
-        console.log("I AM HERE");
         // Check data for self to update
         if (m.data.nodes) {
-          console.log("Merging Nodes");
-          //pending.entry.$nodes[this.reference] = m.data.self;
           pending.entry.$nodes = {
             ...pending.entry.$nodes,
             ...m.data.nodes,
@@ -749,20 +714,12 @@ export class Host extends Home {
       // Switch on type of messages from processors
       switch (m.type) {
         case "failed":
-          console.log("EMIT FAILED #3");
-
           if (!pending) return; // Fail safe, May happen when process being closed
           // So if we send as resolve it should still work (Will it keep our error?)
           pending.resolve({
             status: 200,
             data: pending.entry,
           });
-
-          // Hold the lock a bit longer make sure it settles?
-          // setTimeout(() => {
-          //   // Remove Locks
-          //   this.release(pending);
-          // }, 500);
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
@@ -771,22 +728,12 @@ export class Host extends Home {
           }
           break;
         case "commited":
-          console.log("REALLY HERE?");
           if (!pending) return; // Fail safe, May happen when process being closed
           // Process response back into entry for previous neighbours to know the results
-          console.log("Hitting Reserve with");
-          console.log({ ...pending.entry, ...m.data.entry });
           pending.resolve({
             status: 200,
             data: { ...pending.entry, ...m.data.entry },
           });
-
-          // Hold the lock a bit longer make sure it settles?
-          // setTimeout(() => {
-          //   // Remove Locks
-          //   this.release(pending);
-          // }, 500);
-
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
           if (this.hybridHosts.length) {
@@ -795,9 +742,7 @@ export class Host extends Home {
           }
           break;
         case "broadcast": 
-        console.log("ffff");
-        console.log(m.data);         
-          this.broadcast(`${m.data.umid}#${m.data.counter}`, m.data.early);
+          this.broadcast(m.data.umid, m.data.early);
           break;
         case "reload":
           this.reload();
@@ -922,7 +867,6 @@ export class Host extends Home {
    * @param {*} umid
    */
   private destroy(umid: string): void {
-    //MENOW
     // Make sure it hasn't ben removed already
     if (this.processPending[umid]) {
       // Set to shutdown so broadcast can stop
@@ -951,9 +895,6 @@ export class Host extends Home {
    */
   private broadcast(umid: string, early = false): void {
     // Final check object exists
-    console.log(this.processPending);
-    console.log(`Looking for : ${umid}`);
-    console.log(JSON.stringify(this.processPending[umid],null,2));
     if (
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
@@ -1028,7 +969,6 @@ export class Host extends Home {
    */
   private broadcastResolver(umid: string): void {
     // Check access to the protocol
-    console.log("RESOLVING");
     if (this.processPending[umid] && this.processPending[umid].entry) {
       // Recast as connection errors found.
       ActiveLogger.warn("Rebroadcasting : " + umid);
@@ -1121,11 +1061,11 @@ export class Host extends Home {
       const robin = this.getRobin();
 
       // Make sure we have the response object
-      if (!this.processPending[`${v.$umid}#${v.$counter}`].entry.$nodes)
-        this.processPending[`${v.$umid}#${v.$counter}`].entry.$nodes = {};
+      if (!this.processPending[v.$umid].entry.$nodes)
+        this.processPending[v.$umid].entry.$nodes = {};
 
       // Setup this node response
-      this.processPending[`${v.$umid}#${v.$counter}`].entry.$nodes[
+      this.processPending[v.$umid].entry.$nodes[
         Home.reference
       ] = {
         vote: false,
@@ -1133,12 +1073,12 @@ export class Host extends Home {
       };
 
       // Remember who got selected
-      this.processPending[`${v.$umid}#${v.$counter}`].pid = robin.pid || 0;
+      this.processPending[v.$umid].pid = robin.pid || 0;
 
       // Pass transaction to sub processor
       robin.send({
         type: "tx",
-        entry: this.processPending[`${v.$umid}#${v.$counter}`].entry,
+        entry: this.processPending[v.$umid].entry,
       });
 
       // If we want to send BEFORE this node has processed uncomment
@@ -1200,22 +1140,22 @@ export class Host extends Home {
               // Forward on to the next node and compile responses back
               (async () => {
                 const next = await Home.right.knock("init", v);
-                this.processPending[`${v.$umid}#${v.$counter}`].resolve({
+                this.processPending[v.$umid].resolve({
                   status: 200,
                   data: { ...v, ...next.data },
                 });
               })();
             } else {
-              this.broadcast(`${v.$umid}#${v.$counter}`);
+              this.broadcast(v.$umid);
               // Respond back with our failure
-              this.processPending[`${v.$umid}#${v.$counter}`].resolve({
+              this.processPending[v.$umid].resolve({
                 status: 200,
                 data: v,
               });
             }
           } else {
             // External Request
-            this.processPending[`${v.$umid}#${v.$counter}`].reject({
+            this.processPending[v.$umid].reject({
               status: 100,
               error: "Busy Locks",
             });
@@ -1272,7 +1212,7 @@ export class Host extends Home {
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
       if (pending.entry) {
-        this.destroy(`${pending.entry.$umid}#${pending.entry.$counter}`);
+        this.destroy(pending.entry.$umid);
       }
     }, RELEASE_SHUTDOWN_TIMEOUT);
 
@@ -1666,17 +1606,6 @@ export class Host extends Home {
             return this.writeResponse(res, 404, "Not Found", gzipAccepted);
         }
         break;
-      case "OPTIONS":
-        // Accept all for now (Return Request Headers)
-        // res.writeHead(200, {
-        //   "Access-Control-Allow-Origin": "*",
-        //   "Access-Control-Allow-Methods": "GET, POST",
-        //   "Access-Control-Allow-Headers":
-        //     (req.headers["access-control-request-headers"] as string) || "*",
-        //   "X-Powered-By": "Activeledger",
-        // });
-        //res.end();
-        return;
       default:
         return this.writeResponse(res, 404, "Not Found", gzipAccepted);
     }
@@ -1733,22 +1662,6 @@ export class Host extends Home {
     encoding: string,
     cors = false
   ) {
-    // Setup Default Headers
-    // let headers = {
-    //   "Content-Type": "application/json",
-    //   "Content-Encoding": "none",
-    //   "Access-Control-Allow-Origin": "*",
-    //   "X-Powered-By": "Activeledger",
-    // };
-
-    // Modify output if can compress
-    // if (encoding == "gzip") {
-    //   //headers["Content-Encoding"] = "gzip";
-    //   content = await ActiveGZip.gzip(content);
-    // }
-
-    // Write the response
-    //res.writeHead(statusCode, headers);
 
     if ((res as any).bundled) {
       return;
@@ -1779,7 +1692,6 @@ export class Host extends Home {
         res.write(`Content-Length: ${content.length}\r\n\r\n`);
         res.write(content);
       }
-      //res.end();
     }
   }
 

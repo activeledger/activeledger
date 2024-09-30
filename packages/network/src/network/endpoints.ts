@@ -135,11 +135,8 @@ export class Endpoints {
               initTx: ActiveDefinitions.LedgerEntry,
               counter = 0
             ) => {
-              console.log(`resendable counter ${counter} tx ${tx.$counter} and umid ${tx.$umid}`);
               Endpoints.DirectInternalInitalise(host, initTx)
                 .then(async (response: any) => {
-                  console.log("ALMOST OUT");
-                  console.log(response);
                   
                   if (response.status == "200" && !response.data?.error) {
                     // Do something with the success response before returning
@@ -291,16 +288,15 @@ export class Endpoints {
                           delete (initTx as any).$nodes;
                           delete (initTx as any).$revs;
                           delete (initTx as any).$streams;
-                          initTx.$counter = ++counter;
                           // Should be seen as a new tx
-                          initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx));
+                          initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx) + counter);
                           ActiveLogger.warn(
                             initTx,
-                            `SPI (Rewrite#2) Resending ${counter} in 5s`
+                            `SPI (Rewrite) Resending ${counter} in 5s`
                           );
                           setTimeout(() => {
-                            resendable(initTx, counter);
-                          }, 500);
+                            resendable(initTx, ++counter);
+                          }, 100);
                           return;
                         }
                       } else {
@@ -322,13 +318,13 @@ export class Endpoints {
                           delete (initTx as any).$nodes;
                           delete (initTx as any).$revs;
                           delete (initTx as any).$streams;
-                          initTx.$counter = ++counter;
+                          initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx) + counter);
                           ActiveLogger.warn(
                             initTx,
                             `SPI Resending ${counter} in 5s`
                           );
                           setTimeout(() => {
-                            resendable(initTx, counter);
+                            resendable(initTx, ++counter);
                           }, 1000);
                           return;
                         }
@@ -377,18 +373,15 @@ export class Endpoints {
                   }
                 })
                 .catch((error) => {
-                  console.log("WRONG OUT");
-                  console.log(error);
-
                   if (error?.status == 100 && error.error) {
                     if (counter <= MAX_COUNTERS && error.error === "Busy Locks") {
-                      initTx.$counter = ++counter;
+                      // same umid safe here
                       ActiveLogger.warn(
                         initTx,
                         `SPI Resending ${counter} in 5s`
                       );
                       setTimeout(() => {
-                        resendable(initTx, counter);
+                        resendable(initTx, ++counter);
                       }, 3000);
                     } else {
                       return resolve(
@@ -396,7 +389,6 @@ export class Endpoints {
                       );
                     }
                   } else {
-                    console.log(error);
                     ActiveLogger.error(error, "Sent 500 Response (1000)");
                     return reject({
                       statusCode: 500,
@@ -405,7 +397,6 @@ export class Endpoints {
                   }
                 });
             };
-            tx.$counter = 0;
             resendable(tx);
           } else {
             ActiveLogger.error("Sent 500 Response (1200)");
@@ -419,11 +410,6 @@ export class Endpoints {
 
       // Not supporting mutiple transactions yet
       if (body.$multi) {
-        // Multiple
-        // return resolve(
-        //   this.successfulFailure("Multiple Transaction Not Implemented")
-        // );
-
         // We can either send them all at once or in seq depends on transaction lets default to all at once
         const results = [] as any[];
         if (body.$seq) {
@@ -626,7 +612,6 @@ export class Endpoints {
                 resolve(ledger);
               })
               .catch((error) => {
-                console.log(JSON.stringify(tx));
                 reject(error);
               });
             // Safe to return
@@ -952,13 +937,11 @@ export class Endpoints {
         // Internal Transaction Messesing (Encrypted & Signing Security)
         if (bodyObject.$neighbour && bodyObject.$packet) {
           //ActiveLogger.debug(bodyObject, "Converting Signed for Post");
-
           try {
+            // Maybe coming from activerestore
             if (bodyObject.$enc) {
             }
           } catch (e) {
-            console.log("NO $ENC");
-            console.log(bodyObject);
           }
 
           // We don't encrypt to ourselve

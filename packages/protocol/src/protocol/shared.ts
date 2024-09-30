@@ -212,29 +212,24 @@ export class Shared {
     noWait = false
   ) {
     try {
-      // CSVE - contract skip vote error db
-      console.log("Tracing marker #1");
-      try {
-        if (reason && this.getGlobalReason(reason)?.indexOf("#CSVEDB") !== -1) {
-      console.log("Tracing marker #2");
+      // CSVE - contract skip vote error db (restore engine slightly different)
+      // try {
+      //   if (reason && this.getGlobalReason(reason)?.indexOf("#CSVEDB") !== -1) {
+          
+      //     this.emitter.emitFailed(
+      //       {
+      //         status: code,
+      //         error: this.getGlobalReason(reason) as string,
+      //       },
+      //       noWait
+      //     );
+      //     return;
+      //   }
+      // } catch (e) {
+      //   ActiveLogger.error(reason, "Global Reason Empty");
+      //   throw e;
+      // }
 
-          this.emitter.emitFailed(
-            {
-              status: code,
-              error: this.getGlobalReason(reason) as string,
-            },
-            noWait
-          );
-          return;
-        }
-      } catch (e) {
-      console.log("Tracing marker #4");
-
-        ActiveLogger.error(reason, "Global Reason Empty");
-        throw e;
-      }
-
-      console.log("Tracing marker #5");
 
       // Store in database for activerestore to review
       const dbDoc = (this._storedSingleErrorDoc = await this.storeError(
@@ -249,7 +244,6 @@ export class Shared {
         if (dbDoc.id) {
           error += " - Error " + dbDoc.id;
         }
-        console.log("EMIT FAILED #1");
         this.emitter.emitFailed(
           {
             status: this._errorOut.code,
@@ -266,7 +260,6 @@ export class Shared {
       // Emit failed event for execution
       if (!stop) {
         // Skip over delay send it right away
-        console.log("EMIT FAILED #1");
         this.emitter.emit(
           "failed",
           {
@@ -294,8 +287,6 @@ export class Shared {
     reason: Error,
     priority: number = 0
   ): Promise<any> {
-    console.log("Tracing marker #5");
-
     // const getReason = () =>
     //   reason && reason.message ? reason.message : reason;
     if (priority >= this._errorOut.priority) {

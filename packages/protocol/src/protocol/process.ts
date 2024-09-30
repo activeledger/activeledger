@@ -603,7 +603,6 @@ export class Process extends EventEmitter {
         } catch (error) {
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
-          console.log("Post OVte #1");
           this.postVote(virtualMachine, {
             code: error.code,
             reason: error.reason || error.message,
@@ -670,7 +669,6 @@ export class Process extends EventEmitter {
           this.process([], outputStreams);
         } catch (error) {
           // Forward Error On
-          console.log("Post OVte #12");
 
           this.postVote(virtualMachine, {
             code: error.code,
@@ -694,28 +692,20 @@ export class Process extends EventEmitter {
    * @returns {void}
    */
   public updatedFromBroadcast(node?: any): void {
-    console.log("upadting from node");
-    console.log(node);
     if (this.isCommiting()) {
-      console.log("not here please");
       return;
     }
 
     // TODO could probably work out this here instead of will emit
-    console.log("Ok lets go");
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
-    console.log(this.entry.$nodes);
     if (this.willEmit) {
-      console.log("will emit");
       // need to make sure streams exists
       const nodes = Object.keys(this.entry.$nodes);
       // Do we have any votes left if not can fast forward
       if (!this.hasOutstandingVotes(nodes.length) && !this.canCommit()) {
-        console.log("no outstanding");
         this.emitFailed(this.willEmitData);
       } else {
-        console.log("chekcing");
         // Waiting on commit confirmation for streams
         for (let i = nodes.length; i--; ) {
           if (this.entry.$nodes[nodes[i]].streams) {
@@ -726,38 +716,12 @@ export class Process extends EventEmitter {
         }
       }
     } else {
-      console.log("no idea");
-      console.log(this.willEmitData);
-      console.log("REALLY NO IDEA");
       // Make sure we haven't already reached consensus
       if (!this.isCommiting() && !this.voting) {
-        console.log("doubt it");
         // Reset Reference node response
         this.nodeResponse = this.entry.$nodes[this.reference];
         // Try run commit!
-
         this.commit(Process.generalContractVM);
-
-        // Get the correct VM instance reference
-        // this.isDefault
-        //   ? this.commit(Process.defaultContractsVM)
-        //   : this.contractRef
-        //     ? this.commit(Process.singleContractVMHolder[this.contractRef])
-        //     : this.commit(Process.generalContractVM);
-      } else {
-        // no more nodes, if we haven't commited most likely failure
-        //         const nodes = Object.keys(this.entry.$nodes);
-        //         if (!this.hasOutstandingVotes(nodes.length) && !this.canCommit()) {
-        //           console.log("no outstanding");
-        //           console.log(this.nodeResponse);
-        //           /*
-        // {
-        //               status: code,
-        //               error: this.getGlobalReason(reason) as string,
-        //             } no wait
-        //               */
-        //           //this.emitFailed(this.willEmitData);
-        //         }
       }
     }
   }
@@ -771,88 +735,7 @@ export class Process extends EventEmitter {
     return this.commiting;
   }
 
-  /**
-   * Initialise the default contracts VM instance if needed and/or pass through the data
-   *
-   * @private
-   * @param {IVMDataPayload} payload
-   * @param {string} contractName
-   */
-  // private processDefaultContracts(
-  //   payload: IVMDataPayload,
-  //   contractName: string
-  // ) {
-  //   // Check if the holder needs to be initialised
-  //   if (!Process.defaultContractsVM) {
-  //     // Setup for default contracts
-  //     try {
-  //       Process.defaultContractsVM = new VirtualMachine(
-  //         this.selfHost,
-  //         this.secured,
-  //         this.db,
-  //         this.dbev
-  //       );
-  //       // Create VM with all access it needs
-  //       Process.defaultContractsVM.initialiseVirtualMachine(
-  //         ["fs", "path", "os", "crypto"],
-  //         ["typescript"]
-  //       );
-  //     } catch (error) {
-  //       throw new Error(error);
-  //     }
-  //   }
 
-  //   // Pass through the VM holder and data to the VM Handler
-  //   this.handleVM(Process.defaultContractsVM, payload, contractName);
-  // }
-
-  /**
-   * Handle the initialisation and pass through of data for unsafe contracts
-   *
-   * TODO we only need oone VM now. First attempt was broken with get inputs
-   *
-   * @private
-   * @param {IVMDataPayload} payload
-   * @param {string} namespace
-   * @param {string} contractName
-   * @param {string[]} extraBuiltins
-   */
-  // private processUnsafeContracts(
-  //   payload: IVMDataPayload,
-  //   namespace: string,
-  //   contractName: string,
-  //   extraBuiltins: string[],
-  //   extraExternals: string[],
-  //   extraMocks: string[]
-  // ) {
-  //   this.contractRef = namespace;
-
-  //   // If we have initialised an instance for this namespace reuse it
-  //   // Otherwise we should create an instance for it
-  //   if (!Process.singleContractVMHolder[this.contractRef]) {
-  //     try {
-  //       Process.singleContractVMHolder[this.contractRef] = new VirtualMachine(
-  //         this.selfHost,
-  //         this.secured,
-  //         this.db,
-  //         this.dbev
-  //       );
-
-  //       Process.singleContractVMHolder[
-  //         this.contractRef
-  //       ].initialiseVirtualMachine(extraBuiltins, extraExternals, extraMocks);
-  //     } catch (error) {
-  //       throw new Error(error);
-  //     }
-  //   }
-
-  //   // Pass VM instance and data to the VM Handler
-  //   this.handleVM(
-  //     Process.singleContractVMHolder[this.contractRef],
-  //     payload,
-  //     contractName
-  //   );
-  // }
 
   /**
    * Handler processing of a transaction using a specified pre-initialised VM instance
@@ -887,11 +770,6 @@ export class Process extends EventEmitter {
       );
 
       // Continue to next nodes vote
-      console.log("Post OVte #5 - 100% hwre");
-      console.log(error);
-      console.log(this.nodeResponse.error);
-
-      // really bug always been here?
       this.postVote(virtualMachine, this.nodeResponse.error);
     };
 
@@ -973,7 +851,6 @@ export class Process extends EventEmitter {
           virtualMachine,
           this.nodeResponse.incomms
         );
-        console.log("Post OVte #6");
 
         // Continue to next nodes vote
         this.postVote(virtualMachine);
@@ -993,12 +870,6 @@ export class Process extends EventEmitter {
 
       // Prevents false positive error log "failed to commit before timeout"
       this.nodeResponse.commit = true;
-
-      // Continue to next nodes vote, We may just want to return
-      // however using $instant allows this and we could also have multiple node
-      // returned data for reliability and in the future use it to data check for the restore engine
-      // for postVote to work we need to skip a lot of checks as it assume the v/v/c routine
-      //this.postVote(virtualMachine);
 
       // Not really commited but does what we need
       this.emit("commited");
@@ -1071,69 +942,8 @@ export class Process extends EventEmitter {
         //contractData,
       };
 
-      // Check if the security data has been cached
-      // if (!this.securityCache) {
-      //   this.securityCache = ActiveOptions.get<any>("security", null);
-      // }
-
       // Which VM to run transaction in
       this.handleVM(Process.generalContractVM, payload, contractName);
-
-      // if (payload.transaction.$namespace === "default") {
-      //   // Use the Default contract VM (for contracts that are built into Activeledger)
-      //   this.processDefaultContracts(payload, contractName);
-      // } else {
-      //   //this.handleVM(Process.generalContractVM, payload, contractName);
-      //   //Check Namespace
-      //   if (
-      //     this.securityCache &&
-      //     this.securityCache.namespace &&
-      //     this.securityCache.namespace[payload.transaction.$namespace]
-      //   ) {
-      //     const builtin: string[] = [];
-      //     const external: string[] = [];
-      //     const mocks: string[] = [];
-      //     // Use the Unsafe contract VM, first we need to build a custom builtin array to use to initialise the VM
-      //     // const namespaceExtras =
-      //     //   this.securityCache.namespace[payload.transaction.$namespace];
-
-      //     // if (namespaceExtras) {
-      //     //   // Built in
-      //     //   if (namespaceExtras.std) {
-      //     //     namespaceExtras.std.forEach((item: string) => {
-      //     //       builtin.push(item);
-      //     //     });
-      //     //   }
-
-      //     //   // Now for any approved external
-      //     //   if (namespaceExtras.external) {
-      //     //     namespaceExtras.external.forEach((item: string) => {
-      //     //       external.push(item);
-      //     //     });
-      //     //   }
-
-      //     //   // Now for any pakcages needing mocking
-      //     //   if (namespaceExtras.mock) {
-      //     //     namespaceExtras.mock.forEach((item: string) => {
-      //     //       mocks.push(item);
-      //     //     });
-      //     //   }
-      //     // }
-
-      //     // Initialise the unsafe contract VM
-      //     this.processUnsafeContracts(
-      //       payload,
-      //       payload.transaction.$namespace,
-      //       contractName,
-      //       builtin,
-      //       external,
-      //       mocks
-      //     );
-      //   } else {
-      //     // Use the General contract VM
-      //     this.handleVM(Process.generalContractVM, payload, contractName);
-      //   }
-      // }
     } catch (error) {
       // error fetch read only streams
       this.shared.raiseLedgerError(1210, new Error("Read Only Stream Error"));
@@ -1149,8 +959,6 @@ export class Process extends EventEmitter {
   private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
     this.voting = false;
-    console.log("post vote makes sense");
-    console.log(this.entry);
 
     if (!this.entry) {
       // Unhandled contract error issues
@@ -1166,16 +974,12 @@ export class Process extends EventEmitter {
     }
 
     // Which Peering mode?
-    console.log(
-      `I AM looking for this.entry.$broadcast which is - ${this.entry.$broadcast}`
-    );
     if (this.entry.$broadcast) {
-      console.log("broadcast  VOTE");
-      console.log(error);
       if (error) {
-        console.log("of course here");
         // Add error to the broadcast for passing back to the client
-        this.entry.$nodes[this.reference].error = error.reason;
+        this.entry.$nodes[this.reference].error = error.reason
+          ? error.reason
+          : error; //global ruined this?
       }
       // Let all other nodes know about this transaction and our opinion
       if (!this.nodeResponse.leader) {
@@ -1183,25 +987,11 @@ export class Process extends EventEmitter {
       }
       // Check we will be commiting (So we don't process as failed tx)
       if (this.canCommit()) {
-        console.log("POST VOTE CANCOIMMIT");
         // Try run commit! (May have reach consensus here)
+        // TODO Remopving can commit it is checked inside anyway
         this.commit(virtualMachine);
-      } else {
-        // Uncomment below we only find out about this node not network if they committed
-        // if (error) {
-        //   console.log("WHAT IS THE ERROR PICK IT UP")
-        //   console.log(error);
-        //   this.emitFailed(
-        //     {
-        //       status: 200,
-        //       error: error.reason || error,
-        //     },
-        //     true
-        //   );
-        // }
       }
     } else {
-      console.log("But I drop into here?>!");
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
         // Send back early if consensus has been reached and not the end of the network
@@ -1284,13 +1074,9 @@ export class Process extends EventEmitter {
     data?: { status: number; error: string | Error },
     noWait?: boolean
   ) {
-    console.log("EMIT FAILED #4");
-
     this.commiting = false;
     if (this.willEmit || noWait) {
       clearTimeout(this.willEmit);
-      console.log("EMIT FAILED #5");
-
       this.emit("failed", this.willEmitData || data);
     } else {
       // Only delay for broadcast method and if it has outstanding votes to count
@@ -1303,13 +1089,9 @@ export class Process extends EventEmitter {
       ) {
         this.willEmitData = data;
         this.willEmit = setTimeout(() => {
-          console.log("EMIT FAILED #6");
-
           this.emit("failed", this.willEmitData);
         }, 10000);
       } else {
-        console.log("EMIT FAILED #7");
-
         this.emit("failed", data);
       }
     }
@@ -1419,16 +1201,13 @@ export class Process extends EventEmitter {
     earlyCommit?: Function
   ): Promise<void> {
     // If we haven't commited process as normal
-    console.log("tta 1");
     if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
-      console.log("tta 2");
 
       if (
         this.nodeResponse.vote &&
         (this.nodeResponse.leader || this.canCommit())
       ) {
-        console.log("tta 3");
 
         // Consensus reached commit phase
         this.commiting = true;
@@ -1465,20 +1244,6 @@ export class Process extends EventEmitter {
             this.entry.$umid
           );
 
-          // Clearing All node comms?#
-          // this.entry = this.shared.clearAllComms(
-          //   virtualMachine,
-          //   this.nodeResponse.incomms
-          // );
-
-          // // Are we throwing to another ledger(s)?
-          // let throws = virtualMachine.getThrowsFromVM(this.entry.$umid);
-
-          // // Emit to network handler
-          // if (throws && throws.length) {
-          //   this.emit("throw", { locations: throws });
-          // }
-
           // Update Streams
           const streamUpdater = new StreamUpdater(
             this.entry,
@@ -1513,14 +1278,11 @@ export class Process extends EventEmitter {
               );
         }
       } else {
-        console.log("tta 4");
-
         // If Early commit we don't need to manage these errors
         if (earlyCommit) return earlyCommit();
 
         // Consensus not reached
-        console.log("voted");
-        console.log(this.nodeResponse.vote);
+        (this.nodeResponse.vote);
         if (!this.nodeResponse.vote && !this.entry.$broadcast) {
           // We didn't vote right
           ActiveLogger.debug(
@@ -1592,19 +1354,13 @@ export class Process extends EventEmitter {
                 }
               }
             } catch (error) {
-              console.log("tta 6");
 
               // Timed out
               ActiveLogger.debug(error);
               this.emit("commited");
             }
           }
-          //} else {
-          // Because we voted no doesn't mean the network should error
-          //  this.emit("commited");
-          //}
         } else {
-          console.log("tta 7");
 
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
@@ -1614,8 +1370,6 @@ export class Process extends EventEmitter {
               new Error("Failed Network Voting Round - Non Broadcast")
             );
           } else {
-            console.log("tta 9");
-
             // Are there any outstanding node responses which could mean consensus can still be reached
             const neighbours = ActiveOptions.get<Array<any>>(
               "neighbourhood",
@@ -1627,11 +1381,8 @@ export class Process extends EventEmitter {
             ).reached;
             const outstandingVoters =
               neighbours - Object.keys(this.entry.$nodes).length;
-            console.log(outstandingVoters);
-            console.log("outstanidng too");
             // Basic check, If no nodes to respond and we failed to reach consensus we will fail
             if (!outstandingVoters) {
-              console.log("No more outstanidng");
               // Clear current timeout to prevent it from running
               clearTimeout(this.broadcastTimeout);
 
@@ -1658,8 +1409,6 @@ export class Process extends EventEmitter {
                 );
               }
             } else {
-              console.log("tta 10");
-
               // Clear current timeout to prevent it from running
               clearTimeout(this.broadcastTimeout);
               // Solution:
@@ -1672,7 +1421,6 @@ export class Process extends EventEmitter {
                 // Nodes may also be down meaning we never respond so need to manage a timeout
                 // ! This method does mean it will hold the client tx connection open which could timeout
                 // TODO: We could improve this when we have access to isHome
-                console.log("not sure");
                 this.broadcastTimeout = setTimeout(() => {
                   // Entire Network didn't reach consensus in time
                   ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
@@ -1684,18 +1432,14 @@ export class Process extends EventEmitter {
                   );
                 }, BROADCAST_TIMEOUT);
               } else {
-                console.log("loooking good");
                 // Did we vote no and raise our error?
                 if (this.nodeResponse.error) {
-                  console.log("yes");
                   if (!this.storeSingleError) {
-                    console.log("yes yess");
                     ActiveLogger.debug(
                       this.nodeResponse,
                       "VM Commit Failure, We voted NO (300)"
                     );
                     this.storeSingleError = true;
-                    console.log("maybe?!)");
                     // We voted false, Need to process
                     return this.shared.raiseLedgerError(
                       1505,
@@ -1703,7 +1447,6 @@ export class Process extends EventEmitter {
                     );
                   }
                 } else {
-                  console.log("O here");
                   // Even if the other nodes voted yes we will still not reach conesnsus
                   ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
                   return this.shared.raiseLedgerError(
@@ -1717,8 +1460,6 @@ export class Process extends EventEmitter {
         }
       }
     } else {
-      console.log("tta 1111");
-
       // We have committed do nothing.
       // Headers should be sent already but just in case emit commit
       if (earlyCommit) earlyCommit();

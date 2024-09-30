@@ -47,7 +47,6 @@ export interface LedgerEntry {
   $territoriality?: string;
   $unanimous?: boolean;
   $encrypt?: boolean;
-  $counter: number;
 }
 
 export interface LedgerResponse {
