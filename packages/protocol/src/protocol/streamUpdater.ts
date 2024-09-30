@@ -225,7 +225,6 @@ export class StreamUpdater {
       $datetime: this.entry.$datetime,
       $nodes: this.entry.$nodes,
       $origin: this.entry.$origin,
-      $counter: this.entry.$counter,
       $remoteAddr: this.entry.$remoteAddr
     };
   }
