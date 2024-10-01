@@ -332,14 +332,19 @@ export class Shared {
    * @param {*} reason
    * @returns
    */
-  private getGlobalReason(reason: any) {
-    return reason.message
-      ? reason.message.toString()
-      : reason.error
-      ? reason.error.toString()
-      : reason
-      ? reason.toString()
-      : "Unknown Reason";
+  private getGlobalReason(reason: any): string {
+    ActiveLogger.fatal(reason, 'Undefined Message?');
+    if(reason) {
+      if(reason.message) {
+        return reason.message.toString();
+      }
+      if(reason.error) {
+        return reason.error.toString();
+      }
+      return reason.toString();
+    }else{
+      return "Uncaught Error Reason"
+    }
   }
 
   /**
