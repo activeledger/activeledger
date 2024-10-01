@@ -506,7 +506,7 @@ export class Process extends EventEmitter {
       // Simple Error Return (Can't use postVote yet due to VM)
       this.entry.$nodes[
         this.reference
-      ].error = `Init Contract Error - ${error.message}`;
+      ].error = `Init Contract Error - ${error.message || error}`;
       this.emit("commited", { instant: true });
       return;
     }
@@ -605,7 +605,7 @@ export class Process extends EventEmitter {
           // We may not have the output stream, So we need to pass over the knocks
           this.postVote(virtualMachine, {
             code: error.code,
-            reason: error.reason || error.message,
+            reason: error.reason || error.message || error,
           });
         }
       } else {
@@ -672,7 +672,7 @@ export class Process extends EventEmitter {
 
           this.postVote(virtualMachine, {
             code: error.code,
-            reason: error.reason || error.message,
+            reason: error.reason || error.message || error,
           });
         }
       }
@@ -694,6 +694,11 @@ export class Process extends EventEmitter {
   public updatedFromBroadcast(node?: any): void {
     if (this.isCommiting()) {
       return;
+    }
+
+    // Don't overwrite self
+    if(node[this.reference]) {
+      delete node[this.reference];
     }
 
     // TODO could probably work out this here instead of will emit
@@ -719,7 +724,8 @@ export class Process extends EventEmitter {
       // Make sure we haven't already reached consensus
       if (!this.isCommiting() && !this.voting) {
         // Reset Reference node response
-        this.nodeResponse = this.entry.$nodes[this.reference];
+        // Instead of setting remove it from incoming
+        // this.nodeResponse = this.entry.$nodes[this.reference];
         // Try run commit!
         this.commit(Process.generalContractVM);
       }
@@ -986,11 +992,11 @@ export class Process extends EventEmitter {
         this.emit("broadcast");
       }
       // Check we will be commiting (So we don't process as failed tx)
-      if (this.canCommit()) {
+      //if (this.canCommit()) {
         // Try run commit! (May have reach consensus here)
         // TODO Remopving can commit it is checked inside anyway
         this.commit(virtualMachine);
-      }
+      //}
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
       if (this.right.reference != this.entry.$origin) {
@@ -1282,7 +1288,6 @@ export class Process extends EventEmitter {
         if (earlyCommit) return earlyCommit();
 
         // Consensus not reached
-        (this.nodeResponse.vote);
         if (!this.nodeResponse.vote && !this.entry.$broadcast) {
           // We didn't vote right
           ActiveLogger.debug(
