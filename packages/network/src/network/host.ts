@@ -50,7 +50,7 @@ const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
 const TIMER_QUEUE_INTERVAL = 2 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
-const MAX_RETRIES = 15;
+const MAX_RETRIES = 50; // Bubbling up error (may need different counters)
 
 /**
  * Process object used to manage an individual transaction
@@ -215,7 +215,7 @@ export class Host extends Home {
           }
           return resolve({
             status: 200,
-            //data: this.processPending[entry.$umid].entry,
+            data: this.processPending[entry.$umid].entry,
           });
         }
       }
@@ -447,7 +447,7 @@ export class Host extends Home {
                   this.writeResponse(
                     socket,
                     error.statusCode || 500,
-                    JSON.stringify(error.content || {}),
+                    JSON.stringify(error.content || {error:1}),
                     headers["Accept-Encoding"] as string
                   );
                 })
@@ -1059,7 +1059,6 @@ export class Host extends Home {
     ) {
       // Get next process from the array
       const robin = this.getRobin();
-
       // Make sure we have the response object
       if (!this.processPending[v.$umid].entry.$nodes)
         this.processPending[v.$umid].entry.$nodes = {};
