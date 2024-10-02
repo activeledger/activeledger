@@ -333,7 +333,6 @@ export class Shared {
    * @returns
    */
   private getGlobalReason(reason: any): string {
-    ActiveLogger.fatal(reason, 'Undefined Message?');
     if(reason) {
       if(reason.message) {
         return reason.message.toString();
