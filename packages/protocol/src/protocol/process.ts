@@ -39,7 +39,7 @@ import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import path from "path";
 
-const BROADCAST_TIMEOUT = 20 * 1000;
+const BROADCAST_TIMEOUT = 120 * 1000;
 
 /**
  * Class controls the processing of this nodes consensus
