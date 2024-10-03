@@ -308,6 +308,7 @@ export class Shared {
       }
       // Build document for database
       const doc = {
+        _id: `${this.entry.$umid}:${Date.now()}`,
         code,
         processed: this._storeSingleError,
         umid: this.entry.$umid,
