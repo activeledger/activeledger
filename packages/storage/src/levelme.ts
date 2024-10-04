@@ -92,7 +92,8 @@ interface schema extends document {
   seq: number;
 }
 
-const REMOVE_CACHE_TIMER = 3 * 60 * 1000;
+const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
+const ENABLE_CACHE = 0;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -185,7 +186,9 @@ export class LevelMe {
     } else {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
-    //this.timerUnCache();
+    if (ENABLE_CACHE) {
+      this.timerUnCache();
+    }
   }
 
   /**
@@ -193,19 +196,19 @@ export class LevelMe {
    *
    * @private
    */
-  // private timerUnCache() {
-  //   setTimeout(() => {
-  //     const memory = Object.keys(this.memory);
-  //     const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
-  //     for (let i = memory.length; i--; ) {
-  //       if (this.memory[memory[i]].data < nowMinus) {
-  //         // 30 seconds has passed without accessing it so lets clear
-  //         delete this.memory[memory[i]];
-  //       }
-  //     }
-  //     this.timerUnCache();
-  //   }, REMOVE_CACHE_TIMER * 2);
-  // }
+  private timerUnCache() {
+    setTimeout(() => {
+      const memory = Object.keys(this.memory);
+      const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
+      for (let i = memory.length; i--; ) {
+        if (this.memory[memory[i]].data < nowMinus) {
+          // 30 seconds has passed without accessing it so lets clear
+          delete this.memory[memory[i]];
+        }
+      }
+      this.timerUnCache();
+    }, REMOVE_CACHE_TIMER * 2);
+  }
 
   /**
    * Attempts to fetch document, If fails returns default
@@ -495,12 +498,12 @@ export class LevelMe {
     });
   }
 
-  // private memory: {
-  //   [index: string]: {
-  //     data: any;
-  //     create: Date;
-  //   };
-  // } = {};
+  private memory: {
+    [index: string]: {
+      data: any;
+      create: Date;
+    };
+  } = {};
 
   /**
    * Get a specific data document
@@ -509,66 +512,84 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    //if (!this.memory[key]) {
-    await this.open();
-    // Allow errors to bubble up?
-    let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
-    if (raw) {
-      return doc;
-      // this.memory[key] = {
-      //   data: doc,
-      //   create: new Date(),
-      // };
-      //return JSON.parse(doc);
+    if (ENABLE_CACHE) {
+      if (!this.memory[key]) {
+        await this.open();
+        // Allow errors to bubble up?
+        let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+        if (raw) {
+          this.memory[key] = {
+            data: doc,
+            create: new Date(),
+          };
+        } else {
+          this.memory[key] = {
+            data: await this.seqDocFromRoot(doc),
+            create: new Date(),
+          };
+        }
+      } else {
+        this.memory[key].create = new Date();
+      }
+      return this.memory[key].data;
     } else {
-      return await this.seqDocFromRoot(doc);
-      //doc = JSON.parse(doc) as schema;
-      // this.memory[key] = {
-      //   data: await this.seqDocFromRoot(doc),
-      //   create: new Date(),
-      // };
+      await this.open();
+      // Allow errors to bubble up?
+      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+      if (raw) {
+        return doc;
+      } else {
+        return await this.seqDocFromRoot(doc);
+      }
     }
-    // }else{
-    //   this.memory[key].create = new Date()
-    // }
-    // return this.memory[key].data;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
-    // for (let i = keys.length; i--;) {
-    //   keys[i] = LevelMe.DOC_PREFIX + keys[i];
-    // }
+    if (ENABLE_CACHE) {
+      let tmpKeys = [];
+      let cached = [];
+      const now = new Date();
+      for (let i = keys.length; i--; ) {
+        if (!this.memory[keys[i]]) {
+          tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+        } else {
+          cached.push({ doc: this.memory[keys[i]].data });
+          this.memory[keys[i]].create = now;
+        }
+      }
 
-    // return await this.levelUp.getMany(keys);
+      // Get uncached keys
+      if (tmpKeys.length) {
+        const result = await this.levelUp.getMany(tmpKeys);
+        // Loop and cache
+        for (let i = result.length; i--; ) {
+          const data = JSON.parse(result[i]);
 
-    let tmpKeys = [];
-    let cached = [];
-    const now = new Date();
-    for (let i = keys.length; i--; ) {
-      //if (!this.memory[keys[i]]) {
-      tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      //} else {
-      //  cached.push({ doc: this.memory[keys[i]].data });
-      //  this.memory[keys[i]].create = now;
-      //}
+          this.memory[data._id] = {
+            data: data,
+            create: new Date(),
+          };
+          cached.push({ doc: data });
+        }
+      }
+      return cached;
+    } else {
+      let tmpKeys = [];
+      let cached = [];
+      for (let i = keys.length; i--; ) {
+        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
+      }
+
+      // Get uncached keys
+      const result = await this.levelUp.getMany(tmpKeys);
+
+      // Loop and cache
+      for (let i = result.length; i--; ) {
+        const data = JSON.parse(result[i]);
+        cached.push({ doc: data });
+      }
+      return cached;
     }
-
-    // Get uncached keys
-    //if (tmpKeys.length) {
-    const result = await this.levelUp.getMany(tmpKeys);
-
-    // Loop and cache
-    for (let i = result.length; i--; ) {
-      const data = JSON.parse(result[i]);
-
-      // this.memory[data._id] = {
-      //   data: data,
-      //   create: new Date(),
-      // };
-      cached.push({ doc: data });
-    }
-    //}
-    return cached;
     //Faster Concat? maybe push(...)?
     //return [...cached, ...await this.levelUp.getMany(tmpKeys)];
   }
@@ -672,12 +693,11 @@ export class LevelMe {
 
     // For now just delete the document key (not sequence)
     // _local_doc_count need to reduce count
-    batch
-      // .put(
-      //   LevelMe.META_PREFIX + "_local_doc_count",
-      //   this.docCount > 0 ? --this.docCount : (this.docCount = 0)
-      // )
-      .del(LevelMe.DOC_PREFIX + key);
+    batch.del(LevelMe.DOC_PREFIX + key);
+
+    if (ENABLE_CACHE && this.memory[key]) {
+      delete this.memory[key];
+    }
 
     await batch.write();
   }
@@ -937,10 +957,12 @@ export class LevelMe {
       // };
     }
 
-    // this.memory[doc._id] = {
-    //   data: doc,
-    //   create: new Date(),
-    // };
+    if (ENABLE_CACHE) {
+      this.memory[doc._id] = {
+        data: doc,
+        create: new Date(),
+      };
+    }
 
     // submit as bulk
     // 1. sequence data file
