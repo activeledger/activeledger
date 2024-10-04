@@ -39,7 +39,8 @@ import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import path from "path";
 
-const BROADCAST_TIMEOUT = 120 * 1000;
+const BROADCAST_TIMEOUT_VOTE = 30 * 1000;
+const BROADCAST_TIMEOUT_COMMIT = 60 * 1000;
 
 /**
  * Class controls the processing of this nodes consensus
@@ -504,9 +505,9 @@ export class Process extends EventEmitter {
         : setupLocation();
     } catch (error) {
       // Simple Error Return (Can't use postVote yet due to VM)
-      this.entry.$nodes[
-        this.reference
-      ].error = `Init Contract Error - ${error.message || error}`;
+      this.entry.$nodes[this.reference].error = `Init Contract Error - ${
+        error.message || error
+      }`;
       this.emit("commited", { instant: true });
       return;
     }
@@ -697,7 +698,7 @@ export class Process extends EventEmitter {
     }
 
     // Don't overwrite self
-    if(node[this.reference]) {
+    if (node[this.reference]) {
       delete node[this.reference];
     }
 
@@ -740,8 +741,6 @@ export class Process extends EventEmitter {
   public isCommiting(): boolean {
     return this.commiting;
   }
-
-
 
   /**
    * Handler processing of a transaction using a specified pre-initialised VM instance
@@ -993,9 +992,9 @@ export class Process extends EventEmitter {
       }
       // Check we will be commiting (So we don't process as failed tx)
       //if (this.canCommit()) {
-        // Try run commit! (May have reach consensus here)
-        // TODO Remopving can commit it is checked inside anyway
-        this.commit(virtualMachine);
+      // Try run commit! (May have reach consensus here)
+      // TODO Remopving can commit it is checked inside anyway
+      this.commit(virtualMachine);
       //}
     } else {
       // Knock our right neighbour with this trasnaction if they are not the origin
@@ -1214,7 +1213,6 @@ export class Process extends EventEmitter {
         this.nodeResponse.vote &&
         (this.nodeResponse.leader || this.canCommit())
       ) {
-
         // Consensus reached commit phase
         this.commiting = true;
 
@@ -1359,14 +1357,12 @@ export class Process extends EventEmitter {
                 }
               }
             } catch (error) {
-
               // Timed out
               ActiveLogger.debug(error);
               this.emit("commited");
             }
           }
         } else {
-
           if (!this.entry.$broadcast) {
             // Network didn't reach consensus
             ActiveLogger.debug("VM Commit Failure, NETWORK voted NO");
@@ -1426,16 +1422,23 @@ export class Process extends EventEmitter {
                 // Nodes may also be down meaning we never respond so need to manage a timeout
                 // ! This method does mean it will hold the client tx connection open which could timeout
                 // TODO: We could improve this when we have access to isHome
-                this.broadcastTimeout = setTimeout(() => {
-                  // Entire Network didn't reach consensus in time
-                  ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
-                  return this.shared.raiseLedgerError(
-                    1510,
-                    new Error(
-                      "Failed Network Voting Timeout - Voters Timed Out"
-                    )
-                  );
-                }, BROADCAST_TIMEOUT);
+                this.broadcastTimeout = setTimeout(
+                  () => {
+                    if (!this.isCommiting()) {
+                      // Entire Network didn't reach consensus in time
+                      ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
+                      return this.shared.raiseLedgerError(
+                        1510,
+                        new Error(
+                          "Failed Network Voting Timeout - Voters Timed Out"
+                        )
+                      );
+                    }
+                  },
+                  this.isCommiting()
+                    ? BROADCAST_TIMEOUT_COMMIT
+                    : BROADCAST_TIMEOUT_VOTE
+                );
               } else {
                 // Did we vote no and raise our error?
                 if (this.nodeResponse.error) {
