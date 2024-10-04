@@ -50,7 +50,7 @@ const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
 const TIMER_QUEUE_INTERVAL = 2 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
-const MAX_RETRIES = 50; // Bubbling up error (may need different counters)
+const MAX_RETRIES = 35; // Bubbling up error (may need different counters)
 
 /**
  * Process object used to manage an individual transaction
@@ -186,16 +186,17 @@ export class Host extends Home {
       if (entry.$broadcast) {
         // We may already have the $umid in memory
         if (this.processPending[entry.$umid]) {
-          ActiveLogger.debug(this.processPending[entry.$umid],
+          ActiveLogger.debug(
+            this.processPending[entry.$umid],
             "Broadcast Recieved : " + entry.$umid
           );
           // Process Assigned?
           if (
             this.processPending[entry.$umid].pid &&
             // If a lead/er we don't need to let sub processor know
-            // TODO sometimes this.reference is nullin $nodes related to the # 
-            !this.processPending[entry.$umid]?.entry
-              ?.$nodes[this.reference]?.leader
+            // TODO sometimes this.reference is nullin $nodes related to the #
+            !this.processPending[entry.$umid]?.entry?.$nodes[this.reference]
+              ?.leader
           ) {
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
@@ -447,7 +448,7 @@ export class Host extends Home {
                   this.writeResponse(
                     socket,
                     error.statusCode || 500,
-                    JSON.stringify(error.content || {error:1}),
+                    JSON.stringify(error.content || { error: 1 }),
                     headers["Accept-Encoding"] as string
                   );
                 })
@@ -741,7 +742,7 @@ export class Host extends Home {
             this.processHybridNodes(pending.entry, m.data.entry?.$streams);
           }
           break;
-        case "broadcast": 
+        case "broadcast":
           this.broadcast(m.data.umid, m.data.early);
           break;
         case "reload":
@@ -1064,9 +1065,7 @@ export class Host extends Home {
         this.processPending[v.$umid].entry.$nodes = {};
 
       // Setup this node response
-      this.processPending[v.$umid].entry.$nodes[
-        Home.reference
-      ] = {
+      this.processPending[v.$umid].entry.$nodes[Home.reference] = {
         vote: false,
         commit: false,
       };
@@ -1074,11 +1073,14 @@ export class Host extends Home {
       // Remember who got selected
       this.processPending[v.$umid].pid = robin.pid || 0;
 
+      //setTimeout(() => {
       // Pass transaction to sub processor
       robin.send({
         type: "tx",
         entry: this.processPending[v.$umid].entry,
       });
+      // small scaling delay to put to back of stack
+      //}, retries * 1);
 
       // If we want to send BEFORE this node has processed uncomment
       // if (this.hybridHosts.length) {
@@ -1661,7 +1663,6 @@ export class Host extends Home {
     encoding: string,
     cors = false
   ) {
-
     if ((res as any).bundled) {
       return;
     }
