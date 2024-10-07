@@ -212,6 +212,8 @@ export class StreamUpdater {
    * Creates a smaller trasnaction entry for ledger walking. This will also
    * keep the value deterministic (not including nodes)
    *
+   * TODO Add Events (So we can replay them on insertion)
+   * 
    * @private
    * @returns
    * */
@@ -223,7 +225,7 @@ export class StreamUpdater {
       $revs: this.entry.$revs,
       $selfsign: this.entry.$selfsign ? this.entry.$selfsign : false,
       $datetime: this.entry.$datetime,
-      $nodes: this.entry.$nodes,
+      //$nodes: this.entry.$nodes, // This is to different! Umid recovery not working
       $origin: this.entry.$origin,
       $remoteAddr: this.entry.$remoteAddr
     };
