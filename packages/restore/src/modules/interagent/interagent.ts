@@ -44,14 +44,14 @@ export class Interagent {
   private errorCodes = [
     ErrorCodes.StreamNotFound,
     ErrorCodes.StateNotFound,
-    ErrorCodes.VoteFailedNetworkOk,
-    ErrorCodes.InternalBusyLocked,
+    //ErrorCodes.VoteFailedNetworkOk,
+    //ErrorCodes.InternalBusyLocked,
     //ErrorCodes.StreamPositionIncorrect,// never came
     ErrorCodes.ReadOnlyStreamNotFound,
     //ErrorCodes.NodeFinalReject, // They voted no as their data was different?
     //ErrorCodes.FailedToSave, // We do position incorrect fix real time
-    ErrorCodes.Unknown,
-    ErrorCodes.FailedToGetResponse,
+    //ErrorCodes.Unknown,
+    //ErrorCodes.FailedToGetResponse,
   ];
 
   /**
