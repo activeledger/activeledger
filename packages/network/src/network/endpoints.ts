@@ -364,7 +364,7 @@ export class Endpoints {
                             );
                             setTimeout(() => {
                               resendable(initTx, ++counter);
-                            }, 1000);
+                            }, 500);
                             return;
                           }
                         }
@@ -431,7 +431,7 @@ export class Endpoints {
                       );
                       setTimeout(() => {
                         resendable(initTx, ++counter);
-                      }, 3000);
+                      }, 500);
                       return;
                     } else {
                       return resolve(
@@ -594,7 +594,7 @@ export class Endpoints {
       // Send into host pool
       host
         .pending(tx, true)
-        .then((ledger: any) => {
+        .then(async (ledger: any) => {
           resolve({
             statusCode: ledger.status,
             content: ledger.data,
@@ -605,7 +605,7 @@ export class Endpoints {
           // Only safe to run if we can get a lock
           // downside of not doing this is the node can be out of date for a while
           // we can alkways keep trying to get a lock or for when it ISN't locked 
-          if (false && ledger?.data?.$nodes) {
+          if (ledger?.data?.$nodes) {
             // Phase 1
             // Now if we have an error position incorrect we should just "fix it" assuming there was a commit
             // Phase 2
@@ -628,7 +628,7 @@ export class Endpoints {
 
               if (commited) {
                 // TODO - Resolve this copy paste
-                setTimeout(async () => {
+                //setTimeout(async () => {
                   const streams = [
                     ...new Set([
                       ...this.labelOrKey(ledger.data.$tx.$i),
@@ -715,7 +715,7 @@ export class Endpoints {
                     }
                   }
                   // Faster they're processing without us
-                }, 10000);
+                //}, 10000);
               }
             }
           }

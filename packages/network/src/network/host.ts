@@ -43,8 +43,8 @@ import { PhysicalCores } from "./cpus";
 import * as process from "process";
 import { createServer, Socket, Server } from "net";
 
-const RELEASE_SHUTDOWN_TIMEOUT = 0.5 * 60 * 1000;
-const RELEASE_DELETE_TIMEOUT = 1 * 60 * 1000;
+const RELEASE_SHUTDOWN_TIMEOUT = 1 * 60 * 1000;
+const RELEASE_DELETE_TIMEOUT = 2 * 60 * 1000;
 // const RELEASE_SHUTDOWN_TIMEOUT = 5000;
 // const RELEASE_DELETE_TIMEOUT = 2000;
 const TIMER_QUEUE_INTERVAL = 2 * 1000;
@@ -195,7 +195,7 @@ export class Host extends Home {
             this.processPending[entry.$umid].pid &&
             // If a lead/er we don't need to let sub processor know
             // TODO sometimes this.reference is nullin $nodes related to the #
-            !this.processPending[entry.$umid]?.entry?.$nodes[this.reference]
+            !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
               ?.leader
           ) {
             // Find Processor to send in the broadcast message
