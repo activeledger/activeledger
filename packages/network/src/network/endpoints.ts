@@ -611,8 +611,9 @@ export class Endpoints {
             // Phase 2
             // Then later on we can check against other nodes and if we all agree then no need to process
             if (
-              ledger?.data?.$nodes[Home.reference] &&
-              ledger.data.$nodes[Home.reference]?.error?.indexOf(
+              ledger?.data?.$nodes[Home.reference] && 
+              ledger.data.$nodes[Home.reference].error &&
+              ledger.data.$nodes[Home.reference].error.indexOf(
                 "Position Incorrect"
               ) !== -1
             ) {
