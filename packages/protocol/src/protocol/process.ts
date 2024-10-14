@@ -1027,8 +1027,8 @@ export class Process extends EventEmitter {
               // Normal, Or getting other node opinions?
               if (error) {
                 this.shared.raiseLedgerError(
-                  error.code,
-                  error.reason,
+                  error.code || 1000,
+                  error.reason || error,
                   true,
                   10
                 );
@@ -1059,7 +1059,7 @@ export class Process extends EventEmitter {
         ActiveLogger.debug("Origin is next (Sending Back)");
 
         error
-          ? this.shared.raiseLedgerError(error.code, error.reason) // Of course if next is origin we need to send back for the promises!
+          ? this.shared.raiseLedgerError(error.code || 1000, error.reason || error) // Of course if next is origin we need to send back for the promises!
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
