@@ -206,7 +206,7 @@ export class Shared {
    */
   public async raiseLedgerError(
     code: number,
-    reason: Error,
+    reason: Error | string,
     stop: Boolean = false,
     priority: number = 0,
     noWait = false
@@ -284,7 +284,7 @@ export class Shared {
    */
   public storeError(
     code: number,
-    reason: Error,
+    reason: Error | string,
     priority: number = 0
   ): Promise<any> {
     // const getReason = () =>
