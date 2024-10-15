@@ -638,7 +638,7 @@ export class ActiveHttpd {
           res.write(`Content-Encoding: gzip\r\n`);
           content = await ActiveGZip.gzip(content);
         } else {
-          res.write(`Content-Encoding: none\r\n`);
+          //res.write(`Content-Encoding: none\r\n`);
         }
 
         res.write(`Content-Length: ${content.length}\r\n\r\n`);
