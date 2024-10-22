@@ -129,6 +129,7 @@ export class Endpoints {
               tx.$broadcast = true;
             }
 
+            ActiveLogger.debug("Client Sent TX : " + tx.$umid);
             // If we got here everything is ok to send into internal
             // Now sending direct reducing http overhead
             const resendable = (
