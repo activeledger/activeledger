@@ -1495,6 +1495,8 @@ export class Host extends Home {
     // Promise Response
     let response: Promise<any>;
 
+    const started = Date.now();
+
     // Can we return compressed data?
     let gzipAccepted = req.headers["Accept-Encoding"] as string;
 
@@ -1628,6 +1630,7 @@ export class Host extends Home {
 
         // Write Header
         // All outputs are JSON and
+        ActiveLogger.info(`Request Response ${data.$umid ? data.$umid : 'No Umid'} : S=${started}, TT=${Date.now()-started}ms`);
         this.writeResponse(
           res,
           response.statusCode,
@@ -1639,6 +1642,7 @@ export class Host extends Home {
         // Write Header
         // Basic error handling for now. As a lot of errors will still be sent as ok responses.
         ActiveLogger.error(error, "Failed to send response back");
+        ActiveLogger.info(`Request Response ERROR : S=${started}, TT=${Date.now()-started}ms`);
         this.writeResponse(
           res,
           error.statusCode || 500,
