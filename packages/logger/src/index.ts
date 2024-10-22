@@ -24,23 +24,33 @@
 import * as process from "process";
 
 let tracer: any;
+// process.env.ddReady not set? True code for now
+if (true) {
+  // TODO May switch to standard install. For now global and type global as any
+  const winston = require("winston");
+  require("winston-daily-rotate-file");
+  const transport = new winston.transports.DailyRotateFile({
+    filename: "./winstonlogs/application-%DATE%.log",
+    datePattern: "YYYY-MM-DD-HH",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "14d",
+  });
 
-if (process.env.ddReady) {
-  //@ts-ignore
-  import("dd-trace")
-    .then((dd) => {
-      tracer = dd.tracer;
-      tracer.__inject = (level: string, message: any) => {
-        const span = tracer.scope().active();
-        const time = new Date().toISOString();
-        const record = { time, level, message };
+  transport.on("error", (error: unknown) => {
+    console.log("ERROR WITH WINSTON FILE SYSTEM");
+    console.log(error);
+  });
 
-        if (span) {
-          tracer.inject(span.context(), "log", record);
-        }
-      };
-    })
-    .catch();
+  transport.on("rotate", (oldFilename: string, newFilename: string) => {
+    console.log(`Winston Roated ${oldFilename} -> ${newFilename}`);
+  });
+
+  tracer = winston.createLogger({
+    transports: [transport],
+  });
+
+  console.log("Winston File Setup");
 }
 
 /**
@@ -78,9 +88,6 @@ export class ActiveLogger {
   public static trace(msg: string, ...args: any[]): void;
   public static trace(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
-      if (tracer?.__inject) {
-        tracer.__inject("trace", p1);
-      }
       // Get Output String
       let out =
         ActiveLogger.timestamp() +
@@ -124,8 +131,8 @@ export class ActiveLogger {
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
-      if (tracer?.__inject) {
-        tracer.__inject("debug", p1);
+      if (tracer) {
+        tracer.debug(p1, p2);
       }
       // Get Output String
       let out =
@@ -168,8 +175,8 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
-    if (tracer?.__inject) {
-      tracer.__inject("info", p1);
+    if (tracer) {
+      tracer.info(p1, p2);
     }
     // Get Output String
     let out =
@@ -211,8 +218,8 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
-    if (tracer?.__inject) {
-      tracer.__inject("warn", p1);
+    if (tracer) {
+      tracer.warn(p1, p2);
     }
     // Get Output String
     let out =
@@ -254,22 +261,9 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
-    // if (process.env.ddReady && tracer) {
-    //   if (tracer?.__inject) {
-    //     tracer.__inject("error", p1);
-    //   }
-    //   const span = tracer.scope().active();
-    //   if (span) {
-    //     const parent = (span.context() as any)._trace.started[0];
-    //     if (parent) {
-    //       parent.addTags({
-    //         "error.msg": (p1 as any).message,
-    //         "error.stack": (p1 as any).stack,
-    //         "error.type": (p1 as any).name,
-    //       });
-    //     }
-    //   }
-    // }
+    if (tracer) {
+      tracer.error(p1, p2);
+    }
 
     // Get Output String
     let out =
@@ -312,8 +306,8 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
-    if (tracer?.__inject) {
-      tracer.__inject("fatal", p1);
+    if (tracer) {
+      tracer.error(p1, p2);
     }
     // Get Output String
     let out =

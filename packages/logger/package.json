@@ -41,5 +41,9 @@
   ],
   "types": "./lib/index.d.ts",
   "jsnext:main": "./es/index.js",
-  "module": "./es/index.js"
+  "module": "./es/index.js",
+  "dependencies": {
+    "winston": "^3.15.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  }
 }
