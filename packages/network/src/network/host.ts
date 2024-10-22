@@ -236,7 +236,7 @@ export class Host extends Home {
                 reject: null,
                 pid: 0,
               });
-            }, 200);
+            }, 1);
           },
           reject: (response: unknown) => {
             reject(response);
@@ -248,7 +248,7 @@ export class Host extends Home {
                 reject: null,
                 pid: 0,
               });
-            }, 200);
+            }, 1);
           },
           pid: 0,
         };
