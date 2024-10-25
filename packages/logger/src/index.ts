@@ -25,32 +25,59 @@ import * as process from "process";
 
 let tracer: any;
 // process.env.ddReady not set? True code for now
+//if (process.env.ddReady) {
 if (true) {
-  // TODO May switch to standard install. For now global and type global as any
-  const winston = require("winston");
-  require("winston-daily-rotate-file");
-  const transport = new winston.transports.DailyRotateFile({
-    filename: "./winstonlogs/application-%DATE%.log",
-    datePattern: "YYYY-MM-DD-HH",
-    zippedArchive: true,
-    maxSize: "20m",
-    maxFiles: "14d",
-  });
+  //@ts-ignore
+  import("dd-trace")
+    .then((dd) => {
+      // Winston may pickup on this?
+      // tracer = dd.tracer;
+      // tracer.__inject = (level: string, message: any) => {
+      //   const span = tracer.scope().active();
+      //   const time = new Date().toISOString();
+      //   const record = { time, level, message };
 
-  transport.on("error", (error: unknown) => {
-    console.log("ERROR WITH WINSTON FILE SYSTEM");
-    console.log(error);
-  });
+      //   if (span) {
+      //     tracer.inject(span.context(), "log", record);
+      //   }
+      // };
 
-  transport.on("rotate", (oldFilename: string, newFilename: string) => {
-    console.log(`Winston Roated ${oldFilename} -> ${newFilename}`);
-  });
+      dd.tracer.init({
+        logInjection: true,
+      });
+          
 
-  tracer = winston.createLogger({
-    transports: [transport],
-  });
+      // Init winston after dd for autopickup
+      // TODO May switch to standard install. For now global and type global as any
+      const winston = require("winston");
+      require("winston-daily-rotate-file");
+      const transport = new winston.transports.DailyRotateFile({
+        filename: "./winstonlogs/application-%DATE%.log",
+        datePattern: "YYYY-MM-DD-HH",
+        zippedArchive: true,
+        maxSize: "20m",
+        maxFiles: "14d",
+      });
 
-  console.log("Winston File Setup");
+      transport.on("error", (error: unknown) => {
+        console.log("ERROR WITH WINSTON FILE SYSTEM");
+        console.log(error);
+      });
+
+      transport.on("rotate", (oldFilename: string, newFilename: string) => {
+        console.log(`Winston Roated ${oldFilename} -> ${newFilename}`);
+      });
+
+      tracer = winston.createLogger({
+        transports: [transport],
+      });
+
+      console.log("Winston File Setup");
+    })
+    .catch((e) => {
+      console.log("DD Init FAILED");
+      console.log(e);
+    });
 }
 
 /**
