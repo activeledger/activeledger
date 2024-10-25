@@ -23,64 +23,6 @@
 
 import * as process from "process";
 
-let tracer: any;
-// process.env.ddReady not set? True code for now
-//if (process.env.ddReady) {
-if (true) {
-  setTimeout(() => {
-    //@ts-ignore
-    import("dd-trace")
-      .then((dd) => {
-        // Winston may pickup on this?
-        // tracer = dd.tracer;
-        // tracer.__inject = (level: string, message: any) => {
-        //   const span = tracer.scope().active();
-        //   const time = new Date().toISOString();
-        //   const record = { time, level, message };
-
-        //   if (span) {
-        //     tracer.inject(span.context(), "log", record);
-        //   }
-        // };
-
-        dd.tracer.init({
-          logInjection: true,
-        });
-
-        // Init winston after dd for autopickup
-        // TODO May switch to standard install. For now global and type global as any
-        const winston = require("winston");
-        require("winston-daily-rotate-file");
-        const transport = new winston.transports.DailyRotateFile({
-          filename: "./winstonlogs/application-%DATE%.log",
-          datePattern: "YYYY-MM-DD-HH",
-          zippedArchive: true,
-          maxSize: "20m",
-          maxFiles: "14d",
-        });
-
-        transport.on("error", (error: unknown) => {
-          console.log("ERROR WITH WINSTON FILE SYSTEM");
-          console.log(error);
-        });
-
-        transport.on("rotate", (oldFilename: string, newFilename: string) => {
-          console.log(`Winston Roated ${oldFilename} -> ${newFilename}`);
-        });
-
-        tracer = winston.createLogger({
-          transports: [transport],
-        });
-
-        console.log("Winston File Setup");
-      })
-      .catch((e) => {
-        console.log("DD Init FAILED");
-        console.log(e);
-      });
-  }, 100);
-}
-
 /**
  * Simplified Logging
  *
@@ -103,6 +45,15 @@ export class ActiveLogger {
    * @type {boolean}
    */
   public static isVMRuntime: boolean = false;
+
+
+  /**
+   * Winston file logger for Datadog integration
+   *
+   * @static
+   * @type {winston}
+   */
+  public static WinstonLogger: any;
 
   /**
    * Creates a trace log entry
@@ -159,8 +110,8 @@ export class ActiveLogger {
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
-      if (tracer) {
-        tracer.debug(p1, p2);
+      if (ActiveLogger.WinstonLogger) {
+        ActiveLogger.WinstonLogger.info(p1, p2);
       }
       // Get Output String
       let out =
@@ -203,8 +154,8 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
-    if (tracer) {
-      tracer.info(p1, p2);
+    if (ActiveLogger.WinstonLogger) {
+      ActiveLogger.WinstonLogger.info(p1, p2);
     }
     // Get Output String
     let out =
@@ -246,8 +197,8 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
-    if (tracer) {
-      tracer.warn(p1, p2);
+    if (ActiveLogger.WinstonLogger) {
+      ActiveLogger.WinstonLogger.warn(p1, p2);
     }
     // Get Output String
     let out =
@@ -289,8 +240,8 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
-    if (tracer) {
-      tracer.error(p1, p2);
+    if (ActiveLogger.WinstonLogger) {
+      ActiveLogger.WinstonLogger.error(p1, p2);
     }
 
     // Get Output String
@@ -334,8 +285,8 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
-    if (tracer) {
-      tracer.error(p1, p2);
+    if (ActiveLogger.WinstonLogger) {
+      ActiveLogger.WinstonLogger.error(p1, p2);
     }
     // Get Output String
     let out =
