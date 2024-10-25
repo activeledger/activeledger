@@ -24,6 +24,7 @@
 import * as fs from "fs";
 import * as minimist from "minimist";
 import { ActiveDSConnect } from "./dsconnect";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 export class ActiveOptions {
   /**
@@ -97,6 +98,54 @@ export class ActiveOptions {
       // Get Stream id from revision
       let network = ActiveOptions.get<string>("network", "");
       network = network.substr(0, network.indexOf("@"));
+
+      if (ActiveOptions.get<boolean>("datadog", false) && !ActiveLogger.WinstonLogger) {
+        setTimeout(async () => {
+          try {
+            //@ts-ignore
+            const dd = (await import("dd-trace")) as {
+              tracer: { init: Function };
+            };
+            dd.tracer.init({
+              logInjection: true,
+            });
+
+            ActiveLogger.debug("DATADOG TRACER ENABLED");
+
+            const winston = require("winston");
+            require("winston-daily-rotate-file");
+            const transport = new winston.transports.DailyRotateFile({
+              filename: `./winstonlogs/application-%DATE%.log`,
+              datePattern: "YYYY-MM-DD-HH",
+              zippedArchive: true,
+              maxSize: "20m",
+              maxFiles: "14d",
+              level: 'debug'
+            });
+
+            transport.on("error", (error: any) => {
+              ActiveLogger.warn(error, "ERROR WITH WINSTON FILE SYSTEM");
+            });
+
+            transport.on(
+              "rotate",
+              (oldFilename: string, newFilename: string) => {
+                ActiveLogger.info(
+                  `Winston Roated ${oldFilename} -> ${newFilename}`
+                );
+              }
+            );
+
+            ActiveLogger.WinstonLogger = winston.createLogger({
+              transports: [transport],
+            });
+
+            ActiveLogger.debug("Winston File Setup");
+          } catch (e) {
+            ActiveLogger.error(e, "DATADOG TRACER FAILED");
+          }
+        }, 1000);
+      }
 
       tmpDb
         .get(network)

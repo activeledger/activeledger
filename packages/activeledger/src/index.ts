@@ -35,20 +35,6 @@ const version = "unset";
 // Initalise CLI Options
 ActiveOptions.init();
 
-if(ActiveOptions.get<boolean>("datadog", false)) {
-  //@ts-ignore
-  //  import('dd-trace').then(dd =>{
-  //   dd.tracer.init({
-  //     logInjection: true,
-  //   });
-  //   dd.tracer.use('http', {
-  //     blocklist: ['/api/v0/health'],
-  //   });
-
-    ActiveOptions.set('datadog-ready', true);
-    process.env.ddReady = "1";
-   //}).catch();
-}
 
 // Show Version (Doesn't require identity)
 if (
