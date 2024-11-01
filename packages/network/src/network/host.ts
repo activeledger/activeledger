@@ -228,28 +228,40 @@ export class Host extends Home {
           entry: entry,
           resolve: (response: unknown) => {
             resolve(response);
+            this.release({
+              entry,
+              resolve: null,
+              reject: null,
+              pid: 0,
+            });
             ActiveLogger.debug("Client Response TX : " + entry.$umid);
             // Catch all release (with a response) Impact on broadcast?
-            setTimeout(() => {
-              this.release({
-                entry,
-                resolve: null,
-                reject: null,
-                pid: 0,
-              });
-            }, 1);
+            // setTimeout(() => {
+            //   this.release({
+            //     entry,
+            //     resolve: null,
+            //     reject: null,
+            //     pid: 0,
+            //   });
+            // }, 1);
           },
           reject: (response: unknown) => {
             reject(response);
+            this.release({
+              entry,
+              resolve: null,
+              reject: null,
+              pid: 0,
+            });
             // Catch all release (with a response) Impact on broadcast?
-            setTimeout(() => {
-              this.release({
-                entry,
-                resolve: null,
-                reject: null,
-                pid: 0,
-              });
-            }, 1);
+            // setTimeout(() => {
+            //   this.release({
+            //     entry,
+            //     resolve: null,
+            //     reject: null,
+            //     pid: 0,
+            //   });
+            // }, 1);
           },
           pid: 0,
         };
