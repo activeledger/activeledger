@@ -99,19 +99,9 @@ export class ActiveOptions {
       let network = ActiveOptions.get<string>("network", "");
       network = network.substr(0, network.indexOf("@"));
 
-      if (ActiveOptions.get<boolean>("datadog", false) && !ActiveLogger.WinstonLogger) {
+      if (ActiveOptions.get<boolean>("winston", false) && !ActiveLogger.WinstonLogger) {
         setTimeout(async () => {
           try {
-            //@ts-ignore
-            const dd = (await import("dd-trace")) as {
-              tracer: { init: Function };
-            };
-            dd.tracer.init({
-              logInjection: true,
-            });
-
-            ActiveLogger.debug("DATADOG TRACER ENABLED");
-
             const winston = require("winston");
             require("winston-daily-rotate-file");
             const transport = new winston.transports.DailyRotateFile({
@@ -142,7 +132,7 @@ export class ActiveOptions {
 
             ActiveLogger.debug("Winston File Setup");
           } catch (e) {
-            ActiveLogger.error(e, "DATADOG TRACER FAILED");
+            ActiveLogger.error(e, "Winston Setup Failed");
           }
         }, 1000);
       }
