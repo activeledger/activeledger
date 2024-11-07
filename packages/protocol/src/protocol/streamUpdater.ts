@@ -423,14 +423,23 @@ export class StreamUpdater {
       emit = true;
 
     try {
-        await Promise.all([
-        this.db.bulkDocs(this.docs),
-        this.dbev.post({
-          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
-            this.entry.$umid
-          }`,
-        }),
-      ]);
+        // TODO - Resolve and return to .all
+        // Some reason for specific contract/locking combo bulkDoc fails
+        // for now slightly slower and checking saving makes sense.
+        //await Promise.all([
+        const bulkDocs = await this.db.bulkDocs(this.docs)//,
+        if(bulkDocs.ok) {
+          this.dbev.post({
+            _id: `umid:${new Date(this.entry.$datetime).getTime()},${
+              this.entry.$umid
+            }`,
+          })
+        }else{
+          throw "Bulk Doc Insert Failed"
+        }
+        
+      //]);
+      //ActiveLogger.info(x, `PROMISE RESPONSE ${this.entry.$umid}`);
     } catch (error) {
       continueProcessing = emit = false;
 
@@ -474,8 +483,6 @@ export class StreamUpdater {
 
       try {
         // Handle post processing if it exists
-        //TODO this is just from curious it is needed?
-
         const post = await this.virtualMachine.postProcess(
           this.entry.$territoriality === this.reference,
           this.entry.$territoriality,
