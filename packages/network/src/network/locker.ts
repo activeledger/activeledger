@@ -21,8 +21,10 @@
  * SOFTWARE.
  */
 
-const CHECKER_TIMER = 3 * 1000 * 60;
-const AUTO_RELEASE_TIME = 5 * 1000 * 60;
+import { ActiveLogger } from "@activeledger/activelogger";
+
+const CHECKER_TIMER = 1 * 1000 * 60;
+const AUTO_RELEASE_TIME = 3 * 1000 * 60; // this does make settimeout in contract limited
 
 /**
  * Class manages stream locks for multiple processor safety
@@ -41,9 +43,17 @@ export class Locker {
    *
    * @private
    * @static
-   * @type {{[stream: string]: number | boolean}}
+   * @type {{ [stream: string]: {
+   *     umid: string,
+   *     time: number
+   *   } }}
    */
-  private static cell: { [stream: string]: number | boolean } = {};
+  private static cell: {
+    [stream: string]: {
+      umid: string;
+      time: number;
+    };
+  } = {};
 
   /**
    * Holds the current timer job
@@ -59,34 +69,37 @@ export class Locker {
    *
    * @static
    * @param {string} stream
+   * @param {string} umid
    * @returns {boolean} indicate whether all the locks were acquired
    */
-  public static hold(stream: string): boolean;
-  public static hold(stream: string[]): boolean;
-  public static hold(stream: string | string[]): boolean {
+  public static hold(stream: string, umid: string): boolean;
+  public static hold(stream: string[], umid: string): boolean;
+  public static hold(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
       // Are all the streams available
       let i = stream.length;
       let success = true;
       while (i--) {
-        if (!Locker.hold(stream[i])) {
+        if (!Locker.hold(stream[i], umid)) {
           // Update flag and quit early
           success = false;
           break;
         }
       }
-
       // Let process know
       return success;
     } else {
       // Self signed lets not lock up (assuming will be less than 64, using 60 as buffer)
-      if(stream.length < 60){
+      if (stream.length < 60) {
         return true;
       }
 
       // Is the single stream available?
       if (!this.cell[stream]) {
-        this.cell[stream] = Date.now();
+        this.cell[stream] = {
+          umid,
+          time: Date.now(),
+        };
         return true;
       }
       return false;
@@ -98,18 +111,23 @@ export class Locker {
    *
    * @static
    * @param {string} stream
+   * @param {string} umid
    */
-  public static release(stream: string): boolean;
-  public static release(stream: string[]): boolean;
-  public static release(stream: string | string[]): boolean {
+  public static release(stream: string, umid: string): boolean;
+  public static release(stream: string[], umid: string): boolean;
+  public static release(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
+
       let i = stream.length;
       while (i--) {
-        Locker.release(stream[i]);
+        Locker.release(stream[i], umid);
       }
     } else {
-      delete this.cell[stream]
+      if (this.cell[stream] && this.cell[stream].umid === umid) {
+        delete this.cell[stream];
+      }
     }
+    // Can always return true even if wasn't released
     return true;
   }
 
@@ -134,9 +152,17 @@ export class Locker {
    * Return Current Locks
    *
    * @static
-   * @returns {({ [stream: string]: number | boolean })}
+   * @return {*}  {{ [stream: string]: {
+   *     umid: string;
+   *     time: number;
+   *   } }}
    */
-  public static getLocks(): { [stream: string]: number | boolean } {
+  public static getLocks(): {
+    [stream: string]: {
+      umid: string;
+      time: number;
+    };
+  } {
     return this.cell;
   }
 
@@ -146,15 +172,15 @@ export class Locker {
    * @static
    * @param {number} [releaseTime=AUTO_RELEASE_TIME]
    */
-  public static checkLocks(releaseTime:number = AUTO_RELEASE_TIME) {
+  public static checkLocks(releaseTime: number = AUTO_RELEASE_TIME) {
     // Loop cell and release if 10 minutes has passed
     const locks = Object.keys(this.cell);
     for (let i = locks.length; i--; ) {
       if (
         this.cell[locks[i]] &&
-        Date.now() - (this.cell[locks[i]] as number) >= releaseTime
+        Date.now() - (this.cell[locks[i]].time as number) >= releaseTime
       ) {
-        Locker.release(locks[i]);
+        Locker.release(locks[i], this.cell[locks[i]].umid);
       }
     }
   }
