@@ -227,41 +227,27 @@ export class Host extends Home {
         this.processPending[entry.$umid] = {
           entry: entry,
           resolve: (response: unknown) => {
-            resolve(response);
-            this.release({
-              entry,
-              resolve: null,
-              reject: null,
-              pid: 0,
-            });
+            //setTimeout(() => {
+              resolve(response);
+              this.release({
+                entry,
+                resolve: null,
+                reject: null,
+                pid: 0,
+              });
+            //}, 10);
             ActiveLogger.debug("Client Response TX : " + entry.$umid);
-            // Catch all release (with a response) Impact on broadcast?
-            // setTimeout(() => {
-            //   this.release({
-            //     entry,
-            //     resolve: null,
-            //     reject: null,
-            //     pid: 0,
-            //   });
-            // }, 1);
           },
           reject: (response: unknown) => {
-            reject(response);
-            this.release({
-              entry,
-              resolve: null,
-              reject: null,
-              pid: 0,
-            });
-            // Catch all release (with a response) Impact on broadcast?
-            // setTimeout(() => {
-            //   this.release({
-            //     entry,
-            //     resolve: null,
-            //     reject: null,
-            //     pid: 0,
-            //   });
-            // }, 1);
+            //setTimeout(() => {
+              reject(response);
+              this.release({
+                entry,
+                resolve: null,
+                reject: null,
+                pid: 0,
+              });
+            //}, 10);
           },
           pid: 0,
         };
@@ -1066,10 +1052,10 @@ export class Host extends Home {
     if (
       // Selfsigning and can lock on output if any
       // don't need to use set for unique
-      (v.$selfsign && Locker.hold(a)) ||
+      (v.$selfsign && Locker.hold(a, v.$umid)) ||
       // Or not selfsigning and can lock on both inputs and outputs
       (!v.$selfsign &&
-        Locker.hold([...new Set([...this.labelOrKey(v.$tx.$i), ...a])]))
+        Locker.hold([...new Set([...this.labelOrKey(v.$tx.$i), ...a])], v.$umid))
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -1221,7 +1207,7 @@ export class Host extends Home {
     Locker.release([
       ...this.labelOrKey(pending.entry.$tx.$i),
       ...this.labelOrKey(pending.entry.$tx.$o),
-    ]);
+    ], pending.entry.$umid);
 
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
@@ -1246,7 +1232,7 @@ export class Host extends Home {
   private processQueue(next?: ActiveDefinitions.LedgerEntry, internal = false) {
     // If Internal and not broadcast let it skip the queue
     let skipped = false;
-    if (next && internal && !next.$broadcast) {
+    if (next && internal /* && !next.$broadcast */) {
       this.hold(next);
       skipped = true;
     }
@@ -1642,7 +1628,11 @@ export class Host extends Home {
 
         // Write Header
         // All outputs are JSON and
-        ActiveLogger.info(`Request Response ${data.$umid ? data.$umid : 'No Umid'} : S=${started}, TT=${Date.now()-started}ms`);
+        ActiveLogger.info(
+          `Request Response ${
+            data.$umid ? data.$umid : "No Umid"
+          } : S=${started}, TT=${Date.now() - started}ms`
+        );
         this.writeResponse(
           res,
           response.statusCode,
@@ -1654,7 +1644,9 @@ export class Host extends Home {
         // Write Header
         // Basic error handling for now. As a lot of errors will still be sent as ok responses.
         ActiveLogger.error(error, "Failed to send response back");
-        ActiveLogger.info(`Request Response ERROR : S=${started}, TT=${Date.now()-started}ms`);
+        ActiveLogger.info(
+          `Request Response ERROR : S=${started}, TT=${Date.now() - started}ms`
+        );
         this.writeResponse(
           res,
           error.statusCode || 500,
