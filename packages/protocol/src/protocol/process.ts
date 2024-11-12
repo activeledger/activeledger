@@ -413,38 +413,25 @@ export class Process extends EventEmitter {
       try {
         // This Cache won't always fetch latest version need to "defeat it"
         if (!this.contractPathCache[this.entry.$tx.$contract]) {
-          let contractId: string;
-          let namespacePath: string;
+          let namespacePath = "";
 
           try {
             namespacePath = fs.realpathSync(
               `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
             );
-
-            // Make sure the path is not a symlink
-            const trueContractPath = fs.realpathSync(
-              `${namespacePath}/${contract}.js`
-            );
-
-            contractId = path.basename(
-              trueContractPath,
-              path.extname(trueContractPath)
-            );
-
-            // We don't want the version number if the contract has one
-            if (contractId.indexOf("@") > -1) {
-              contractId = contractId.split("@")[0];
-            }
           } catch {
-            throw new Error("Contract or Namespace not found");
+            throw new Error("Namespace not found");
           }
 
-          this.contractId = contractId;
+          this.contractId = this.entry.$tx.$contract.split("@")[0];
 
-          // Does the string contain @ then we leave it alone
-          if (this.entry.$tx.$contract.indexOf("@") === -1) {
-            if (contractVersion) {
-              contract = contractVersion;
+          if (contractVersion) {
+            contract = contractVersion;
+          } else {
+            // Does the string contain @ then we leave it alone
+            if (this.entry.$tx.$contract.indexOf("@=") !== -1) {
+              // Has to be this version
+              contract = this.entry.$tx.$contract.replace('@=','@');
             } else {
               try {
                 // Now we find the latest @ in the file system and include
@@ -453,20 +440,27 @@ export class Process extends EventEmitter {
                 contract =
                   fs
                     .readdirSync(namespacePath)
-                    .filter((fn) => fn.includes(`${this.contractId}@`))
+                    .filter((fn) => fn.includes(this.entry.$tx.$contract))
                     .sort(this.sortVersions)
                     .pop()
-                    ?.replace(".js", "") || this.contractId;
-
-                // Cache it to parent process handler
-                this.emit("contractLatestVersion", {
-                  contract: this.entry.$tx.$contract,
-                  file: contract,
-                });
+                    ?.replace(".js", "");
               } catch {
-                throw new Error(`${this.contractId}@latest not found`);
+                throw new Error("Contract not found");
               }
             }
+          }
+
+          if (!fs.existsSync(`${namespacePath}/${contract}.js`)) {
+            throw new Error("Contract not found");
+          }
+
+          // No cached version send to cache
+          if(!contractVersion) {
+            this.emit("contractLatestVersion", {
+              contract: this.entry.$tx.$contract,
+              file: contract,
+              refresh: false,
+            });
           }
 
           // Check For Locks Global and Version
@@ -490,7 +484,7 @@ export class Process extends EventEmitter {
           this.contractPathCache[this.entry.$tx.$contract] = fs.realpathSync(
             `${namespacePath}/${contract}.js`
           );
-        }
+        } 
         this.contractLocation =
           this.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
@@ -1059,7 +1053,10 @@ export class Process extends EventEmitter {
         ActiveLogger.debug("Origin is next (Sending Back)");
 
         error
-          ? this.shared.raiseLedgerError(error.code || 1000, error.reason || error) // Of course if next is origin we need to send back for the promises!
+          ? this.shared.raiseLedgerError(
+              error.code || 1000,
+              error.reason || error
+            ) // Of course if next is origin we need to send back for the promises!
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }

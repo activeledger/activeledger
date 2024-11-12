@@ -296,6 +296,10 @@ class Processor {
           this.reloadDown(m.data);
           break;
         case "contractLatestVersion":
+          if(m.data.refresh) {
+            // Drastic but captures all scenarios, Maybe faster
+            this.latestContractVersion = {};
+          }
           // Only change if different. (Maybe check semver?)
           if (this.latestContractVersion[m.data.contract] != m.data.file) {
             this.latestContractVersion[m.data.contract] = m.data.file;
@@ -332,6 +336,7 @@ class Processor {
       this.send("contractLatestVersion", {
         contract: output,
         file: `${output}@${input.version}`,
+        refresh: true
       });
       // Implement for labels?
     }
