@@ -908,7 +908,7 @@ export class LevelMe {
       // Replace with winning rev instead of branch crawling
       if (currentRev) {
         if (doc._rev !== currentRev) {
-          throw { msg: "Revision Mismatch", throw: 1 };
+          throw { msg: `Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentRev}`, throw: 1 };
         }
 
         if (!options.force_rev) {
