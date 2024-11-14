@@ -218,7 +218,11 @@ export class Endpoints {
                           (summary.errors?.filter(
                             (e) => e.indexOf("Stream Position Incorrect") !== -1
                           ).length || 0) >=
-                          Math.floor((summary.errors?.length || 0) / 2)
+                            Math.floor((summary.errors?.length || 0) / 2) ||
+                          // However what about I am the only one that is wrong (As they may send via me)
+                          tx.$nodes[Home.reference].error?.indexOf(
+                            "Stream Position Incorrect"
+                          ) !== -1
                         ) {
                           // Now if same i/o going to different nodes it can mix this up
                           // however we need a delay to at least know the record has been written!
@@ -343,10 +347,12 @@ export class Endpoints {
                             // can probably do this for all nodes
                             summary.errors?.some(
                               (e) =>
+                                // TODO can we combine IBL01 to Busy Locks?
                                 //e.indexOf("Stream Position Incorrect") !== -1 ||
                                 e.indexOf("Busy Locks") !== -1 ||
                                 e.indexOf("IBL01") !== -1
-                            )
+                            ) &&
+                            !initTx.$nolock
                           ) {
                             // If position incorrect maybe force update check instead of waiting on restore!
                             // This happens because the "middle" node voted for the other one and when this got its turn
@@ -417,7 +423,8 @@ export class Endpoints {
                   if (error?.status == 100 && error.error) {
                     if (
                       counter <= MAX_COUNTERS &&
-                      error.error === "Busy Locks"
+                      error.error === "Busy Locks" &&
+                      !initTx.$nolock
                     ) {
                       // same umid safe here
                       delete (initTx as any).$nodes;
@@ -426,10 +433,7 @@ export class Endpoints {
                       initTx.$umid = ActiveCrypto.Hash.getHash(
                         JSON.stringify(initTx) + counter
                       );
-                      ActiveLogger.warn(
-                        initTx.$tx,
-                        `SPI Resending ${counter}`
-                      );
+                      ActiveLogger.warn(initTx.$tx, `SPI Resending ${counter}`);
                       setTimeout(() => {
                         resendable(initTx, ++counter);
                       }, 500);
@@ -605,14 +609,14 @@ export class Endpoints {
           // Maybe go back to restore for this?
           // Only safe to run if we can get a lock
           // downside of not doing this is the node can be out of date for a while
-          // we can alkways keep trying to get a lock or for when it ISN't locked 
+          // we can alkways keep trying to get a lock or for when it ISN't locked
           if (ledger?.data?.$nodes) {
             // Phase 1
             // Now if we have an error position incorrect we should just "fix it" assuming there was a commit
             // Phase 2
             // Then later on we can check against other nodes and if we all agree then no need to process
             if (
-              ledger?.data?.$nodes[Home.reference] && 
+              ledger?.data?.$nodes[Home.reference] &&
               ledger.data.$nodes[Home.reference].error &&
               ledger.data.$nodes[Home.reference].error.indexOf(
                 "Position Incorrect"
@@ -620,103 +624,114 @@ export class Endpoints {
             ) {
               // Did they commit at all?
               const nodes = Object.keys(ledger.data.$nodes);
-              let commited = false;
+              let check = false;
+              let posCount = 0;
+              let myPos = false;
+              //let commited = false;
               for (let i = nodes.length; i--; ) {
                 if (ledger.data.$nodes[nodes[i]].commit) {
-                  commited = true;
+                  check = true;
                   break;
+                }
+
+                if (
+                  ledger.data.$nodes[nodes[i]].error?.indexOf(
+                    "Stream Position Incorrect"
+                  ) !== -1
+                ) {
+                  posCount++;
+                  if (nodes[i] === Home.reference) {
+                    myPos = true;
+                  }
                 }
               }
 
-              if (commited) {
+              // They may not have commited I maybe the only one!
+              if (check || (posCount === 1 && myPos)) {
                 // TODO - Resolve this copy paste
                 //setTimeout(async () => {
-                  const streams = [
-                    ...new Set([
-                      ...this.labelOrKey(ledger.data.$tx.$i),
-                      ...this.labelOrKey(ledger.data.$tx.$o),
-                    ]),
-                  ];
-                  if (streams.length) {
-                    const networkStreams = await host.neighbourhood.knockAll(
-                      "stream",
-                      {
-                        $streams: streams,
-                      }
-                    );
+                const streams = [
+                  ...new Set([
+                    ...this.labelOrKey(ledger.data.$tx.$i),
+                    ...this.labelOrKey(ledger.data.$tx.$o),
+                  ]),
+                ];
+                if (streams.length) {
+                  const networkStreams = await host.neighbourhood.knockAll(
+                    "stream",
+                    {
+                      $streams: streams,
+                    }
+                  );
 
-                    // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                    const consensusReached = Math.ceil(
-                      (ActiveOptions.get<any>("consensus", {}).reached / 100) *
-                        host.neighbourhood.count()
-                    );
+                  // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
+                  const consensusReached = Math.ceil(
+                    (ActiveOptions.get<any>("consensus", {}).reached / 100) *
+                      host.neighbourhood.count()
+                  );
 
-                    // now find the ones that match
-                    const consensus: {
-                      [index: string]: {
-                        [index: string]: number;
-                      };
-                    } = {};
-                    for (let i = networkStreams.length; i--; ) {
-                      const nodeStreams = networkStreams[i];
-                      for (let ii = nodeStreams.length; ii--; ) {
-                        const noodeStream = nodeStreams[ii];
-                        if (consensus[noodeStream._id]) {
-                          const rev = consensus[noodeStream._id];
-                          if (rev[noodeStream._rev]) {
-                            rev[noodeStream._rev]++;
-                            if (rev[noodeStream._rev] >= consensusReached) {
-                              break;
-                            }
-                          } else {
-                            rev[noodeStream._rev] = 1;
+                  // now find the ones that match
+                  const consensus: {
+                    [index: string]: {
+                      [index: string]: number;
+                    };
+                  } = {};
+                  for (let i = networkStreams.length; i--; ) {
+                    const nodeStreams = networkStreams[i];
+                    for (let ii = nodeStreams.length; ii--; ) {
+                      const noodeStream = nodeStreams[ii];
+                      if (consensus[noodeStream._id]) {
+                        const rev = consensus[noodeStream._id];
+                        if (rev[noodeStream._rev]) {
+                          rev[noodeStream._rev]++;
+                          if (rev[noodeStream._rev] >= consensusReached) {
+                            break;
                           }
                         } else {
-                          consensus[noodeStream._id] = {
-                            [noodeStream._rev]: 1,
-                          };
+                          rev[noodeStream._rev] = 1;
                         }
+                      } else {
+                        consensus[noodeStream._id] = {
+                          [noodeStream._rev]: 1,
+                        };
+                      }
+                    }
+                  }
+
+                  // Now find that document
+                  const docs = Object.keys(consensus);
+                  for (let i = docs.length; i--; ) {
+                    const doc = consensus[docs[i]];
+                    var max = 0,
+                      x,
+                      winner;
+                    for (x in doc) {
+                      if (doc[x] > max) {
+                        max = doc[x];
+                        winner = x;
                       }
                     }
 
-                    // Now find that document
-                    const docs = Object.keys(consensus);
-                    for (let i = docs.length; i--; ) {
-                      const doc = consensus[docs[i]];
-                      var max = 0,
-                        x,
-                        winner;
-                      for (x in doc) {
-                        if (doc[x] > max) {
-                          max = doc[x];
-                          winner = x;
-                        }
-                      }
-
-                      // find it
-                      foundWinner: for (
-                        let ii = networkStreams.length;
-                        ii--;
-
-                      ) {
-                        const node = networkStreams[ii];
-                        for (let j = node.length; j--; ) {
-                          const main = node[j];
-                          if (main._id == docs[i] && main._rev == winner) {
-                            await host.dbConnection.purge({
-                              _id: main._id,
-                            });
-                            ActiveLogger.fatal(main, "SPI REWRITING");
-                            await host.dbConnection.bulkDocs([main], {
-                              new_edits: false,
-                            });
-                            break foundWinner;
-                          }
+                    // find it
+                    foundWinner: for (let ii = networkStreams.length; ii--; ) {
+                      const node = networkStreams[ii];
+                      for (let j = node.length; j--; ) {
+                        const main = node[j];
+                        if (main._id == docs[i] && main._rev == winner) {
+                          await host.dbConnection.purge({
+                            _id: main._id,
+                          });
+                          ActiveLogger.fatal(main, "SPI REWRITING");
+                          await host.dbConnection.bulkDocs([main], {
+                            new_edits: false,
+                          });
+                          break foundWinner;
                         }
                       }
                     }
                   }
-                  // Faster they're processing without us
+                }
+                // Faster they're processing without us
                 //}, 10000);
               }
             }

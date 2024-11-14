@@ -30,7 +30,7 @@ import { IFullState, IMeta, IVolatile } from "./document";
  * @export
  * @interface LedgerEntry
  */
-export interface LedgerEntry {
+export interface LedgerEntry {  
   $origin: string;
   $datetime: Date;
   $umid: string;
@@ -47,6 +47,7 @@ export interface LedgerEntry {
   $territoriality?: string;
   $unanimous?: boolean;
   $encrypt?: boolean;
+  $nolock?:boolean;
 }
 
 export interface LedgerResponse {
