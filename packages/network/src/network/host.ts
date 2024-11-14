@@ -228,25 +228,25 @@ export class Host extends Home {
           entry: entry,
           resolve: (response: unknown) => {
             //setTimeout(() => {
-              resolve(response);
-              this.release({
-                entry,
-                resolve: null,
-                reject: null,
-                pid: 0,
-              });
+            resolve(response);
+            this.release({
+              entry,
+              resolve: null,
+              reject: null,
+              pid: 0,
+            });
             //}, 10);
             ActiveLogger.debug("Client Response TX : " + entry.$umid);
           },
           reject: (response: unknown) => {
             //setTimeout(() => {
-              reject(response);
-              this.release({
-                entry,
-                resolve: null,
-                reject: null,
-                pid: 0,
-              });
+            reject(response);
+            this.release({
+              entry,
+              resolve: null,
+              reject: null,
+              pid: 0,
+            });
             //}, 10);
           },
           pid: 0,
@@ -1055,7 +1055,10 @@ export class Host extends Home {
       (v.$selfsign && Locker.hold(a, v.$umid)) ||
       // Or not selfsigning and can lock on both inputs and outputs
       (!v.$selfsign &&
-        Locker.hold([...new Set([...this.labelOrKey(v.$tx.$i), ...a])], v.$umid))
+        Locker.hold(
+          [...new Set([...this.labelOrKey(v.$tx.$i), ...a])],
+          v.$umid
+        ))
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -1088,83 +1091,90 @@ export class Host extends Home {
 
       return true;
     } else {
-      if (retries === 0) {
-        // Push to the end of the queue
-        this.busyLocksQueue.push({
-          running: false,
-          entry: v,
-          retry: 1,
+      if (v.$nolock) {
+        this.processPending[v.$umid].reject({
+          status: 100,
+          error: "Busy Locks",
         });
       } else {
-        // Detect internal transaction read below for more information
-        const internal = v.$revs ? true : false;
-        // const maxRetries = internal
-        //   ? 2
-        //   : ActiveOptions.get<number>("queue_retry", 5);
+        if (retries === 0) {
+          // Push to the end of the queue
+          this.busyLocksQueue.push({
+            running: false,
+            entry: v,
+            retry: 1,
+          });
+        } else {
+          // Detect internal transaction read below for more information
+          const internal = v.$revs ? true : false;
+          // const maxRetries = internal
+          //   ? 2
+          //   : ActiveOptions.get<number>("queue_retry", 5);
 
-        // We could set this really high as every new transaction (unrelated) will increase
-        // the counter. So it will eventually send (unless crashed) no matter how high
-        // so possibly a safe timeout should be used.
-        if (retries > ActiveOptions.get<number>("queue_retry", MAX_RETRIES)) {
-          // $origin check will mean if this is the entry node and is locked it will
-          // still send around the network. Broadcast will fail. So for now if entry is locked
-          // defaulting to queue attempt to unlock. Otherwise busy locks could be spammed. Doesn't mean
-          // in the future we can enable it. For now if entry node isn't locked then it will continue regardless
-          if (/*v.$origin || */ internal) {
-            // Internal Request (So need to respond as expected + forward on if not broadcast)
-            // Some network conditions wont have this set
-            if (!v.$nodes) {
-              v.$nodes = {};
-            }
-            v.$nodes[this.reference] = {
-              vote: false,
-              commit: false,
-              error: "IBL01",
-            };
+          // We could set this really high as every new transaction (unrelated) will increase
+          // the counter. So it will eventually send (unless crashed) no matter how high
+          // so possibly a safe timeout should be used.
+          if (retries > ActiveOptions.get<number>("queue_retry", MAX_RETRIES)) {
+            // $origin check will mean if this is the entry node and is locked it will
+            // still send around the network. Broadcast will fail. So for now if entry is locked
+            // defaulting to queue attempt to unlock. Otherwise busy locks could be spammed. Doesn't mean
+            // in the future we can enable it. For now if entry node isn't locked then it will continue regardless
+            if (/*v.$origin || */ internal) {
+              // Internal Request (So need to respond as expected + forward on if not broadcast)
+              // Some network conditions wont have this set
+              if (!v.$nodes) {
+                v.$nodes = {};
+              }
+              v.$nodes[this.reference] = {
+                vote: false,
+                commit: false,
+                error: "IBL01",
+              };
 
-            // Internal Busy Locks, Safe to track
-            // const doc = {
-            //   code: 1100,
-            //   processed: false,
-            //   umid: v.$umid,
-            //   transaction: v,
-            //   locker: Locker.getLocks(),
-            //   reason: "Internal Busy Locks",
-            // };
+              // Internal Busy Locks, Safe to track
+              // const doc = {
+              //   code: 1100,
+              //   processed: false,
+              //   umid: v.$umid,
+              //   transaction: v,
+              //   locker: Locker.getLocks(),
+              //   reason: "Internal Busy Locks",
+              // };
 
-            // // Return
-            // this.dbErrorConnection.post(doc);
+              // // Return
+              // this.dbErrorConnection.post(doc);
 
-            // Not Broadcast & Not Last
-            if (!v.$broadcast && Home.right.reference != v.$origin) {
-              // Forward on to the next node and compile responses back
-              (async () => {
-                const next = await Home.right.knock("init", v);
+              // Not Broadcast & Not Last
+              if (!v.$broadcast && Home.right.reference != v.$origin) {
+                // Forward on to the next node and compile responses back
+                (async () => {
+                  const next = await Home.right.knock("init", v);
+                  this.processPending[v.$umid].resolve({
+                    status: 200,
+                    data: { ...v, ...next.data },
+                  });
+                })();
+              } else {
+                this.broadcast(v.$umid);
+                // Respond back with our failure
                 this.processPending[v.$umid].resolve({
                   status: 200,
-                  data: { ...v, ...next.data },
+                  data: v,
                 });
-              })();
+              }
             } else {
-              this.broadcast(v.$umid);
-              // Respond back with our failure
-              this.processPending[v.$umid].resolve({
-                status: 200,
-                data: v,
+              // External Request
+              this.processPending[v.$umid].reject({
+                status: 100,
+                error: "Busy Locks",
               });
             }
-          } else {
-            // External Request
-            this.processPending[v.$umid].reject({
-              status: 100,
-              error: "Busy Locks",
-            });
-          }
 
-          // Not always safe but i/o position incorrect will help
-          //this.release(this.processPending[v.$umid]);
-          // True so it is "handled" and removed from the queue in a single location
-          return true;
+            // Not always safe but i/o position incorrect will help
+            //this.release(this.processPending[v.$umid]);
+            // True so it is "handled" and removed from the queue in a single location
+            return true;
+          }
         }
       }
       return false;
@@ -1204,10 +1214,13 @@ export class Host extends Home {
    */
   private release(pending: process) {
     // Ask for releases
-    Locker.release([
-      ...this.labelOrKey(pending.entry.$tx.$i),
-      ...this.labelOrKey(pending.entry.$tx.$o),
-    ], pending.entry.$umid);
+    Locker.release(
+      [
+        ...this.labelOrKey(pending.entry.$tx.$i),
+        ...this.labelOrKey(pending.entry.$tx.$o),
+      ],
+      pending.entry.$umid
+    );
 
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
