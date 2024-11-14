@@ -149,12 +149,19 @@ export class EventEngine {
   private phase = "vote";
 
   /**
+   * Prevent same date collisions
+   *
+   * @private
+   */
+  private counter = 0;
+
+  /**
    * Creates an instance of EventEngine.
    * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {string} contract
    * @param {*} transaction
    */
-  constructor(private db: any, private contract: string) {}
+  constructor(private db: any, private contract: string, private umid: string) {}
 
   /**
    * Emit the event to the database
@@ -166,14 +173,15 @@ export class EventEngine {
   public emit(name: string, data: any): void {
     // Event object to store 
     let event: any = {
-      _id: `event:${Date.now()}`,
+      _id: `event:${Date.now()}-${++this.counter},${this.umid}`,
       name: name,
       data: data,
       phase: this.phase,
       contract: this.contract,
     };
 
-    // Fix for pDB
+    // TODO: Instruct to write to the database instead of just doing it?
+    // ie vote gets sent on commit, commit gets sent when confirmed etc.
     this.db
       .post(event)
       .then(() => {})
