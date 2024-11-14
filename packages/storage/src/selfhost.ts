@@ -72,9 +72,9 @@ import { SSE } from "./sse";
     a
       ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
       : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
-        /[018]/g,
-        uuidGenV4
-      );
+          /[018]/g,
+          uuidGenV4
+        );
 
   /**
    * Checks for the existant of _id if not ads it and returns
@@ -222,11 +222,11 @@ import { SSE } from "./sse";
       incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
     }
     const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
-    for (let i = txs.rows.length; i--;) {
+    for (let i = txs.rows.length; i--; ) {
       const [timestamp, umid] = txs.rows[i]._id.split(",");
       txs.rows[i] = {
         umid,
-        timestamp: timestamp.replace('umid:', ''),
+        timestamp: timestamp.replace("umid:", ""),
       };
     }
     return txs;
@@ -334,6 +334,16 @@ import { SSE } from "./sse";
     } catch {
       throw new Error("Seq Delete Failed");
     }
+  });
+
+  http.use("*/_backup", "POST", async (incoming: IActiveHttpIncoming) => {
+    getDB(incoming.url[0]).backup(incoming.body?.filename ?? "");
+    return { status: "started" };
+  });
+
+  http.use("*/_restore", "POST", async (incoming: IActiveHttpIncoming) => {
+    getDB(incoming.url[0]).restore(incoming.body.filename);
+    return { status: "started" };
   });
 
   // Get specific docs from a database
@@ -541,7 +551,6 @@ import { SSE } from "./sse";
     }
   });
 
-
   http.use(
     "*/events",
     "GET",
@@ -554,16 +563,18 @@ import { SSE } from "./sse";
       let db = getDB(incoming.url[0]);
 
       const sse = new SSE(res);
-      const lastEventId = req.headers['Last-Event-ID'];
+      const lastEventId = req.headers["Last-Event-ID"];
 
       // Fetch anything newer since then and push
       if (lastEventId) {
         // Merge with getTransactionUmids as there is little difference
-        const events = (await db.allDocs(prepareAllDocs({
-          startkey: `event:${lastEventId}`,
-          endkey: `event:`,
-          include_docs: true
-        }))) as any;
+        const events = (await db.allDocs(
+          prepareAllDocs({
+            startkey: `event:${lastEventId}`,
+            endkey: `event:`,
+            include_docs: true,
+          })
+        )) as any;
         // Start at 1 to skip the event that was already sent
         for (let i = 1; i < events.rows.length; i++) {
           const id = events.rows[i]._id.replace("event:", "");
@@ -575,7 +586,7 @@ import { SSE } from "./sse";
 
       // Listener Process event (to turn off)
       const listener = (change: any) => {
-        if(change.id.startsWith("event:")) {
+        if (change.id.startsWith("event:")) {
           delete change.doc._id;
           delete change.doc._rev;
           sse.write(change.id.replace("event:", ""), change.doc);
@@ -599,7 +610,6 @@ import { SSE } from "./sse";
 
   // Listen for changes on the database
   http.use(
-
     "*/_changes",
     "GET",
     async (
@@ -638,7 +648,6 @@ import { SSE } from "./sse";
               clearInterval(hBInterval);
             }
           };
-
 
           // Set Header
           //res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
@@ -765,14 +774,14 @@ import { SSE } from "./sse";
     req: {
       headers: {
         [index: string]: string;
-      }
+      };
       method: string;
       url: string;
       connection: {
-        remoteAddress: string
-      }
+        remoteAddress: string;
+      };
     },
-    res: Socket,
+    res: Socket
   ) => {
     // We want to force /_utils to /_utils/ as this is the CouchDB behavior
     if (req.url === "/_utils") {
@@ -780,7 +789,7 @@ import { SSE } from "./sse";
       //   Location: "/_utils/",
       // });
       // return;
-      req.url = '/_utils/';
+      req.url = "/_utils/";
     }
 
     // File to send
@@ -797,7 +806,12 @@ import { SSE } from "./sse";
       //   ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
       // );
       // Convert To Stream
-      return { mime: `Content-type: ${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"}`, data: fs.readFileSync(file) };
+      return {
+        mime: `Content-type: ${
+          ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+        }`,
+        data: fs.readFileSync(file),
+      };
     }
   };
   http.use("_utils", "GET", fauxton);

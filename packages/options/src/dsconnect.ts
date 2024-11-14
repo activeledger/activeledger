@@ -48,15 +48,15 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
- * Clears Cache
- *
- * @private
- */
+   * Clears Cache
+   *
+   * @private
+   */
   private timerUnCache() {
     setTimeout(() => {
       const memory = Object.keys(this.secondaryCache);
       const nowMinus5 = new Date(Date.now() - REMOVE_CACHE_TIMER * 2);
-      for (let i = memory.length; i--;) {
+      for (let i = memory.length; i--; ) {
         if (this.secondaryCache[memory[i]].data < nowMinus5) {
           // 5 minutes has passed without accessing it so lets clear
           delete this.secondaryCache[memory[i]];
@@ -64,9 +64,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       }
       this.timerUnCache();
     }, REMOVE_CACHE_TIMER);
-
   }
-
 
   /**
    * We need a way to clear this cache for Position Incorrect! (Or all errors?)
@@ -122,9 +120,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   private secondaryCache: {
     [index: string]: {
       data: any;
-      create: Date
-    }
-  } = {}
+      create: Date;
+    };
+  } = {};
 
   /**
    * Returns all the documents in the database
@@ -143,7 +141,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       options
     );
     return x.data;
-
 
     // if (options.keys) {
     //   let tmpKeys = options.keys;
@@ -193,7 +190,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     //   return x.data;
     // }
 
-
     //  .then((response: any) => resolve(response.data))
     //  .catch(reject);
     //});
@@ -212,7 +208,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
         .then((response: any) => resolve(response.data))
         .catch(reject);
     });
-    
+
     // if (!this.secondaryCache[id]) {
     //   const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
     //   return response.data
@@ -283,10 +279,9 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/_bulk_docs`, "POST", undefined, {
         docs,
-        options
+        options,
       })
         .then((response: any) => {
-
           resolve(response.data);
           // Update cache
           // const create = new Date();
@@ -307,7 +302,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           //     create
           //   }
           // }
-
         })
         .catch(reject);
     });
@@ -323,7 +317,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(this.location, "POST", undefined, doc)
         .then((response: any) => {
-          resolve(response.data)
+          resolve(response.data);
 
           // We need to update _rev here, Should we just fetch in background?
           // Or do we manage md5 ourself
@@ -339,13 +333,11 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           //   (doc as any)._rev = `1-${md5}`;
           // }
 
-
           // // DISABLED
           // this.secondaryCache[(doc as any)._id] = {
           //   data: doc,
           //   create: new Date()
           // }
-
         })
         .catch(reject);
     });
@@ -361,7 +353,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     return new Promise((resolve, reject) => {
       ActiveRequest.send(`${this.location}/${doc._id}`, "PUT", undefined, doc)
         .then((response: any) => {
-          resolve(response.data)
+          resolve(response.data);
 
           // We need to update _rev here, Should we just fetch in background?
           // Or do we manage md5 ourself
@@ -378,7 +370,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
           //   data: doc,
           //   create: new Date()
           // }
-
         })
         .catch(reject);
     });
@@ -399,7 +390,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       } else {
         // Couchdb 2.3 supports purge again
         ActiveRequest.send(`${this.location}/_purge`, "POST", undefined, {
-          [doc._id]: [doc._rev]
+          [doc._id]: [doc._rev],
         })
           .then((response: any) => resolve(response.data))
           .catch(reject);
@@ -442,16 +433,30 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   }
 
   /**
-   * Compacts the database
+   * Backups the database
    *
    * @returns {Promise<any>}
    */
-  public async compact(): Promise<any> {
+  public async backup(filename?: string): Promise<any> {
     if (ActiveOptions.get<any>("db", {}).selfhost) {
-      return await ActiveRequest.send(
-        `${this.location}/_compact`,
-        "GET"
-      );
+      return await ActiveRequest.send(`${this.location}/_backup`, "POST", [], {
+        filename,
+      });
+    } else {
+      // Not supported, Fail quietly.
+    }
+  }
+
+  /**
+   * Restore the database
+   *
+   * @returns {Promise<any>}
+   */
+  public async restore(filename: string): Promise<any> {
+    if (ActiveOptions.get<any>("db", {}).selfhost) {
+      return await ActiveRequest.send(`${this.location}/_restore`, "POST", [], {
+        filename,
+      });
     } else {
       // Not supported, Fail quietly.
     }
@@ -492,7 +497,8 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
  */
 export class ActiveDSChanges
   extends EventEmitter
-  implements ActiveDefinitions.IActiveDSChanges {
+  implements ActiveDefinitions.IActiveDSChanges
+{
   /**
    * Flag for cancelling the next listeing round
    *
@@ -507,7 +513,7 @@ export class ActiveDSChanges
    * @param {boolean} [bulk=false]
    */
   constructor(
-    private opts: { live?: boolean;[opt: string]: any },
+    private opts: { live?: boolean; [opt: string]: any },
     private location: string,
     private bulk: boolean = false
   ) {
@@ -548,7 +554,7 @@ export class ActiveDSChanges
             response.data.results.forEach((elm: any) => {
               this.emit("change", {
                 doc: elm.doc,
-                seq: elm.seq
+                seq: elm.seq,
               });
             });
           }

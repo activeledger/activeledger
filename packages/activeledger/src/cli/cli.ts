@@ -188,11 +188,11 @@ export class CLIHandler {
   }
 
   /**
-   * Start the compacting process, Will assume activeledger is running
+   * Create file backup
    *
    * @static
    */
-  public static async startCompact(): Promise<void> {
+  public static async startBackup(filename?: string): Promise<void> {
     this.checkConfig();
 
     // Now we can parse configuration
@@ -206,17 +206,48 @@ export class CLIHandler {
       );
 
       try {
-        ActiveLogger.info("Starting Compacting Process");
-        await compactDb.compact();
-        ActiveLogger.info("Compacting Finished");
+        ActiveLogger.info("Starting Backup Process");
+        let a = await compactDb.backup(filename);
       } catch (e) {
         ActiveLogger.error(
           e,
-          "Compacting Error Occured - Most likely timeout and process is still continuing"
+          "Backup Failed"
         );
       }
     } else {
-      ActiveLogger.fatal("Compacting only works using self hosted database");
+      ActiveLogger.fatal("Backup only works using self hosted database");
+    }
+  }
+
+  /**
+   * Restore
+   *
+   * @static
+   */
+  public static async startRestore(filename:string): Promise<void> {
+    this.checkConfig();
+
+    // Now we can parse configuration
+    ActiveOptions.parseConfig();
+
+    const dbConfig = ActiveOptions.get<any>("db", {});
+
+    if (dbConfig.selfhost) {
+      const compactDb = new ActiveDSConnect(
+        `http://${dbConfig.selfhost.host}:${dbConfig.selfhost.port}/${dbConfig.database}`
+      );
+
+      try {
+        ActiveLogger.info("Starting Restore Process");
+        let a = await compactDb.restore(filename);
+      } catch (e) {
+        ActiveLogger.error(
+          e,
+          "Restore Failed"
+        );
+      }
+    } else {
+      ActiveLogger.fatal("Restore only works using self hosted database");
     }
   }
 
