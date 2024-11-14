@@ -431,7 +431,7 @@ export class Process extends EventEmitter {
             // Does the string contain @ then we leave it alone
             if (this.entry.$tx.$contract.indexOf("@=") !== -1) {
               // Has to be this version
-              contract = this.entry.$tx.$contract.replace('@=','@');
+              contract = this.entry.$tx.$contract.replace("@=", "@");
             } else {
               try {
                 // Now we find the latest @ in the file system and include
@@ -455,7 +455,7 @@ export class Process extends EventEmitter {
           }
 
           // No cached version send to cache
-          if(!contractVersion) {
+          if (!contractVersion) {
             this.emit("contractLatestVersion", {
               contract: this.entry.$tx.$contract,
               file: contract,
@@ -484,7 +484,7 @@ export class Process extends EventEmitter {
           this.contractPathCache[this.entry.$tx.$contract] = fs.realpathSync(
             `${namespacePath}/${contract}.js`
           );
-        } 
+        }
         this.contractLocation =
           this.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
@@ -979,6 +979,10 @@ export class Process extends EventEmitter {
         this.entry.$nodes[this.reference].error = error.reason
           ? error.reason
           : error; //global ruined this?
+
+        if (error.code === 950) {
+          this.shared.raiseLedgerError(error.code, error.reason);
+        }
       }
       // Let all other nodes know about this transaction and our opinion
       if (!this.nodeResponse.leader) {
@@ -1094,7 +1098,7 @@ export class Process extends EventEmitter {
           this.emit("failed", this.willEmitData);
         }, 10000);
       } else {
-        this.emit("failed", data);
+        this.emit("failed", data); //
       }
     }
   }
