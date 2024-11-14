@@ -35,7 +35,6 @@ const version = "unset";
 // Initalise CLI Options
 ActiveOptions.init();
 
-
 // Show Version (Doesn't require identity)
 if (
   ActiveOptions.get<boolean>("version", false) ||
@@ -69,10 +68,22 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   }
 } else if (ActiveOptions.get<boolean>("stats", false)) {
   CLIHandler.getStats(version);
-} else if (ActiveOptions.get<boolean>("compact", false)) {
-  CLIHandler.startCompact();
-//} else if (ActiveOptions.get<boolean>("flush", false)) {
-//  CLIHandler.flushArchives(ActiveOptions.get<number>("flush", false));
+} else if (ActiveOptions.get<boolean>("backup", false)) {
+  CLIHandler.startBackup(ActiveOptions.get<string>("backup", null))
+    .then(() => {
+      process.exit();
+    })
+    .catch(() => {
+      process.exit();
+    });
+} else if (ActiveOptions.get<string>("restore", false)) {
+  CLIHandler.startRestore(ActiveOptions.get<string>("restore", false))
+    .then(() => {
+      process.exit();
+    })
+    .catch(() => {
+      process.exit();
+    });
 } else {
   CLIHandler.start();
 }

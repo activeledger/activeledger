@@ -1,9 +1,16 @@
 import { createHash } from "crypto";
+import {
+  createWriteStream,
+  createReadStream,
+  writeFileSync,
+  unlinkSync,
+} from "fs";
 import RocksDB from "rocksdb";
 import { LevelUp, default as levelup, LevelUpChain } from "levelup";
 import LevelDOWN from "leveldown";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
+import { newLineTransform } from "./newlinestream";
 
 /**
  * Generic Data Document
@@ -406,6 +413,68 @@ export class LevelMe {
       indexes: [],
     };
   }
+
+  /**
+   * Backup this database
+   *
+   * @param {string} [filename]
+   */
+  public backup(filename?: string) {
+    if (!filename) {
+      filename = `${Date.now()}.alb`;
+    }
+    writeFileSync(`${filename}.status`, filename);
+    const writer = createWriteStream(filename);
+
+    this.levelUp
+      .createValueStream()
+      .on("data", async (data: any) => {
+        writer.write(data.toString() + "\n");
+      })
+      .on("error", () => {})
+      .on("close", () => {})
+      .on("end", () => {
+        writer.end();
+        unlinkSync(`${filename}.status`);
+      });
+  }
+
+  /**
+   * Restore (overwriting) to this database
+   *
+   * @param {string} filename
+   */
+  public restore(filename: string) {
+    writeFileSync(`${filename}.status`, "running");
+
+    createReadStream(filename)
+      .pipe(newLineTransform())
+      .on("data", async (data: Buffer) => {
+        try {
+          const doc = JSON.parse(data.toString());
+          ActiveLogger.info(`Restoring ${doc._id}`);
+          await this.bulkDocs(doc, { new_edits: true });
+        } catch {
+          ActiveLogger.warn(`Restoring FAILED`);
+        }
+      })
+      .on("error", () => {})
+      .on("end", () => {
+        unlinkSync(`${filename}.status`);
+      });
+  }
+
+  // public async restore() {
+  //   await this.open();
+  //   this.levelUp
+  //     .createReadStream()
+  //     .pipe(JSONStream.stringify("", "", ""))
+  //     .pipe(createWriteStream("./backup.txt"));
+
+  //   createReadStream("backup.txt")
+  //     .pipe(JSONStream.parse())
+  //     .pipe(this.levelUp.createKeyStream);
+  // }
 
   /**
    * Returns all the data documents with filter options
@@ -908,7 +977,10 @@ export class LevelMe {
       // Replace with winning rev instead of branch crawling
       if (currentRev) {
         if (doc._rev !== currentRev) {
-          throw { msg: `Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentRev}`, throw: 1 };
+          throw {
+            msg: `Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentRev}`,
+            throw: 1,
+          };
         }
 
         if (!options.force_rev) {
