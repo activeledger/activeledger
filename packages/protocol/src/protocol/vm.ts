@@ -367,7 +367,7 @@ export class VirtualMachine
       };
 
       // Setup Event Engine
-      this.event = new EventEngine(this.dbev, payload.transaction.$contract);
+      this.event = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
 
       try {
         // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
