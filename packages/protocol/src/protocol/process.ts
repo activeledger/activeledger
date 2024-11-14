@@ -443,7 +443,7 @@ export class Process extends EventEmitter {
                     .filter((fn) => fn.includes(this.entry.$tx.$contract))
                     .sort(this.sortVersions)
                     .pop()
-                    ?.replace(".js", "");
+                    ?.replace(".js", "") || "notfound.404";
               } catch {
                 throw new Error("Contract not found");
               }
