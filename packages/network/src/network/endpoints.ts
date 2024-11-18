@@ -218,7 +218,7 @@ export class Endpoints {
                           (summary.errors?.filter(
                             (e) => e.indexOf("Stream Position Incorrect") !== -1
                           ).length || 0) >=
-                            Math.floor((summary.errors?.length || 0) / 2) ||
+                            Math.floor((summary.errors?.length || 0) / 3) || // the majority disagreed
                           // However what about I am the only one that is wrong (As they may send via me)
                           tx.$nodes[Home.reference].error?.indexOf(
                             "Stream Position Incorrect"
@@ -647,7 +647,7 @@ export class Endpoints {
               }
 
               // They may not have commited I maybe the only one!
-              if (check || (posCount === 1 && myPos)) {
+              if (check || (posCount >= 1 && myPos)) {
                 // TODO - Resolve this copy paste
                 //setTimeout(async () => {
                 const streams = [
