@@ -1009,15 +1009,12 @@ export class Process extends EventEmitter {
 
             // Check we didn't commit early
             if (!this.nodeResponse.commit) {
+              const data = response.data as ActiveDefinitions.LedgerEntry
               // Territoriality set?
-              this.entry.$territoriality = (
-                response.data as ActiveDefinitions.LedgerEntry
-              ).$territoriality;
+              this.entry.$territoriality = data.$territoriality ?? this.entry.$territoriality;
 
               // Append new $nodes
-              this.entry.$nodes = (
-                response.data as ActiveDefinitions.LedgerEntry
-              ).$nodes;
+              this.entry.$nodes = data.$nodes ?? this.entry.$nodes;             
 
               // Reset Reference node response
               this.nodeResponse = this.entry.$nodes[this.reference];
