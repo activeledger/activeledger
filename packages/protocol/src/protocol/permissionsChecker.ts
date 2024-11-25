@@ -25,6 +25,7 @@ import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 /**
  * Manages the permissions of revisions and signatures of each stream type
@@ -55,7 +56,7 @@ export class PermissionsChecker {
     //private checkRevs: boolean,
     private securityCache: ISecurityCache,
     private shared: Shared
-  ) { }
+  ) {}
 
   /**
    * Entry point for processing stream data
@@ -66,21 +67,46 @@ export class PermissionsChecker {
    */
   public async process(
     data: string[],
-    inputs: boolean = true
+    inputs: boolean = true,
+    retry: number = 0
   ): Promise<ActiveDefinitions.LedgerStream[]> {
     this.inputs = inputs;
     this.data = data;
-
-    // NOTE: Using ActiveLogger here will cause Activeledger to fail to start
-
     try {
       // Get all streams to process from the database
-      const streams: ActiveDefinitions.LedgerStream[] = await this.buildPromises();
+      const streams: ActiveDefinitions.LedgerStream[] =
+        await this.buildPromises();
 
       return this.processStreams(streams);
     } catch (error) {
-      return Promise.reject(error);
+      // Quorum change safety mech. 60% instant new transaction needing 100%
+      if (retry >= 2) {
+        return Promise.reject(error);
+      } else {
+        ActiveLogger.info(
+          this.data,
+          `Error Fetching Streams retry ${retry} of 2 with 100ms wait`
+        );
+        // Small delay should help write finalise but we don't want
+        // wait to long as it holds the transaction up from failing its vote
+        await this.sleep(100);
+        ActiveLogger.info(error, `Retrying PermissionsChecker due to`);
+        return await this.process(data, inputs, ++retry);
+      }
     }
+  }
+
+  /**
+   * Basic awaitable sleep
+   *
+   * TODO : Reduce duplicated code found in ./process.ts
+   *
+   * @private
+   * @param {number} time
+   * @returns
+   */
+  private sleep(time: number) {
+    return new Promise((resolve) => setTimeout(resolve, time));
   }
 
   /**
@@ -94,7 +120,7 @@ export class PermissionsChecker {
     const keys: string[] = [];
     let contractDataIncluded = false;
 
-    for (let i = this.data.length; i--;) {
+    for (let i = this.data.length; i--; ) {
       // Skip the map as the map is also to support labels. Here we just need raw id's
       const filteredPrefix = this.shared.filterPrefix(this.data[i], true);
 
@@ -103,7 +129,7 @@ export class PermissionsChecker {
       //contractDataIncluded = suffix === "data";
 
       // Maybe use set instead of checking?
-      if(keys.indexOf(filteredPrefix) === -1) {
+      if (keys.indexOf(filteredPrefix) === -1) {
         keys.push(filteredPrefix + ":stream");
         keys.push(filteredPrefix);
       }
@@ -123,7 +149,7 @@ export class PermissionsChecker {
       const results: ActiveDefinitions.LedgerStream[] = [];
 
       // Must be a better way to manage this, Less operations
-      for (let i = docs.rows.length; i--;) {
+      for (let i = docs.rows.length; i--; ) {
         // stream will be last so most likely need to replace
         // Using .doc for consistancy between data engines
         const baseDoc = docs.rows[i].doc._id.replace(":stream", "");
@@ -182,16 +208,15 @@ export class PermissionsChecker {
 
       // If contract data is being dealt with we need to handle meta ourselves
       if (contractDataIncluded) {
-
-        for (let i = results.length; i--;) {
+        for (let i = results.length; i--; ) {
           const sId = results[i].state._id;
 
           if (sId && sId.indexOf(":data")) {
             let cRes = results[i];
             cRes.meta = {
               _id: `${cRes.state._id}:meta`,
-              _rev: "0-context"
-            }
+              _rev: "0-context",
+            };
 
             results[i] = cRes;
           }
@@ -199,7 +224,7 @@ export class PermissionsChecker {
       }
 
       // lengths should match then have all streams and meta data
-      if (results.length === (keys.length / 2)) {
+      if (results.length === keys.length / 2) {
         return results;
       } else {
         throw {
@@ -241,7 +266,6 @@ export class PermissionsChecker {
         // Check that the revisions match between nodes
         if (revType && revType[streamId]) {
           if (revType[streamId] !== currentRevision) {
-
             // Normal and meta
             // this.db.clearCache(streamId);
             // this.db.clearCache(`${streamId}:stream`);
@@ -352,15 +376,18 @@ export class PermissionsChecker {
         authority.type
       );
 
-    const isLedgerAuthSignatures = ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
-      this.entry.$sigs[this.shared.filterPrefix(streamId)]
-    );
+    const isLedgerAuthSignatures =
+      ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(
+        this.entry.$sigs[this.shared.filterPrefix(streamId)]
+      );
 
     if (isLedgerAuthSignatures) {
       // Multiple signatures passed
       // Check that they haven't sent more signatures than we have authorities
 
-      const sigStreamKeys = Object.keys(this.entry.$sigs[this.shared.filterPrefix(streamId)]);
+      const sigStreamKeys = Object.keys(
+        this.entry.$sigs[this.shared.filterPrefix(streamId)]
+      );
       const authorities = stream.meta.authorities.length;
       if (sigStreamKeys.length > authorities) {
         return reject({
@@ -395,9 +422,11 @@ export class PermissionsChecker {
           }
         } else {
           // Get signature from tx object
-          const signature = (this.entry.$sigs[
-            this.shared.filterPrefix(streamId)
-          ] as ActiveDefinitions.LedgerAuthSignatures)[sigStream];
+          const signature = (
+            this.entry.$sigs[
+              this.shared.filterPrefix(streamId)
+            ] as ActiveDefinitions.LedgerAuthSignatures
+          )[sigStream];
           const authCheck = stream.meta.authorities.some(
             (authority: ActiveDefinitions.ILedgerAuthority) => {
               // If matching hash do sig check
@@ -439,7 +468,9 @@ export class PermissionsChecker {
             // Remap $sigs for later consumption
 
             this.entry.$sigs[this.shared.filterPrefix(streamId)] = {
-              [authority.hash]: this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+              [authority.hash]: this.entry.$sigs[
+                this.shared.filterPrefix(streamId)
+              ] as string,
             };
             return true;
           } else {
