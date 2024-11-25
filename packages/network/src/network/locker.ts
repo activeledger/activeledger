@@ -80,11 +80,28 @@ export class Locker {
       let i = stream.length;
       let success = true;
       while (i--) {
-        if (!Locker.hold(stream[i], umid)) {
-          // Update flag and quit early
-          success = false;
-          break;
+        // Don't think this will be affected as much as release
+        // if (!Locker.hold(stream[i], umid)) {
+        //   // Update flag and quit early
+        //   success = false;
+        //   break;
+        // }
+        // selfsign check
+        if (stream[i].length < 60) {
+          if (!this.cell[stream[i]]) {
+            this.cell[stream[i]] = {
+              umid,
+              time: Date.now(),
+            };
+          } else {
+            success = false;
+            break;
+          }
         }
+      }
+      if (!success) {
+        // Lets unlock the ones we manage to lock!
+        Locker.release(stream, umid);
       }
       // Let process know
       return success;
@@ -117,10 +134,13 @@ export class Locker {
   public static release(stream: string[], umid: string): boolean;
   public static release(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
-
       let i = stream.length;
       while (i--) {
-        Locker.release(stream[i], umid);
+        // This maybe the problem being pushed to the bottom of the stack
+        //Locker.release(stream[i], umid);
+        if (this.cell[stream[i]] && this.cell[stream[i]].umid === umid) {
+          delete this.cell[stream[i]];
+        }
       }
     } else {
       if (this.cell[stream] && this.cell[stream].umid === umid) {

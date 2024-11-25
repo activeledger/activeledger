@@ -62,6 +62,8 @@ interface process {
   resolve: any;
   reject: any;
   pid: number;
+  finished: boolean;
+  responded: boolean;
   shutdown?: boolean;
 }
 
@@ -186,18 +188,23 @@ export class Host extends Home {
       if (entry.$broadcast) {
         // We may already have the $umid in memory
         if (this.processPending[entry.$umid]) {
-          ActiveLogger.debug(
-            this.processPending[entry.$umid],
-            "Broadcast Recieved : " + entry.$umid
-          );
+          // ActiveLogger.debug(
+          //   this.processPending[entry.$umid],
+          //   "Broadcast Recieved : " + entry.$umid
+          // );
           // Process Assigned?
           if (
-            this.processPending[entry.$umid].pid &&
+            !this.processPending[entry.$umid]?.finished &&
+            this.processPending[entry.$umid]?.pid &&
             // If a lead/er we don't need to let sub processor know
             // TODO sometimes this.reference is nullin $nodes related to the #
             !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
               ?.leader
           ) {
+            ActiveLogger.debug(
+              this.processPending[entry.$umid],
+              "Broadcast Recieved : " + entry.$umid
+            );
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
               this.processPending[entry.$umid].pid
@@ -216,7 +223,8 @@ export class Host extends Home {
           }
           return resolve({
             status: 200,
-            data: this.processPending[entry.$umid].entry,
+            data: { ok: true },
+            //data: this.processPending[entry.$umid].entry,
           });
         }
       }
@@ -225,31 +233,33 @@ export class Host extends Home {
       if (!this.processPending[entry.$umid]) {
         // Add to pending (Using Promises instead of http request)
         this.processPending[entry.$umid] = {
-          entry: entry,
+          entry,
           resolve: (response: unknown) => {
-            //setTimeout(() => {
-            resolve(response);
-            this.release({
-              entry,
-              resolve: null,
-              reject: null,
-              pid: 0,
-            });
-            //}, 10);
-            ActiveLogger.debug("Client Response TX : " + entry.$umid);
+            this.release(entry);
+            if (this.processPending[entry.$umid]) {
+              this.processPending[entry.$umid].finished = true;
+            }
+            if (!this.processPending[entry.$umid].responded) {
+              resolve(response);
+              ActiveLogger.debug("Client Response TX : " + entry.$umid);
+              this.processPending[entry.$umid].responded = true;
+            }
           },
           reject: (response: unknown) => {
             //setTimeout(() => {
-            reject(response);
-            this.release({
-              entry,
-              resolve: null,
-              reject: null,
-              pid: 0,
-            });
+            this.release(entry);
+            if (this.processPending[entry.$umid]) {
+              this.processPending[entry.$umid].finished = true;
+            }
+            if (!this.processPending[entry.$umid].responded) {
+              reject(response);
+              this.processPending[entry.$umid].responded = true;
+            }
             //}, 10);
           },
           pid: 0,
+          finished: false,
+          responded: false,
         };
         // Need to check it doesn't exist
         if (entry.$tx.$expire) {
@@ -277,6 +287,15 @@ export class Host extends Home {
         }
 
         this.processQueue(entry, internal);
+
+        // If this is internal and broadcast should just resolve? Why hold it open for the first one.
+        if (internal && entry.$broadcast) {
+          this.processPending[entry.$umid].responded = true;
+          return resolve({
+            status: 200,
+            data: { ok: true },
+          });
+        }
       } else {
         // If we have it and didn't find it, Lets return this request, However
         // do we need to manage the existing one? Possibly stuck? play safe
@@ -899,7 +918,8 @@ export class Host extends Home {
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
-      this.processPending[umid].entry.$nodes[this.reference]
+      this.processPending[umid].entry.$nodes[this.reference] &&
+      !this.processPending[umid].finished // Only send if not finished, if finished we have no real interest
     ) {
       ActiveLogger.debug("Broadcasting TX : " + umid);
 
@@ -1212,20 +1232,17 @@ export class Host extends Home {
    * @param {string} v
    * @param {boolean} noWait Don't wait to release
    */
-  private release(pending: process) {
+  private release(entry: ActiveDefinitions.LedgerEntry) {
     // Ask for releases
     Locker.release(
-      [
-        ...this.labelOrKey(pending.entry.$tx.$i),
-        ...this.labelOrKey(pending.entry.$tx.$o),
-      ],
-      pending.entry.$umid
+      [...this.labelOrKey(entry.$tx.$i), ...this.labelOrKey(entry.$tx.$o)],
+      entry.$umid
     );
 
     // Keep transaction in memory for a bit (5 Minutes)
     setTimeout(() => {
-      if (pending.entry) {
-        this.destroy(pending.entry.$umid);
+      if (entry) {
+        this.destroy(entry.$umid);
       }
     }, RELEASE_SHUTDOWN_TIMEOUT);
 
@@ -1235,6 +1252,8 @@ export class Host extends Home {
       this.processQueue();
     }, 200);
   }
+
+  private processingBLQ = false;
 
   /**
    * Manages the busy lock queue
@@ -1251,7 +1270,8 @@ export class Host extends Home {
     }
 
     // Run through the queue in order to process
-    if (this.busyLocksQueue.length) {
+    if (!this.processingBLQ && this.busyLocksQueue.length) {
+      this.processingBLQ = true;
       for (let i = 0; i < this.busyLocksQueue.length; i++) {
         if (
           this.hold(
@@ -1271,6 +1291,7 @@ export class Host extends Home {
           this.busyLocksQueue.splice(i, 1);
         }
       }
+      this.processingBLQ = false;
     }
 
     // After processing earlier transactions now deal with calling
@@ -1641,11 +1662,14 @@ export class Host extends Home {
 
         // Write Header
         // All outputs are JSON and
-        ActiveLogger.info(
-          `Request Response ${
-            data.$umid ? data.$umid : "No Umid"
-          } : S=${started}, TT=${Date.now() - started}ms`
-        );
+        if (data.$umid) {
+          // Only output if umid reduce internal 0ms spam
+          ActiveLogger.info(
+            `Request Response ${
+              data.$umid ? data.$umid : "No Umid"
+            } : S=${started}, TT=${Date.now() - started}ms`
+          );
+        }
         this.writeResponse(
           res,
           response.statusCode,
