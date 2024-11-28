@@ -87,7 +87,7 @@ export class Locker {
         //   break;
         // }
         // selfsign check
-        if (stream[i].length < 60) {
+        if (stream[i].length > 60) {
           if (!this.cell[stream[i]]) {
             this.cell[stream[i]] = {
               umid,
