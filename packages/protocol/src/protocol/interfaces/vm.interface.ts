@@ -63,7 +63,7 @@ export interface IVMDataPayload {
   outputs: ActiveDefinitions.LedgerStream[];
   readonly: ActiveDefinitions.LedgerIORputs;
   key: number;
-  contractData?: ActiveDefinitions.IContractData;
+  contractData?: ActiveDefinitions.IContractData | undefined | null;
 }
 
 export interface IVMInternalCache {
@@ -98,6 +98,8 @@ export interface IVirtualMachine {
   ): void;
 
   getActivityStreamsFromVM(umid: string): ActiveDefinitions.LedgerStream[];
+
+  getNewContractData(umid: string): boolean;
 
   getInternodeCommsFromVM(umid: string): any;
 

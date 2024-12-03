@@ -21,17 +21,12 @@
  * SOFTWARE.
  */
 
-import {
-  ActiveDSConnect,
-  ActiveOptions,
-  ActiveRequest,
-} from "@activeledger/activeoptions";
+import { ActiveDSConnect, ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
-import { EventEngine } from "@activeledger/activequery";
 
 // Maximum memory used in VM processor
 const MAX_MEMORY_MB =
@@ -62,7 +57,10 @@ interface ISetup extends IMakeHome {
 }
 
 interface IContractVersions {
-  [contractName: string]: string;
+  [contractName: string]: {
+    file: string;
+    data?: any;
+  };
 }
 
 /**
@@ -183,28 +181,24 @@ class Processor {
           break;
         case "tx":
           // Create new Protocol Process object for transaction
-          this.protocols[m.entry.$umid] =
-            new ActiveProtocol.Process(
-              m.entry,
-              Home.host,
-              Home.reference,
-              Home.right,
-              this.db,
-              this.dbe,
-              this.dbev,
-              this.secured
-            );
+          this.protocols[m.entry.$umid] = new ActiveProtocol.Process(
+            m.entry,
+            Home.host,
+            Home.reference,
+            Home.right,
+            this.db,
+            this.dbe,
+            this.dbev,
+            this.secured
+          );
 
           // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
           // While it is global we need to manage it here to keep the encapsulation
-          this.unhandledRejection[m.entry.$umid] = (
-            reason: Error
-          ) => {
+          this.unhandledRejection[m.entry.$umid] = (reason: Error) => {
             // Make sure the object exists
             if (
               this.protocols[m.entry.$umid] &&
-              !(this.protocols[m.entry.$umid] as any)
-                .unhandled
+              !(this.protocols[m.entry.$umid] as any).unhandled
             ) {
               ActiveLogger.warn(
                 reason,
@@ -212,9 +206,7 @@ class Processor {
               );
               this.unhandled(m.entry, reason);
               // Only call once (TODO remove any)
-              (
-                this.protocols[m.entry.$umid] as any
-              ).unhandled = true;
+              (this.protocols[m.entry.$umid] as any).unhandled = true;
             }
           };
 
@@ -225,38 +217,34 @@ class Processor {
           );
 
           // Event: Manage Commits
-          this.protocols[m.entry.$umid].on(
-            "commited",
-            (response: any) => {
-              this.committed(m.entry, response);
-            }
-          );
+          this.protocols[m.entry.$umid].on("commited", (response: any) => {
+            this.committed(m.entry, response);
+          });
 
           // Event: Manage Failed
-          this.protocols[m.entry.$umid].on(
-            "failed",
-            (error: any) => {
-
-              this.failed(m.entry, error.error);
+          this.protocols[m.entry.$umid].on("failed", (error: any) => {
+            // Clear contract data cache, This should fixed with SPI
+            // however it is ineffiecent due to the fact all errors will reset contract data
+            // TODO: find better location to catch and throw if its contract data relevent
+            if (this.latestContractVersion[m.entry.$tx.$contract]?.data) {
+              this.send("contractData", {
+                contract: m.entry.$tx.$contract,
+                data: null,
+              });
             }
-          );
+
+            this.failed(m.entry, error.error);
+          });
 
           // Event: Manage broadcast
-          this.protocols[m.entry.$umid].on(
-            "broadcast",
-            (early) => {
-
-              this.broadcast(m.entry, early);
-            }
-          );
+          this.protocols[m.entry.$umid].on("broadcast", (early) => {
+            this.broadcast(m.entry, early);
+          });
 
           // Event: Manage Reload Requests
-          this.protocols[m.entry.$umid].on(
-            "reload",
-            () => {
-              this.reloadUp(m.entry.$umid);
-            }
-          );
+          this.protocols[m.entry.$umid].on("reload", () => {
+            this.reloadUp(m.entry.$umid);
+          });
 
           // Disable
           // Event: Manage Throw Transactions
@@ -272,15 +260,33 @@ class Processor {
             "contractLatestVersion",
             (response: { contract: string; file: string }) => {
               if (response) {
-                this.latestContractVersion[response.contract] = response.file;
+                this.latestContractVersion[response.contract] = {
+                  file: response.file,
+                  data: null,
+                };
                 this.send("contractLatestVersion", response);
+              }
+            }
+          );
+
+          // Event: Contract Data
+          this.protocols[m.entry.$umid].on(
+            "contractData",
+            (response: { contract: string; data: any }) => {
+              if (response) {
+                if (this.latestContractVersion[response.contract]) {
+                  this.latestContractVersion[response.contract].data =
+                    response.data;
+                }
+                this.send("contractData", response);
               }
             }
           );
 
           // Start the process
           this.protocols[m.entry.$umid].start(
-            this.latestContractVersion[m.entry.$tx.$contract]
+            this.latestContractVersion[m.entry.$tx.$contract]?.file,
+            this.latestContractVersion[m.entry.$tx.$contract]?.data
           );
           break;
         case "broadcast":
@@ -297,13 +303,21 @@ class Processor {
           this.reloadDown(m.data);
           break;
         case "contractLatestVersion":
-          if(m.data.refresh) {
+          if (m.data.refresh) {
             // Drastic but captures all scenarios, Maybe faster
             this.latestContractVersion = {};
           }
-          // Only change if different. (Maybe check semver?)
-          if (this.latestContractVersion[m.data.contract] != m.data.file) {
-            this.latestContractVersion[m.data.contract] = m.data.file;
+          if (this.latestContractVersion[m.data.contract]) {
+            this.latestContractVersion[m.data.contract].file = m.data.file;
+          } else {
+            this.latestContractVersion[m.data.contract] = {
+              file: m.data.file,
+            };
+          }
+          break;
+        case "contractData":
+          if (this.latestContractVersion[m.data.contract]) {
+            this.latestContractVersion[m.data.contract].data = m.data.data;
           }
           break;
         default:
@@ -337,7 +351,7 @@ class Processor {
       this.send("contractLatestVersion", {
         contract: output,
         file: `${output}@${input.version}`,
-        refresh: true
+        refresh: true,
       });
       // Implement for labels?
     }
@@ -373,7 +387,7 @@ class Processor {
 
     // Pass back to host to respond
     this.send("commited", {
-      umid: entry.$umid,  // HERE
+      umid: entry.$umid,
       nodes: entry.$nodes,
     });
 
@@ -432,7 +446,7 @@ class Processor {
 
   /**
    * Process throwing transactions to other ledgers with event tracking
-   * 
+   *
    * Disabled
    *
    * @private
