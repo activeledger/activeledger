@@ -285,6 +285,18 @@ export class VirtualMachine
   }
 
   /**
+   * Fetch if contract data got updated
+   *
+   * @param {string} umid
+   * @return {*}  {boolean}
+   */
+  public getNewContractData(
+    umid: string
+  ): boolean {
+    return this.virtualInstance.getContractData(umid);
+  }
+
+  /**
    * Clear transaction from memory by umid
    *
    * @param {string} umid

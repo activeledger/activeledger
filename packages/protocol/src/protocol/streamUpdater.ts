@@ -138,7 +138,9 @@ export class StreamUpdater {
   public async updateStreams(earlyCommit?: Function): Promise<void> {
     if (earlyCommit) this.earlyCommit = earlyCommit;
 
-    this.streams.length ? await this.processStreams() : await this.processNoStreams();
+    this.streams.length
+      ? await this.processStreams()
+      : await this.processNoStreams();
   }
 
   private async processNoStreams() {
@@ -227,7 +229,7 @@ export class StreamUpdater {
       $datetime: this.entry.$datetime,
       //$nodes: this.entry.$nodes, // This is to different! Umid recovery not working
       $origin: this.entry.$origin,
-      $remoteAddr: this.entry.$remoteAddr
+      $remoteAddr: this.entry.$remoteAddr,
     };
   }
 
@@ -423,21 +425,21 @@ export class StreamUpdater {
       emit = true;
 
     try {
-        // TODO - Resolve and return to .all
-        // Some reason for specific contract/locking combo bulkDoc fails
-        // for now slightly slower and checking saving makes sense.
-        //await Promise.all([
-        const bulkDocs = await this.db.bulkDocs(this.docs)//,
-        if(bulkDocs.ok) {
-          this.dbev.post({
-            _id: `umid:${new Date(this.entry.$datetime).getTime()},${
-              this.entry.$umid
-            }`,
-          })
-        }else{
-          throw "Bulk Doc Insert Failed"
-        }
-        
+      // TODO - Resolve and return to .all
+      // Some reason for specific contract/locking combo bulkDoc fails
+      // for now slightly slower and checking saving makes sense.
+      //await Promise.all([
+      const bulkDocs = await this.db.bulkDocs(this.docs); //,
+      if (bulkDocs.ok) {
+        this.dbev.post({
+          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
+            this.entry.$umid
+          }`,
+        });
+      } else {
+        throw "Bulk Doc Insert Failed";
+      }
+
       //]);
       //ActiveLogger.info(x, `PROMISE RESPONSE ${this.entry.$umid}`);
     } catch (error) {
@@ -480,6 +482,13 @@ export class StreamUpdater {
       //   // Respond with the possible early commited
       //   this.emitter.emit("commited");
       // }
+
+      if (this.virtualMachine.getNewContractData(this.entry.$umid)) {
+        this.emitter.emit("contractData", {
+          contract: this.entry.$tx.$contract.substring(0,64), // remove @....
+          data: null, // Set to null and it will refresh next call
+        });
+      }
 
       try {
         // Handle post processing if it exists

@@ -28,16 +28,11 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import {
-  IVMDataPayload,
-  IVMContractHolder,
-  IVirtualMachine,
-} from "./interfaces/vm.interface";
+import { IVMDataPayload, IVirtualMachine } from "./interfaces/vm.interface";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
-import path from "path";
 
 const BROADCAST_TIMEOUT_VOTE = 30 * 1000;
 const BROADCAST_TIMEOUT_COMMIT = 60 * 1000;
@@ -102,7 +97,7 @@ export class Process extends EventEmitter {
    * @private
    * @type {string}
    */
-  private contractRef: string;
+  //private contractRef: string;
 
   /**
    * Holds string reference of inputs streams
@@ -390,7 +385,10 @@ export class Process extends EventEmitter {
    * Starts the consensus and commit phase processing
    *
    */
-  public async start(contractVersion?: string) {
+  public async start(
+    contractVersion?: string,
+    contractData?: ActiveDefinitions.IContractData | undefined | null
+  ) {
     ActiveLogger.debug("New TX : " + this.entry.$umid);
 
     // Compiled Contracts sit in another location
@@ -559,6 +557,8 @@ export class Process extends EventEmitter {
         // [umid]:volatile  : Data that can be lost
         // [umid]:data      : Data directly linked to a contract, umid should always be a contract ID
 
+        // TODO these do 3 read requests to the database, Lets combine
+
         try {
           // Check the input revisions
           const inputStreams: ActiveDefinitions.LedgerStream[] =
@@ -568,33 +568,71 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          //let contractData: ActiveDefinitions.IContractData | undefined =
-          //  undefined;
+          // Default Contracts don't use context and are not available from the database
+          if (!contractData && !this.isDefault) {
+            // First we check it exists, If it doesn't we set a cache value to know it is empty
+            if (await this.db.exists(`${this.contractId}:data`)) {
+              // Contract data exists deal with it
+              try {
+                const contractDataStreams =
+                  await this.permissionChecker.process(
+                    [`${this.contractId}:data`],
+                    false,
+                    5 // Over 2 don't retry fetching (although may need to retry?)
+                  );
 
-          // // Default Contracts don't use context and are not available from the database
-          // if (!this.isDefault) {
-          //   try {
-          //     const contractDataStreams = await this.permissionChecker.process(
-          //       [`${this.contractId}:data`],
-          //       false
-          //     );
+                if (contractDataStreams.length > 0) {
+                  contractData = contractDataStreams[0]
+                    .state as unknown as ActiveDefinitions.IContractData;
+                }
 
-          //     if (contractDataStreams.length > 0) {
-          //       contractData = contractDataStreams[0]
-          //         .state as unknown as ActiveDefinitions.IContractData;
-          //     }
-          //   } catch (e) {
-          //     // This catch block is used for when a contract doesn't have a data file yet
-          //     // Need to make sure we still restore correctly if it is just a single node missing
-          //     // the data file for that contract.
-          //     if (e.code === 1200) {
-          //       // 1200 means the _rev map didn't match so position error (defaults as output)
-          //       throw e;
-          //     }
-          //   }
-          // }
-
-          this.process(inputStreams, outputStreams);
+                // Now run as a cache (with TTL? and reset then don't need to query everytime)
+              } catch (e) {
+                // This catch block is used for when a contract doesn't have a data file yet
+                // Need to make sure we still restore correctly if it is just a single node missing
+                // the data file for that contract.
+                if (e.code === 1200) {
+                  // 1200 means the _rev map didn't match so position error (defaults as output)
+                  // However lets clear the data
+                  this.emit("contractData", {
+                    contract: this.entry.$tx.$contract,
+                    //contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+                    data: {},
+                  });
+                  // SPI will not resolve this, So need to test and fix!
+                  throw e;
+                }
+              }
+            } else {
+              // Contract data doesn't exist
+              contractData = { _id: "", data: {} };
+            }
+            this.emit("contractData", {
+              contract: this.entry.$tx.$contract,
+              //contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+              data: contractData,
+            });
+          } else {
+            // Problem with cached contractData not checking 1200 rev need to do that!
+            // use processStreams in pertmissions checker?
+            if (contractData && this.contractId) {
+              const rev = `0-context:${contractData._rev}`;
+              // No rev just add it
+              if (this.entry.$revs.$o[`${this.contractId}:data`]) {
+                // Check
+                if (this.entry.$revs.$o[`${this.contractId}:data`] !== rev) {
+                  throw {
+                    code: 1200,
+                    reason: "Output Stream Position Incorrect",
+                  };
+                }
+              } else {
+                // Set
+                this.entry.$revs.$o[`${this.contractId}:data`] = rev;
+              }
+            }
+          }
+          this.process(inputStreams, outputStreams, contractData);
         } catch (error) {
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
@@ -654,6 +692,11 @@ export class Process extends EventEmitter {
               }
             }
           }
+        } else {
+          return this.shared.raiseLedgerError(
+            1260,
+            new Error("Self signed - Must have inputs")
+          );
         }
 
         try {
@@ -884,17 +927,9 @@ export class Process extends EventEmitter {
    * @param {LedgerStream[]} inputs
    */
   private async process(
-    inputs: ActiveDefinitions.LedgerStream[]
-  ): Promise<void>;
-  private async process(
     inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[]
-  ): //contractData: ActiveDefinitions.IContractData | undefined
-  Promise<void>;
-  private async process(
-    inputs: ActiveDefinitions.LedgerStream[],
-    outputs: ActiveDefinitions.LedgerStream[] = []
-    // contractData: ActiveDefinitions.IContractData | undefined = undefined
+    outputs: ActiveDefinitions.LedgerStream[] = [],
+    contractData: ActiveDefinitions.IContractData | undefined | null = undefined
   ): Promise<void> {
     try {
       // Transaction should be fully described now (revs etc)
@@ -938,7 +973,7 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: 0,
-        //contractData,
+        contractData,
       };
 
       // Which VM to run transaction in
@@ -1009,12 +1044,13 @@ export class Process extends EventEmitter {
 
             // Check we didn't commit early
             if (!this.nodeResponse.commit) {
-              const data = response.data as ActiveDefinitions.LedgerEntry
+              const data = response.data as ActiveDefinitions.LedgerEntry;
               // Territoriality set?
-              this.entry.$territoriality = data.$territoriality ?? this.entry.$territoriality;
+              this.entry.$territoriality =
+                data.$territoriality ?? this.entry.$territoriality;
 
               // Append new $nodes
-              this.entry.$nodes = data.$nodes ?? this.entry.$nodes;             
+              this.entry.$nodes = data.$nodes ?? this.entry.$nodes;
 
               // Reset Reference node response
               this.nodeResponse = this.entry.$nodes[this.reference];

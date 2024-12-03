@@ -334,7 +334,10 @@ export class Stream {
    */
   public setContractData<T>(contractData: T): void {
     if (!this.contractData._id) {
-      this.contractData._id = `${this.transactions.$contract}:data`;
+      this.contractData._id = `${this.transactions.$contract.substring(
+        0,
+        64
+      )}:data`;
     }
 
     this.contractData.data = contractData as any;
@@ -625,7 +628,6 @@ export class Activity {
 
       // Flag up everything
       this.updatedMeta = this.volatileUpdated = this.updated = true;
-
     }
   }
 

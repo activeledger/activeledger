@@ -223,8 +223,9 @@ export class Host extends Home {
           }
           return resolve({
             status: 200,
-            data: { ok: true },
-            //data: this.processPending[entry.$umid].entry,
+            //data: { ok: true },
+            // SPI uses this to know if the non sending entry node needs fixing
+            data: this.processPending[entry.$umid].entry,
           });
         }
       }
@@ -806,6 +807,7 @@ export class Host extends Home {
             );
           }
           break;
+        case "contractData":
         case "contractLatestVersion":
           // Let other processes know of new version
           this.processors.forEach((processor) => {
@@ -1663,12 +1665,15 @@ export class Host extends Home {
         // Write Header
         // All outputs are JSON and
         if (data.$umid) {
-          // Only output if umid reduce internal 0ms spam
-          ActiveLogger.info(
-            `Request Response ${
-              data.$umid ? data.$umid : "No Umid"
-            } : S=${started}, TT=${Date.now() - started}ms`
-          );
+          const TT = Date.now() - started;
+          if (TT > 5) {
+            // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
+            ActiveLogger.info(
+              `Request Response ${
+                data.$umid ? data.$umid : "No Umid"
+              } : S=${started}, TT=${TT}ms`
+            );
+          }
         }
         this.writeResponse(
           res,

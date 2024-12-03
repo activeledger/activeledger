@@ -236,6 +236,16 @@ export class Endpoints {
 
                             // Should probably still wait on locks with priority to hold
                             if (streams.length) {
+                              // loop and add :stream
+                              for (let i = streams.length; i--; ) {
+                                streams.push(`${streams[i]}:stream`);
+                              }
+
+                              // and contract:data
+                              streams.push(
+                                `${tx.$tx.$contract.substring(0, 64)}:data`
+                              );
+
                               const networkStreams =
                                 await host.neighbourhood.knockAll("stream", {
                                   $streams: streams,
@@ -656,7 +666,18 @@ export class Endpoints {
                     ...this.labelOrKey(ledger.data.$tx.$o),
                   ]),
                 ];
+
                 if (streams.length) {
+                  // loop and add :stream
+                  for (let i = streams.length; i--; ) {
+                    streams.push(`${streams[i]}:stream`);
+                  }
+
+                  // and contract:data
+                  streams.push(
+                    `${ledger.data.$tx.$contract.substring(0, 64)}:data`
+                  );
+
                   const networkStreams = await host.neighbourhood.knockAll(
                     "stream",
                     {
