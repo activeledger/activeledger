@@ -21,12 +21,13 @@
  * SOFTWARE.
  */
 //import * as http from "http";
-import { createServer, Socket, Server } from "net"
+import { createServer, Socket, Server } from "net";
 
 import * as url from "url";
 import * as querystring from "querystring";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveGZip } from "@activeledger/activeutilities";
+import { App, HttpResponse, TemplatedApp } from "uWebSockets.js";
 
 /**
  * Interface for exposing processed request data to the endpoints
@@ -73,7 +74,7 @@ export class ActiveHttpd {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".ttf": "aplication/font-sfnt",
-    ".woff": "font/woff"
+    ".woff": "font/woff",
   };
 
   /**
@@ -82,7 +83,7 @@ export class ActiveHttpd {
    * @private
    * @type {http.Server}
    */
-  private server: Server;
+  private server: TemplatedApp;
 
   /**
    * Route Handler
@@ -96,7 +97,7 @@ export class ActiveHttpd {
    * Creates an instance of ActiveHttpd.
    * @param {boolean} [enableCORS=false]
    */
-  constructor(private enableCORS: boolean = false) { }
+  constructor(private enableCORS: boolean = false) {}
 
   /**
    * Define Route
@@ -106,12 +107,12 @@ export class ActiveHttpd {
    */
   public use(url: string, method: string, handler: Function) {
     // Add to routes
-    let path = url == "/" ? [url] : url.split("/").filter(url => url);
+    let path = url == "/" ? [url] : url.split("/").filter((url) => url);
     this.routes.push({
       path,
       pac: this.pathAstriskCount(path),
       method,
-      handler
+      handler,
     });
   }
 
@@ -128,127 +129,244 @@ export class ActiveHttpd {
     // Create Server
     //this.server = http.createServer();
 
-    this.server = createServer( socket => {
+    // this.server = createServer( socket => {
 
-      let dBuf: Buffer[] = [];
-      let headersEnded: number;
-      let method: string, path: string, headers: any, httpVersion: string;
+    //   let dBuf: Buffer[] = [];
+    //   let headersEnded: number;
+    //   let method: string, path: string, headers: any, httpVersion: string;
 
-      socket.on('error', (e)=>{
-        socket.destroy();
-      })
+    //   socket.on('error', (e)=>{
+    //     socket.destroy();
+    //   })
 
-      socket.on('close', ()=>{
-        socket.end();
-      })
+    //   socket.on('close', ()=>{
+    //     socket.end();
+    //   })
 
-      socket.on('data', async (data) => {
-        // Store as it "may not be enough"
-        dBuf.push(data);
+    //   socket.on('data', async (data) => {
+    //     // Store as it "may not be enough"
+    //     dBuf.push(data);
 
-        if (!headersEnded) {
-          headersEnded = data.indexOf('\r\n\r\n');
-          const requestHeader = data.subarray(0, headersEnded).toString()
-          const [firstLine, ...otherLines] = requestHeader.split('\n');
-          [method, path, httpVersion] = firstLine.trim().split(' ');
-          headers = Object.fromEntries(otherLines.filter(_ => _)
-            .map(line => line.split(':').map(part => part.trim()))
-            .map(([name, ...rest]) => [name, rest.join(' ')]));
-        }
+    //     if (!headersEnded) {
+    //       headersEnded = data.indexOf('\r\n\r\n');
+    //       const requestHeader = data.subarray(0, headersEnded).toString()
+    //       const [firstLine, ...otherLines] = requestHeader.split('\n');
+    //       [method, path, httpVersion] = firstLine.trim().split(' ');
+    //       headers = Object.fromEntries(otherLines.filter(_ => _)
+    //         .map(line => line.split(':').map(part => part.trim()))
+    //         .map(([name, ...rest]) => [name, rest.join(' ')]));
+    //     }
 
-        if (log) ActiveLogger.info(`${method} - ${path}`);
+    //     if (log) ActiveLogger.info(`${method} - ${path}`);
 
-        const parsedUrl = url.parse(path as string || "/");
-        const pathSegments = (parsedUrl.pathname as string)
-          .split("/")
-          .filter(url => url);
+    //     const parsedUrl = url.parse(path as string || "/");
+    //     const pathSegments = (parsedUrl.pathname as string)
+    //       .split("/")
+    //       .filter(url => url);
 
-        // Setup Default
-        if (!pathSegments.length) {
-          pathSegments.push("/");
-        }
+    //     // Setup Default
+    //     if (!pathSegments.length) {
+    //       pathSegments.push("/");
+    //     }
 
-        // Press Remote IP
-        const ip: IActiveHttpIp = {
-          remote: httpd.ipv46(socket.remoteAddress || "")
-        };
+    //     // Press Remote IP
+    //     const ip: IActiveHttpIp = {
+    //       remote: httpd.ipv46(socket.remoteAddress || "")
+    //     };
 
-        // Has a proxy been involved
-        if (headers["x-forwarded-for"]) {
-          ip.proxy = ip.remote;
-          ip.remote = httpd.ipv46(headers["x-forwarded-for"] as string);
-        }
+    //     // Has a proxy been involved
+    //     if (headers["x-forwarded-for"]) {
+    //       ip.proxy = ip.remote;
+    //       ip.remote = httpd.ipv46(headers["x-forwarded-for"] as string);
+    //     }
 
-        if (method === "POST" || method === "PUT") {
-          // Only support content length (this is lowercase! I  think lower case all) as I am not setting
-          const contentLength = parseInt(headers['Content-Length'] || headers['content-length']);
-          let body = Buffer.concat(dBuf).subarray(headersEnded + 4, contentLength + headersEnded + 4);
-          if (body.length >= contentLength) {
-            // gzipped?
-            // Sometimes internal transactions fail to be decompressed
-            // the header shouldn't be missing but added magic number check as a back
-            // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
-            if (
-              headers["content-encoding"] == "gzip" ||
-              (body[0] == 0x1f && body[1] == 0x8b)
-            ) {
-              try {
-                body = await ActiveGZip.ungzip(body);
-              } catch (e) {
-                // Just incase the magic number still invalid gzip
-                // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
-                // with the original non-gzip compliant data
-              }
-            }
-            body = JSON.parse(body.toString());
-            httpd.processListen(
-              {
-                url: pathSegments,
-                query: querystring.parse(parsedUrl.query as string),
-                body,
-                ip
-              },
-              {
-                headers,
-                method,
-                url: path,
-                connection: {
-                  remoteAddress: socket.remoteAddress?.toString() || "unknown"
-                }
-              }, socket
-            );
-            // reuse if not closed
-            dBuf = [];
-            headersEnded = 0;
-            method = path = httpVersion = "";
-          };
-        } else {
-          httpd.processListen(
-            {
-              url: pathSegments,
-              query: querystring.parse(parsedUrl.query as string),
-              body:"",
-              ip
-            },
-            {
-              headers,
-              method,
-              url: path,
-              connection: {
-                remoteAddress: socket.remoteAddress?.toString() || "unknown"
-              }
-            }, socket
-          );
-          // reuse if not closed
-          dBuf = [];
-          headersEnded = 0;
-          method = path = httpVersion = "";
-        }
+    //     if (method === "POST" || method === "PUT") {
+    //       // Only support content length (this is lowercase! I  think lower case all) as I am not setting
+    //       const contentLength = parseInt(headers['Content-Length'] || headers['content-length']);
+    //       let body = Buffer.concat(dBuf).subarray(headersEnded + 4, contentLength + headersEnded + 4);
+    //       if (body.length >= contentLength) {
+    //         // gzipped?
+    //         // Sometimes internal transactions fail to be decompressed
+    //         // the header shouldn't be missing but added magic number check as a back
+    //         // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+    //         if (
+    //           headers["content-encoding"] == "gzip" ||
+    //           (body[0] == 0x1f && body[1] == 0x8b)
+    //         ) {
+    //           try {
+    //             body = await ActiveGZip.ungzip(body);
+    //           } catch (e) {
+    //             // Just incase the magic number still invalid gzip
+    //             // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+    //             // with the original non-gzip compliant data
+    //           }
+    //         }
+    //         body = JSON.parse(body.toString());
+    //         httpd.processListen(
+    //           {
+    //             url: pathSegments,
+    //             query: querystring.parse(parsedUrl.query as string),
+    //             body,
+    //             ip
+    //           },
+    //           {
+    //             headers,
+    //             method,
+    //             url: path,
+    //             connection: {
+    //               remoteAddress: socket.remoteAddress?.toString() || "unknown"
+    //             }
+    //           }, socket
+    //         );
+    //         // reuse if not closed
+    //         dBuf = [];
+    //         headersEnded = 0;
+    //         method = path = httpVersion = "";
+    //       };
+    //     } else {
+    //       httpd.processListen(
+    //         {
+    //           url: pathSegments,
+    //           query: querystring.parse(parsedUrl.query as string),
+    //           body:"",
+    //           ip
+    //         },
+    //         {
+    //           headers,
+    //           method,
+    //           url: path,
+    //           connection: {
+    //             remoteAddress: socket.remoteAddress?.toString() || "unknown"
+    //           }
+    //         }, socket
+    //       );
+    //       // reuse if not closed
+    //       dBuf = [];
+    //       headersEnded = 0;
+    //       method = path = httpVersion = "";
+    //     }
+    //   });
+    // });
+
+    //this.server.listen(port);
+
+    this.server = App();
+
+    this.server.any("/*", async (res, req) => {
+      /* Can't return or yield from here without responding or attaching an abort handler */
+      res.onAborted(() => {
+        res.writable = false;
       });
+      res.writable = true;
+
+      const headers = {
+        "Accept-Encoding": req.getHeader("accept-encoding"),
+        "X-Activeledger": req.getHeader("x-activeledger"),
+        "x-activeledger-encrypt": req.getHeader("x-activeledger-encrypt"),
+        "content-encoding": req.getHeader("content-encoding"),
+        "X-Bundle": req.getHeader("x-bundle"),
+        "Content-Length": req.getHeader("content-length"),
+      };
+
+      // req.forEach((k, v) => {
+      //   console.log(`${k} = ${v}`);
+      // });
+
+      const method = req.getMethod().toUpperCase();
+      const query = req.getQuery();
+      const url2 = req.getUrl();
+
+      let ipFrom = Buffer.from(
+        res.getProxiedRemoteAddressAsText().byteLength
+          ? res.getProxiedRemoteAddressAsText()
+          : res.getRemoteAddressAsText()
+      ).toString();
+
+      const parsedUrl = url.parse((url2 as string) || "/");
+      const pathSegments = (parsedUrl.pathname as string)
+        .split("/")
+        .filter((url) => url);
+
+      // Setup Default
+      if (!pathSegments.length) {
+        pathSegments.push("/");
+      }
+
+      // if (ipFrom.indexOf(":") !== -1) {
+      //   // Convert it to ip4 (this should be save as just for firewall)
+      //   const ip6 = this.parseIp6(ipFrom);
+      //   ipFrom =
+      //     (ip6[6] >> 8) +
+      //     "." +
+      //     (ip6[6] & 0xff) +
+      //     "." +
+      //     (ip6[7] >> 8) +
+      //     "." +
+      //     (ip6[7] & 0xff);
+      // }
+
+      if (method === "POST" || method === "PUT") {
+        // Read from Buffer
+        let body = await this.readBuffer(res);
+
+        // gzipped?
+        // Sometimes internal transactions fail to be decompressed
+        // the header shouldn't be missing but added magic number check as a back
+        // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+        if (
+          headers["content-encoding"] == "gzip" ||
+          (body[0] == 0x1f && body[1] == 0x8b)
+        ) {
+          try {
+            body = await ActiveGZip.ungzip(body);
+          } catch (e) {
+            // Just incase the magic number still invalid gzip
+            // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+            // with the original non-gzip compliant data
+          }
+        }
+        body = JSON.parse(body.toString());
+        httpd.processListen(
+          {
+            url: pathSegments,
+            query: querystring.parse(query),
+            body,
+            ip: { remote: ipFrom },
+          },
+          {
+            headers,
+            method,
+            url: url2,
+            connection: {
+              remoteAddress: ipFrom,
+            },
+          },
+          res
+        );
+      } else {
+        httpd.processListen(
+          {
+            url: pathSegments,
+            query: querystring.parse(parsedUrl.query as string),
+            body: "",
+            ip: { remote: ipFrom },
+          },
+          {
+            headers,
+            method,
+            url: url2,
+            connection: {
+              remoteAddress: ipFrom,
+            },
+          },
+          res
+        );
+      }
     });
 
-    this.server.listen(port);
-
+    this.server.listen(port,() =>{
+      console.log("started");
+    });
 
     // Bind to request event
     // this.server.on("request", async function(
@@ -332,8 +450,30 @@ export class ActiveHttpd {
     //     );
     //   }
     // });
+  }
 
+  private readBuffer(res: HttpResponse): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      let buffer: Buffer;
 
+      /* Register data cb */
+      res.onData((ab, isLast) => {
+        let chunk = Buffer.from(ab);
+        if (isLast) {
+          if (buffer) {
+            return resolve(Buffer.concat([buffer, chunk]));
+          } else {
+            return resolve(chunk);
+          }
+        } else {
+          if (buffer) {
+            buffer = Buffer.concat([buffer, chunk]);
+          } else {
+            buffer = Buffer.concat([chunk]);
+          }
+        }
+      });
+    });
   }
 
   /**
@@ -349,14 +489,14 @@ export class ActiveHttpd {
     req: {
       headers: {
         [index: string]: string;
-      }
+      };
       method: string;
       url: string;
       connection: {
-        remoteAddress: string
-      }
+        remoteAddress: string;
+      };
     },
-    res: Socket,
+    res: HttpResponse
   ) {
     // Get Path Handler
     let handler = this.findHandler(
@@ -392,26 +532,25 @@ export class ActiveHttpd {
           // res.end();
           //this.writeResponse(res, 200, [`Access-Control-Allow-Origin:${req.headers["origin"]}`], data);
 
-
-
           if (data.mime) {
-
             this.writeResponse(res, 200, [data.mime], data.data);
           } else {
             this.writeResponse(res, 200, [], data);
-
-
           }
         } else {
           this.writeResponse(res, 404, [], "");
-
         }
       } catch (error) {
         // Defined error or default to internal server error
         ActiveLogger.error(error);
         // res.statusCode = error.status || error.statusCode || 500;
         // this.writeAsHttpData(error, res);
-        this.writeResponse(res, error.status || error.statusCode || 500, [], error);
+        this.writeResponse(
+          res,
+          error.status || error.statusCode || 500,
+          [],
+          error
+        );
 
         //res.end();
       }
@@ -584,69 +723,50 @@ export class ActiveHttpd {
    * @param {string} encoding
    */
   private async writeResponse(
-    res: Socket,
+    res: HttpResponse,
     statusCode: number,
     headers: string[],
     content: string | Buffer,
     encoding: string = ""
   ) {
-    // Setup Default Headers
-    // let headers = {
-    //   "Content-Type": "application/json",
-    //   "Content-Encoding": "none",
-    //   "Access-Control-Allow-Origin": "*",
-    //   "X-Powered-By": "Activeledger",
-    // };
+    if (!res.writable) {
+      return;
+    }
 
-    // Modify output if can compress
-    // if (encoding == "gzip") {
-    //   //headers["Content-Encoding"] = "gzip";
-    //   content = await ActiveGZip.gzip(content);
-    // }
+    if (content) {
+      if (encoding == "gzip") {
+        content = await ActiveGZip.gzip(content);
+      }
+    }
 
-    // Write the response
-    //res.writeHead(statusCode, headers);
+    res.cork(() => {
+      res.writeStatus(`${statusCode}`);
+      res.writeHeader("Access-Control-Allow-Origin", "*");
+      res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
+      res.writeHeader("Access-Control-Allow-Methods", "*");
 
-    //need to work out why! 
-    if (!res.writableEnded) {
-
-      res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-      //res.write(`Connection: close\r\n`);
-      //res.write(`Content-Encoding: none\r\n`);
-      res.write(`Access-Control-Allow-Origin: *\r\n`);
-
-      for (let i = headers.length; i--;) {
+      for (let i = headers.length; i--; ) {
         if (headers[i]) {
-          res.write(`${headers[i]}\r\n`);
+          const [k,v] = headers[i].split(":");
+          res.writeHeader(k,v);
         }
       }
 
       if (content) {
-
-
         if (!Buffer.isBuffer(content) && typeof content == "object") {
           content = JSON.stringify(content);
         }
-
-
+       
         if(!headers) {
           res.write(`Content-Type: application/json\r\n`);
         }
 
         if (encoding == "gzip") {
-          //headers["Content-Encoding"] = "gzip";
-          res.write(`Content-Encoding: gzip\r\n`);
-          content = await ActiveGZip.gzip(content);
-        } else {
-          //res.write(`Content-Encoding: none\r\n`);
+          res.writeHeader("Content-Encoding", "gzip");
         }
-
-        res.write(`Content-Length: ${content.length}\r\n\r\n`);
-        res.write(content);
-
+        res.end(content);
+        res.writable = false;
       }
-      //res.end();
-    }
+    });
   }
-
 }

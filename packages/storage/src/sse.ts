@@ -20,9 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { IncomingMessage, ServerResponse } from "http";
 import { HeartBeat } from "./heartbeat";
-import { Socket } from "net";
 
 /**
  * Manages SSE Connection
@@ -31,16 +29,16 @@ import { Socket } from "net";
  * @class SSE
  */
 export class SSE {
-  constructor(private res: Socket) {
+  private heartBeat: NodeJS.Timeout;
+  constructor(private res: any) {
     // Make sure we have an array
     //res.statusCode = 200;
 
     // Set Header
-    res.write(`HTTP/1.1 200 OK\r\n`)
-    res.write(`Content-type: text/event-stream\r\n`)
-    res.write(`Cache-Control: no-cache\r\n`)
-    res.write(`X-Accel-Buffering: no\r\n\r\n`)
-
+    res.writeStatus(`200`);
+    res.writeHeader(`Content-type`, `text/event-stream`);
+    res.writeHeader(`Cache-Control`, `no-cache`);
+    res.writeHeader(`X-Accel-Buffering`, `no`);
 
     /*
       Ngnix recommend values:
@@ -57,19 +55,18 @@ export class SSE {
 
     // Native TCP Keepalive optimal
     // res.shouldKeepAlive = true;
-    res.setTimeout(0);
-    res.setNoDelay(true);
-    res.setKeepAlive(true);
-
+    // res.setTimeout(0);
+    // res.setNoDelay(true);
+    // res.setKeepAlive(true);
 
     // Setup Heartbeat
-    const heartBeat = HeartBeat.Start(res);
+    this.heartBeat = HeartBeat.Start(res);
 
     // On disconnect remove listener
-    res.on("close", () => {
-      // Clear Heartbeat
-      HeartBeat.Stop(heartBeat);
-    });
+    // res.on("close", () => {
+    //   // Clear Heartbeat
+    //   HeartBeat.Stop(heartBeat);
+    // });
   }
 
   /**
@@ -95,7 +92,8 @@ export class SSE {
       }
     } else {
       // End Server Side
-      this.res.end();
+      //this.res.end();
+      HeartBeat.Stop(this.heartBeat);
       return false;
     }
   }
