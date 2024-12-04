@@ -485,8 +485,8 @@ export class StreamUpdater {
 
       if (this.virtualMachine.getNewContractData(this.entry.$umid)) {
         this.emitter.emit("contractData", {
-          //contract: this.entry.$tx.$contract.substring(0,64), // remove @....  // Can't do this yet cache doesn't go by root id includes @=
-          contract: this.entry.$tx.$contract, // remove @....
+          contract: this.entry.$tx.$contract.substring(0,64), // remove @....  // Can't do this yet cache doesn't go by root id includes @=
+          //contract: this.entry.$tx.$contract, // remove @....
           data: null, // Set to null and it will refresh next call
         });
       }

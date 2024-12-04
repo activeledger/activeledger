@@ -56,11 +56,8 @@ interface ISetup extends IMakeHome {
   db: any;
 }
 
-interface IContractVersions {
-  [contractName: string]: {
-    file: string;
-    data?: any;
-  };
+interface IContractCaches {
+  [contractName: string]: string | any;
 }
 
 /**
@@ -144,9 +141,17 @@ class Processor {
    * Holds the latest version number for a generic contract request
    *
    * @private
-   * @type {IContractVersions}
+   * @type {IContractCaches}
    */
-  private latestContractVersion: IContractVersions = {};
+  private latestContractVersion: IContractCaches = {};
+
+  /**
+   * Holds the latest version number for a generic contract request
+   *
+   * @private
+   * @type {IContractCaches}
+   */
+  private latestContractData: IContractCaches = {};
 
   constructor() {
     // Initalise CLI Options
@@ -226,10 +231,13 @@ class Processor {
             // Clear contract data cache, This should fixed with SPI
             // however it is ineffiecent due to the fact all errors will reset contract data
             // TODO: find better location to catch and throw if its contract data relevent
-            if (this.latestContractVersion[m.entry.$tx.$contract]?.data) {
+            // SPI is fixing it, This just makes sure the cache gets cleared.
+            // (Maybe the throw at rev check instead on cache will work, as this could cause unnessary fetching)
+            const contract = m.entry.$tx.$contract.substring(0, 64);
+            if (this.latestContractData[contract]) {
               this.send("contractData", {
-                contract: m.entry.$tx.$contract,
-                data: null,
+                contract: contract,
+                data: {},
               });
             }
 
@@ -260,10 +268,7 @@ class Processor {
             "contractLatestVersion",
             (response: { contract: string; file: string }) => {
               if (response) {
-                this.latestContractVersion[response.contract] = {
-                  file: response.file,
-                  data: null,
-                };
+                this.latestContractVersion[response.contract] = response.file;
                 this.send("contractLatestVersion", response);
               }
             }
@@ -274,10 +279,7 @@ class Processor {
             "contractData",
             (response: { contract: string; data: any }) => {
               if (response) {
-                if (this.latestContractVersion[response.contract]) {
-                  this.latestContractVersion[response.contract].data =
-                    response.data;
-                }
+                this.latestContractData[response.contract] = response.data;
                 this.send("contractData", response);
               }
             }
@@ -285,8 +287,8 @@ class Processor {
 
           // Start the process
           this.protocols[m.entry.$umid].start(
-            this.latestContractVersion[m.entry.$tx.$contract]?.file,
-            this.latestContractVersion[m.entry.$tx.$contract]?.data
+            this.latestContractVersion[m.entry.$tx.$contract],
+            this.latestContractData[m.entry.$tx.$contract.substring(0, 64)]
           );
           break;
         case "broadcast":
@@ -307,18 +309,10 @@ class Processor {
             // Drastic but captures all scenarios, Maybe faster
             this.latestContractVersion = {};
           }
-          if (this.latestContractVersion[m.data.contract]) {
-            this.latestContractVersion[m.data.contract].file = m.data.file;
-          } else {
-            this.latestContractVersion[m.data.contract] = {
-              file: m.data.file,
-            };
-          }
+          this.latestContractVersion[m.data.contract] = m.data.file;
           break;
         case "contractData":
-          if (this.latestContractVersion[m.data.contract]) {
-            this.latestContractVersion[m.data.contract].data = m.data.data;
-          }
+          this.latestContractData[m.data.contract] = m.data.data;
           break;
         default:
           ActiveLogger.fatal(m, "Unknown Processor Call");

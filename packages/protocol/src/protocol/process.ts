@@ -595,8 +595,8 @@ export class Process extends EventEmitter {
                   // 1200 means the _rev map didn't match so position error (defaults as output)
                   // However lets clear the data
                   this.emit("contractData", {
-                    contract: this.entry.$tx.$contract,
-                    //contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+                    //contract: this.entry.$tx.$contract,
+                    contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
                     data: {},
                   });
                   // SPI will not resolve this, So need to test and fix!
@@ -608,8 +608,8 @@ export class Process extends EventEmitter {
               contractData = { _id: "", data: {} };
             }
             this.emit("contractData", {
-              contract: this.entry.$tx.$contract,
-              //contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+              //contract: this.entry.$tx.$contract,
+              contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
               data: contractData,
             });
           } else {
@@ -621,6 +621,11 @@ export class Process extends EventEmitter {
               if (this.entry.$revs.$o[`${this.contractId}:data`]) {
                 // Check
                 if (this.entry.$revs.$o[`${this.contractId}:data`] !== rev) {
+                  this.emit("contractData", {
+                    //contract: this.entry.$tx.$contract,
+                    contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+                    data: {},
+                  });
                   throw {
                     code: 1200,
                     reason: "Output Stream Position Incorrect",
@@ -973,7 +978,9 @@ export class Process extends EventEmitter {
         outputs,
         readonly,
         key: 0,
-        contractData,
+        // If null create correct object, If {} is fine contract adds _id anyway
+        // if contract doesn't call get/set not any issues either
+        contractData: contractData ? contractData : { _id: "", data: {} },
       };
 
       // Which VM to run transaction in
