@@ -589,7 +589,9 @@ import { SSE } from "./sse";
         if (change.id.startsWith("event:")) {
           delete change.doc._id;
           delete change.doc._rev;
-          sse.write(change.id.replace("event:", ""), change.doc);
+          if(!sse.write(change.id.replace("event:", ""), change.doc)){
+            cancelChanges();
+          }
         }
       };
 
@@ -599,7 +601,7 @@ import { SSE } from "./sse";
       };
 
       // Run on close connection
-      res.on("close", cancelChanges);
+      //res.on("close", cancelChanges);
 
       // Listening for changes
       let changes = db.changes().on("change", listener);

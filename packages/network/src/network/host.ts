@@ -41,7 +41,7 @@ import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
-import { createServer, Socket, Server } from "net";
+import { App, HttpResponse, TemplatedApp } from "uWebSockets.js";
 
 const RELEASE_SHUTDOWN_TIMEOUT = 1 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 2 * 60 * 1000;
@@ -112,7 +112,7 @@ export class Host extends Home {
    *
    * @type {Server}
    */
-  public readonly api: Server;
+  public readonly api: TemplatedApp;
 
   /**
    * Server connection to the couchdb instance for this node
@@ -344,171 +344,338 @@ export class Host extends Home {
       }
     }
 
-    this.api = createServer((socket) => {
-      let dBuf: Buffer[] = [];
-      let headersEnded: number;
-      let method: string, path: string, headers: any, httpVersion: string;
-      socket.setKeepAlive(true);
+    // this.api = createServer((socket) => {
+    //   let dBuf: Buffer[] = [];
+    //   let headersEnded: number;
+    //   let method: string, path: string, headers: any, httpVersion: string;
+    //   socket.setKeepAlive(true);
 
-      socket.on("error", (e) => {
-        socket.destroy();
+    //   socket.on("error", (e) => {
+    //     socket.destroy();
+    //   });
+
+    //   socket.on("close", () => {
+    //     socket.end();
+    //   });
+
+    //   socket.on("data", async (data) => {
+    //     // Store as it "may not be enough"
+    //     dBuf.push(data);
+
+    //     if (!headersEnded) {
+    //       headersEnded = data.indexOf("\r\n\r\n");
+    //       const requestHeader = data.subarray(0, headersEnded).toString();
+    //       const [firstLine, ...otherLines] = requestHeader.split("\n");
+    //       [method, path, httpVersion] = firstLine.trim().split(" ");
+    //       headers = Object.fromEntries(
+    //         otherLines
+    //           .filter((_) => _)
+    //           .map((line) => line.split(":").map((part) => part.trim()))
+    //           .map(([name, ...rest]) => [name, rest.join(" ")])
+    //       );
+    //     }
+
+    //     if (method === "POST") {
+    //       // Only support content length (this is lowercase! I  think lower case all) as I am not setting
+    //       const contentLength = parseInt(
+    //         headers["Content-Length"] || headers["content-length"]
+    //       );
+    //       let body = Buffer.concat(dBuf).subarray(
+    //         headersEnded + 4,
+    //         contentLength + headersEnded + 4
+    //       );
+    //       if (body.length >= contentLength) {
+    //         // gzipped?
+    //         // Sometimes internal transactions fail to be decompressed
+    //         // the header shouldn't be missing but added magic number check as a back
+    //         // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+    //         if (
+    //           headers["content-encoding"] == "gzip" ||
+    //           (body[0] == 0x1f && body[1] == 0x8b)
+    //         ) {
+    //           try {
+    //             body = await ActiveGZip.ungzip(body);
+    //           } catch (e) {
+    //             // Just incase the magic number still invalid gzip
+    //             // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+    //             // with the original non-gzip compliant data
+    //           }
+    //         }
+
+    //         // TODO
+    //         // Fix this makesurenot buffer mess I think it is the sending client
+
+    //         //const bodyString = body.toString();
+    //         const bodyString = (await this.makeSureNotBuffer(body)) as any;
+
+    //         // could make this nicer
+    //         let bundles: any[]; // = [];
+
+    //         // TODO we could have the double buffer problem here?
+    //         // unless this has been solved
+    //         if (headers["X-Bundle"]) {
+    //           bundles = bodyString.split(":$ALB:");
+
+    //           // Now we could also just close the socket! We don't need to reply
+
+    //           socket.write(`HTTP/1.1 200 OK\r\n`);
+    //           //socket.write(`Connection: close\r\n`);
+    //           socket.write(`Content-Type: application/json\r\n`);
+    //           socket.write(`Content-Length: 2\r\n\r\n`);
+    //           socket.write("{}");
+
+    //           // Forces "other side closed" error on the client
+    //           // socket.write("{}", () => {
+    //           //   socket.end();
+    //           // });
+
+    //           // Terrible make better just for testing
+    //           (socket as any).bundled = true;
+    //         } else {
+    //           bundles = [bodyString];
+    //         }
+
+    //         for (let i = bundles.length; i--; ) {
+    //           // All posted data should be JSON
+    //           // Convert data for potential encryption
+    //           Endpoints.postConvertor(
+    //             this,
+    //             bundles[i],
+    //             (headers["x-activeledger-encrypt"] as unknown as boolean) ||
+    //               false
+    //           )
+    //             .then((body) => {
+    //               // Post Converted, Continue processing
+    //               this.processEndpoints(
+    //                 {
+    //                   headers,
+    //                   method,
+    //                   url: path,
+    //                   connection: {
+    //                     remoteAddress:
+    //                       socket.remoteAddress?.toString() || "unknown",
+    //                   },
+    //                 },
+    //                 socket,
+    //                 body.body,
+    //                 body.from
+    //               );
+    //             })
+    //             .catch((error) => {
+    //               // Failed to convery respond;
+    //               ActiveLogger.error(error, "Server POST Parser 500");
+    //               this.writeResponse(
+    //                 socket,
+    //                 error.statusCode || 500,
+    //                 JSON.stringify(error.content || { error: 1 }),
+    //                 headers["Accept-Encoding"] as string
+    //               );
+    //             })
+    //             .finally(() => {
+    //               // reuse if not closed
+    //               dBuf = [];
+    //               headersEnded = 0;
+    //               method = path = httpVersion = "";
+    //               (socket as any).bundled = false;
+    //             });
+    //         }
+    //       }
+    //     } else {
+    //       if (method === "OPTIONS") {
+    //         await this.writeResponse(socket, 200, "{}", "", true);
+    //       } else {
+    //         // Simple get, Continue Processing
+    //         // should be safe to await here to capture undefined and promises to clear below
+    //         // TODO actually make this flow better as when undefined its an internal then
+    //         // process which *could* still be running. Although even if it is resetting below
+    //         // should still be safe.
+    //         await this.processEndpoints(
+    //           {
+    //             headers,
+    //             method,
+    //             url: path,
+    //             connection: {
+    //               remoteAddress: socket.remoteAddress?.toString() || "unknown",
+    //             },
+    //           },
+    //           socket
+    //         );
+    //       }
+
+    //       // reuse if not closed
+    //       dBuf = [];
+    //       headersEnded = 0;
+    //       method = path = httpVersion = "";
+    //     }
+    //   });
+    // });
+
+    this.api = App();
+
+    this.api.any("/*", async (res, req) => {
+      /* Can't return or yield from here without responding or attaching an abort handler */
+      res.onAborted(() => {
+        res.writable = false;
       });
+      res.writable = true;
 
-      socket.on("close", () => {
-        socket.end();
-      });
+      const headers = {
+        "Accept-Encoding": req.getHeader("accept-encoding"),
+        "X-Activeledger": req.getHeader("x-activeledger"),
+        "x-activeledger-encrypt": req.getHeader("x-activeledger-encrypt"),
+        "content-encoding": req.getHeader("content-encoding"),
+        "X-Bundle": req.getHeader("x-bundle"),
+      };
 
-      socket.on("data", async (data) => {
-        // Store as it "may not be enough"
-        dBuf.push(data);
+      // req.forEach((k, v) => {
+      //   console.log(`${k} = ${v}`);
+      // });
 
-        if (!headersEnded) {
-          headersEnded = data.indexOf("\r\n\r\n");
-          const requestHeader = data.subarray(0, headersEnded).toString();
-          const [firstLine, ...otherLines] = requestHeader.split("\n");
-          [method, path, httpVersion] = firstLine.trim().split(" ");
-          headers = Object.fromEntries(
-            otherLines
-              .filter((_) => _)
-              .map((line) => line.split(":").map((part) => part.trim()))
-              .map(([name, ...rest]) => [name, rest.join(" ")])
-          );
+      const method = req.getMethod().toUpperCase();
+      const url = req.getUrl();
+
+      let ipFrom = Buffer.from(
+        res.getProxiedRemoteAddressAsText().byteLength
+          ? res.getProxiedRemoteAddressAsText()
+          : res.getRemoteAddressAsText()
+      ).toString();
+
+      if (ipFrom.indexOf(":") !== -1) {
+        // Convert it to ip4 (this should be save as just for firewall)
+        const ip6 = this.parseIp6(ipFrom);
+        ipFrom =
+          (ip6[6] >> 8) +
+          "." +
+          (ip6[6] & 0xff) +
+          "." +
+          (ip6[7] >> 8) +
+          "." +
+          (ip6[7] & 0xff);
+      }
+
+      if (method === "POST") {
+        // Read from Buffer
+        let body = await this.readBuffer(res);
+
+        // res.onAborted(()=>{
+        //   ActiveLogger.fatal("ABORTED?!?!?");
+        // })
+
+        //if (body.length >= contentLength) {
+        // gzipped?
+        // Sometimes internal transactions fail to be decompressed
+        // the header shouldn't be missing but added magic number check as a back
+        // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
+        if (
+          headers["content-encoding"] == "gzip" ||
+          (body[0] == 0x1f && body[1] == 0x8b)
+        ) {
+          try {
+            body = await ActiveGZip.ungzip(body);
+          } catch (e) {
+            // Just incase the magic number still invalid gzip
+            // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
+            // with the original non-gzip compliant data
+          }
         }
 
-        if (method === "POST") {
-          // Only support content length (this is lowercase! I  think lower case all) as I am not setting
-          const contentLength = parseInt(
-            headers["Content-Length"] || headers["content-length"]
-          );
-          let body = Buffer.concat(dBuf).subarray(
-            headersEnded + 4,
-            contentLength + headersEnded + 4
-          );
-          if (body.length >= contentLength) {
-            // gzipped?
-            // Sometimes internal transactions fail to be decompressed
-            // the header shouldn't be missing but added magic number check as a back
-            // all internal transactions are supposed to be compressed failsafe check for when header isn't available?
-            if (
-              headers["content-encoding"] == "gzip" ||
-              (body[0] == 0x1f && body[1] == 0x8b)
-            ) {
-              try {
-                body = await ActiveGZip.ungzip(body);
-              } catch (e) {
-                // Just incase the magic number still invalid gzip
-                // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
-                // with the original non-gzip compliant data
-              }
-            }
+        // TODO
+        // Fix this makesurenot buffer mess I think it is the sending client
 
-            // TODO
-            // Fix this makesurenot buffer mess I think it is the sending client
+        //const bodyString = body.toString();
+        const bodyString = (await this.makeSureNotBuffer(body)) as any;
 
-            //const bodyString = body.toString();
-            const bodyString = (await this.makeSureNotBuffer(body)) as any;
+        // could make this nicer
+        let bundles: any[]; // = [];
 
-            // could make this nicer
-            let bundles: any[]; // = [];
+        // TODO we could have the double buffer problem here?
+        // unless this has been solved
+        if (headers["X-Bundle"]) {
+          bundles = bodyString.split(":$ALB:");
 
-            // TODO we could have the double buffer problem here?
-            // unless this has been solved
-            if (headers["X-Bundle"]) {
-              bundles = bodyString.split(":$ALB:");
-
-              // Now we could also just close the socket! We don't need to reply
-
-              socket.write(`HTTP/1.1 200 OK\r\n`);
-              //socket.write(`Connection: close\r\n`);
-              socket.write(`Content-Type: application/json\r\n`);
-              socket.write(`Content-Length: 2\r\n\r\n`);
-              socket.write("{}");
-
-              // Forces "other side closed" error on the client
-              // socket.write("{}", () => {
-              //   socket.end();
-              // });
-
-              // Terrible make better just for testing
-              (socket as any).bundled = true;
-            } else {
-              bundles = [bodyString];
-            }
-
-            for (let i = bundles.length; i--; ) {
-              // All posted data should be JSON
-              // Convert data for potential encryption
-              Endpoints.postConvertor(
-                this,
-                bundles[i],
-                (headers["x-activeledger-encrypt"] as unknown as boolean) ||
-                  false
-              )
-                .then((body) => {
-                  // Post Converted, Continue processing
-                  this.processEndpoints(
-                    {
-                      headers,
-                      method,
-                      url: path,
-                      connection: {
-                        remoteAddress:
-                          socket.remoteAddress?.toString() || "unknown",
-                      },
-                    },
-                    socket,
-                    body.body,
-                    body.from
-                  );
-                })
-                .catch((error) => {
-                  // Failed to convery respond;
-                  ActiveLogger.error(error, "Server POST Parser 500");
-                  this.writeResponse(
-                    socket,
-                    error.statusCode || 500,
-                    JSON.stringify(error.content || { error: 1 }),
-                    headers["Accept-Encoding"] as string
-                  );
-                })
-                .finally(() => {
-                  // reuse if not closed
-                  dBuf = [];
-                  headersEnded = 0;
-                  method = path = httpVersion = "";
-                  (socket as any).bundled = false;
-                });
-            }
-          }
+          res.cork(() => {
+            res.writeStatus("200");
+            res.writeHeader("Content-Type", "application/json");
+            res.end("{}");
+          });
+          res.writable = false;
         } else {
-          if (method === "OPTIONS") {
-            await this.writeResponse(socket, 200, "{}", "", true);
-          } else {
-            // Simple get, Continue Processing
-            // should be safe to await here to capture undefined and promises to clear below
-            // TODO actually make this flow better as when undefined its an internal then
-            // process which *could* still be running. Although even if it is resetting below
-            // should still be safe.
-            await this.processEndpoints(
-              {
-                headers,
-                method,
-                url: path,
-                connection: {
-                  remoteAddress: socket.remoteAddress?.toString() || "unknown",
-                },
-              },
-              socket
-            );
-          }
-
-          // reuse if not closed
-          dBuf = [];
-          headersEnded = 0;
-          method = path = httpVersion = "";
+          bundles = [bodyString];
         }
-      });
+        for (let i = bundles.length; i--; ) {
+          if (bundles[i]) {
+            // All posted data should be JSON
+            // Convert data for potential encryption
+            Endpoints.postConvertor(
+              this,
+              bundles[i],
+              (headers["x-activeledger-encrypt"] as unknown as boolean) || false
+            )
+              .then((body) => {
+                // Post Converted, Continue processing
+                this.processEndpoints(
+                  {
+                    headers,
+                    method,
+                    url,
+                    connection: {
+                      remoteAddress: ipFrom,
+                    },
+                  },
+                  res,
+                  body.body,
+                  body.from
+                );
+              })
+              .catch((error) => {
+                // Failed to convery respond;
+                ActiveLogger.error(error, "Server POST Parser 500");
+                this.writeResponse(
+                  res,
+                  error.statusCode || 500,
+                  JSON.stringify(error.content || { error: 1 }),
+                  headers["Accept-Encoding"] as string
+                );
+              })
+              .finally(() => {
+                // reuse if not closed
+                // dBuf = [];
+                // headersEnded = 0;
+                // method = path = httpVersion = "";
+                // (socket as any).bundled = false;
+              });
+          }
+        }
+        //}
+      } else {
+        if (method === "OPTIONS") {
+          await this.writeResponse(res, 200, "{}", "", true);
+        } else {
+          // Simple get, Continue Processing
+          // should be safe to await here to capture undefined and promises to clear below
+          // TODO actually make this flow better as when undefined its an internal then
+          // process which *could* still be running. Although even if it is resetting below
+          // should still be safe.
+          await this.processEndpoints(
+            {
+              headers,
+              method,
+              url,
+              connection: {
+                remoteAddress: ipFrom,
+              },
+            },
+            res
+          );
+        }
+
+        // // reuse if not closed
+        // dBuf = [];
+        // headersEnded = 0;
+        // method = path = httpVersion = "";
+      }
     });
+
     // How many threads (Cache so we can check on ready)
     const cpuTotal = PhysicalCores.count();
 
@@ -532,6 +699,55 @@ export class Host extends Home {
 
     // Start queue failsafe
     this.timerQueue();
+  }
+
+  private readBuffer(res: HttpResponse): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      let buffer: Buffer;
+
+      /* Register data cb */
+      res.onData((ab, isLast) => {
+        let chunk = Buffer.from(ab);
+        if (isLast) {
+          if (buffer) {
+            return resolve(Buffer.concat([buffer, chunk]));
+          } else {
+            return resolve(chunk);
+          }
+        } else {
+          if (buffer) {
+            buffer = Buffer.concat([buffer, chunk]);
+          } else {
+            buffer = Buffer.concat([chunk]);
+          }
+        }
+      });
+    });
+  }
+
+  // https://stackoverflow.com/questions/2786632/how-can-i-convert-ipv6-address-to-ipv4-address/23147817#23147817
+  private parseIp6(str: string) {
+    //init
+    var ar = new Array();
+    for (var i = 0; i < 8; i++) ar[i] = 0;
+    //check for trivial IPs
+    if (str == "::") return ar;
+    //parse
+    var sar = str.split(":");
+    var slen = sar.length;
+    if (slen > 8) slen = 8;
+    var j = 0;
+    for (var i = 0; i < slen; i++) {
+      //this is a "::", switch to end-run mode
+      if (i && sar[i] == "") {
+        j = 9 - slen + i;
+        continue;
+      }
+      ar[j] = parseInt("0x0" + sar[i]);
+      j++;
+    }
+
+    return ar;
   }
 
   private async makeSureNotBuffer(obj: unknown): Promise<unknown>;
@@ -773,10 +989,11 @@ export class Host extends Home {
             // Increase Ready Counter
             this.cpuReady++;
             // If not listening and have enough cpu returns (Covers crashes)
-            if (!this.api.listening && this.cpuReady >= cpuTotal) {
+            if (!this.listeing && this.cpuReady >= cpuTotal) {
               // Listen to the Neighbourhood
+              this.listeing = true;
               this.api.listen(
-                ActiveInterfaces.getBindingDetails("port"),
+                ActiveInterfaces.getBindingDetails("port") as unknown as number,
                 () => {
                   ActiveLogger.info(
                     "Activeledger listening on port " +
@@ -832,6 +1049,8 @@ export class Host extends Home {
 
     return pFork;
   }
+
+  private listeing = false;
 
   /**
    * Reload the configuration
@@ -1519,7 +1738,7 @@ export class Host extends Home {
         remoteAddress: string;
       };
     },
-    res: Socket,
+    res: HttpResponse,
     body?: any,
     from?: string
   ) {
@@ -1708,42 +1927,40 @@ export class Host extends Home {
    * @param {string} encoding
    */
   private async writeResponse(
-    res: Socket,
+    res: HttpResponse,
     statusCode: number,
     content: string | Buffer,
     encoding: string,
     cors = false
   ) {
-    if ((res as any).bundled) {
+    if (!res.writable) {
       return;
     }
 
-    //need to work out why!
-    if (!res.writableEnded) {
-      res.write(`HTTP/1.1 ${statusCode} OK\r\n`);
-      //res.write(`Connection: close\r\n`);
-      //res.write(`Content-Encoding: none\r\n`);
-      res.write(`Access-Control-Allow-Origin: *\r\n`);
+    if (content) {
+      if (encoding == "gzip") {
+        content = await ActiveGZip.gzip(content);
+      }
+    }
+
+    res.cork(() => {
+      res.writeStatus(`${statusCode}`);
+      res.writeHeader("Access-Control-Allow-Origin", "*");
 
       if (cors) {
-        res.write(`Access-Control-Allow-Methods: GET, POST\r\n`);
-        res.write(`Access-Control-Allow-Headers: *\r\n`);
+        res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
+        res.writeHeader("Access-Control-Allow-Methods", "*");
       }
 
       if (content) {
-        res.write(`Content-Type: application/json\r\n`);
+        res.writeHeader("Content-Type", "application/json");
         if (encoding == "gzip") {
-          //headers["Content-Encoding"] = "gzip";
-          res.write(`Content-Encoding: gzip\r\n`);
-          content = await ActiveGZip.gzip(content);
-        } else {
-          //res.write(`Content-Encoding: none\r\n`);
+          res.writeHeader("Content-Encoding", "gzip");
         }
-
-        res.write(`Content-Length: ${content.length}\r\n\r\n`);
-        res.write(content);
+        res.end(content);
+        res.writable = false;
       }
-    }
+    });
   }
 
   /**
