@@ -703,23 +703,27 @@ export class Host extends Home {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer;
+      let buffer: Buffer = Buffer.alloc(0);
 
-      /* Register data cb */
       res.onData((ab, isLast) => {
-        let chunk = Buffer.from(ab);
+        if (res.aborted) {
+          reject(new Error("Request aborted"));
+          return;
+        }
+
+        if (ab.byteLength > 0) {
+          // I found some non-last onData with 0 byte length
+          //const copy = copyArrayBuffer(ab); // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
+          //totalSize += copy.byteLength;
+          buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+        }
+
         if (isLast) {
-          if (buffer) {
-            return resolve(Buffer.concat([buffer, chunk]));
-          } else {
-            return resolve(chunk);
-          }
-        } else {
-          if (buffer) {
-            buffer = Buffer.concat([buffer, chunk]);
-          } else {
-            buffer = Buffer.concat([chunk]);
-          }
+          // If this is the last chunk, process the final buffer
+          // Convert the buffer to a string and parse it as JSON
+          // this will fail if the buffer doesn't contain a valid JSON (e.g. length = 0)
+          //const resolveValue = JSON.parse(buffer.toString());
+          resolve(buffer);
         }
       });
     });

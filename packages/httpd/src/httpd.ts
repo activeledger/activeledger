@@ -273,7 +273,7 @@ export class ActiveHttpd {
       // });
 
       const method = req.getMethod().toUpperCase();
-      const query = req.getQuery();
+      const query = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
       const url2 = req.getUrl();
 
       let ipFrom = Buffer.from(
@@ -318,6 +318,7 @@ export class ActiveHttpd {
           (body[0] == 0x1f && body[1] == 0x8b)
         ) {
           try {
+            console.log("uinzip 1");
             body = await ActiveGZip.ungzip(body);
           } catch (e) {
             // Just incase the magic number still invalid gzip
@@ -329,7 +330,7 @@ export class ActiveHttpd {
         httpd.processListen(
           {
             url: pathSegments,
-            query: querystring.parse(query),
+            query,
             body,
             ip: { remote: ipFrom },
           },
@@ -347,7 +348,7 @@ export class ActiveHttpd {
         httpd.processListen(
           {
             url: pathSegments,
-            query: querystring.parse(parsedUrl.query as string),
+            query,
             body: "",
             ip: { remote: ipFrom },
           },
@@ -364,7 +365,7 @@ export class ActiveHttpd {
       }
     });
 
-    this.server.listen(port,() =>{
+    this.server.listen(port, () => {
       console.log("started");
     });
 
@@ -747,8 +748,8 @@ export class ActiveHttpd {
 
       for (let i = headers.length; i--; ) {
         if (headers[i]) {
-          const [k,v] = headers[i].split(":");
-          res.writeHeader(k,v);
+          const [k, v] = headers[i].split(":");
+          res.writeHeader(k, v);
         }
       }
 
@@ -756,8 +757,8 @@ export class ActiveHttpd {
         if (!Buffer.isBuffer(content) && typeof content == "object") {
           content = JSON.stringify(content);
         }
-       
-        if(!headers) {
+
+        if (!headers) {
           res.write(`Content-Type: application/json\r\n`);
         }
 

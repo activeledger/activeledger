@@ -173,7 +173,7 @@ export class ActiveOptions {
    */
   public static get<T>(name: string, defValue: any = null): T {
     // Return Config, CLI, Default
-    return ActiveOptions.config[name] || ActiveOptions.argv[name] || defValue;
+    return ActiveOptions.config[name] ?? ActiveOptions.argv[name] ?? defValue;
   }
 
   /**
