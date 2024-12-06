@@ -101,7 +101,9 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     return false;
   }
 
-  private bundle: any[] = [];
+  // private bundle: any[] = [];
+  private bundleC: number = 0;
+  private bundleT: string = "";
   private nextSend: NodeJS.Timeout | null;
 
   /**
@@ -239,39 +241,43 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       // or possibly waiting less
 
       // Another idea is dynamic settimeout keep changing it? Such as "wait 10ms +10ms if sending again"
-
       // TODO make better!
       if (bundle) {
-        this.bundle.push(JSON.stringify(post));
+        //this.bundle.push(JSON.stringify(post));
+        if (this.bundleC++ === 0) {
+          this.bundleT = JSON.stringify(post);
+        } else {
+          this.bundleT += ":$ALB:" + JSON.stringify(post);
+        }
 
-        if (this.bundle.length >= 80) {
-          sender(Buffer.from(this.bundle.join(":$ALB:")), "X-Bundle: 1").catch(
-            () => {
-              ActiveLogger.warn("X-Bundle Error");
-            }
-          );
-          this.bundle = [];
-          // Need to clear better
-
+        if (this.bundleC >= 100) {
           // Cancel & Just Send
           if (this.nextSend) {
             clearTimeout(this.nextSend);
             this.nextSend = null;
           }
+
+          const bundled = Buffer.from(this.bundleT);
+          this.bundleC = 0;
+          this.bundleT = "";
+          sender(bundled, "X-Bundle: 1").catch(() => {
+            ActiveLogger.warn("X-Bundle Error");
+          });
         } else {
           //if (this.bundle.length === 1) {
           if (!this.nextSend) {
             this.nextSend = setTimeout(() => {
-              this.nextSend = null;
-              sender(
-                Buffer.from(this.bundle.join(":$ALB:")),
-                "X-Bundle: 1"
-              ).catch(() => {
-                ActiveLogger.warn("X-Bundle Error");
-              });
-              this.bundle = [];
-              // Need to clear better
-            }, 80);
+              if (this.bundleC) {
+                this.nextSend = null;
+                const bundled = Buffer.from(this.bundleT);
+                this.bundleC = 0;
+                this.bundleT = "";
+
+                sender(bundled, "X-Bundle: 1").catch(() => {
+                  ActiveLogger.warn("X-Bundle Error");
+                });
+              }
+            }, 5);
           }
 
           // maybe a/b bundles?
