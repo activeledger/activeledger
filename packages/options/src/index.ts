@@ -25,10 +25,13 @@ import { ActiveGZip, ActiveRequest } from "@activeledger/activeutilities";
 import { ActiveOptions } from "./options";
 import { ActiveChanges } from "./changes";
 import { ActiveDSConnect } from "./dsconnect";
+import { ActiveCache, ActiveCacheManager } from "./cache";
 export {
   ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
   ActiveChanges,
-  ActiveGZip
+  ActiveGZip,
+  ActiveCacheManager,
+  ActiveCache
 };

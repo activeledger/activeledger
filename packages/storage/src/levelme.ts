@@ -11,6 +11,7 @@ import LevelDOWN from "leveldown";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 import { newLineTransform } from "./newlinestream";
+import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
 
 /**
  * Generic Data Document
@@ -99,7 +100,7 @@ interface schema extends document {
   seq: number;
 }
 
-const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
+//const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
 const ENABLE_CACHE = 1;
 
 /**
@@ -187,6 +188,8 @@ export class LevelMe {
    */
   //private docUpdateSeq = 0;
 
+  private cache: ActiveCache
+
   constructor(location: string, private name: string, provider: string) {
     if (provider === "rocks") {
       this.levelUp = levelup(RocksDB(location + name));
@@ -194,7 +197,8 @@ export class LevelMe {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
     if (ENABLE_CACHE) {
-      this.timerUnCache();
+      //this.timerUnCache();
+      this.cache = ActiveCacheManager.fetch('streams', 30000);
     }
   }
 
@@ -203,19 +207,19 @@ export class LevelMe {
    *
    * @private
    */
-  private timerUnCache() {
-    setTimeout(() => {
-      const memory = Object.keys(this.memory);
-      const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
-      for (let i = memory.length; i--; ) {
-        if (this.memory[memory[i]].data < nowMinus) {
-          // 30 seconds has passed without accessing it so lets clear
-          delete this.memory[memory[i]];
-        }
-      }
-      this.timerUnCache();
-    }, REMOVE_CACHE_TIMER * 2);
-  }
+  // private timerUnCache() {
+  //   setTimeout(() => {
+  //     const memory = Object.keys(this.memory);
+  //     const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
+  //     for (let i = memory.length; i--; ) {
+  //       if (this.memory[memory[i]].data < nowMinus) {
+  //         // 30 seconds has passed without accessing it so lets clear
+  //         delete this.memory[memory[i]];
+  //       }
+  //     }
+  //     this.timerUnCache();
+  //   }, REMOVE_CACHE_TIMER * 2);
+  // }
 
   /**
    * Attempts to fetch document, If fails returns default
@@ -567,12 +571,12 @@ export class LevelMe {
     });
   }
 
-  private memory: {
-    [index: string]: {
-      data: any;
-      create: Date;
-    };
-  } = {};
+  // private memory: {
+  //   [index: string]: {
+  //     data: any;
+  //     create: Date;
+  //   };
+  // } = {};
 
   /**
    * Get a specific data document
@@ -582,25 +586,17 @@ export class LevelMe {
    */
   public async get(key: string, raw = false) {
     if (ENABLE_CACHE) {
-      if (!this.memory[key]) {
+      if (!this.cache.has(key)) {
         await this.open();
         // Allow errors to bubble up?
         let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
         if (raw) {
-          this.memory[key] = {
-            data: doc,
-            create: new Date(),
-          };
+          this.cache.set(key, doc);
         } else {
-          this.memory[key] = {
-            data: await this.seqDocFromRoot(doc),
-            create: new Date(),
-          };
+          this.cache.set(key, await this.seqDocFromRoot(doc));
         }
-      } else {
-        this.memory[key].create = new Date();
       }
-      return this.memory[key].data;
+      return this.cache.get(key, 30000);
     } else {
       await this.open();
       // Allow errors to bubble up?
@@ -619,11 +615,10 @@ export class LevelMe {
       let cached = [];
       const now = new Date();
       for (let i = keys.length; i--; ) {
-        if (!this.memory[keys[i]]) {
+        if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
         } else {
-          cached.push({ doc: this.memory[keys[i]].data });
-          this.memory[keys[i]].create = now;
+          cached.push({ doc: this.cache.get(keys[i], 30000) });
         }
       }
 
@@ -633,11 +628,7 @@ export class LevelMe {
         // Loop and cache
         for (let i = result.length; i--; ) {
           const data = JSON.parse(result[i]);
-
-          this.memory[data._id] = {
-            data: data,
-            create: new Date(),
-          };
+          this.cache.set(data._id, data);
           cached.push({ doc: data });
         }
       }
@@ -764,8 +755,8 @@ export class LevelMe {
     // _local_doc_count need to reduce count
     batch.del(LevelMe.DOC_PREFIX + key);
 
-    if (ENABLE_CACHE && this.memory[key]) {
-      delete this.memory[key];
+    if (ENABLE_CACHE && this.cache.has(key)) {
+      this.cache.delete(key);
     }
 
     await batch.write();
@@ -1032,15 +1023,13 @@ export class LevelMe {
       // };
     }
 
-    if (ENABLE_CACHE) {
-      this.memory[doc._id] = {
-        data: doc,
-        create: new Date(),
-      };
-    }
 
     if(isDiff) {
       chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+
+      if (ENABLE_CACHE) {
+        this.cache.set(doc._id, doc);
+      }
     }
 
     // Should be able to assume,  maybe not what if restarted, So set object!

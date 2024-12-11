@@ -25,6 +25,7 @@ import {
   ActiveOptions,
   ActiveDSConnect,
   ActiveGZip,
+  ActiveCacheManager,
 } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -33,7 +34,6 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
-import { CacheManager } from "./cache";
 
 const MAX_COUNTERS = 10;
 
@@ -237,7 +237,7 @@ export class Endpoints {
 
                             // Should probably still wait on locks with priority to hold
                             if (streams.length) {
-                              const rewrote = CacheManager.fetch(
+                              const rewrote = ActiveCacheManager.fetch(
                                 "rewrote",
                                 10000
                               );
@@ -643,7 +643,7 @@ export class Endpoints {
           // Only safe to run if we can get a lock
           // downside of not doing this is the node can be out of date for a while
           // we can alkways keep trying to get a lock or for when it ISN't locked
-          const rewrote = CacheManager.fetch("rewrote", 10000);
+          const rewrote = ActiveCacheManager.fetch("rewrote", 10000);
 
           if (ledger?.data?.$nodes && !rewrote.has(tx.$umid)) {
             rewrote.set(tx.$umid, 1);
