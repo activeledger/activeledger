@@ -40,41 +40,40 @@ export class PhysicalCores {
    * @returns {number}
    */
   public static count(): number {
-    return 2;
-    // switch (os.platform()) {
-    //   case "linux":
-    //     return parseInt(
-    //       child.execSync(
-    //         'lscpu -p | egrep -v "^#" | sort -u -t, -k 2,4 | wc -l',
-    //         { encoding: "utf8" }
-    //       )
-    //     );
-    //   case "darwin":
-    //     return parseInt(
-    //       child.execSync("sysctl -n hw.physicalcpu_max", { encoding: "utf8" })
-    //     );
-    //   case "win32":
-    //     const output = child.execSync("WMIC CPU Get NumberOfCores", {
-    //       encoding: "utf8"
-    //     });
-    //     return output
-    //       .split(os.EOL)
-    //       .map(function parse(line: string) {
-    //         return parseInt(line);
-    //       })
-    //       .filter(function numbers(value: number) {
-    //         return !isNaN(value);
-    //       })
-    //       .reduce(function add(sum: number, number: number) {
-    //         return sum + number;
-    //       }, 0);
-    //   default:
-    //     // Return logicial cpu and attempt to filter out HT intels.
-    //     return os.cpus().filter(function(cpu, index) {
-    //       const hasHyperthreading = cpu.model.includes("Intel");
-    //       const isOdd = index % 2 === 1;
-    //       return !hasHyperthreading || isOdd;
-    //     }).length;
-    // }
+    switch (os.platform()) {
+      case "linux":
+        return parseInt(
+          child.execSync(
+            'lscpu -p | egrep -v "^#" | sort -u -t, -k 2,4 | wc -l',
+            { encoding: "utf8" }
+          )
+        );
+      case "darwin":
+        return parseInt(
+          child.execSync("sysctl -n hw.physicalcpu_max", { encoding: "utf8" })
+        );
+      case "win32":
+        const output = child.execSync("WMIC CPU Get NumberOfCores", {
+          encoding: "utf8"
+        });
+        return output
+          .split(os.EOL)
+          .map(function parse(line: string) {
+            return parseInt(line);
+          })
+          .filter(function numbers(value: number) {
+            return !isNaN(value);
+          })
+          .reduce(function add(sum: number, number: number) {
+            return sum + number;
+          }, 0);
+      default:
+        // Return logicial cpu and attempt to filter out HT intels.
+        return os.cpus().filter(function(cpu, index) {
+          const hasHyperthreading = cpu.model.includes("Intel");
+          const isOdd = index % 2 === 1;
+          return !hasHyperthreading || isOdd;
+        }).length;
+    }
   }
 }

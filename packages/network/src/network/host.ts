@@ -237,18 +237,17 @@ export class Host extends Home {
           entry,
           resolve: (response: unknown) => {
             this.release(entry);
-            
+
             if (this.processPending[entry.$umid]) {
               this.processPending[entry.$umid].finished = true;
             }
             if (!this.processPending[entry.$umid]?.responded) {
               resolve(response);
 
-              try{
+              try {
                 this.processPending[entry.$umid].responded = true;
-                ActiveLogger.debug("Client Response TX : " + entry.$umid);  
-              }catch{}
-              
+                ActiveLogger.debug("Client Response TX : " + entry.$umid);
+              } catch {}
             }
           },
           reject: (response: unknown) => {
@@ -259,9 +258,9 @@ export class Host extends Home {
             }
             if (!this.processPending[entry.$umid]?.responded) {
               reject(response);
-              try{
+              try {
                 this.processPending[entry.$umid].responded = true;
-              }catch{}
+              } catch {}
             }
             //}, 10);
           },
@@ -680,7 +679,8 @@ export class Host extends Home {
     });
 
     // How many threads (Cache so we can check on ready)
-    const cpuTotal = PhysicalCores.count();
+    const cpuTotal =
+      parseInt(ActiveOptions.get<string>("cpus", "0")) || PhysicalCores.count();
 
     // Setup Processors
     const latestSetupMsg = this.getLatestSetup();
