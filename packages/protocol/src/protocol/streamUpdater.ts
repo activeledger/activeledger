@@ -215,7 +215,7 @@ export class StreamUpdater {
    * keep the value deterministic (not including nodes)
    *
    * TODO Add Events (So we can replay them on insertion)
-   * 
+   *
    * @private
    * @returns
    * */
@@ -412,7 +412,9 @@ export class StreamUpdater {
 
       // TODO can we detect if this has been changed?
       // Meta (Stream Data) for internal usage
-      if (this.streams[i].meta?._id) this.docs.push(this.streams[i].meta);
+      if (this.streams[i].meta?._id) {
+        this.docs.push(this.streams[i].meta);
+      }
 
       // Volatile data which cannot really be trusted
       if (this.streams[i].volatile && this.streams[i].volatile!._id)
@@ -485,7 +487,7 @@ export class StreamUpdater {
 
       if (this.virtualMachine.getNewContractData(this.entry.$umid)) {
         this.emitter.emit("contractData", {
-          contract: this.entry.$tx.$contract.substring(0,64), // remove @....  // Can't do this yet cache doesn't go by root id includes @=
+          contract: this.entry.$tx.$contract.substring(0, 64), // remove @....  // Can't do this yet cache doesn't go by root id includes @=
           //contract: this.entry.$tx.$contract, // remove @....
           data: null, // Set to null and it will refresh next call
         });

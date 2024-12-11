@@ -100,7 +100,7 @@ interface schema extends document {
 }
 
 const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
-const ENABLE_CACHE = 0;
+const ENABLE_CACHE = 1;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -948,13 +948,14 @@ export class LevelMe {
     await this.open();
 
     // Convert doc to string
-    const incomingDoc = JSON.stringify(doc);
-
-    // Changes that will be written
-    //const changes = {};
+    const incomingDoc = JSON.stringify({...doc,_rev:null});
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
+    let isDiff = true;
+
+    // Changes that will be written
+    //const changes = {};
 
     // Current Document root schema
     let currentDocRoot: document;
@@ -976,16 +977,18 @@ export class LevelMe {
 
       // Replace with winning rev instead of branch crawling
       if (currentRev) {
-        if (doc._rev !== currentRev) {
+        if (doc._rev !== currentRev && !options.new_edits) {
           throw {
-            msg: `Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentRev}`,
+            msg: `Revision Mismatch:  ${doc._id} @ ${doc._rev} !== ${currentRev} NE : ${options.new_edits}`,
             throw: 1,
           };
         }
 
         if (!options.force_rev) {
           // Get more relilable position value (crawler incorrect on auto archive)
-          const pos = parseInt(currentRev.split("-")[0]) + 1;
+          const [p1, curmd5] = currentRev.split("-");
+          const pos= parseInt(p1) + 1;
+          isDiff = md5 !== curmd5;
 
           // Update rev_* and doc
           newRev = `${pos}-${md5}`;
@@ -1036,34 +1039,9 @@ export class LevelMe {
       };
     }
 
-    // submit as bulk
-    // 1. sequence data file
-    // 2. root file
-    // 3. LevelMe.META_PREFIX + "_local_last_update_seq"
-    // 4. LevelMe.META_PREFIX + "_local_doc_count"
-    chain
-      //.put(LevelMe.SEQ_PREFIX + md5, JSON.stringify(doc))
-      //.put(
-      //  LevelMe.SEQ_PREFIX + this.docUpdateSeq.toString().padStart(16, "0"),
-      //  JSON.stringify(doc)
-      //)
-      //.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(currentDocRoot));
-      .put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
-    //.put(LevelMe.META_PREFIX + "_local_last_update_seq", this.docUpdateSeq);
-
-    // Include only data streams
-    // We skip this if not stream document, about 3 less writes per stream
-    // if (doc._id.indexOf(":") === -1) {
-    //   chain.put(
-    //     LevelMe.SEQ_META_PREFIX +
-    //       this.docUpdateSeq.toString().padStart(30, "0"),
-    //     `{"_id": "${doc._id}" ,"_rev": "${doc._rev}"}`
-    //   );
-    // }
-
-    // if (newDoc) {
-    //   chain.put(LevelMe.META_PREFIX + "_local_doc_count", ++this.docCount);
-    // }
+    if(isDiff) {
+      chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+    }
 
     // Should be able to assume,  maybe not what if restarted, So set object!
     // Maybe only store data and :stream? Or just store everything and delete when older than X?

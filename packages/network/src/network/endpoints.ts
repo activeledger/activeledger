@@ -33,6 +33,7 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import { CacheManager } from "./cache";
 
 const MAX_COUNTERS = 10;
 
@@ -159,7 +160,7 @@ export class Endpoints {
                       );
                       setTimeout(() => {
                         resendable(initTx, ++counter);
-                      }, 100);
+                      }, 50);
                       return;
                     }
 
@@ -236,6 +237,11 @@ export class Endpoints {
 
                             // Should probably still wait on locks with priority to hold
                             if (streams.length) {
+                              const rewrote = CacheManager.fetch(
+                                "rewrote",
+                                10000
+                              );
+
                               // loop and add :stream
                               for (let i = streams.length; i--; ) {
                                 streams.push(`${streams[i]}:stream`);
@@ -293,8 +299,11 @@ export class Endpoints {
 
                               // Now find that document
                               const docs = Object.keys(consensus);
-                              for (let i = docs.length; i--; ) {
+                              foundWinner: for (let i = docs.length; i--; ) {
                                 const doc = consensus[docs[i]];
+                                if (rewrote.has(docs[i])) {
+                                  continue;
+                                }
                                 var max = 0,
                                   x,
                                   winner;
@@ -305,27 +314,41 @@ export class Endpoints {
                                   }
                                 }
 
-                                // find it
-                                foundWinner: for (
-                                  let ii = networkStreams.length;
-                                  ii--;
-
-                                ) {
+                                // find it (foundWinner:)
+                                for (let ii = networkStreams.length; ii--; ) {
                                   const node = networkStreams[ii];
                                   for (let j = node.length; j--; ) {
                                     const main = node[j];
                                     if (
+                                      !rewrote.has(main._id) &&
                                       main._id == docs[i] &&
                                       main._rev == winner
                                     ) {
-                                      // TODO (In both places or 1 function) this maybe MY version so don't write it!
-                                      // That may solve the data race problem for position incorrect when not entry node (maybe)
-                                      await host.dbConnection.purge({
-                                        _id: main._id,
-                                      });
-                                      await host.dbConnection.bulkDocs([main], {
-                                        new_edits: false,
-                                      });
+                                      rewrote.set(main._id, main._rev);
+                                      const dblCheck =
+                                        await host.dbConnection.get(main._id);
+                                      if (dblCheck._rev !== main._rev) {
+                                        ActiveLogger.error(
+                                          //[main, dblCheck],
+                                          `SPI REWRITING #2 ${main._id} @ ${
+                                            main._rev
+                                          } NOT ${dblCheck._rev} : ${
+                                            tx.$umid
+                                          } CACHE : ${rewrote.get(main._id)}`
+                                        );
+                                        // TODO (In both places or 1 function) this maybe MY version so don't write it!
+                                        // That may solve the data race problem for position incorrect when not entry node (maybe)
+                                        // await host.dbConnection.purge({
+                                        //   _id: main._id,
+                                        // });
+                                        await host.dbConnection.bulkDocs(
+                                          [main],
+                                          {
+                                            new_edits: true,
+                                            force_rev: main._rev,
+                                          }
+                                        );
+                                      }
                                       break foundWinner;
                                     }
                                   }
@@ -346,10 +369,10 @@ export class Endpoints {
                               );
                               setTimeout(() => {
                                 resendable(initTx, ++counter);
-                              }, 100);
+                              }, 50);
                               return;
                             }
-                          }, 3500);
+                          }, 100);
                           return;
                         } else {
                           if (
@@ -381,7 +404,7 @@ export class Endpoints {
                             );
                             setTimeout(() => {
                               resendable(initTx, ++counter);
-                            }, 500);
+                            }, 50);
                             return;
                           }
                         }
@@ -446,7 +469,7 @@ export class Endpoints {
                       ActiveLogger.warn(initTx.$tx, `SPI Resending ${counter}`);
                       setTimeout(() => {
                         resendable(initTx, ++counter);
-                      }, 500);
+                      }, 250);
                       return;
                     } else {
                       return resolve(
@@ -620,7 +643,10 @@ export class Endpoints {
           // Only safe to run if we can get a lock
           // downside of not doing this is the node can be out of date for a while
           // we can alkways keep trying to get a lock or for when it ISN't locked
-          if (ledger?.data?.$nodes) {
+          const rewrote = CacheManager.fetch("rewrote", 10000);
+
+          if (ledger?.data?.$nodes && !rewrote.has(tx.$umid)) {
+            rewrote.set(tx.$umid, 1);
             // Phase 1
             // Now if we have an error position incorrect we should just "fix it" assuming there was a commit
             // Phase 2
@@ -668,6 +694,10 @@ export class Endpoints {
                 ];
 
                 if (streams.length) {
+                  // TODO - Improve, bnreak isn't breaking? same umid multiple times
+                  //const rewrote: any = {};
+                  // const rewrote = CacheManager.fetch("rewrote", 10000);
+
                   // loop and add :stream
                   for (let i = streams.length; i--; ) {
                     streams.push(`${streams[i]}:stream`);
@@ -721,8 +751,12 @@ export class Endpoints {
 
                   // Now find that document
                   const docs = Object.keys(consensus);
-                  for (let i = docs.length; i--; ) {
+                  foundWinner: for (let i = docs.length; i--; ) {
                     const doc = consensus[docs[i]];
+                    if (rewrote.has(docs[i])) {
+                      continue;
+                    }
+
                     var max = 0,
                       x,
                       winner;
@@ -733,19 +767,38 @@ export class Endpoints {
                       }
                     }
 
-                    // find it
-                    foundWinner: for (let ii = networkStreams.length; ii--; ) {
+                    // network streams will have duplicates by x nodes! Need to fix
+                    // Maybe just use the knocked $streams somehow but need _rev..
+
+                    // find it (foundWinner: was here maybe that was the mistake)
+                    for (let ii = networkStreams.length; ii--; ) {
                       const node = networkStreams[ii];
                       for (let j = node.length; j--; ) {
                         const main = node[j];
-                        if (main._id == docs[i] && main._rev == winner) {
-                          await host.dbConnection.purge({
-                            _id: main._id,
-                          });
-                          ActiveLogger.fatal(main, "SPI REWRITING");
-                          await host.dbConnection.bulkDocs([main], {
-                            new_edits: false,
-                          });
+                        if (
+                          main._id == docs[i] &&
+                          main._rev == winner &&
+                          !rewrote.has(main._id)
+                        ) {
+                          rewrote.set(main._id, main._rev);
+                          const dblCheck = await host.dbConnection.get(
+                            main._id
+                          );
+                          if (dblCheck._rev !== main._rev) {
+                            ActiveLogger.error(
+                              //[main, dblCheck],
+                              `SPI REWRITING ${main._id} @ ${main._rev} NOT ${
+                                dblCheck._rev
+                              }  : ${tx.$umid} CACHE : ${rewrote.get(main._id)}`
+                            );
+                            // await host.dbConnection.purge({
+                            //   _id: main._id,
+                            // });
+                            await host.dbConnection.bulkDocs([main], {
+                              new_edits: true,
+                              force_rev: main._rev,
+                            });
+                          }
                           break foundWinner;
                         }
                       }
@@ -928,10 +981,9 @@ export class Endpoints {
     return new Promise((resolve, reject) => {
       if (body.$streams) {
         // Restrict Access to any volatile requests
-        let i = body.$streams.length;
-        let fetchStream = [];
+        const fetchStream = [];
 
-        while (i--) {
+        for (let i = body.$streams.length; i--; ) {
           // Check that :volatile doesn't exist
           if (body.$streams[i].indexOf(":volatile") !== -1) {
             // End exectuion
@@ -953,9 +1005,8 @@ export class Endpoints {
         Promise.all(fetchStream)
           .then((docs: any) => {
             // Could just pass docs but that will send unnecessary data at this point
-            let i = docs.length;
-            let streams = [];
-            while (i--) {
+            const streams = [];
+            for (let i = docs.length; i--; ) {
               // Make sure not an error
               if (docs[i]._id) {
                 // streams.push({
