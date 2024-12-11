@@ -20,14 +20,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-//import * as http from "http";
-import { createServer, Socket, Server } from "net";
-
 import * as url from "url";
-import * as querystring from "querystring";
-import { ActiveLogger } from "@activeledger/activelogger";
+//import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveGZip } from "@activeledger/activeutilities";
 import { App, HttpResponse, TemplatedApp } from "uWebSockets.js";
+
+export interface IActiveHttpResponse extends HttpResponse {}
 
 /**
  * Interface for exposing processed request data to the endpoints
@@ -268,10 +266,6 @@ export class ActiveHttpd {
         "Content-Length": req.getHeader("content-length"),
       };
 
-      // req.forEach((k, v) => {
-      //   console.log(`${k} = ${v}`);
-      // });
-
       const method = req.getMethod().toUpperCase();
       const query = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
       const url2 = req.getUrl();
@@ -318,7 +312,6 @@ export class ActiveHttpd {
           (body[0] == 0x1f && body[1] == 0x8b)
         ) {
           try {
-            console.log("uinzip 1");
             body = await ActiveGZip.ungzip(body);
           } catch (e) {
             // Just incase the magic number still invalid gzip
@@ -366,7 +359,6 @@ export class ActiveHttpd {
     });
 
     this.server.listen(port, () => {
-      console.log("started");
     });
 
     // Bind to request event
@@ -543,7 +535,7 @@ export class ActiveHttpd {
         }
       } catch (error) {
         // Defined error or default to internal server error
-        ActiveLogger.error(error);
+        //ActiveLogger.error(error);
         // res.statusCode = error.status || error.statusCode || 500;
         // this.writeAsHttpData(error, res);
         this.writeResponse(

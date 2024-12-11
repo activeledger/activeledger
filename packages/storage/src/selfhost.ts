@@ -25,8 +25,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
-import { Socket } from "net";
+//import { Socket } from "net";
 import { SSE } from "./sse";
+import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 (function () {
   // Fauxton Path
@@ -557,7 +558,7 @@ import { SSE } from "./sse";
     async (
       incoming: IActiveHttpIncoming,
       req: http.IncomingMessage,
-      res: Socket
+      res: IActiveHttpResponse
     ) => {
       // Get Database
       let db = getDB(incoming.url[0]);
@@ -783,7 +784,7 @@ import { SSE } from "./sse";
         remoteAddress: string;
       };
     },
-    res: Socket
+    res: IActiveHttpResponse
   ) => {
     // We want to force /_utils to /_utils/ as this is the CouchDB behavior
     if (req.url === "/_utils") {

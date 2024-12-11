@@ -237,13 +237,18 @@ export class Host extends Home {
           entry,
           resolve: (response: unknown) => {
             this.release(entry);
+            
             if (this.processPending[entry.$umid]) {
               this.processPending[entry.$umid].finished = true;
             }
-            if (!this.processPending[entry.$umid].responded) {
+            if (!this.processPending[entry.$umid]?.responded) {
               resolve(response);
-              ActiveLogger.debug("Client Response TX : " + entry.$umid);
-              this.processPending[entry.$umid].responded = true;
+
+              try{
+                this.processPending[entry.$umid].responded = true;
+                ActiveLogger.debug("Client Response TX : " + entry.$umid);  
+              }catch{}
+              
             }
           },
           reject: (response: unknown) => {
@@ -252,9 +257,11 @@ export class Host extends Home {
             if (this.processPending[entry.$umid]) {
               this.processPending[entry.$umid].finished = true;
             }
-            if (!this.processPending[entry.$umid].responded) {
+            if (!this.processPending[entry.$umid]?.responded) {
               reject(response);
-              this.processPending[entry.$umid].responded = true;
+              try{
+                this.processPending[entry.$umid].responded = true;
+              }catch{}
             }
             //}, 10);
           },
@@ -526,10 +533,6 @@ export class Host extends Home {
         "content-encoding": req.getHeader("content-encoding"),
         "X-Bundle": req.getHeader("x-bundle"),
       };
-
-      // req.forEach((k, v) => {
-      //   console.log(`${k} = ${v}`);
-      // });
 
       const method = req.getMethod().toUpperCase();
       const url = req.getUrl();
@@ -963,9 +966,9 @@ export class Host extends Home {
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
-          if (m.data && this.hybridHosts.length) {
-            this.processHybridNodes(pending.entry);
-          }
+          // if (m.data && this.hybridHosts.length) {
+          //   this.processHybridNodes(pending.entry);
+          // }
           break;
         case "commited":
           if (!pending) return; // Fail safe, May happen when process being closed
@@ -1201,7 +1204,7 @@ export class Host extends Home {
           // Or connection issues. This doesn't stop commit phase as they will eventually call us.
           setTimeout(() => {
             this.broadcastResolver(umid);
-          }, 500);
+          }, 250);
         });
     }
   }

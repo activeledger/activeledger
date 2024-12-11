@@ -20,6 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 import { HeartBeat } from "./heartbeat";
 
 /**
@@ -30,15 +31,18 @@ import { HeartBeat } from "./heartbeat";
  */
 export class SSE {
   private heartBeat: NodeJS.Timeout;
-  constructor(private res: any) {
+  constructor(private res: IActiveHttpResponse) {
     // Make sure we have an array
     //res.statusCode = 200;
 
     // Set Header
-    res.writeStatus(`200`);
-    res.writeHeader(`Content-type`, `text/event-stream`);
-    res.writeHeader(`Cache-Control`, `no-cache`);
-    res.writeHeader(`X-Accel-Buffering`, `no`);
+    res.cork(() => {
+      res.writeHeader(`Content-type`, `text/event-stream`);
+      res.writeHeader(`Connection`, `keep-alive`);
+      res.writeHeader(`Cache-Control`, `no-cache`);
+      res.writeHeader(`X-Accel-Buffering`, `no`);
+      res.writeStatus(`200 OK`);
+    });
 
     /*
       Ngnix recommend values:
@@ -67,6 +71,11 @@ export class SSE {
     //   // Clear Heartbeat
     //   HeartBeat.Stop(heartBeat);
     // });
+
+    res.onAborted(() => {
+      res.writable = false;
+      HeartBeat.Stop(this.heartBeat);
+    });
   }
 
   /**
@@ -79,17 +88,12 @@ export class SSE {
   public write(sequence: number | string, prepare: unknown): boolean {
     // Connection still open?
     if (this.res.writable) {
-      // Write new event
-      if (
-        !this.res.write(
+      this.res.cork(() => {
+        this.res.write(
           `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
-        )
-      ) {
-        return true;
-      } else {
-        process.nextTick(() => {});
-        return true;
-      }
+        );
+      });
+      return true;
     } else {
       // End Server Side
       //this.res.end();

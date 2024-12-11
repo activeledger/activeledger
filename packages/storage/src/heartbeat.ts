@@ -20,7 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { Socket } from "net";
+import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 /**
  * Connection Heartbeat management
@@ -36,7 +36,7 @@ export class HeartBeat {
    * @param {ServerResponse} response
    * @returns {NodeJS.Timeout}
    */
-  public static Start(response: Socket): NodeJS.Timeout {
+  public static Start(response: IActiveHttpResponse): NodeJS.Timeout {
     return setInterval(() => {
       if (response.writable) {
         // Empty bytes can cause issues to some client
