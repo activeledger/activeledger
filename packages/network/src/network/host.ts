@@ -1956,7 +1956,7 @@ export class Host extends Home {
 
       if (cors) {
         res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
-        res.writeHeader("Access-Control-Allow-Methods", "*");
+        res.writeHeader("Access-Control-Allow-Headers", "*");
       }
 
       if (content) {

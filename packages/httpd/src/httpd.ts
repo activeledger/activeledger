@@ -736,7 +736,7 @@ export class ActiveHttpd {
       res.writeStatus(`${statusCode}`);
       res.writeHeader("Access-Control-Allow-Origin", "*");
       res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
-      res.writeHeader("Access-Control-Allow-Methods", "*");
+      res.writeHeader("Access-Control-Allow-Headers", "*");
 
       for (let i = headers.length; i--; ) {
         if (headers[i]) {
