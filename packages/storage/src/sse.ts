@@ -42,6 +42,8 @@ export class SSE {
       res.writeHeader(`Cache-Control`, `no-cache`);
       res.writeHeader(`X-Accel-Buffering`, `no`);
       res.writeStatus(`200 OK`);
+      // Shows connection as open
+      res.write(":\n\n");
     });
 
     /*
