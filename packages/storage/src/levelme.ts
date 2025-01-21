@@ -101,7 +101,7 @@ interface schema extends document {
 }
 
 //const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
-const ENABLE_CACHE = 1;
+const ENABLE_CACHE = 0;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
@@ -939,7 +939,10 @@ export class LevelMe {
     await this.open();
 
     // Convert doc to string
-    const incomingDoc = JSON.stringify({...doc,_rev:null});
+    //const incomingDoc = JSON.stringify({...doc,_rev:null});
+    // Above same problem as isDiff going to get different md5 values on write
+
+    const incomingDoc = JSON.stringify(doc);
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
@@ -979,7 +982,9 @@ export class LevelMe {
           // Get more relilable position value (crawler incorrect on auto archive)
           const [p1, curmd5] = currentRev.split("-");
           const pos= parseInt(p1) + 1;
-          isDiff = md5 !== curmd5;
+          
+          // Only uncomment if entire network does at the same time
+          //isDiff = md5 !== curmd5;
 
           // Update rev_* and doc
           newRev = `${pos}-${md5}`;
