@@ -213,6 +213,10 @@ export class Endpoints {
                         summary.errors &&
                         counter <= MAX_COUNTERS
                       ) {
+                        ActiveLogger.warn(
+                          summary,
+                          `SPI Checking - Origin Node, Is it wrong?`
+                        );
                         if (
                           // Other nodes telling me I am wrong (as I am origin)
                           // so more than 50% should say that otherwise only 1 of them could be wrong
@@ -225,6 +229,9 @@ export class Endpoints {
                             "Stream Position Incorrect"
                           ) !== -1
                         ) {
+                          ActiveLogger.warn(
+                            `SPI Checked - Origin Node, Wrong. Starting lookup`
+                          )
                           // Now if same i/o going to different nodes it can mix this up
                           // however we need a delay to at least know the record has been written!
                           setTimeout(async () => {
