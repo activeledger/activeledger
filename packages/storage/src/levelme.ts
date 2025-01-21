@@ -613,7 +613,7 @@ export class LevelMe {
     if (ENABLE_CACHE) {
       let tmpKeys = [];
       let cached = [];
-      const now = new Date();
+      //const now = new Date();
       for (let i = keys.length; i--; ) {
         if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
@@ -704,19 +704,9 @@ export class LevelMe {
     try {
       await writer.chain.write();
       this.changeEmitter.emit("change", writer.changes);
-
-      // memory allows us to not need awaiting
-      // writer.chain
-      //   .write()
-      //   .then(() => {
-      //     // Emit Changed Doc
-      //     this.changeEmitter.emit("change", writer.changes);
-      //   })
-      //   .catch(() => {});
     } catch (e) {
-      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
-      //this.docCount--;
-      // Actually the sequence cannot be unwound because while awaiting another document maybe pending
+      // May contain multiple documents, Easier & safer to clear the cache
+      this.cache.clear();
     }
     return {
       ok: true,
