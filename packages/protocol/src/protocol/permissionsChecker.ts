@@ -274,7 +274,7 @@ export class PermissionsChecker {
               code: 1200,
               reason:
                 (this.inputs ? "Input" : "Output") +
-                " Stream Position Incorrect",
+                ` Stream Position Incorrect (${revType[streamId]} !== ${currentRevision} - Local)`,
             });
           }
         } else {
