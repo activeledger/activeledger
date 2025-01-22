@@ -231,7 +231,7 @@ export class Endpoints {
                         ) {
                           ActiveLogger.warn(
                             `SPI Checked - Origin Node, Wrong. Starting lookup`
-                          )
+                          );
                           // Now if same i/o going to different nodes it can mix this up
                           // however we need a delay to at least know the record has been written!
                           setTimeout(async () => {
@@ -265,12 +265,12 @@ export class Endpoints {
                                 });
 
                               // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                              const consensusReached = Math.ceil(
-                                (ActiveOptions.get<any>("consensus", {})
-                                  .reached /
-                                  100) *
-                                  host.neighbourhood.count()
-                              );
+                              // const consensusReached = Math.ceil(
+                              //   (ActiveOptions.get<any>("consensus", {})
+                              //     .reached /
+                              //     100) *
+                              //     host.neighbourhood.count()
+                              // );
 
                               // now find the ones that match
                               const consensus: {
@@ -286,13 +286,13 @@ export class Endpoints {
                                     const rev = consensus[noodeStream._id];
                                     if (rev[noodeStream._rev]) {
                                       rev[noodeStream._rev]++;
-                                      if (
-                                        rev[noodeStream._rev] >=
-                                        consensusReached
-                                      ) {
-                                        // Bad counting here for now do check all of them!
-                                        //break;
-                                      }
+                                      // if (
+                                      //   rev[noodeStream._rev] >=
+                                      //   consensusReached
+                                      // ) {
+                                      //   // Bad counting here for now do check all of them!
+                                      //   //break;
+                                      // }
                                     } else {
                                       rev[noodeStream._rev] = 1;
                                     }
@@ -337,7 +337,7 @@ export class Endpoints {
                                       if (dblCheck._rev !== main._rev) {
                                         ActiveLogger.error(
                                           //[main, dblCheck],
-                                          `SPI REWRITING #2 ${main._id} @ ${
+                                          `SPI REWRITING #1 ${main._id} @ ${
                                             main._rev
                                           } NOT ${dblCheck._rev} : ${
                                             tx.$umid
@@ -356,7 +356,8 @@ export class Endpoints {
                                           }
                                         );
                                       }
-                                      break foundWinner;
+                                      // This break actually prevents multiple docs from being updated
+                                      //break foundWinner;
                                     }
                                   }
                                 }
@@ -653,11 +654,16 @@ export class Endpoints {
           const rewrote = ActiveCacheManager.fetch("rewrote", 10000);
 
           if (ledger?.data?.$nodes && !rewrote.has(tx.$umid)) {
-            rewrote.set(tx.$umid, 1);
+            // rewrote.set(tx.$umid, 1);
             // Phase 1
             // Now if we have an error position incorrect we should just "fix it" assuming there was a commit
             // Phase 2
             // Then later on we can check against other nodes and if we all agree then no need to process
+
+            // Error hasn't actually passed through here correctly
+            // That does need to be traced we could check for vote: false
+            // but then that will create a lot of unnessary checks
+
             if (
               ledger?.data?.$nodes[Home.reference] &&
               ledger.data.$nodes[Home.reference].error &&
@@ -665,6 +671,14 @@ export class Endpoints {
                 "Position Incorrect"
               ) !== -1
             ) {
+              // Now we know it needed rewriting stop next checks
+              rewrote.set(tx.$umid, 1);
+
+              ActiveLogger.warn(
+                tx.$umid,
+                "SPI NON Origin - Position Incorrect"
+              );
+
               // Did they commit at all?
               const nodes = Object.keys(ledger.data.$nodes);
               let check = false;
@@ -691,6 +705,8 @@ export class Endpoints {
 
               // They may not have commited I maybe the only one!
               if (check || (posCount >= 1 && myPos)) {
+                ActiveLogger.warn(tx.$umid, "SPI NON Origin - Must Check");
+
                 // TODO - Resolve this copy paste
                 //setTimeout(async () => {
                 const streams = [
@@ -723,10 +739,10 @@ export class Endpoints {
                   );
 
                   // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                  const consensusReached = Math.ceil(
-                    (ActiveOptions.get<any>("consensus", {}).reached / 100) *
-                      host.neighbourhood.count()
-                  );
+                  // const consensusReached = Math.ceil(
+                  //   (ActiveOptions.get<any>("consensus", {}).reached / 100) *
+                  //     host.neighbourhood.count()
+                  // );
 
                   // now find the ones that match
                   const consensus: {
@@ -742,9 +758,13 @@ export class Endpoints {
                         const rev = consensus[noodeStream._id];
                         if (rev[noodeStream._rev]) {
                           rev[noodeStream._rev]++;
-                          if (rev[noodeStream._rev] >= consensusReached) {
-                            break;
-                          }
+                          // if (
+                          //   rev[noodeStream._rev] >=
+                          //   consensusReached
+                          // ) {
+                          //   // Bad counting here for now do check all of them!
+                          //   //break;
+                          // }
                         } else {
                           rev[noodeStream._rev] = 1;
                         }
@@ -763,7 +783,6 @@ export class Endpoints {
                     if (rewrote.has(docs[i])) {
                       continue;
                     }
-
                     var max = 0,
                       x,
                       winner;
@@ -774,18 +793,15 @@ export class Endpoints {
                       }
                     }
 
-                    // network streams will have duplicates by x nodes! Need to fix
-                    // Maybe just use the knocked $streams somehow but need _rev..
-
-                    // find it (foundWinner: was here maybe that was the mistake)
+                    // find it (foundWinner:)
                     for (let ii = networkStreams.length; ii--; ) {
                       const node = networkStreams[ii];
                       for (let j = node.length; j--; ) {
                         const main = node[j];
                         if (
+                          !rewrote.has(main._id) &&
                           main._id == docs[i] &&
-                          main._rev == winner &&
-                          !rewrote.has(main._id)
+                          main._rev == winner
                         ) {
                           rewrote.set(main._id, main._rev);
                           const dblCheck = await host.dbConnection.get(
@@ -794,10 +810,14 @@ export class Endpoints {
                           if (dblCheck._rev !== main._rev) {
                             ActiveLogger.error(
                               //[main, dblCheck],
-                              `SPI REWRITING ${main._id} @ ${main._rev} NOT ${
-                                dblCheck._rev
-                              }  : ${tx.$umid} CACHE : ${rewrote.get(main._id)}`
+                              `SPI REWRITING #2 ${main._id} @ ${
+                                main._rev
+                              } NOT ${dblCheck._rev} : ${
+                                tx.$umid
+                              } CACHE : ${rewrote.get(main._id)}`
                             );
+                            // TODO (In both places or 1 function) this maybe MY version so don't write it!
+                            // That may solve the data race problem for position incorrect when not entry node (maybe)
                             // await host.dbConnection.purge({
                             //   _id: main._id,
                             // });
@@ -806,7 +826,8 @@ export class Endpoints {
                               force_rev: main._rev,
                             });
                           }
-                          break foundWinner;
+                          // This break actually prevents multiple docs from being updated
+                          //break foundWinner;
                         }
                       }
                     }
