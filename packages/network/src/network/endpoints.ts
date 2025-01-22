@@ -542,6 +542,10 @@ export class Endpoints {
     });
   }
 
+
+  // Method is copied around a lot need to normalise this.
+  // Just updated to filter out labled selfsign which should fix the SPI
+  // process instead of getting "unknown" errors
   public static labelOrKey(txIO: any): string[] {
     // Get reference for input or output
     const keys = Object.keys(txIO || {});
@@ -549,7 +553,11 @@ export class Endpoints {
 
     for (let i = keys.length; i--; ) {
       // Stream label or self
-      out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
+      const addr = txIO[keys[i]].$stream || keys[i];
+      if(addr.length === 64) {
+        out.push(addr);
+      }
+      //out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
     }
     return out;
   }
