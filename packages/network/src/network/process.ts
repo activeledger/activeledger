@@ -237,7 +237,7 @@ class Processor {
             if (this.latestContractData[contract]) {
               this.send("contractData", {
                 contract: contract,
-                data: {},
+                data: null,
               });
             }
 
