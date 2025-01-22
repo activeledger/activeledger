@@ -130,7 +130,9 @@ export class PermissionsChecker {
 
       // Maybe use set instead of checking?
       if (keys.indexOf(filteredPrefix) === -1) {
-        keys.push(filteredPrefix + ":stream");
+        if (suffix !== "data") {
+          keys.push(filteredPrefix + ":stream");
+        }
         keys.push(filteredPrefix);
       }
     }
