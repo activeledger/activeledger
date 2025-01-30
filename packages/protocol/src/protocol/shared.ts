@@ -43,6 +43,17 @@ export class Shared {
   public ioLabelMap: any = { i: {}, o: {} };
 
   /**
+   * Holds reference to inputs there for just sig only
+   *
+   * @type {{
+   *     [index:string]: boolean
+   *   }}
+   */
+  public sigOnly: {
+    [index:string]: boolean
+  } = {};
+
+  /**
    * Prioritise the error sent to the requestee
    *
    * @private
