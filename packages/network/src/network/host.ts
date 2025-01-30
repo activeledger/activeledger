@@ -1256,8 +1256,11 @@ export class Host extends Home {
     const out: string[] = [];
 
     for (let i = keys.length; i--; ) {
-      // Stream label or self
-      out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
+      // So we can have multisig without having to hold lock on same stream
+      if (!txIO[keys[i]].$sigOnly) {
+        // Stream label or self
+        out.push(this.filterPrefix(txIO[keys[i]].$stream || keys[i]));
+      }
     }
     return out;
   }

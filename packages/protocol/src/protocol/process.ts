@@ -1597,6 +1597,11 @@ export class Process extends EventEmitter {
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
         streams[i] = streamId;
+
+        // Only works when labeled inputs.
+        if(!outputs && txIO[map[streamId]].$sigOnly) {
+          this.shared.sigOnly[streams[i]] = true;
+        } 
       }
     }
   }

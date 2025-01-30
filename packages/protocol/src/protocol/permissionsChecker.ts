@@ -345,6 +345,13 @@ export class PermissionsChecker {
               });
             }
           }
+
+          // If sig only dont need the data anymore (can also not fetch main state)
+          if(this.shared.sigOnly[streamId]) {
+            // Splice this loop iteration to remove from the data returned
+            stream.splice(i, 1);
+          }
+
         }
       }
 
