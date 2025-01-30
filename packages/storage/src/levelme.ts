@@ -101,7 +101,7 @@ interface schema extends document {
 }
 
 //const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
-const ENABLE_CACHE = 0;
+const ENABLE_CACHE = true;
 
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
