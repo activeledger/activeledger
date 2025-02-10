@@ -221,6 +221,10 @@ export class PermissionsChecker {
             };
 
             results[i] = cRes;
+
+            // Lets bump keys to include the fake meta
+            // This means the same 950 check works for all opts
+            keys.push(`${cRes.state._id}:meta`);
           }
         }
       }
