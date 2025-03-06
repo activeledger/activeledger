@@ -117,7 +117,7 @@ export class Host extends Home {
   /**
    * Server connection to the couchdb instance for this node
    *
-   * @private
+   * @public
    * @type ActiveDSConnect
    */
   public dbConnection: ActiveDSConnect;
@@ -125,10 +125,10 @@ export class Host extends Home {
   /**
    * Server connection to the couchdb error instance for this node
    *
-   * @private
+   * @public
    * @type ActiveDSConnect
    */
-  private dbErrorConnection: ActiveDSConnect;
+  public dbErrorConnection: ActiveDSConnect;
 
   /**
    * Server connection to the couchdb vent instance for this node
