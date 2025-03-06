@@ -137,7 +137,7 @@ export class Interagent {
       limit: 200,
     });
 
-    if (docs.rows.length) {
+    if (docs?.rows.length) {
       // Provider.errorFeed.pause();
       for (let i = docs.rows.length; i--; ) {
         const doc = docs.rows[i];
