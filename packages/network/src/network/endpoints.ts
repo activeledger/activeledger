@@ -215,7 +215,7 @@ export class Endpoints {
                       ) {
                         ActiveLogger.warn(
                           summary,
-                          `SPI Checking - Origin Node, Is it wrong?`
+                          `SPI Checking - Origin Node, Is it wrong? umid: ${tx.$umid}`
                         );
                         if (
                           // Other nodes telling me I am wrong (as I am origin)
@@ -230,7 +230,7 @@ export class Endpoints {
                           ) !== -1
                         ) {
                           ActiveLogger.warn(
-                            `SPI Checked - Origin Node, Wrong. Starting lookup`
+                            `SPI Checked - Origin Node, Wrong. Starting lookup umid: ${tx.$umid}`
                           );
                           // Now if same i/o going to different nodes it can mix this up
                           // however we need a delay to at least know the record has been written!
@@ -362,6 +362,9 @@ export class Endpoints {
                                   }
                                 }
                               }
+
+                              // Shouldn't need to check umid not found 950 error here, As this was the origin node
+                              // and its position indexes were incorrect.
 
                               // retry!
                               delete (initTx as any).$nodes;
@@ -815,6 +818,8 @@ export class Endpoints {
                             main._id == docs[i] &&
                             main._rev == winner
                           ) {
+                            // Set umid so we can know to push a 950 error to check
+                            rewrote.set(tx.$umid, true);
                             rewrote.set(main._id, main._rev);
                             const dblCheck = await host.dbConnection.get(
                               main._id
@@ -843,6 +848,25 @@ export class Endpoints {
                           }
                         }
                       }
+                    }
+
+                    // We should also check to see if this failing umid did actually save (Assume only if SPI rewrite is called)
+                    // As it wont be saving it and new doc also should do the same. I think even SPI #1 should do this
+                    // Don't have access to protocol/shared.ts#storeError
+                    if (rewrote.has(tx.$umid)) {
+                      ActiveLogger.warn(tx.$umid, `SPI Adding 950 Checker`);
+                      // No need to await but help with catching errors flow
+                      await host.dbErrorConnection.post({
+                        code: 950,
+                        processed: false,
+                        umid: tx.$umid,
+                        transaction: {
+                          $broadcast: true,
+                          $tx: {},
+                          $revs: {},
+                        },
+                        reason: 'Vote Failure - "SPI#2 UMID not found',
+                      });
                     }
                   }, 1000);
                 }
