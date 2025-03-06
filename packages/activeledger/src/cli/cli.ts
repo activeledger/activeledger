@@ -209,10 +209,7 @@ export class CLIHandler {
         ActiveLogger.info("Starting Backup Process");
         let a = await compactDb.backup(filename);
       } catch (e) {
-        ActiveLogger.error(
-          e,
-          "Backup Failed"
-        );
+        ActiveLogger.error(e, "Backup Failed");
       }
     } else {
       ActiveLogger.fatal("Backup only works using self hosted database");
@@ -224,7 +221,7 @@ export class CLIHandler {
    *
    * @static
    */
-  public static async startRestore(filename:string): Promise<void> {
+  public static async startRestore(filename: string): Promise<void> {
     this.checkConfig();
 
     // Now we can parse configuration
@@ -241,10 +238,7 @@ export class CLIHandler {
         ActiveLogger.info("Starting Restore Process");
         let a = await compactDb.restore(filename);
       } catch (e) {
-        ActiveLogger.error(
-          e,
-          "Restore Failed"
-        );
+        ActiveLogger.error(e, "Restore Failed");
       }
     } else {
       ActiveLogger.fatal("Restore only works using self hosted database");
@@ -314,23 +308,27 @@ export class CLIHandler {
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
 
-    // Check for default contracts and recreate for updates
-    if (!fs.existsSync("default_contracts")) fs.mkdirSync("default_contracts");
+    // if default_contracts.paused exists then skip rewrite check we want them to not exist
+    if (!fs.existsSync("default_contracts.paused")) {
+      // Check for default contracts and recreate for updates
+      if (!fs.existsSync("default_contracts"))
+        fs.mkdirSync("default_contracts");
 
-    // Specific files to copy, So we don't copy any unknown ones that found their way.
-    const defaultFileSrc = `${__dirname + "/.."}/contracts/default/`;
-    const defaultFiles = [
-      "contract.js",
-      "namespace.js",
-      "onboard.js",
-      "setup.js",
-    ];
-    for (let i = 0; i < defaultFiles.length; i++) {
-      const file = defaultFiles[i];
-      fs.copyFileSync(
-        `${defaultFileSrc}${file}`,
-        `./default_contracts/${file}`
-      );
+      // Specific files to copy, So we don't copy any unknown ones that found their way.
+      const defaultFileSrc = `${__dirname + "/.."}/contracts/default/`;
+      const defaultFiles = [
+        "contract.js",
+        "namespace.js",
+        "onboard.js",
+        "setup.js",
+      ];
+      for (let i = 0; i < defaultFiles.length; i++) {
+        const file = defaultFiles[i];
+        fs.copyFileSync(
+          `${defaultFileSrc}${file}`,
+          `./default_contracts/${file}`
+        );
+      }
     }
 
     // Check for modules link for running contracts
@@ -442,7 +440,10 @@ export class CLIHandler {
       // Self hosted data storage engine
       const dbConfig = ActiveOptions.get<any>("db", {});
       if (dbConfig.selfhost) {
-        if (ActiveOptions.get<any>("db-only", false) || dbConfig.autostart !== false) {
+        if (
+          ActiveOptions.get<any>("db-only", false) ||
+          dbConfig.autostart !== false
+        ) {
           // Create Datastore instance
           const datastore: ActiveDataStore = new ActiveDataStore();
 
