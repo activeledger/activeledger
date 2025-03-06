@@ -396,6 +396,11 @@ export class Process extends EventEmitter {
       // Set isDefault flag to true
       this.isDefault = true;
 
+      // Allow for individual default contrack locking
+      if (fs.existsSync(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`)) {
+        throw new Error("Contract Global Lock");
+      }
+
       // Default Contract Location
       // Wrapped in realpathSync to resolve symbolic links
       // This prevents issues with cached contracts
