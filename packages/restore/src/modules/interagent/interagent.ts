@@ -580,18 +580,28 @@ export class Interagent {
       try {
         const results: unknown[] = await Promise.all(promiseHolder);
 
-        if (results.some((e: boolean) => e)) {
-          if (
-            this.attemptUmidDoc ||
-            (this.umidDoc && (await this.verifyUmid(this.umidDoc)))
-          ) {
-            await this.insertUmid(this.umidDoc);
-          }
-          // Not strictly false positive
-          await this.setProcessed(document);
-        } else {
-          await this.setProcessed(document);
+        if (
+          this.attemptUmidDoc ||
+          (this.umidDoc && (await this.verifyUmid(this.umidDoc)))
+        ) {
+          await this.insertUmid(this.umidDoc);
         }
+
+        // Not strictly false positive
+        await this.setProcessed(document);
+
+        // if (results.some((e: boolean) => e)) {
+        //   if (
+        //     this.attemptUmidDoc ||
+        //     (this.umidDoc && (await this.verifyUmid(this.umidDoc)))
+        //   ) {
+        //     await this.insertUmid(this.umidDoc);
+        //   }
+        //   // Not strictly false positive
+        //   await this.setProcessed(document);
+        // } else {
+        //   await this.setProcessed(document);
+        // }
 
         resolve();
       } catch (error) {
