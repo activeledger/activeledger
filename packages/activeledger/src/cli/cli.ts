@@ -329,6 +329,13 @@ export class CLIHandler {
           `./default_contracts/${file}`
         );
       }
+
+      if (!fs.existsSync("default_contracts/node_modules"))
+        fs.symlinkSync(
+          fs.realpathSync(`${__dirname}/../../node_modules`),
+          fs.realpathSync("default_contracts") + "/node_modules",
+          "dir"
+        );
     }
 
     // Check for modules link for running contracts
@@ -336,13 +343,6 @@ export class CLIHandler {
       fs.symlinkSync(
         fs.realpathSync(`${__dirname}/../../node_modules`),
         fs.realpathSync("contracts") + "/node_modules",
-        "dir"
-      );
-
-    if (!fs.existsSync("default_contracts/node_modules"))
-      fs.symlinkSync(
-        fs.realpathSync(`${__dirname}/../../node_modules`),
-        fs.realpathSync("default_contracts") + "/node_modules",
         "dir"
       );
 
