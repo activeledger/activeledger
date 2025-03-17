@@ -634,23 +634,23 @@ export class Interagent {
   private insertUmid(umidDoc: any): Promise<void> {
     return new Promise(async (resolve, reject) => {
       if (umidDoc) {
+        // This method will have the umid "out of order" however a parser will not miss it
+        const _id = `umid:${new Date().getTime()},${umidDoc.umid.$umid}`;
+
         try {
           // Create event id for umid
           // This one will match all nodes so it could be "missed" by a parser
           //const _id = `umid:${new Date(umidDoc.umid.$datetime).getTime()},${umidDoc.umid.$umid}`
-
-          // This method will have the umid "out of order" however a parser will not miss it
-          const _id = `umid:${new Date().getTime()},${umidDoc.umid.$umid}`;
 
           // Save umids to database
           await Provider.database.bulkDocs([umidDoc], { new_edits: false });
           await Provider.eventDatabase.post({
             _id,
           }),
-            ActiveLogger.info("UMID Added");
+            ActiveLogger.info(`UMID Added ${_id}`);
           resolve();
         } catch (error) {
-          ActiveLogger.info(error || umidDoc, "Adding UMID failed");
+          ActiveLogger.info(error || umidDoc, `Adding UMID failed ${_id} / ${umidDoc._id}`);
           reject(error);
         }
       } else {
