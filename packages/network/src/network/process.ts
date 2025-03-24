@@ -377,7 +377,19 @@ class Processor {
   private failed(entry: any, error: Error): void {
     ActiveLogger.debug(error, "TX Failed");
     // Store error
-    entry.$nodes[Home.reference].error = error?.toString();
+    //entry.$nodes[Home.reference].error = error?.toString();
+
+    if (Home.reference) {
+      if (entry.$nodes[Home.reference]?.error) {
+        entry.$nodes[Home.reference].error = error?.toString();
+      } else {
+        entry.$nodes[Home.reference] = {
+          vote: false,
+          commit: false,
+          error: error?.toString(),
+        };
+      }
+    }
 
     // Pass back to host to respond
     this.send("commited", {
