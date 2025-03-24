@@ -425,9 +425,12 @@ export class CLIHandler {
       }
 
       // Extend configuration proxy founction
-      let extendConfig: Function = (boot: Function) => {
+      let extendConfig: Function = (
+        boot: Function,
+        datastore: ActiveDataStore
+      ) => {
         ActiveOptions.extendConfig()
-          .then(() => boot())
+          .then(() => boot(datastore))
           .catch((e) => {
             ActiveLogger.fatal(e, "Config Extension Issues");
           });
@@ -437,6 +440,9 @@ export class CLIHandler {
       // Let them know!
       ActiveLogger.info("Activeledger Boot Process Started");
 
+      // Reference datastore to pass to terminate if needed
+      let datastore: ActiveDataStore;
+
       // Self hosted data storage engine
       const dbConfig = ActiveOptions.get<any>("db", {});
       if (dbConfig.selfhost) {
@@ -445,7 +451,7 @@ export class CLIHandler {
           dbConfig.autostart !== false
         ) {
           // Create Datastore instance
-          const datastore: ActiveDataStore = new ActiveDataStore();
+          datastore = new ActiveDataStore();
 
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
@@ -471,7 +477,7 @@ export class CLIHandler {
         if (!ActiveOptions.get<any>("db-only", false)) {
           // Wait a bit for process to fully start
           setTimeout(() => {
-            extendConfig(this.boot);
+            extendConfig(this.boot, datastore);
           }, 2000);
         }
       } else {
@@ -489,17 +495,54 @@ export class CLIHandler {
   }
 
   /**
+   * Terminate, Slightly improved shutdown routine
+   * will currently stop new transactions coming in and wait 1 minute
+   * and then shut down.
+   *
+   * @private
+   * @static
+   */
+  private static terminate(
+    host: ActiveNetwork.Host,
+    datastore?: ActiveDataStore
+  ) {
+    if (!this.isShuttingDown) {
+      ActiveLogger.info("Shut Down Initiated");
+      if (datastore) {
+        datastore.isShuttingDown = true;
+      }
+      this.isShuttingDown = true;
+      host.shutdown();
+    }
+  }
+
+  // Track if we are shutting down
+  private static isShuttingDown = false;
+
+  /**
    * Used to wait on self host
    *
    * @private
    * @static
    */
-  private static async boot(): Promise<void> {
+  private static async boot(datastore?: ActiveDataStore): Promise<void> {
     try {
       // Set Base Path
       ActiveOptions.set("__base", __dirname + "/..");
       // Maintain Network Neighbourhood & Let Workers know
-      ActiveNetwork.Maintain.init(new ActiveNetwork.Host());
+      const host = new ActiveNetwork.Host();
+      ActiveNetwork.Maintain.init(host);
+
+      // Slightly more graceful shutdown
+      process.on("SIGINT", () => {
+        CLIHandler.terminate(host, datastore);
+      });
+      process.on("SIGTERM", () => {
+        CLIHandler.terminate(host, datastore);
+      });
+      process.on("SIGQUIT", () => {
+        CLIHandler.terminate(host, datastore);
+      });
 
       //#region Auto starting Activeledger Services
       if (ActiveOptions.get<any>("autostart", {})) {
