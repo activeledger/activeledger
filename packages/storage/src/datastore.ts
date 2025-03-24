@@ -40,6 +40,9 @@ const MAX_RESTART_RESET_HOURS = 24;
  * @class DataStore
  */
 export class ActiveDataStore {
+  // Flag to prevent restart loop
+  public isShuttingDown = false;
+
   /**
    * Folder location
    *
@@ -134,7 +137,11 @@ export class ActiveDataStore {
       );
       // As its an attached process killing activeledger will prevent this restart
       // If killed via activeledger --stop check for SIGTERM signal and don't restart if it is
-      if (signal !== "SIGTERM" && MAX_RESTARTS >= this.restartCounter) {
+      if (
+        !this.isShuttingDown &&
+        signal !== "SIGTERM" &&
+        MAX_RESTARTS >= this.restartCounter
+      ) {
         this.restartCounter++;
         this.launch();
 
@@ -145,8 +152,10 @@ export class ActiveDataStore {
         ) {
           this.restartCounter = 0;
         }
-      }else{
-        ActiveLogger.error("Not attempting to restart either due to signal or counters reached");
+      } else {
+        ActiveLogger.error(
+          "Not attempting to restart either due to signal or counters reached"
+        );
       }
     });
 

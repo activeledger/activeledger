@@ -41,7 +41,13 @@ import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
-import { App, HttpResponse, TemplatedApp } from "uWebSockets.js";
+import {
+  App,
+  HttpResponse,
+  TemplatedApp,
+  us_listen_socket,
+  us_listen_socket_close,
+} from "uWebSockets.js";
 
 const RELEASE_SHUTDOWN_TIMEOUT = 1 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 2 * 60 * 1000;
@@ -106,6 +112,14 @@ interface StoppableChildProcess extends ChildProcess {
  * @extends {Home}
  */
 export class Host extends Home {
+  /**
+   * Holds underlying socket
+   *
+   * @private
+   * @type {us_listen_socket}
+   */
+  private listenSocket: us_listen_socket | null;
+
   /**
    * All communications done via a single REST server
    * we will need to manage permissions and security to seperate the calls
@@ -174,6 +188,23 @@ export class Host extends Home {
     entry: ActiveDefinitions.LedgerEntry;
     retry: number;
   }[] = [];
+
+  public shutdown(): void {
+    if (this.listenSocket) {
+      // Close the listen socket
+      us_listen_socket_close(this.listenSocket);
+      this.listenSocket = null;
+
+      // Only have a a short while before sigkill
+      // Lets try let them finish up then close the app before sigkill can happen
+      setTimeout(() => {
+        ActiveLogger.info("Stopping HTTP Server");
+        this.api.close();
+        ActiveLogger.info("Shutting down...");
+        process.exit(0);
+      }, 1300);
+    }
+  }
 
   /**
    * Add process into pending
@@ -844,7 +875,7 @@ export class Host extends Home {
 
     // Reusable restart process from error with current scope
     const unloadProcessorSafely = (...error: any[]) => {
-      if (unloadHandled) {
+      if (unloadHandled || !this.listenSocket) {
         //ActiveLogger.fatal(error, "Processor Crashed - Already Shutting Down");
       } else {
         pFork.stop = unloadHandled = true;
@@ -1001,7 +1032,8 @@ export class Host extends Home {
               this.listeing = true;
               this.api.listen(
                 ActiveInterfaces.getBindingDetails("port") as unknown as number,
-                () => {
+                (token: us_listen_socket) => {
+                  this.listenSocket = token;
                   ActiveLogger.info(
                     "Activeledger listening on port " +
                       ActiveInterfaces.getBindingDetails("port")
