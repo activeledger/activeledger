@@ -34,7 +34,8 @@ import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 
-const BROADCAST_TIMEOUT_VOTE = 30 * 1000;
+// Increasing baseline timeout, Contracts should error or complete before timeouts are reached
+const BROADCAST_TIMEOUT_VOTE = 60 * 1000;
 const BROADCAST_TIMEOUT_COMMIT = 60 * 1000;
 
 /**
