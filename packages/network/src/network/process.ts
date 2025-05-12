@@ -205,8 +205,13 @@ class Processor {
               this.protocols[m.entry.$umid] &&
               !(this.protocols[m.entry.$umid] as any).unhandled
             ) {
+              // Reason should always be an error but checking to prevent cascade of error problems
               ActiveLogger.warn(
-                reason,
+                {
+                  name: reason?.name ?? "Unknown",
+                  message: reason?.message ?? "Unknown",
+                  stack: reason?.stack ?? "Unknown",
+                },
                 "UnhandledRejection - " + m.entry.$umid
               );
               this.unhandled(m.entry, reason);
