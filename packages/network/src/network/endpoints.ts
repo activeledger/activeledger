@@ -265,12 +265,12 @@ export class Endpoints {
                                 });
 
                               // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                              // const consensusReached = Math.ceil(
-                              //   (ActiveOptions.get<any>("consensus", {})
-                              //     .reached /
-                              //     100) *
-                              //     host.neighbourhood.count()
-                              // );
+                              const consensusReached = Math.ceil(
+                                (ActiveOptions.get<any>("consensus", {})
+                                  .reached /
+                                  100) *
+                                  host.neighbourhood.count() // -1 here if we want to exclude this node
+                              );
 
                               // now find the ones that match
                               const consensus: {
@@ -311,11 +311,13 @@ export class Endpoints {
                                 if (rewrote.has(docs[i])) {
                                   continue;
                                 }
-                                var max = 0,
-                                  x,
-                                  winner;
-                                for (x in doc) {
-                                  if (doc[x] > max) {
+                                let max = 0;
+                                let winner = "";
+                                for (let x in doc) {
+                                  if (
+                                    doc[x] >= consensusReached &&
+                                    doc[x] > max
+                                  ) {
                                     max = doc[x];
                                     winner = x;
                                   }
@@ -327,6 +329,7 @@ export class Endpoints {
                                   for (let j = node.length; j--; ) {
                                     const main = node[j];
                                     if (
+                                      winner &&
                                       !rewrote.has(main._id) &&
                                       main._id == docs[i] &&
                                       main._rev == winner
@@ -358,6 +361,12 @@ export class Endpoints {
                                       }
                                       // This break actually prevents multiple docs from being updated
                                       //break foundWinner;
+                                    } else {
+                                      if (!rewrote.has(main._id)) {
+                                        ActiveLogger.warn(
+                                          `SPI NOWINNER #2 - ${main._id}@${main._rev}`
+                                        );
+                                      }
                                     }
                                   }
                                 }
@@ -754,10 +763,10 @@ export class Endpoints {
                     );
 
                     // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
-                    // const consensusReached = Math.ceil(
-                    //   (ActiveOptions.get<any>("consensus", {}).reached / 100) *
-                    //     host.neighbourhood.count()
-                    // );
+                    const consensusReached = Math.ceil(
+                      (ActiveOptions.get<any>("consensus", {}).reached / 100) *
+                        host.neighbourhood.count() // -1 here if we want to exclude this node
+                    );
 
                     // now find the ones that match
                     const consensus: {
@@ -798,11 +807,11 @@ export class Endpoints {
                       if (rewrote.has(docs[i])) {
                         continue;
                       }
-                      var max = 0,
-                        x,
-                        winner;
-                      for (x in doc) {
-                        if (doc[x] > max) {
+                      let max = 0;
+                      let winner = "";
+                      for (let x in doc) {
+                        // Make sure it still reaches the consensus! 1,2,3 would be wrong.
+                        if (doc[x] >= consensusReached && doc[x] > max) {
                           max = doc[x];
                           winner = x;
                         }
@@ -814,6 +823,7 @@ export class Endpoints {
                         for (let j = node.length; j--; ) {
                           const main = node[j];
                           if (
+                            winner &&
                             !rewrote.has(main._id) &&
                             main._id == docs[i] &&
                             main._rev == winner
@@ -845,6 +855,12 @@ export class Endpoints {
                             }
                             // This break actually prevents multiple docs from being updated
                             //break foundWinner;
+                          } else {
+                            if (!rewrote.has(main._id)) {
+                              ActiveLogger.warn(
+                                `SPI NOWINNER #2 - ${main._id}@${main._rev}`
+                              );
+                            }
                           }
                         }
                       }
