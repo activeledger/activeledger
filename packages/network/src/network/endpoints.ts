@@ -33,7 +33,10 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
-import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import {
+  IStreams,
+  LedgerTypeChecks,
+} from "@activeledger/activedefinitions/lib/definitions";
 
 const MAX_COUNTERS = 10;
 
@@ -269,7 +272,8 @@ export class Endpoints {
                                 (ActiveOptions.get<any>("consensus", {})
                                   .reached /
                                   100) *
-                                  host.neighbourhood.count() // -1 here if we want to exclude this node
+                                  host.neighbourhood.count() -
+                                  1 // -1 here if we want to exclude this node
                               );
 
                               // now find the ones that match
@@ -765,7 +769,8 @@ export class Endpoints {
                     // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
                     const consensusReached = Math.ceil(
                       (ActiveOptions.get<any>("consensus", {}).reached / 100) *
-                        host.neighbourhood.count() // -1 here if we want to exclude this node
+                        host.neighbourhood.count() -
+                        1 // -1 here if we want to exclude this node
                     );
 
                     // now find the ones that match
