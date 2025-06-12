@@ -212,9 +212,15 @@ export class Host extends Home {
    */
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
-    internal = false
+    internal = false,
+    forceRestart = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
+      if (forceRestart && this.processPending[entry.$umid]) {
+        this.destroy(entry.$umid, true);
+        delete this.processPending[entry.$umid];
+      }
+
       // Broadcasting or Territoriality Mode
       if (entry.$broadcast) {
         // We may already have the $umid in memory
@@ -252,6 +258,10 @@ export class Host extends Home {
               // Not found, Lets just return the umid anyway it may confirm or will timeout
             }
           }
+          if(!entry.$$noreply) {
+            this.broadcast(entry.$umid, false, true);
+          }
+          // maybe pass something so the data isn't sent twice?
           return resolve({
             status: 200,
             //data: { ok: true },
@@ -1145,7 +1155,7 @@ export class Host extends Home {
    * @private
    * @param {*} umid
    */
-  private destroy(umid: string): void {
+  private destroy(umid: string, skipTimeout = false): void {
     // Make sure it hasn't ben removed already
     if (this.processPending[umid]) {
       // Set to shutdown so broadcast can stop
@@ -1156,13 +1166,16 @@ export class Host extends Home {
         type: "destory",
         data: {
           umid,
+          skipTimeout
         },
       });
 
-      // Keep in memory to manage inbound broadcasts
-      setTimeout(() => {
-        delete this.processPending[umid];
-      }, RELEASE_DELETE_TIMEOUT);
+      if (!skipTimeout) {
+        // Keep in memory to manage inbound broadcasts
+        setTimeout(() => {
+          delete this.processPending[umid];
+        }, RELEASE_DELETE_TIMEOUT);
+      }
     }
   }
 
@@ -1172,21 +1185,20 @@ export class Host extends Home {
    * @private
    * @param {string} umid
    */
-  private broadcast(umid: string, early = false): void {
+  private broadcast(umid: string, early = false, noreply = false): void {
     // Final check object exists
     if (
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
-      this.processPending[umid].entry.$nodes[this.reference] &&
-      !this.processPending[umid].finished // Only send if not finished, if finished we have no real interest
+      this.processPending[umid].entry.$nodes[this.reference]// &&
+      //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
-      ActiveLogger.debug("Broadcasting TX : " + umid);
+      ActiveLogger.debug(`Broadcasting TX : ($$NR ${noreply})` + umid);
 
       // Get all the neighbour nodes
       let neighbourhood = this.neighbourhood.get();
       let nodes = this.neighbourhood.keys();
-      let i = nodes.length;
       let promises: any[] = [];
 
       // Skip sending if leader
@@ -1207,8 +1219,9 @@ export class Host extends Home {
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
+        data.$$noreply = noreply;
         // Loop them all and broadcast the transaction
-        while (i--) {
+        for (let i = nodes.length; i--; ) {
           let node = neighbourhood[nodes[i]];
           // TODO the entry.$nodes check only valid for leader? It can probably be reduced for non leaders
 
@@ -1228,7 +1241,7 @@ export class Host extends Home {
       // Listen for promises
       Promise.all(promises)
         .then(() => {
-          // Don't need to do anything on succusfful response
+          // As it is bundled we don't get a response. We need to trigger rebroadcast
         })
         .catch(() => {
           // Keep broadcasting until promises fully resolve
@@ -1900,6 +1913,15 @@ export class Host extends Home {
             //} else {
             //  return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             // }
+
+            // Check Locks
+            // Wait, then check again
+            // loop this maybe?
+            // Then send response if unlocked (but what if a transaction locks it between timer?)
+            // maybe have an event that triggers it on unlock
+            // then need to return an error within time. (and deal with that in SPI)
+
+            // m,oving to postprocess will it unlock it quicker??
             break;
           default:
             return this.writeResponse(res, 404, "Not Found", gzipAccepted);

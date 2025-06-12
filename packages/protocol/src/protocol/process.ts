@@ -398,7 +398,11 @@ export class Process extends EventEmitter {
       this.isDefault = true;
 
       // Allow for individual default contrack locking
-      if (fs.existsSync(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`)) {
+      if (
+        fs.existsSync(
+          `${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`
+        )
+      ) {
         throw new Error("Contract Global Lock");
       }
 
@@ -645,12 +649,31 @@ export class Process extends EventEmitter {
           }
           this.process(inputStreams, outputStreams, contractData);
         } catch (error) {
+          // Replay from here?
           // Forward Error On
           // We may not have the output stream, So we need to pass over the knocks
-          this.postVote(virtualMachine, {
-            code: error.code,
-            reason: error.reason || error.message || error,
-          });
+
+          // If error is Position Incorrect and it is unanimous (and not a retry)
+          // we can SPI here
+          const reason = error.reason || error.message || error;
+          if (this.entry.$unanimous) {
+            console.log(
+              `SPI -- R:${this.entry.$spiRetry} with reason: ${reason}`
+            );
+          }
+          if (
+            this.entry.$unanimous &&
+            !this.entry.$spiRetry &&
+            reason.indexOf("Position Incorrect") !== -1
+          ) {
+            ActiveLogger.error(`SPI Inline Retry`);
+            this.emitFailed({status: 1200, error: reason});
+          } else {
+            this.postVote(virtualMachine, {
+              code: error.code,
+              reason,
+            });
+          }
         }
       } else {
         ActiveLogger.debug("Self signed Transaction");
@@ -718,11 +741,27 @@ export class Process extends EventEmitter {
           this.process([], outputStreams);
         } catch (error) {
           // Forward Error On
+          const reason = error.reason || error.message || error;
 
-          this.postVote(virtualMachine, {
-            code: error.code,
-            reason: error.reason || error.message || error,
-          });
+          if (this.entry.$unanimous) {
+            console.log(
+              `SPI -SELFSIGN- R:${this.entry.$spiRetry} with reason: ${reason}`
+            );
+          }
+
+          if (
+            this.entry.$unanimous &&
+            !this.entry.$spiRetry &&
+            reason.indexOf("Position Incorrect") !== -1
+          ) {
+            ActiveLogger.error(`SPI Inline Retry`);
+            this.emitFailed({status: 1200, error: reason});
+          } else {
+            this.postVote(virtualMachine, {
+              code: error.code,
+              reason,
+            });
+          }
         }
       }
     } else {
@@ -1605,9 +1644,9 @@ export class Process extends EventEmitter {
         streams[i] = streamId;
 
         // Only works when labeled inputs.
-        if(!outputs && txIO[map[streamId]].$sigOnly) {
+        if (!outputs && txIO[map[streamId]].$sigOnly) {
           this.shared.sigOnly[streams[i]] = true;
-        } 
+        }
       }
     }
   }

@@ -48,6 +48,8 @@ export interface LedgerEntry {
   $unanimous?: boolean;
   $encrypt?: boolean;
   $nolock?:boolean;
+  $spiRetry?:boolean
+  $$noreply?: boolean;
 }
 
 export interface LedgerResponse {
