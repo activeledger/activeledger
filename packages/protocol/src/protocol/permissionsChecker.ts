@@ -80,16 +80,23 @@ export class PermissionsChecker {
       return this.processStreams(streams);
     } catch (error) {
       // Quorum change safety mech. 60% instant new transaction needing 100%
-      if (retry >= 2) {
+      // TODO make this variable based on entry node or not.
+      const allowedRetries = 6;
+      const waitTime = 250;
+      if (retry >= allowedRetries) {
+        ActiveLogger.info(
+          this.data,
+          `Error Fetching Streams after ${allowedRetries} retries, giving up`
+        );  
         return Promise.reject(error);
       } else {
         ActiveLogger.info(
           this.data,
-          `Error Fetching Streams retry ${retry} of 2 with 100ms wait`
+          `Error Fetching Streams retry ${retry} of ${allowedRetries} with ${waitTime}ms wait`
         );
         // Small delay should help write finalise but we don't want
         // wait to long as it holds the transaction up from failing its vote
-        await this.sleep(100);
+        await this.sleep(waitTime);
         ActiveLogger.info(error, `Retrying PermissionsChecker due to`);
         return await this.process(data, inputs, ++retry);
       }

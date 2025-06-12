@@ -304,7 +304,7 @@ class Processor {
           break;
         case "destory":
           // Remove protocol from memory.
-          this.clear(m.data.umid);
+          this.clear(m.data.umid, m.data.skipTimeout);
           break;
         case "reload":
           this.reloadDown(m.data);
@@ -583,9 +583,8 @@ class Processor {
    * @private
    * @param {string} umid
    */
-  private clear(umid: string) {
-    // TODO 5000 maybe not long enough or actually to long this set for testing with commit pre postprocessing
-    setTimeout(() => {
+  private clear(umid: string, skipTimeout = false): void {
+    const clear = () => {
       ActiveLogger.debug("Removing from memory : " + umid);
       // Clear Listners & Destory Early
       if (this.protocols[umid]) {
@@ -600,7 +599,15 @@ class Processor {
         process.off("unhandledRejection", this.unhandledRejection[umid]);
         delete this.unhandledRejection[umid];
       }
-    }, 5000);
+    };
+    if (skipTimeout) {
+      clear();
+    } else {
+      // TODO 5000 maybe not long enough or actually to long this set for testing with commit pre postprocessing
+      setTimeout(() => {
+        clear();
+      }, 5000);
+    }
   }
 
   /**
