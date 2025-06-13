@@ -50,6 +50,7 @@ export interface LedgerEntry {
   $nolock?:boolean;
   $spiRetry?:boolean
   $$noreply?: boolean;
+  $$labelOrKey?: string[]; // Need to move elsewhere as this will be sent with rightKnocks (or reduce right)
 }
 
 export interface LedgerResponse {
