@@ -104,6 +104,12 @@ interface StoppableChildProcess extends ChildProcess {
   stop: boolean;
 }
 
+interface BusyLockQueue {
+  running: boolean;
+  entry: ActiveDefinitions.LedgerEntry;
+  retry: number;
+}
+
 /**
  * Hosted process for API and Protocol management
  *
@@ -184,10 +190,9 @@ export class Host extends Home {
    * @type {[]}
    */
   private busyLocksQueue: {
-    running: boolean;
-    entry: ActiveDefinitions.LedgerEntry;
-    retry: number;
-  }[] = [];
+    internal: BusyLockQueue[];
+    external: BusyLockQueue[];
+  } = { internal: [], external: [] };
 
   public shutdown(): void {
     if (this.listenSocket) {
@@ -258,7 +263,7 @@ export class Host extends Home {
               // Not found, Lets just return the umid anyway it may confirm or will timeout
             }
           }
-          if(!entry.$$noreply) {
+          if (!entry.$$noreply) {
             this.broadcast(entry.$umid, false, true);
           }
           // maybe pass something so the data isn't sent twice?
@@ -1166,7 +1171,7 @@ export class Host extends Home {
         type: "destory",
         data: {
           umid,
-          skipTimeout
+          skipTimeout,
         },
       });
 
@@ -1191,7 +1196,7 @@ export class Host extends Home {
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
-      this.processPending[umid].entry.$nodes[this.reference]// &&
+      this.processPending[umid].entry.$nodes[this.reference] // &&
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
       ActiveLogger.debug(`Broadcasting TX : ($$NR ${noreply})` + umid);
@@ -1220,6 +1225,10 @@ export class Host extends Home {
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
         data.$$noreply = noreply;
+        if(early){
+          // If early we don't need a response
+          data.$$noreply = true;
+        }
         // Loop them all and broadcast the transaction
         for (let i = nodes.length; i--; ) {
           let node = neighbourhood[nodes[i]];
@@ -1343,18 +1352,21 @@ export class Host extends Home {
     // Ask for locks
     // Use set to filter unique then back to array (or in loop)
 
-    let a: any[] = this.labelOrKey(v.$tx.$o);
+    if (!v.$$labelOrKey) {
+      const outputs = this.labelOrKey(v.$tx.$o);
+      if (!v.$selfsign) {
+        v.$$labelOrKey = [
+          ...new Set([...this.labelOrKey(v.$tx.$i), ...outputs]),
+        ];
+      } else {
+        v.$$labelOrKey = outputs;
+      }
+    }
 
     if (
       // Selfsigning and can lock on output if any
       // don't need to use set for unique
-      (v.$selfsign && Locker.hold(a, v.$umid)) ||
-      // Or not selfsigning and can lock on both inputs and outputs
-      (!v.$selfsign &&
-        Locker.hold(
-          [...new Set([...this.labelOrKey(v.$tx.$i), ...a])],
-          v.$umid
-        ))
+      Locker.hold(v.$$labelOrKey, v.$umid)
     ) {
       // Get next process from the array
       const robin = this.getRobin();
@@ -1395,7 +1407,10 @@ export class Host extends Home {
       } else {
         if (retries === 0) {
           // Push to the end of the queue
-          this.busyLocksQueue.push({
+          (v.$revs
+            ? this.busyLocksQueue.internal
+            : this.busyLocksQueue.external
+          ).push({
             running: false,
             entry: v,
             retry: 1,
@@ -1451,7 +1466,7 @@ export class Host extends Home {
                   });
                 })();
               } else {
-                this.broadcast(v.$umid);
+                this.broadcast(v.$umid, false, true);
                 // Respond back with our failure
                 this.processPending[v.$umid].resolve({
                   status: 200,
@@ -1539,40 +1554,97 @@ export class Host extends Home {
    */
   private processQueue(next?: ActiveDefinitions.LedgerEntry, internal = false) {
     // If Internal and not broadcast let it skip the queue
-    let skipped = false;
-    if (next && internal /* && !next.$broadcast */) {
-      this.hold(next);
-      skipped = true;
-    }
+    // let skipped = false;
+    // if (next && internal /* && !next.$broadcast */) {
+    //   this.hold(next);
+    //   skipped = true;
+    // }
 
     // Run through the queue in order to process
-    if (!this.processingBLQ && this.busyLocksQueue.length) {
+    if (!this.processingBLQ) {
       this.processingBLQ = true;
-      for (let i = 0; i < this.busyLocksQueue.length; i++) {
-        if (
-          this.hold(
-            this.busyLocksQueue[i].entry,
-            this.busyLocksQueue[i].retry++
-          )
-        ) {
-          // Success, Can remove from queue
-          // cannot splice as still looping and looping in order
-          this.busyLocksQueue[i].running = true;
+
+      // Checked idententies. This means there is no "chance" we select the next one by bad timing
+      const checked: string[] = [];
+
+      // TODO Convert to method
+      if (this.busyLocksQueue.internal.length) {
+        // Process Internal first (should make it so can target loops based on reason why processQue was called)
+        for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
+           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
+          // // Skip if we have already tried
+          if (labelOrKey?.length) {
+            if (checked.some((io) => labelOrKey.includes(io))) {
+              continue;
+            }
+            checked.push(...labelOrKey);
+          }
+
+          if (
+            this.hold(
+              this.busyLocksQueue.internal[i].entry,
+              this.busyLocksQueue.internal[i].retry++
+            )
+          ) {
+            // Success, Can remove from queue
+            // cannot splice as still looping and looping in order
+            this.busyLocksQueue.internal[i].running = true;
+          }
+        }
+
+        // Remove the empty results if any
+        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
+        for (let i = this.busyLocksQueue.internal.length; i--; ) {
+          if (this.busyLocksQueue.internal[i].running) {
+            this.busyLocksQueue.internal.splice(i, 1);
+          }
         }
       }
-      // Remove the empty results if any
-      //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-      for (let i = this.busyLocksQueue.length; i--; ) {
-        if (this.busyLocksQueue[i].running) {
-          this.busyLocksQueue.splice(i, 1);
+      if (next && internal) {
+        this.hold(next);
+      }
+
+      if (this.busyLocksQueue.external.length) {
+        // Process Internal first (should make it so can target loops based on reason why processQue was called)
+        for (let i = 0; i < this.busyLocksQueue.external.length; i++) {
+          // Skip if we have already tried (something causes this to not work here)
+          // const labelOrKey = this.busyLocksQueue.external[i].entry.$$labelOrKey;
+          // // Skip if we have already tried
+          // if (labelOrKey?.length) {
+          //   if (checked.some((io) => labelOrKey.includes(io))) {
+          //     continue;
+          //   }
+          //   checked.push(...labelOrKey);
+          // }
+
+          if (
+            this.hold(
+              this.busyLocksQueue.external[i].entry,
+              this.busyLocksQueue.external[i].retry++
+            )
+          ) {
+            // Success, Can remove from queue
+            // cannot splice as still looping and looping in order
+            this.busyLocksQueue.external[i].running = true;
+          }
         }
+
+        // Remove the empty results if any
+        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
+        for (let i = this.busyLocksQueue.external.length; i--; ) {
+          if (this.busyLocksQueue.external[i].running) {
+            this.busyLocksQueue.external.splice(i, 1);
+          }
+        }
+      }
+      if (next && !internal) {
+        this.hold(next);
       }
       this.processingBLQ = false;
-    }
-
-    // After processing earlier transactions now deal with calling
-    if (next && !skipped) {
-      this.hold(next);
+    } else {
+      if (next) {
+        this.hold(next);
+      }
     }
   }
 
