@@ -33,6 +33,7 @@ import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
+import { LedgerEntry } from "@activeledger/activedefinitions/lib/definitions";
 
 // Increasing baseline timeout, Contracts should error or complete before timeouts are reached
 const BROADCAST_TIMEOUT_VOTE = 60 * 1000;
@@ -656,18 +657,18 @@ export class Process extends EventEmitter {
           // If error is Position Incorrect and it is unanimous (and not a retry)
           // we can SPI here
           const reason = error.reason || error.message || error;
-          if (this.entry.$unanimous) {
-            console.log(
-              `SPI -- R:${this.entry.$spiRetry} with reason: ${reason}`
-            );
-          }
           if (
             this.entry.$unanimous &&
+            !this.entry.$broadcast && // need to reply for non broadcast
             !this.entry.$spiRetry &&
-            reason.indexOf("Position Incorrect") !== -1
+            (reason.indexOf("Position Incorrect") !== -1 ||
+              reason === "Stream(s) not found")
           ) {
-            ActiveLogger.error(`SPI Inline Retry`);
-            this.emitFailed({status: 1200, error: reason});
+            this.entry.$nodes[this.reference].error = reason;
+            this.emitFailed(
+              { status: error.code || 1200, error: reason, entry: this.entry },
+              true
+            );
           } else {
             this.postVote(virtualMachine, {
               code: error.code,
@@ -742,20 +743,19 @@ export class Process extends EventEmitter {
         } catch (error) {
           // Forward Error On
           const reason = error.reason || error.message || error;
-
-          if (this.entry.$unanimous) {
-            console.log(
-              `SPI -SELFSIGN- R:${this.entry.$spiRetry} with reason: ${reason}`
-            );
-          }
-
+          // Maybe switch to code? (950 & 1200)
           if (
             this.entry.$unanimous &&
+            !this.entry.$broadcast && // need to reply for non broadcast
             !this.entry.$spiRetry &&
-            reason.indexOf("Position Incorrect") !== -1
+            (reason === "Stream(s) not found" ||
+              reason.indexOf("Position Incorrect") !== -1)
           ) {
-            ActiveLogger.error(`SPI Inline Retry`);
-            this.emitFailed({status: 1200, error: reason});
+            this.entry.$nodes[this.reference].error = reason;
+            this.emitFailed(
+              { status: error.code || 1200, error: reason, entry: this.entry },
+              true
+            );
           } else {
             this.postVote(virtualMachine, {
               code: error.code,
@@ -1162,7 +1162,7 @@ export class Process extends EventEmitter {
    * @param {*} [data]
    */
   public emitFailed(
-    data?: { status: number; error: string | Error },
+    data?: { status: number; error: string | Error; entry?: LedgerEntry },
     noWait?: boolean
   ) {
     this.commiting = false;
