@@ -218,7 +218,7 @@ export class Host extends Home {
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
     internal = false,
-    forceRestart = false
+    forceRestart = false,
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
       if (forceRestart && this.processPending[entry.$umid]) {
@@ -1007,7 +1007,9 @@ export class Host extends Home {
           // So if we send as resolve it should still work (Will it keep our error?)
           pending.resolve({
             status: 200,
-            data: pending.entry,
+            data: m.data.entry
+              ? { ...pending.entry, ...m.data.entry }
+              : pending.entry,
           });
 
           // If we want to send AFTER this node has completed uncomment
@@ -1196,10 +1198,12 @@ export class Host extends Home {
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
-      this.processPending[umid].entry.$nodes[this.reference] // &&
+      this.processPending[umid].entry.$nodes[this.reference] &&
+      (early ||
+        "vote" in this.processPending[umid].entry.$nodes[this.reference]) // only return if there is a vote or early
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
-      ActiveLogger.debug(`Broadcasting TX : ($$NR ${noreply})` + umid);
+      ActiveLogger.debug(`Broadcasting TX ($$NR ${noreply}) : ` + umid);
 
       // Get all the neighbour nodes
       let neighbourhood = this.neighbourhood.get();
@@ -1225,7 +1229,7 @@ export class Host extends Home {
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
         data.$$noreply = noreply;
-        if(early){
+        if (early) {
           // If early we don't need a response
           data.$$noreply = true;
         }
@@ -1571,7 +1575,7 @@ export class Host extends Home {
       if (this.busyLocksQueue.internal.length) {
         // Process Internal first (should make it so can target loops based on reason why processQue was called)
         for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
-           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
+          const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           // // Skip if we have already tried
           if (labelOrKey?.length) {
             if (checked.some((io) => labelOrKey.includes(io))) {
