@@ -342,15 +342,30 @@ export class Endpoints {
                                   let max = 0;
                                   let winner = "";
                                   for (let x in doc) {
-                                    if (
-                                      doc[x] >= consensusReached &&
-                                      doc[x] > max
-                                    ) {
+                                    if (doc[x] >= consensusReached) {
                                       ActiveLogger.warn(
                                         `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
                                       );
-                                      max = doc[x];
-                                      winner = x;
+                                      if (doc[x] > max) {
+                                        // Just beats it
+
+                                        max = doc[x];
+                                        winner = x;
+                                      } else if (doc[x] === max) {
+                                        // if it is need to split x on - and compare the position at [0] if larger that one wins
+
+                                        const [xPos] = x.split("-");
+                                        const [wPos] = winner.split("-");
+
+                                        if (+xPos > +wPos) {
+                                          ActiveLogger.warn(
+                                            `SPI matching max (${max}) but has higher position`
+                                          );
+                                          winner = x;
+                                        }
+                                        // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
+                                        // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
+                                      }
                                     }
                                   }
 
@@ -900,12 +915,30 @@ export class Endpoints {
                           let max = 0;
                           let winner = "";
                           for (let x in doc) {
-                            if (doc[x] >= consensusReached && doc[x] > max) {
+                            if (doc[x] >= consensusReached) {
                               ActiveLogger.warn(
                                 `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
                               );
-                              max = doc[x];
-                              winner = x;
+                              if (doc[x] > max) {
+                                // Just beats it
+
+                                max = doc[x];
+                                winner = x;
+                              } else if (doc[x] === max) {
+                                // if it is need to split x on - and compare the position at [0] if larger that one wins
+
+                                const [xPos] = x.split("-");
+                                const [wPos] = winner.split("-");
+
+                                if (+xPos > +wPos) {
+                                  ActiveLogger.warn(
+                                    `SPI matching max (${max}) but has higher position`
+                                  );
+                                  winner = x;
+                                }
+                                // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
+                                // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
+                              }
                             }
                           }
 
