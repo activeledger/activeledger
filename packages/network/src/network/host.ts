@@ -218,7 +218,7 @@ export class Host extends Home {
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
     internal = false,
-    forceRestart = false,
+    forceRestart = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
       if (forceRestart && this.processPending[entry.$umid]) {
@@ -1404,6 +1404,22 @@ export class Host extends Home {
       return true;
     } else {
       if (v.$nolock) {
+        if (v.$broadcast) {
+          // Other nodes will hang, posibly just defautl to vote no
+          this.processPending[v.$umid].entry.$nodes = {
+            [this.reference]: {
+              vote: false,
+              commit: false,
+              error: "Busy Locks",
+            },
+          };
+          this.broadcast(v.$umid, false, true);
+          // How long does it stay in memory I wonder
+          ActiveLogger.warn(
+            this.processPending[v.$umid],
+            `${v.$umid} busy lock broadcasting that fact`
+          );
+        }
         this.processPending[v.$umid].reject({
           status: 100,
           error: "Busy Locks",
