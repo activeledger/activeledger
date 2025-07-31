@@ -739,7 +739,80 @@ export class Process extends EventEmitter {
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
 
-          this.process([], outputStreams);
+          // Copy paste to add contract data to self signed transactions
+          // need to improve this to a single method
+
+          // Default Contracts don't use context and are not available from the database
+          if (!contractData && !this.isDefault) {
+            // First we check it exists, If it doesn't we set a cache value to know it is empty
+            if (await this.db.exists(`${this.contractId}:data`)) {
+              // Contract data exists deal with it
+              try {
+                const contractDataStreams =
+                  await this.permissionChecker.process(
+                    [`${this.contractId}:data`],
+                    false,
+                    5 // Over 2 don't retry fetching (although may need to retry?)
+                  );
+
+                if (contractDataStreams.length > 0) {
+                  contractData = contractDataStreams[0]
+                    .state as unknown as ActiveDefinitions.IContractData;
+                }
+
+                // Now run as a cache (with TTL? and reset then don't need to query everytime)
+              } catch (e) {
+                // This catch block is used for when a contract doesn't have a data file yet
+                // Need to make sure we still restore correctly if it is just a single node missing
+                // the data file for that contract.
+                if (e.code === 1200) {
+                  // 1200 means the _rev map didn't match so position error (defaults as output)
+                  // However lets clear the data
+                  this.emit("contractData", {
+                    //contract: this.entry.$tx.$contract,
+                    contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+                    data: {},
+                  });
+                  // SPI will not resolve this, So need to test and fix!
+                  throw e;
+                }
+              }
+            } else {
+              // Contract data doesn't exist
+              contractData = { _id: "", data: {} };
+            }
+            this.emit("contractData", {
+              //contract: this.entry.$tx.$contract,
+              contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+              data: contractData,
+            });
+          } else {
+            // Problem with cached contractData not checking 1200 rev need to do that!
+            // use processStreams in pertmissions checker?
+            if (contractData && this.contractId) {
+              const rev = `0-context:${contractData._rev}`;
+              // No rev just add it
+              if (this.entry.$revs.$o[`${this.contractId}:data`]) {
+                // Check
+                if (this.entry.$revs.$o[`${this.contractId}:data`] !== rev) {
+                  this.emit("contractData", {
+                    //contract: this.entry.$tx.$contract,
+                    contract: this.contractId, // Can't do this yet cache doesn't go by root id includes @=
+                    data: {},
+                  });
+                  throw {
+                    code: 1200,
+                    reason: "Output Stream Position Incorrect",
+                  };
+                }
+              } else {
+                // Set
+                this.entry.$revs.$o[`${this.contractId}:data`] = rev;
+              }
+            }
+          }
+
+          this.process([], outputStreams, contractData);
         } catch (error) {
           // Forward Error On
           const reason = error.reason || error.message || error;
