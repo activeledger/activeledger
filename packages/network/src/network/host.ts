@@ -243,8 +243,10 @@ export class Host extends Home {
             !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
               ?.leader
           ) {
+            //here needs to output inbound
             ActiveLogger.debug(
-              this.processPending[entry.$umid],
+              //this.processPending[entry.$umid],
+              entry,
               "Broadcast Recieved : " + entry.$umid
             );
             // Find Processor to send in the broadcast message
@@ -984,7 +986,8 @@ export class Host extends Home {
       // Process may have been cleared by unhandleded process crashing
       if (pending) {
         // Check data for self to update
-        if (m.data.nodes) {
+        // if its early to spread the transaction we don't know its value yet? (will default to false)
+        if (m.data.nodes && !m.data.early) {
           pending.entry.$nodes = {
             ...pending.entry.$nodes,
             ...m.data.nodes,
@@ -1198,9 +1201,10 @@ export class Host extends Home {
       this.processPending[umid]?.entry &&
       this.processPending[umid].entry.$broadcast &&
       this.processPending[umid].entry.$nodes &&
-      this.processPending[umid].entry.$nodes[this.reference] &&
+      //this.processPending[umid].entry.$nodes[this.reference] && // early wont have this now
       (early ||
-        "vote" in this.processPending[umid].entry.$nodes[this.reference]) // only return if there is a vote or early
+        (this.processPending[umid].entry.$nodes[this.reference] &&
+          "vote" in this.processPending[umid].entry.$nodes[this.reference])) // only return if there is a vote or early
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
       ActiveLogger.debug(`Broadcasting TX ($$NR ${noreply}) : ` + umid);
@@ -1226,6 +1230,20 @@ export class Host extends Home {
             $nodes: {},
           });
 
+      // We need a proper copy to modify that way we still keep the original in memory for the tx
+      // const data = JSON.parse(
+      //   JSON.stringify(this.processPending[umid].entry || {})
+      // );
+      // if (!early) {
+      //   data.$nodes = {
+      //     [this.reference]:
+      //       this.processPending[umid].entry.$nodes[this.reference],
+      //   };
+      // } else {
+      //   data.$nodes = {};
+      // }
+      // Above will rarely change we should find a way to cache it
+
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
         data.$$noreply = noreply;
@@ -1249,21 +1267,21 @@ export class Host extends Home {
             promises.push(node.knock("init", data, false, 0, true));
           }
         }
-      }
 
-      // Listen for promises
-      Promise.all(promises)
-        .then(() => {
-          // As it is bundled we don't get a response. We need to trigger rebroadcast
-        })
-        .catch(() => {
-          // Keep broadcasting until promises fully resolve
-          // Could be down nodes (So they can have 5 minute window to get back up)
-          // Or connection issues. This doesn't stop commit phase as they will eventually call us.
-          setTimeout(() => {
-            this.broadcastResolver(umid);
-          }, 250);
-        });
+        // Listen for promises
+        Promise.all(promises)
+          .then(() => {
+            // As it is bundled we don't get a response. We need to trigger rebroadcast
+          })
+          .catch(() => {
+            // Keep broadcasting until promises fully resolve
+            // Could be down nodes (So they can have 5 minute window to get back up)
+            // Or connection issues. This doesn't stop commit phase as they will eventually call us.
+            setTimeout(() => {
+              this.broadcastResolver(umid);
+            }, 250);
+          });
+      }
     }
   }
 
