@@ -726,6 +726,8 @@ export class Process extends EventEmitter {
       delete node[this.reference];
     }
 
+    // Make sure we have a vote from somewhere coming in
+    //if (Object.keys(node).length) {
     // TODO could probably work out this here instead of will emit
     // Update networks response into local object
     this.entry.$nodes = Object.assign(this.entry.$nodes, node);
@@ -755,6 +757,7 @@ export class Process extends EventEmitter {
         this.commit(Process.generalContractVM);
       }
     }
+    //}
   }
 
   /**
@@ -1004,7 +1007,13 @@ export class Process extends EventEmitter {
       // we can now broadcast it before voting that way voting rounds will not lock up
       // if calling a 3rd party and awaiting multiple calls.
       if (this.entry.$broadcast && !(this.entry as any).$wait) {
-        this.emit("broadcast", true);
+        // Should only the origin send this?
+        // Actually if only the origin sends it we will really reduce network traffic
+        //if (this.entry.$origin === this.reference) {
+          this.emit("broadcast", true);
+        //}
+        // The reason this should be fine is the orign is the entry node, It is sending this out
+        // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
       }
 
       // Get readonly data
