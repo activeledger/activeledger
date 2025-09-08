@@ -183,7 +183,7 @@ export class Endpoints {
                     };
 
                     // Any data to send back to the client
-                    let responses = [];
+                    let responses = [] as any[];
 
                     // Is something deleting initTx/tx after this explict check
                     if (tx?.$nodes) {
@@ -246,6 +246,7 @@ export class Endpoints {
                           // Now if same i/o going to different nodes it can mix this up
                           // however we need a delay to at least know the record has been written!
                           setTimeout(async () => {
+                            let rewroteSomething = false;
                             const streams = [
                               ...new Set([
                                 ...this.labelOrKey(tx.$tx.$i),
@@ -412,6 +413,7 @@ export class Endpoints {
                                                   force_rev: main._rev,
                                                 }
                                               );
+                                              rewroteSomething = true;
                                             }
                                             // This break actually prevents multiple docs from being updated
                                             //break foundWinner;
@@ -431,22 +433,57 @@ export class Endpoints {
                                 // Shouldn't need to check umid not found 950 error here, As this was the origin node
                                 // and its position indexes were incorrect.
 
+                                //  need TO ONLY run this if SPI rewrites occured?
+                                // also need to attach orignal umid to reference against! As this is double spend potential
                                 // retry!
-                                delete (initTx as any).$nodes;
-                                delete (initTx as any).$revs;
-                                delete (initTx as any).$streams;
-                                // Should be seen as a new tx
-                                initTx.$umid = ActiveCrypto.Hash.getHash(
-                                  JSON.stringify(initTx) + counter
-                                );
-                                ActiveLogger.warn(
-                                  initTx,
-                                  `SPI (Rewrite) Resending ${counter}`
-                                );
-                                setTimeout(() => {
-                                  resendable(initTx, ++counter);
-                                }, 50);
-                                return;
+
+                                if (rewroteSomething) {
+                                  delete (initTx as any).$nodes;
+                                  delete (initTx as any).$revs;
+                                  delete (initTx as any).$streams;
+                                  // Should be seen as a new tx
+                                  initTx.$umid = ActiveCrypto.Hash.getHash(
+                                    JSON.stringify(initTx) + counter
+                                  );
+                                  ActiveLogger.warn(
+                                    initTx,
+                                    `SPI (Rewrite) Resending ${counter}`
+                                  );
+                                  setTimeout(() => {
+                                    resendable(initTx, ++counter);
+                                  }, 50);
+                                  return;
+                                } else {
+                                  // Return to calling client!
+                                  // Resolve thiscopy paste, We are within a timeout so not ideal
+                                  const output: ActiveDefinitions.LedgerResponse =
+                                    {
+                                      $umid: tx.$umid,
+                                      $summary: summary,
+                                      $streams: tx.$streams,
+                                    };
+                                  // Optional Responses to add
+                                  if (responses.length) {
+                                    output.$responses = responses;
+                                  }
+
+                                  // Append Debug View
+                                  if (
+                                    ActiveOptions.get<boolean>("debug", false)
+                                  ) {
+                                    output.$debug = tx;
+                                  }
+
+                                  ActiveLogger.warn(
+                                    output,
+                                    `SPI Failed to find an issue returning to client`
+                                  );
+
+                                  return resolve({
+                                    statusCode: 200,
+                                    content: output,
+                                  });
+                                }
                               }
                             }
                           }, 100);
