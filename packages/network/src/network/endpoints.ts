@@ -162,12 +162,14 @@ export class Endpoints {
                       delete (initTx as any).$revs;
                       delete (initTx as any).$streams;
                       // Should be seen as a new tx
-                      initTx.$umid = ActiveCrypto.Hash.getHash(
-                        JSON.stringify(initTx) + counter
-                      );
+                      // initTx.$umid = ActiveCrypto.Hash.getHash(
+                      //   JSON.stringify(initTx) + counter
+                      // );
+                      // Keep the same umid will get nodes cached vote response
+                      // Otherwise sending as new umid could double transact
                       ActiveLogger.warn(
                         initTx.$tx,
-                        `SPI (Empty Response) Resending ${counter}`
+                        `SPI NOTX (Empty Response) Resending ${counter}`
                       );
                       setTimeout(() => {
                         resendable(initTx, ++counter);
@@ -447,7 +449,7 @@ export class Endpoints {
                                   );
                                   ActiveLogger.warn(
                                     initTx,
-                                    `SPI (Rewrite) Resending ${counter}`
+                                    `SPI (Rewrite) Resending #1 ${counter}`
                                   );
                                   setTimeout(() => {
                                     resendable(initTx, ++counter);
@@ -514,7 +516,7 @@ export class Endpoints {
                             );
                             ActiveLogger.warn(
                               initTx.$tx,
-                              `SPI Resending ${counter} in 5s`
+                              `SPI Resending #2 ${counter} in 5s`
                             );
                             setTimeout(() => {
                               resendable(initTx, ++counter);
@@ -580,7 +582,9 @@ export class Endpoints {
                       initTx.$umid = ActiveCrypto.Hash.getHash(
                         JSON.stringify(initTx) + counter
                       );
-                      ActiveLogger.warn(initTx.$tx, `SPI Resending ${counter}`);
+                      // As same umid should be safe here lets keep it
+                      // Need to resend it in with diff umid, maybe a flag to "delete from memory instead"
+                      ActiveLogger.warn(initTx.$tx, `SPI Resending #3 ${counter}`);
                       setTimeout(() => {
                         resendable(initTx, ++counter);
                       }, 250);
