@@ -33,10 +33,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
-import {
-  IStreams,
-  LedgerTypeChecks,
-} from "@activeledger/activedefinitions/lib/definitions";
+import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 
 const MAX_COUNTERS = 10;
 
@@ -172,6 +169,10 @@ export class Endpoints {
                         `SPI NOTX (Empty Response) Resending ${counter}`
                       );
                       setTimeout(() => {
+                        // Unadjusted umid
+                        if (!response.dontRelease) {
+                          host.release(initTx.$umid);
+                        }
                         resendable(initTx, ++counter);
                       }, 50);
                       return;
@@ -443,6 +444,7 @@ export class Endpoints {
                                   delete (initTx as any).$nodes;
                                   delete (initTx as any).$revs;
                                   delete (initTx as any).$streams;
+                                  const originalUmid = initTx.$umid;
                                   // Should be seen as a new tx
                                   initTx.$umid = ActiveCrypto.Hash.getHash(
                                     JSON.stringify(initTx) + counter
@@ -452,11 +454,18 @@ export class Endpoints {
                                     `SPI (Rewrite) Resending #1 ${counter}`
                                   );
                                   setTimeout(() => {
+                                    // Adjusted umid, send original
+                                    if (!response.dontRelease) {
+                                      host.release(originalUmid);
+                                    }
                                     resendable(initTx, ++counter);
                                   }, 50);
                                   return;
                                 } else {
-                                  // Return to calling client!
+                                  // Return to calling client! All ok so release
+                                  if (!response.dontRelease) {
+                                    host.release(tx.$umid);
+                                  }
                                   // Resolve thiscopy paste, We are within a timeout so not ideal
                                   const output: ActiveDefinitions.LedgerResponse =
                                     {
@@ -511,6 +520,7 @@ export class Endpoints {
                             delete (initTx as any).$nodes;
                             delete (initTx as any).$revs;
                             delete (initTx as any).$streams;
+                            const originalUmid = initTx.$umid;
                             initTx.$umid = ActiveCrypto.Hash.getHash(
                               JSON.stringify(initTx) + counter
                             );
@@ -519,12 +529,20 @@ export class Endpoints {
                               `SPI Resending #2 ${counter} in 5s`
                             );
                             setTimeout(() => {
+                              if (!response.dontRelease) {
+                                host.release(originalUmid);
+                              }
                               resendable(initTx, ++counter);
                             }, 50);
                             return;
                           }
                         }
                       }
+                    }
+
+                    // Just release coming to the end
+                    if (!response.dontRelease) {
+                      host.release(tx.$umid);
                     }
 
                     // doubt it as not trying to catch here
@@ -553,6 +571,10 @@ export class Endpoints {
                       content: output,
                     });
                   } else {
+                    // Release here?
+                    // if (!response.dnr) {
+                    //   host.release(initTx.$umid);
+                    // }
                     // If we had to be rebroadcasted this isn't an error
                     if (response.rebroadcasted) {
                       return resolve({
@@ -569,13 +591,15 @@ export class Endpoints {
                   }
                 })
                 .catch((error) => {
+                  // Safe to release right now (dnr shouldn't be here to check)
+                  host.release(initTx.$umid);
                   if (error?.status == 100 && error.error) {
                     if (
                       counter <= MAX_COUNTERS &&
                       error.error === "Busy Locks" &&
                       !initTx.$nolock
                     ) {
-                      // same umid safe here
+                      // same umid safe here but probably still in memory
                       delete (initTx as any).$nodes;
                       delete (initTx as any).$revs;
                       delete (initTx as any).$streams;
@@ -584,7 +608,10 @@ export class Endpoints {
                       );
                       // As same umid should be safe here lets keep it
                       // Need to resend it in with diff umid, maybe a flag to "delete from memory instead"
-                      ActiveLogger.warn(initTx.$tx, `SPI Resending #3 ${counter}`);
+                      ActiveLogger.warn(
+                        initTx.$tx,
+                        `SPI Resending #3 ${counter}`
+                      );
                       setTimeout(() => {
                         resendable(initTx, ++counter);
                       }, 250);
@@ -1069,13 +1096,18 @@ export class Endpoints {
                             reason: 'Vote Failure - "SPI#2 UMID not found',
                           });
                         }
+                        // No more changes can release
+                        // If running here DNR wouldn't of made it
+                        if (!ledger.dontRelease) {
+                          host.release(tx.$umid);
+                        }
                       };
 
                       if (resolved) {
                         setTimeout(async () => {
                           ActiveLogger.warn(`SPI WAITING - ${tx.$umid}`);
                           tmp();
-                        }, 1000);
+                        }, 500);
                       } else {
                         ActiveLogger.warn(`SPI NOW - ${tx.$umid}`);
                         await tmp();
@@ -1099,14 +1131,34 @@ export class Endpoints {
                           });
                         }
                       }
+                    } else {
+                      if (!ledger.dontRelease) {
+                        host.release(tx.$umid);
+                      }
+                    }
+                  } else {
+                    if (!ledger.dontRelease) {
+                      host.release(tx.$umid);
                     }
                   }
                   // Faster they're processing without us
                   // Need the delay big files stops the response!
                   //}, 200);
+                } else {
+                  if (!ledger.dontRelease) {
+                    host.release(tx.$umid);
+                  }
+                }
+              } else {
+                if (!ledger.dontRelease) {
+                  host.release(tx.$umid);
                 }
               }
             } else {
+              if (!ledger.dontRelease) {
+                host.release(tx.$umid);
+              }
+
               // most likely a broadcast empty response
               if (!resolved) {
                 resolve({
@@ -1115,11 +1167,17 @@ export class Endpoints {
                 });
               }
             }
+          } else {
+            if (!ledger.dontRelease) {
+              host.release(tx.$umid);
+            }
           }
         })
         .catch((error: any) => {
           ActiveLogger.error(tx, "Transaction error");
           ActiveLogger.error(error, "Sent 500 Response (1600)");
+          // DNR shouldn't be here
+          host.release(tx.$umid);
           return reject({
             statusCode: 500,
             content: error,
@@ -1196,7 +1254,8 @@ export class Endpoints {
         .catch((error) => {
           ActiveLogger.fatal(tx, "last tx sent in");
           ActiveLogger.fatal(error, "error that is bubbling");
-          //JSON.stringify(tx);
+          // DNR shouldn't be here
+          host.release(tx.$umid);
           reject(error);
         });
     });

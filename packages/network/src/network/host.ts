@@ -274,6 +274,7 @@ export class Host extends Home {
             //data: { ok: true },
             // SPI uses this to know if the non sending entry node needs fixing
             data: this.processPending[entry.$umid].entry,
+            dontRelease: true,
           });
         }
       }
@@ -283,8 +284,14 @@ export class Host extends Home {
         // Add to pending (Using Promises instead of http request)
         this.processPending[entry.$umid] = {
           entry,
-          resolve: (response: unknown) => {
-            this.release(entry);
+          resolve: (response: any) => {
+            //this.release(entry);
+
+            // Internal transaction if well replies early so need to release
+            // if it has SPI error it should return via here anyway
+            if (internal && this.processPending[entry.$umid]?.responded) {
+              this.release(entry.$umid);
+            }
 
             if (this.processPending[entry.$umid]) {
               this.processPending[entry.$umid].finished = true;
@@ -298,9 +305,9 @@ export class Host extends Home {
               } catch {}
             }
           },
-          reject: (response: unknown) => {
+          reject: (response: any) => {
             //setTimeout(() => {
-            this.release(entry);
+            //this.release(entry);
             if (this.processPending[entry.$umid]) {
               this.processPending[entry.$umid].finished = true;
             }
@@ -349,6 +356,7 @@ export class Host extends Home {
           return resolve({
             status: 200,
             data: { ok: true },
+            dontRelease: true,
           });
         }
       } else {
@@ -358,6 +366,7 @@ export class Host extends Home {
         return resolve({
           status: 200,
           data: this.processPending[entry.$umid].entry,
+          dontRelease: true,
         });
       }
     });
@@ -1561,27 +1570,32 @@ export class Host extends Home {
    * @param {string} v
    * @param {boolean} noWait Don't wait to release
    */
-  private release(entry: ActiveDefinitions.LedgerEntry) {
-    // Ask for releases
-    Locker.release(
-      [...this.labelOrKey(entry.$tx.$i), ...this.labelOrKey(entry.$tx.$o)],
-      entry.$umid
-    );
+  //private release(entry: ActiveDefinitions.LedgerEntry) {
+  public release(umid: string) {
+    if (this.processPending[umid]) {
+      const entry = this.processPending[umid].entry;
+      // Ask for releases
+      Locker.release(
+        [...this.labelOrKey(entry.$tx.$i), ...this.labelOrKey(entry.$tx.$o)],
+        entry.$umid
+      );
 
-    // Keep transaction in memory for a bit (5 Minutes)
-    setTimeout(() => {
-      if (entry) {
-        this.destroy(entry.$umid);
-      }
-    }, RELEASE_SHUTDOWN_TIMEOUT);
+      // Keep transaction in memory for a bit (5 Minutes)
+      setTimeout(() => {
+        if (entry) {
+          this.destroy(entry.$umid);
+        }
+      }, RELEASE_SHUTDOWN_TIMEOUT);
 
-    // Put this at the end so the queue can clear this transaction
-    setTimeout(() => {
-      // Check the lock queue
-      this.processQueue();
-    }, 200);
+      // Put this at the end so the queue can clear this transaction
+      setTimeout(() => {
+        // Check the lock queue
+        this.processQueue();
+      }, 200);
+    } else {
+      ActiveLogger.warn(umid, "Trying to release unknown umid");
+    }
   }
-
   private processingBLQ = false;
 
   /**
