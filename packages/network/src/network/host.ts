@@ -1228,7 +1228,7 @@ export class Host extends Home {
       //this.processPending[umid].entry.$nodes
 
       // We only want to send our value
-      const data = !early
+      const data = (!early || !this.processPending[umid].entry.$nodes[this.reference].early)
         ? Object.assign(this.processPending[umid].entry, {
             $nodes: {
               [this.reference]:
@@ -1409,6 +1409,7 @@ export class Host extends Home {
       this.processPending[v.$umid].entry.$nodes[Home.reference] = {
         vote: false,
         commit: false,
+        early: true
       };
 
       // Remember who got selected

@@ -93,6 +93,7 @@ export interface INodeResponse {
   datetime?: Date;
   error?: string;
   return?: unknown;
+  early?: boolean;
 }
 
 export interface ICommunications {
