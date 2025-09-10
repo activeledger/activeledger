@@ -1085,6 +1085,7 @@ export class Endpoints {
                           ActiveLogger.warn(tx.$umid, `SPI Adding 950 Checker`);
                           // No need to await but help with catching errors flow
                           await host.dbErrorConnection.post({
+                            _id: `${tx.$umid}:${Date.now()}`,
                             code: 950,
                             processed: false,
                             umid: tx.$umid,
