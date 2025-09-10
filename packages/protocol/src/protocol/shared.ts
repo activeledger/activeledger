@@ -329,7 +329,7 @@ export class Shared {
 
       // Now if we store another error it won't be processed
       this._storeSingleError = true;
-
+      ActiveLogger.error(doc, "TX Error Logged umid : " + this.entry.$umid);
       return this.dbe.post(doc);
     } else {
       return Promise.resolve(this._storedSingleErrorDoc);
