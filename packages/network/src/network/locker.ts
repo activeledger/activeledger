@@ -64,6 +64,10 @@ export class Locker {
    */
   private static timer: NodeJS.Timeout | null;
 
+  public static has(stream:string):boolean {
+    return !!this.cell[stream];
+  }
+
   /**
    * Attempts to lock streams
    *
