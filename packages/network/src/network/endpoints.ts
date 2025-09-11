@@ -34,6 +34,7 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import { Locker } from "./locker";
 
 const MAX_COUNTERS = 10;
 
@@ -444,7 +445,10 @@ export class Endpoints {
                                   delete (initTx as any).$nodes;
                                   delete (initTx as any).$revs;
                                   delete (initTx as any).$streams;
-                                  const originalUmid = initTx.$umid;
+                                  // Adjusted umid, send original, release before we modify shared object
+                                  if (!response.dontRelease) {
+                                    host.release(initTx.$umid);
+                                  }
                                   // Should be seen as a new tx
                                   initTx.$umid = ActiveCrypto.Hash.getHash(
                                     JSON.stringify(initTx) + counter
@@ -454,10 +458,6 @@ export class Endpoints {
                                     `SPI (Rewrite) Resending #1 ${counter}`
                                   );
                                   setTimeout(() => {
-                                    // Adjusted umid, send original
-                                    if (!response.dontRelease) {
-                                      host.release(originalUmid);
-                                    }
                                     resendable(initTx, ++counter);
                                   }, 50);
                                   return;
@@ -520,7 +520,10 @@ export class Endpoints {
                             delete (initTx as any).$nodes;
                             delete (initTx as any).$revs;
                             delete (initTx as any).$streams;
-                            const originalUmid = initTx.$umid;
+                            // Adjusted umid, send original, release before we modify shared object
+                            if (!response.dontRelease) {
+                              host.release(initTx.$umid);
+                            }
                             initTx.$umid = ActiveCrypto.Hash.getHash(
                               JSON.stringify(initTx) + counter
                             );
@@ -529,9 +532,6 @@ export class Endpoints {
                               `SPI Resending #2 ${counter} in 5s`
                             );
                             setTimeout(() => {
-                              if (!response.dontRelease) {
-                                host.release(originalUmid);
-                              }
                               resendable(initTx, ++counter);
                             }, 50);
                             return;
@@ -1108,7 +1108,8 @@ export class Endpoints {
                         setTimeout(async () => {
                           ActiveLogger.warn(`SPI WAITING - ${tx.$umid}`);
                           tmp();
-                        }, 500);
+                          // This timer is key, If cannot find a good value will need to implement locking and retrying
+                        }, 1500);
                       } else {
                         ActiveLogger.warn(`SPI NOW - ${tx.$umid}`);
                         await tmp();
@@ -1359,12 +1360,14 @@ export class Endpoints {
             });
           }
 
-          // Fetch Request (Catch error here and forward on as an object to process in .all)
-          fetchStream.push(
-            db.get(body.$streams[i]).catch((error) => {
-              return { _error: error };
-            })
-          );
+          if (!Locker.has(body.$streams[i])) {
+            // Fetch Request (Catch error here and forward on as an object to process in .all)
+            fetchStream.push(
+              db.get(body.$streams[i]).catch((error) => {
+                return { _error: error };
+              })
+            );
+          }
         }
 
         // Wait for all streams to be returned
