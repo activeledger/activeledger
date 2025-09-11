@@ -721,6 +721,11 @@ export class Process extends EventEmitter {
       return;
     }
 
+    // Just wamring up
+    if(node.early) {
+      return;
+    }
+
     // Don't overwrite self
     if (node[this.reference]) {
       delete node[this.reference];
@@ -945,6 +950,7 @@ export class Process extends EventEmitter {
       if (continueProcessing) {
         // Update Vote Entry
         this.nodeResponse.vote = true;
+        this.nodeResponse.early = false;
 
         // Internode Communication picked up here, Doesn't mean every node
         // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
