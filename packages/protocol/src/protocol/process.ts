@@ -197,7 +197,7 @@ export class Process extends EventEmitter {
    * @private
    * @type {number}
    */
-  private currentVotes: number;
+  private currentTrueVotes: number;
 
   /**
    * A cache of the secure namespaces
@@ -721,8 +721,8 @@ export class Process extends EventEmitter {
       return;
     }
 
-    // Just wamring up
-    if(node.early) {
+    // Just wamring up (This should be an object so uselss being herE?)
+    if (node.early) {
       return;
     }
 
@@ -740,7 +740,7 @@ export class Process extends EventEmitter {
       // need to make sure streams exists
       const nodes = Object.keys(this.entry.$nodes);
       // Do we have any votes left if not can fast forward
-      if (!this.hasOutstandingVotes(nodes.length) && !this.canCommit()) {
+      if (!(this.hasOutstandingVotes(/*nodes.length*/)) && !this.canCommit()) {
         this.emitFailed(this.willEmitData);
       } else {
         // Waiting on commit confirmation for streams
@@ -1016,7 +1016,7 @@ export class Process extends EventEmitter {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
         //if (this.entry.$origin === this.reference) {
-          this.emit("broadcast", true);
+        this.emit("broadcast", true);
         //}
         // The reason this should be fine is the orign is the entry node, It is sending this out
         // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
@@ -1225,15 +1225,29 @@ export class Process extends EventEmitter {
    * Return if missing votes (Doesn't account for enough votes)
    *
    * @private
-   * @param {number} [nodes]
    * @returns {boolean}
    */
-  private hasOutstandingVotes(nodes?: number): boolean {
+  private hasOutstandingVotes(/*nodes?: number*/): boolean {
     const neighbours = ActiveOptions.get<Array<any>>(
       "neighbourhood",
       []
     ).length;
-    return !!(neighbours - (nodes || Object.keys(this.entry.$nodes).length));
+    return !!(neighbours - this.countOutstandingVotes());
+  }
+
+  /**
+   * Only returns the nodes which have voted (both yes and no excludes early communications)
+   * @returns
+   */
+  private countOutstandingVotes(): number {
+    const nodes = Object.keys(this.entry.$nodes);
+    let votedNodes = 0;
+    for (let i = nodes.length; i--; ) {
+      if (!this.entry.$nodes[nodes[i]].early) {
+        votedNodes++;
+      }
+    }
+    return votedNodes;
   }
 
   /**
@@ -1288,12 +1302,17 @@ export class Process extends EventEmitter {
   private canCommit(): boolean {
     // Time to count the votes (Need to recache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
-    this.currentVotes = 0;
+    this.currentTrueVotes = 0;
     if (networkNodes) {
       // Small performance boost if we voted no
       //if (skipBoost /*|| this.nodeResponse.vote*/) {
       for (let i = networkNodes.length; i--; ) {
-        if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
+        // Must filter on early as well
+        if (
+          !this.entry.$nodes[networkNodes[i]].early &&
+          this.entry.$nodes[networkNodes[i]].vote
+        )
+          this.currentTrueVotes++;
       }
       //}
 
@@ -1304,7 +1323,7 @@ export class Process extends EventEmitter {
 
       // Return if consensus has been reached
       return (
-        (this.currentVotes / Process.networkNodeLength) * 100 >= percent ||
+        (this.currentTrueVotes / Process.networkNodeLength) * 100 >= percent ||
         false
       );
     } else {
@@ -1491,16 +1510,19 @@ export class Process extends EventEmitter {
             );
           } else {
             // Are there any outstanding node responses which could mean consensus can still be reached
-            const neighbours = ActiveOptions.get<Array<any>>(
-              "neighbourhood",
-              []
-            ).length;
+            // const neighbours = ActiveOptions.get<Array<any>>(
+            //   "neighbourhood",
+            //   []
+            // ).length;
             const consensusNeeded = ActiveOptions.get<any>(
               "consensus",
               {}
             ).reached;
             const outstandingVoters =
-              neighbours - Object.keys(this.entry.$nodes).length;
+              Process.networkNodeLength - this.countOutstandingVotes();
+
+            // We need to filter out early here! Still being counted!!
+
             // Basic check, If no nodes to respond and we failed to reach consensus we will fail
             if (!outstandingVoters) {
               // Clear current timeout to prevent it from running
@@ -1534,7 +1556,8 @@ export class Process extends EventEmitter {
               // Solution:
               // Find how many current votes their currently is if the rest of the nodes will vote yes can we reach consensus
               if (
-                ((this.currentVotes + outstandingVoters) / neighbours) * 100 >=
+                ((this.currentTrueVotes + outstandingVoters) / Process.networkNodeLength) *
+                  100 >=
                 consensusNeeded
               ) {
                 // It *should* be possible to still reach consensus
