@@ -1360,43 +1360,71 @@ export class Endpoints {
             });
           }
 
-          if (!Locker.has(body.$streams[i])) {
+          const holdValue = body.$streams[i].replace(":stream", "");
+
+          // If it doesn't have it and can hold return
+          if (
+            Locker.hold(holdValue, "SPI") /*|| Locker.is(holdValue, "SPI")*/
+          ) {
+            // We should probably have a release timer, and also release call from calling node
+            // but as multiple nodes will call  will need counter ontop of it. Using a timer now will
+            // at least show this method works. The call counter will just make it release faster
+            ActiveLogger.info(`SPI EPS FETCH HOLD ${holdValue}`);
+            setTimeout(() => {
+              Locker.release(holdValue, "SPI");
+              ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
+            }, 1500);
+
             // Fetch Request (Catch error here and forward on as an object to process in .all)
-            fetchStream.push(
-              db.get(body.$streams[i]).catch((error) => {
-                return { _error: error };
-              })
-            );
+            fetchStream.push(db.get(body.$streams[i]));
+            //}
+          } else {
+            // Now it may exist we need to check it is SPI for other nodes
+            if (Locker.is(holdValue, "SPI")) {
+              fetchStream.push(db.get(body.$streams[i]));
+            }
           }
         }
 
-        // Wait for all streams to be returned
-        Promise.all(fetchStream)
-          .then((docs: any) => {
-            // Could just pass docs but that will send unnecessary data at this point
-            const streams = [];
-            for (let i = docs.length; i--; ) {
-              // Make sure not an error
-              if (docs[i]._id) {
-                // streams.push({
-                //   _id: docs[i]._id,
-                //   _rev: docs[i]._rev,
-                // });
-                streams.push(docs[i]);
+        if (fetchStream.length) {
+          // Wait for all streams to be returned
+          Promise.all(fetchStream)
+            .then((docs: any) => {
+              // Could just pass docs but that will send unnecessary data at this point
+              const streams = [];
+              for (let i = docs.length; i--; ) {
+                // Make sure not an error
+                if (docs[i]._id) {
+                  // streams.push({
+                  //   _id: docs[i]._id,
+                  //   _rev: docs[i]._rev,
+                  // });
+                  streams.push(docs[i]);
+
+                  // Problem, it seems when unlocking they select wrong one next?
+                  // const holdValue = docs[i]._id.replace(":stream", "");
+                  // Locker.release(holdValue, "SPI");
+                  // ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
+                }
               }
-            }
-            return resolve({
-              statusCode: 200,
-              content: streams,
+              return resolve({
+                statusCode: 200,
+                content: streams,
+              });
+            })
+            .catch(() => {
+              // Don't mind an error so lets say everyting is ok
+              return resolve({
+                statusCode: 200,
+                content: [],
+              });
             });
-          })
-          .catch(() => {
-            // Don't mind an error so lets say everyting is ok
-            return resolve({
-              statusCode: 200,
-              content: [],
-            });
+        } else {
+          return resolve({
+            statusCode: 200,
+            content: [],
           });
+        }
       } else {
         if (body.$stream && body.$rev) {
           // Restrict Access to any volatile requests
