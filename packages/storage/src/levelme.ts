@@ -188,7 +188,7 @@ export class LevelMe {
    */
   //private docUpdateSeq = 0;
 
-  private cache: ActiveCache
+  private cache: ActiveCache;
 
   constructor(location: string, private name: string, provider: string) {
     if (provider === "rocks") {
@@ -198,7 +198,7 @@ export class LevelMe {
     }
     if (ENABLE_CACHE) {
       //this.timerUnCache();
-      this.cache = ActiveCacheManager.fetch('streams', 30000);
+      this.cache = ActiveCacheManager.fetch("streams", 30000);
     }
   }
 
@@ -703,6 +703,9 @@ export class LevelMe {
     const writer = await this.prepareForWrite(doc, this.levelUp.batch());
     try {
       await writer.chain.write();
+      if (ENABLE_CACHE) {
+        this.cache.set(writer.changes.id, writer.changes.doc);
+      }
       this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
       // May contain multiple documents, Easier & safer to clear the cache
@@ -894,6 +897,11 @@ export class LevelMe {
 
     try {
       await batch.write();
+      if (ENABLE_CACHE) {
+        for (let i = changes.length; i--; ) {
+          this.cache.set(changes[i].id, changes[i].doc);
+        }
+      }
       // Emit Changed Docs
       this.changeEmitter.emit("change", changes);
     } catch (e) {
@@ -971,8 +979,8 @@ export class LevelMe {
         if (!options.force_rev) {
           // Get more relilable position value (crawler incorrect on auto archive)
           const [p1, curmd5] = currentRev.split("-");
-          const pos= parseInt(p1) + 1;
-          
+          const pos = parseInt(p1) + 1;
+
           // Only uncomment if entire network does at the same time
           //isDiff = md5 !== curmd5;
 
@@ -1018,13 +1026,12 @@ export class LevelMe {
       // };
     }
 
-
-    if(isDiff) {
+    if (isDiff) {
       chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
 
-      if (ENABLE_CACHE) {
-        this.cache.set(doc._id, doc);
-      }
+      // if (ENABLE_CACHE) {
+      //   this.cache.set(doc._id, doc);
+      // }
     }
 
     // Should be able to assume,  maybe not what if restarted, So set object!
