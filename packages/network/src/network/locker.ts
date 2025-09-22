@@ -64,8 +64,30 @@ export class Locker {
    */
   private static timer: NodeJS.Timeout | null;
 
-  public static has(stream:string):boolean {
+  /**
+   * Check the locker has a stream locked
+   *
+   * @static
+   * @param {string} stream
+   * @return {*}  {boolean}
+   */
+  public static has(stream: string): boolean {
     return !!this.cell[stream];
+  }
+
+  /**
+   * Checks to see if the stream is locked to this value (umid or spi)
+   *
+   * @static
+   * @param {string} stream
+   * @param {string} umid
+   * @return {*}  {boolean}
+   */
+  public static is(stream: string, umid: string): boolean {
+    if (this.has(stream)) {
+      return this.cell[stream].umid === umid;
+    }
+    return false;
   }
 
   /**
