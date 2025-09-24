@@ -508,9 +508,8 @@ export class Process extends EventEmitter {
         : setupLocation();
     } catch (error) {
       // Simple Error Return (Can't use postVote yet due to VM)
-      this.entry.$nodes[this.reference].error = `Init Contract Error - ${
-        error.message || error
-      }`;
+      this.entry.$nodes[this.reference].error = `Init Contract Error - ${error.message || error
+        }`;
       this.emit("commited", { instant: true });
       return;
     }
@@ -655,7 +654,7 @@ export class Process extends EventEmitter {
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " +
-                      inputs[i]
+                    inputs[i]
                   )
                 );
               }
@@ -744,7 +743,7 @@ export class Process extends EventEmitter {
         this.emitFailed(this.willEmitData);
       } else {
         // Waiting on commit confirmation for streams
-        for (let i = nodes.length; i--; ) {
+        for (let i = nodes.length; i--;) {
           if (this.entry.$nodes[nodes[i]].streams) {
             // We have 1 nodes $stream record can fast forward the error throwing
             this.emitFailed(this.willEmitData);
@@ -985,6 +984,7 @@ export class Process extends EventEmitter {
       } catch (error) {
         // Do something with the error
         this.nodeResponse.error = "Read Error - " + JSON.stringify(error);
+        this.nodeResponse.early = false;
       }
 
       // Prevents false positive error log "failed to commit before timeout"
@@ -1036,7 +1036,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--; ) {
+        for (let i = sigKeys.length; i--;) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -1078,6 +1078,7 @@ export class Process extends EventEmitter {
   private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
     this.voting = false;
+    this.nodeResponse.early = false;
 
     if (!this.entry) {
       // Unhandled contract error issues
@@ -1162,13 +1163,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                  error.status || 1502,
-                  new Error(error.error || error)
-                ) // rethrow same error
+                error.status || 1502,
+                new Error(error.error || error)
+              ) // rethrow same error
               : this.shared.raiseLedgerError(
-                  1501,
-                  new Error("Bad Knock Transaction")
-                ); // Generic error 404/ 500
+                1501,
+                new Error("Bad Knock Transaction")
+              ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1176,9 +1177,9 @@ export class Process extends EventEmitter {
 
         error
           ? this.shared.raiseLedgerError(
-              error.code || 1000,
-              error.reason || error
-            ) // Of course if next is origin we need to send back for the promises!
+            error.code || 1000,
+            error.reason || error
+          ) // Of course if next is origin we need to send back for the promises!
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
@@ -1242,7 +1243,7 @@ export class Process extends EventEmitter {
   private countOutstandingVotes(): number {
     const nodes = Object.keys(this.entry.$nodes);
     let votedNodes = 0;
-    for (let i = nodes.length; i--; ) {
+    for (let i = nodes.length; i--;) {
       if (!this.entry.$nodes[nodes[i]].early) {
         votedNodes++;
       }
@@ -1306,7 +1307,7 @@ export class Process extends EventEmitter {
     if (networkNodes) {
       // Small performance boost if we voted no
       //if (skipBoost /*|| this.nodeResponse.vote*/) {
-      for (let i = networkNodes.length; i--; ) {
+      for (let i = networkNodes.length; i--;) {
         // Must filter on early as well
         if (
           !this.entry.$nodes[networkNodes[i]].early &&
@@ -1409,15 +1410,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-                1302,
-                new Error(
-                  "Commit Failure - " + JSON.stringify(error.message || error)
-                )
+              1302,
+              new Error(
+                "Commit Failure - " + JSON.stringify(error.message || error)
               )
+            )
             : this.shared.raiseLedgerError(
-                1301,
-                new Error("Failed Commit Transaction")
-              );
+              1301,
+              new Error("Failed Commit Transaction")
+            );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1557,7 +1558,7 @@ export class Process extends EventEmitter {
               // Find how many current votes their currently is if the rest of the nodes will vote yes can we reach consensus
               if (
                 ((this.currentTrueVotes + outstandingVoters) / Process.networkNodeLength) *
-                  100 >=
+                100 >=
                 consensusNeeded
               ) {
                 // It *should* be possible to still reach consensus
@@ -1693,7 +1694,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];
