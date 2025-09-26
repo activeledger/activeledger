@@ -56,7 +56,7 @@ export class PermissionsChecker {
     //private checkRevs: boolean,
     private securityCache: ISecurityCache,
     private shared: Shared
-  ) {}
+  ) { }
 
   /**
    * Entry point for processing stream data
@@ -87,7 +87,7 @@ export class PermissionsChecker {
         ActiveLogger.info(
           this.data,
           `Error Fetching Streams after ${allowedRetries} retries, giving up`
-        );  
+        );
         return Promise.reject(error);
       } else {
         ActiveLogger.info(
@@ -126,8 +126,9 @@ export class PermissionsChecker {
     // Map into a single alldocs lookup
     const keys: string[] = [];
     let contractDataIncluded = false;
+    let sigOnlyAdjustment = 0;
 
-    for (let i = this.data.length; i--; ) {
+    for (let i = this.data.length; i--;) {
       // Skip the map as the map is also to support labels. Here we just need raw id's
       const filteredPrefix = this.shared.filterPrefix(this.data[i], true);
 
@@ -140,7 +141,11 @@ export class PermissionsChecker {
         if (suffix !== "data") {
           keys.push(filteredPrefix + ":stream");
         }
-        keys.push(filteredPrefix);
+        if (!this.shared.sigOnly[filteredPrefix]) {
+          keys.push(filteredPrefix);
+        } else {
+          sigOnlyAdjustment++;
+        }
       }
     }
 
@@ -158,7 +163,7 @@ export class PermissionsChecker {
       const results: ActiveDefinitions.LedgerStream[] = [];
 
       // Must be a better way to manage this, Less operations
-      for (let i = docs.rows.length; i--; ) {
+      for (let i = docs.rows.length; i--;) {
         // stream will be last so most likely need to replace
         // Using .doc for consistancy between data engines
         const baseDoc = docs.rows[i].doc._id.replace(":stream", "");
@@ -217,7 +222,7 @@ export class PermissionsChecker {
 
       // If contract data is being dealt with we need to handle meta ourselves
       if (contractDataIncluded) {
-        for (let i = results.length; i--; ) {
+        for (let i = results.length; i--;) {
           const sId = results[i].state._id;
 
           if (sId && sId.indexOf(":data")) {
@@ -237,7 +242,7 @@ export class PermissionsChecker {
       }
 
       // lengths should match then have all streams and meta data
-      if (results.length === keys.length / 2) {
+      if (results.length === (keys.length + sigOnlyAdjustment) / 2) {
         return results;
       } else {
         throw {
@@ -278,7 +283,9 @@ export class PermissionsChecker {
 
         // Check that the revisions match between nodes
         if (revType && revType[streamId]) {
-          if (revType[streamId] !== currentRevision) {
+          // Don't really need to compare stream data if sigOnly signature itself verifies it (maybe throw warning)
+          // reason sig verifies if I mod 1 node to different pubkey the others don't mind they will false it as sig wont match
+          if ((revType[streamId] !== currentRevision) && !this.shared.sigOnly[this.shared.filterPrefix(streamId)]) { //prefix maybe here?
             // Normal and meta
             // this.db.clearCache(streamId);
             // this.db.clearCache(`${streamId}:stream`);
@@ -358,7 +365,7 @@ export class PermissionsChecker {
           }
 
           // If sig only dont need the data anymore (can also not fetch main state)
-          if(this.shared.sigOnly[streamId]) {
+          if (this.shared.sigOnly[streamId]) {
             // Splice this loop iteration to remove from the data returned
             stream.splice(i, 1);
           }
@@ -444,7 +451,7 @@ export class PermissionsChecker {
           // Get signature from tx object
           const signature = (
             this.entry.$sigs[
-              this.shared.filterPrefix(streamId)
+            this.shared.filterPrefix(streamId)
             ] as ActiveDefinitions.LedgerAuthSignatures
           )[sigStream];
           const authCheck = stream.meta.authorities.some(
