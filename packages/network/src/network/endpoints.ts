@@ -299,8 +299,8 @@ export class Endpoints {
                                   (ActiveOptions.get<any>("consensus", {})
                                     .reached /
                                     100) *
-                                  host.neighbourhood.count()// -
-                                  //1 // -1 here if we want to exclude this node
+                                  host.neighbourhood.count() -
+                                  1 // -1 here if we want to exclude this node
                                 );
 
                                 if (networkStreams.length >= consensusReached) {
@@ -946,8 +946,8 @@ export class Endpoints {
                         const consensusReached = Math.ceil(
                           (ActiveOptions.get<any>("consensus", {}).reached /
                             100) *
-                          host.neighbourhood.count()// -
-                          //1 // -1 here if we want to exclude this node
+                          host.neighbourhood.count() -
+                          1 // -1 here if we want to exclude this node
                         );
 
                         if (networkStreams.length < consensusReached) {
