@@ -23,9 +23,9 @@
 import * as url from "url";
 //import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveGZip } from "@activeledger/activeutilities";
-import { App, HttpResponse, TemplatedApp } from "uWebSockets.js";
+import { App, HttpResponse, TemplatedApp, us_listen_socket, us_listen_socket_close } from "uWebSockets.js";
 
-export interface IActiveHttpResponse extends HttpResponse {}
+export interface IActiveHttpResponse extends HttpResponse { }
 
 /**
  * Interface for exposing processed request data to the endpoints
@@ -58,6 +58,14 @@ export interface IActiveHttpIp {
  * @class ActiveHttpd
  */
 export class ActiveHttpd {
+  /**
+   * Holds underlying socket
+   *
+   * @private
+   * @type {us_listen_socket}
+   */
+  private listenSocket: us_listen_socket | null;
+
   /**
    * Mime Map
    *
@@ -95,7 +103,7 @@ export class ActiveHttpd {
    * Creates an instance of ActiveHttpd.
    * @param {boolean} [enableCORS=false]
    */
-  constructor(private enableCORS: boolean = false) {}
+  constructor(private enableCORS: boolean = false) { }
 
   /**
    * Define Route
@@ -358,7 +366,8 @@ export class ActiveHttpd {
       }
     });
 
-    this.server.listen(port, () => {
+    this.server.listen(port, (token: us_listen_socket) => {
+      this.listenSocket = token;
     });
 
     // Bind to request event
@@ -443,6 +452,22 @@ export class ActiveHttpd {
     //     );
     //   }
     // });
+  }
+
+
+  public shutdown(): void {
+    if (this.listenSocket) {
+      // Close the listen socket
+      us_listen_socket_close(this.listenSocket);
+      this.listenSocket = null;
+
+      // Only have a a short while before sigkill
+      // Lets try let them finish up then close the app before sigkill can happen
+      setTimeout(() => {
+        this.server.close();
+        process.exit(0);
+      }, 1300);
+    }
   }
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
@@ -738,7 +763,7 @@ export class ActiveHttpd {
       res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
       res.writeHeader("Access-Control-Allow-Headers", "*");
 
-      for (let i = headers.length; i--; ) {
+      for (let i = headers.length; i--;) {
         if (headers[i]) {
           const [k, v] = headers[i].split(":");
           res.writeHeader(k, v);
