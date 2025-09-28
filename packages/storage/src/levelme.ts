@@ -435,8 +435,8 @@ export class LevelMe {
       .on("data", async (data: any) => {
         writer.write(data.toString() + "\n");
       })
-      .on("error", () => {})
-      .on("close", () => {})
+      .on("error", () => { })
+      .on("close", () => { })
       .on("end", () => {
         writer.end();
         unlinkSync(`${filename}.status`);
@@ -462,7 +462,7 @@ export class LevelMe {
           ActiveLogger.warn(`Restoring FAILED`);
         }
       })
-      .on("error", () => {})
+      .on("error", () => { })
       .on("end", () => {
         unlinkSync(`${filename}.status`);
       });
@@ -555,7 +555,7 @@ export class LevelMe {
             .on("error", (err: unknown) => {
               reject(err);
             })
-            .on("close", () => {})
+            .on("close", () => { })
             .on("end", async () => {
               await Promise.all(promises);
               resolve({
@@ -614,7 +614,7 @@ export class LevelMe {
       let tmpKeys = [];
       let cached = [];
       //const now = new Date();
-      for (let i = keys.length; i--; ) {
+      for (let i = keys.length; i--;) {
         if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
         } else {
@@ -626,7 +626,7 @@ export class LevelMe {
       if (tmpKeys.length) {
         const result = await this.levelUp.getMany(tmpKeys);
         // Loop and cache
-        for (let i = result.length; i--; ) {
+        for (let i = result.length; i--;) {
           const data = JSON.parse(result[i]);
           this.cache.set(data._id, data);
           cached.push({ doc: data });
@@ -636,7 +636,7 @@ export class LevelMe {
     } else {
       let tmpKeys = [];
       let cached = [];
-      for (let i = keys.length; i--; ) {
+      for (let i = keys.length; i--;) {
         tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
       }
 
@@ -644,7 +644,7 @@ export class LevelMe {
       const result = await this.levelUp.getMany(tmpKeys);
 
       // Loop and cache
-      for (let i = result.length; i--; ) {
+      for (let i = result.length; i--;) {
         const data = JSON.parse(result[i]);
         cached.push({ doc: data });
       }
@@ -765,7 +765,7 @@ export class LevelMe {
     await this.open();
     const batch = await this.levelUp.batch();
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       batch.del(LevelMe.SEQ_PREFIX + keys[i]);
     }
 
@@ -849,7 +849,7 @@ export class LevelMe {
         .on("error", (err: unknown) => {
           reject(err);
         })
-        .on("close", () => {})
+        .on("close", () => { })
         .on("end", async () => {
           await Promise.all(promises);
           resolve({
@@ -884,7 +884,7 @@ export class LevelMe {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.levelUp.batch();
     const changes = [];
-    for (let i = docs.length; i--; ) {
+    for (let i = docs.length; i--;) {
       // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
       //if (docs[i]._deleted) {
       //  await this.del(docs[i]._id);
@@ -898,7 +898,7 @@ export class LevelMe {
     try {
       await batch.write();
       if (ENABLE_CACHE) {
-        for (let i = changes.length; i--; ) {
+        for (let i = changes.length; i--;) {
           this.cache.set(changes[i].id, changes[i].doc);
         }
       }
@@ -937,10 +937,10 @@ export class LevelMe {
     await this.open();
 
     // Convert doc to string
-    //const incomingDoc = JSON.stringify({...doc,_rev:null});
+    const incomingDoc = JSON.stringify({ ...doc, _rev: null });
     // Above same problem as isDiff going to get different md5 values on write
 
-    const incomingDoc = JSON.stringify(doc);
+    //const incomingDoc = JSON.stringify(doc);
 
     // MD5 input to act as tree position
     const md5 = createHash("md5").update(incomingDoc).digest("hex");
@@ -981,12 +981,13 @@ export class LevelMe {
           const [p1, curmd5] = currentRev.split("-");
           const pos = parseInt(p1) + 1;
 
-          // Only uncomment if entire network does at the same time
-          //isDiff = md5 !== curmd5;
-
-          // Update rev_* and doc
           newRev = `${pos}-${md5}`;
-          doc._rev = newRev;
+          // Only uncomment if entire network does at the same time
+          if (isDiff = md5 !== curmd5) {
+            // Update rev_* and doc
+            //newRev = `${pos}-${md5}`;
+            doc._rev = newRev;
+          }
         } else {
           doc._rev = newRev = options.force_rev;
         }
