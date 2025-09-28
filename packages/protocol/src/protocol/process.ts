@@ -36,8 +36,10 @@ import { PermissionsChecker } from "./permissionsChecker";
 import { LedgerEntry } from "@activeledger/activedefinitions/lib/definitions";
 
 // Increasing baseline timeout, Contracts should error or complete before timeouts are reached
+const BROADCAST_TIMEOUT_EARLY = 60 * 1000;
 const BROADCAST_TIMEOUT_VOTE = 60 * 1000;
 const BROADCAST_TIMEOUT_COMMIT = 60 * 1000;
+// Timers are in groups so they can be adjusted with general improvements. Such as queue weight by votes cast
 
 /**
  * Class controls the processing of this nodes consensus
@@ -722,6 +724,26 @@ export class Process extends EventEmitter {
 
     // Just wamring up (This should be an object so uselss being herE?)
     if (node.early) {
+      // Copy paste testing
+      // if (!this.nodeResponse.vote && this.broadcastTimeout) {
+      //   clearInterval(this.broadcastTimeout);
+      //   this.broadcastTimeout = setTimeout(
+      //     () => {
+      //       if (!this.isCommiting()) {
+      //         // Entire Network didn't reach consensus in time
+      //         ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
+      //         return this.shared.raiseLedgerError(
+      //           1510,
+      //           new Error(
+      //             "Failed Network Voting Timeout - Voters Timed Out"
+      //           )
+      //         );
+      //       }
+      //     },
+      //     // Longer timeout to allow for longer voting round
+      //     BROADCAST_TIMEOUT_EARLY
+      //   );
+      // }
       return;
     }
 
@@ -1580,7 +1602,8 @@ export class Process extends EventEmitter {
                   },
                   this.isCommiting()
                     ? BROADCAST_TIMEOUT_COMMIT
-                    : BROADCAST_TIMEOUT_VOTE
+                    // No votes, Shorter timeout (maybe throw better error code to requeue?)
+                    : this.currentTrueVotes === 0 ? BROADCAST_TIMEOUT_EARLY : BROADCAST_TIMEOUT_VOTE
                 );
               } else {
                 // Did we vote no and raise our error?
