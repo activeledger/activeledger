@@ -45,6 +45,21 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // Database Connection Cache
   let dbCache: { [index: string]: LevelMe } = {};
 
+  // Track if we are shutting down
+  let isShuttingDown = false;
+
+  /**
+   * Graceful Shutdown
+   *
+   * @param {ActiveHttpd} httpd host
+   */
+  const terminate = (host: ActiveHttpd) => {
+    if (!isShuttingDown) {
+      isShuttingDown = true;
+      host.shutdown();
+    }
+  }
+
   /**
    * Manages Pouch Connections
    *
@@ -73,9 +88,9 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     a
       ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
       : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
-          /[018]/g,
-          uuidGenV4
-        );
+        /[018]/g,
+        uuidGenV4
+      );
 
   /**
    * Checks for the existant of _id if not ads it and returns
@@ -90,6 +105,18 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
   // Create Light Server
   let http = new ActiveHttpd();
+
+  // Attempt better shutdown
+  process.on("SIGINT", () => {
+    terminate(http);
+  });
+  process.on("SIGTERM", () => {
+    terminate(http);
+  });
+  process.on("SIGQUIT", () => {
+    terminate(http);
+  });
+
 
   // Index
   http.use("/", "GET", () => {
@@ -223,7 +250,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
     }
     const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
-    for (let i = txs.rows.length; i--; ) {
+    for (let i = txs.rows.length; i--;) {
       const [timestamp, umid] = txs.rows[i]._id.split(",");
       txs.rows[i] = {
         umid,
@@ -590,7 +617,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         if (change.id.startsWith("event:")) {
           delete change.doc._id;
           delete change.doc._rev;
-          if(!sse.write(change.id.replace("event:", ""), change.doc)){
+          if (!sse.write(change.id.replace("event:", ""), change.doc)) {
             cancelChanges();
           }
         }
@@ -810,9 +837,8 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // );
       // Convert To Stream
       return {
-        mime: `Content-type: ${
-          ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-        }`,
+        mime: `Content-type: ${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
+          }`,
         data: fs.readFileSync(file),
       };
     }
