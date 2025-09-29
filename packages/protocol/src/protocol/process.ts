@@ -723,29 +723,30 @@ export class Process extends EventEmitter {
     }
 
     // Just wamring up (This should be an object so uselss being herE?)
-    if (node.early) {
-      // Copy paste testing
-      // if (!this.nodeResponse.vote && this.broadcastTimeout) {
-      //   clearInterval(this.broadcastTimeout);
-      //   this.broadcastTimeout = setTimeout(
-      //     () => {
-      //       if (!this.isCommiting()) {
-      //         // Entire Network didn't reach consensus in time
-      //         ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
-      //         return this.shared.raiseLedgerError(
-      //           1510,
-      //           new Error(
-      //             "Failed Network Voting Timeout - Voters Timed Out"
-      //           )
-      //         );
-      //       }
-      //     },
-      //     // Longer timeout to allow for longer voting round
-      //     BROADCAST_TIMEOUT_EARLY
-      //   );
-      // }
-      return;
-    }
+    // Actually think this will never run like this, Where is it actually filtered? (I think on send!)
+    // if (node.early) {
+    //   // Copy paste testing
+    //   // if (!this.nodeResponse.vote && this.broadcastTimeout) {
+    //   //   clearInterval(this.broadcastTimeout);
+    //   //   this.broadcastTimeout = setTimeout(
+    //   //     () => {
+    //   //       if (!this.isCommiting()) {
+    //   //         // Entire Network didn't reach consensus in time
+    //   //         ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
+    //   //         return this.shared.raiseLedgerError(
+    //   //           1510,
+    //   //           new Error(
+    //   //             "Failed Network Voting Timeout - Voters Timed Out"
+    //   //           )
+    //   //         );
+    //   //       }
+    //   //     },
+    //   //     // Longer timeout to allow for longer voting round
+    //   //     BROADCAST_TIMEOUT_EARLY
+    //   //   );
+    //   // }
+    //   return;
+    // }
 
     // Don't overwrite self
     if (node[this.reference]) {
@@ -1037,9 +1038,10 @@ export class Process extends EventEmitter {
       if (this.entry.$broadcast && !(this.entry as any).$wait) {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
-        //if (this.entry.$origin === this.reference) {
-        this.emit("broadcast", true);
-        //}
+        if (this.entry.$origin === this.reference) {
+          // Now we collect votes within the queue maybe we can just send with orign node?
+          this.emit("broadcast", true);
+        }
         // The reason this should be fine is the orign is the entry node, It is sending this out
         // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
       }
