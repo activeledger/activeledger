@@ -264,6 +264,20 @@ export class Host extends Home {
             } else {
               // Not found, Lets just return the umid anyway it may confirm or will timeout
             }
+          } else {
+            // Add Vote information into current object!
+            if (this.processPending[entry.$umid]?.entry) {
+              if (this.processPending[entry.$umid].entry?.$nodes) {
+                // Don't overwrite self (Can't imagine this being here! It is locked)
+                if (entry.$nodes[this.reference]) {
+                  delete entry.$nodes[this.reference];
+                }
+                this.processPending[entry.$umid].entry.$nodes = Object.assign(this.processPending[entry.$umid]?.entry?.$nodes, entry.$nodes);
+              } else {
+                this.processPending[entry.$umid].entry.$nodes = entry.$nodes;
+              }
+            }
+
           }
           if (!entry.$$noreply) {
             this.broadcast(entry.$umid, false, true);
@@ -302,7 +316,7 @@ export class Host extends Home {
               try {
                 this.processPending[entry.$umid].responded = true;
                 ActiveLogger.debug("Client Response TX : " + entry.$umid);
-              } catch {}
+              } catch { }
             }
           },
           reject: (response: any) => {
@@ -315,7 +329,7 @@ export class Host extends Home {
               reject(response);
               try {
                 this.processPending[entry.$umid].responded = true;
-              } catch {}
+              } catch { }
             }
             //}, 10);
           },
@@ -401,7 +415,7 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--; ) {
+      for (let i = this.hybridHosts.length; i--;) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
@@ -661,7 +675,7 @@ export class Host extends Home {
         } else {
           bundles = [bodyString];
         }
-        for (let i = bundles.length; i--; ) {
+        for (let i = bundles.length; i--;) {
           if (bundles[i]) {
             // All posted data should be JSON
             // Convert data for potential encryption
@@ -966,7 +980,7 @@ export class Host extends Home {
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
             //Find the bad process
-            for (let i = this.processors.length; i--; ) {
+            for (let i = this.processors.length; i--;) {
               if (this.processors[i].pid === pFork.pid) {
                 this.processors.splice(i, 1);
                 break;
@@ -1065,7 +1079,7 @@ export class Host extends Home {
                   this.listenSocket = token;
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                      ActiveInterfaces.getBindingDetails("port")
+                    ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -1230,14 +1244,14 @@ export class Host extends Home {
       // We only want to send our value
       const data = (!early || !this.processPending[umid].entry.$nodes[this.reference].early)
         ? Object.assign(this.processPending[umid].entry, {
-            $nodes: {
-              [this.reference]:
-                this.processPending[umid].entry.$nodes[this.reference],
-            },
-          })
+          $nodes: {
+            [this.reference]:
+              this.processPending[umid].entry.$nodes[this.reference],
+          },
+        })
         : Object.assign(this.processPending[umid].entry, {
-            $nodes: {},
-          });
+          $nodes: {},
+        });
 
       // We need a proper copy to modify that way we still keep the original in memory for the tx
       // const data = JSON.parse(
@@ -1261,7 +1275,7 @@ export class Host extends Home {
           data.$$noreply = true;
         }
         // Loop them all and broadcast the transaction
-        for (let i = nodes.length; i--; ) {
+        for (let i = nodes.length; i--;) {
           let node = neighbourhood[nodes[i]];
           // TODO the entry.$nodes check only valid for leader? It can probably be reduced for non leaders
 
@@ -1269,8 +1283,8 @@ export class Host extends Home {
           if (
             node.isHome &&
             node.reference !==
-              this
-                .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
+            this
+              .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
           ) {
             // Need to detect if we have already sent and got response for nodes for performance
             promises.push(node.knock("init", data, false, 0, true));
@@ -1340,7 +1354,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       // So we can have multisig without having to hold lock on same stream
       if (!txIO[keys[i]].$sigOnly) {
         // Stream label or self
@@ -1403,7 +1417,10 @@ export class Host extends Home {
       const robin = this.getRobin();
       // Make sure we have the response object
       if (!this.processPending[v.$umid].entry.$nodes)
-        this.processPending[v.$umid].entry.$nodes = {};
+        // Make sure it exists
+        if (!this.processPending[v.$umid].entry.$nodes) {
+          this.processPending[v.$umid].entry.$nodes = {};
+        }
 
       // Setup this node response
       this.processPending[v.$umid].entry.$nodes[Home.reference] = {
@@ -1647,7 +1664,7 @@ export class Host extends Home {
 
         // Remove the empty results if any
         //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        for (let i = this.busyLocksQueue.internal.length; i--; ) {
+        for (let i = this.busyLocksQueue.internal.length; i--;) {
           if (this.busyLocksQueue.internal[i].running) {
             this.busyLocksQueue.internal.splice(i, 1);
           }
@@ -1684,7 +1701,7 @@ export class Host extends Home {
 
         // Remove the empty results if any
         //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        for (let i = this.busyLocksQueue.external.length; i--; ) {
+        for (let i = this.busyLocksQueue.external.length; i--;) {
           if (this.busyLocksQueue.external[i].running) {
             this.busyLocksQueue.external.splice(i, 1);
           }
@@ -1794,9 +1811,8 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${
-                        tx.$tx.$namespace
-                      }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
+                        }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -1808,7 +1824,7 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--; ) {
+                    for (let i = keys.length; i--;) {
                       tmp.push(keys[i] + ":stream");
                     }
 
@@ -1888,7 +1904,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -2020,7 +2036,7 @@ export class Host extends Home {
               this,
               body,
               (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-                false,
+              false,
               this.dbConnection
             );
             // Pass db conntection
@@ -2077,8 +2093,7 @@ export class Host extends Home {
           if (TT > 5) {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
             ActiveLogger.info(
-              `Request Response ${
-                data.$umid ? data.$umid : "No Umid"
+              `Request Response ${data.$umid ? data.$umid : "No Umid"
               } : S=${started}, TT=${TT}ms`
             );
           }
@@ -2165,7 +2180,7 @@ export class Host extends Home {
       requester !== "NA" &&
       this.neighbourhood.checkFirewall(
         (req.headers["x-forwarded-for"] as string) ||
-          (req.connection.remoteAddress as string)
+        (req.connection.remoteAddress as string)
       )
     );
   }
