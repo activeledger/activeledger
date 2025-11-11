@@ -486,7 +486,7 @@ export class Endpoints {
 
                                     // Append Debug View
                                     if (
-                                      ActiveOptions.get<boolean>("debug", false)
+                                      ActiveOptions.get<boolean>("debugToClient", false)
                                     ) {
                                       output.$debug = tx;
                                     }
@@ -579,7 +579,7 @@ export class Endpoints {
                     }
 
                     // Append Debug View
-                    if (ActiveOptions.get<boolean>("debug", false)) {
+                    if (ActiveOptions.get<boolean>("debugToClient", false)) {
                       output.$debug = tx;
                     }
 
