@@ -304,7 +304,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // Get Database
       const db = getDB(dbLoc);
       // Filter
-      db.get(filterPrefix(decodeURIComponent(path)))
+      db.get(filterPrefix(decodeURIComponent(path), dbLoc))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
           reject(e);
@@ -325,7 +325,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // Get Database
       const db = getDB(dbLoc);
       try {
-        await db.del(filterPrefix(docName));
+        await db.del(filterPrefix(docName, dbLoc));
         return resolve({ success: "ok" });
       } catch (e) {
         return reject(e);
@@ -545,22 +545,28 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   };
 
   // Filters any prefix (so they're virtual) (: reserved character) to real stream id
-  const filterPrefix = (stream: string): string => {
-    // Remove any suffix like :volatile :stream :umid
-    let [streamId, suffix] = stream.split(":");
+  const filterPrefix = (stream: string, db?: string): string => {
 
-    // If id length more than 64 trim the start
-    if (streamId.length > 64 && !streamId.startsWith("0x")) {
-      streamId = streamId.slice(-64);
+    // Only need to filter activeledger, making optional just in case not passed
+    if (db && db !== 'activeledger') {
+      return stream;
+    } else {
+      // Remove any suffix like :volatile :stream :umid
+      let [streamId, suffix] = stream.split(":");
+
+      // If id length more than 64 trim the start
+      if (streamId.length > 64 && !streamId.startsWith("0x")) {
+        streamId = streamId.slice(-64);
+      }
+
+      // If suffix add it back to return
+      if (suffix) {
+        return streamId + ":" + suffix;
+      }
+
+      // Return just the id
+      return streamId;
     }
-
-    // If suffix add it back to return
-    if (suffix) {
-      return streamId + ":" + suffix;
-    }
-
-    // Return just the id
-    return streamId;
   };
 
   // Add new / updated document to the database with auto id
