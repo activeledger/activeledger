@@ -127,9 +127,15 @@ export class Endpoints {
             // if (host.neighbourhood.count() < 4) {
             //   tx.$broadcast = false;
             // } else if (!tx.$territoriality && !tx.$broadcast) {
-            if (!tx.$territoriality && !tx.$broadcast) {
-              tx.$broadcast = true;
-            }
+
+            // Temp Disabled
+            // if (!tx.$territoriality && !tx.$broadcast) {
+            //   tx.$broadcast = true;
+            // }
+
+            // Default all to broadcast
+            // $territoriality temporarily disabled until firewall check added
+            tx.$broadcast = true;
 
             // Will merge with above for testing here (TODO: Make it work with broadcast)
             // fail to be broadcast if it is unanimous the performance trade off
@@ -782,6 +788,7 @@ export class Endpoints {
   public static InternalInitalise(
     host: Host,
     body: any,
+    remoteAddr: string,
     retried = false
   ): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -804,7 +811,7 @@ export class Endpoints {
 
       // Send into host pool
       host
-        .pending(tx, true, retried)
+        .pending(tx, remoteAddr, true, retried)
         .then(async (ledger: any) => {
           let canRetry = false;
           let resolved = false;
@@ -1139,7 +1146,7 @@ export class Endpoints {
                             `SPI RETRY as it was unanimous and written`
                           );
                           tx.$spiRetry = true;
-                          this.InternalInitalise(host, tx, true)
+                          this.InternalInitalise(host, tx, remoteAddr, true)
                             .then(resolve)
                             .catch(reject);
                         } else {
@@ -1268,7 +1275,7 @@ export class Endpoints {
 
       // Send into host pool
       host
-        .pending(tx)
+        .pending(tx, Home.host)
         .then((ledger) => resolve(ledger))
         .catch((error) => {
           ActiveLogger.fatal(tx, "last tx sent in");

@@ -217,10 +217,28 @@ export class Host extends Home {
    */
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
+    remoteAddr: string,
     internal = false,
     forceRestart = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
+
+      // This should only matter to broadcast
+      // non-broadcast are direct posts. May still need to add checks there
+      // but that occurs at a different location
+      if (entry.$nodes) {
+        // Even though IP is checked, Nothing prevents them sending multiple payloads
+        const nodeSpoofCheck = Object.keys(entry.$nodes);
+        if (nodeSpoofCheck.length) {
+          for (let i = nodeSpoofCheck.length; i--;) {
+            const nodeCheck = nodeSpoofCheck[i];
+            if (!this.neighbourhood.checkFirewall(remoteAddr, nodeCheck)) {
+              return reject("Bad Neighbour Payload");
+            }
+          }
+        }
+      }
+
       if (forceRestart && this.processPending[entry.$umid]) {
         this.destroy(entry.$umid, true);
         delete this.processPending[entry.$umid];
@@ -1973,7 +1991,7 @@ export class Host extends Home {
             response = Endpoints.status(this, requester);
             break;
           case "/a/all": // All Stream Management
-            if (this.firewallCheck(requester, req)) {
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               response = Endpoints.all(this.dbConnection);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
@@ -1986,7 +2004,7 @@ export class Host extends Home {
           //   break;
           default:
             // All Stream Management with start point
-            if (this.firewallCheck(requester, req)) {
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               if (req.url) {
                 let match = req.url.substr(0, 7);
                 switch (match) {
@@ -2042,8 +2060,8 @@ export class Host extends Home {
             // Pass db conntection
             break;
           case "/a/init": // Internal transactions
-            if (this.firewallCheck(requester, req)) {
-              response = Endpoints.InternalInitalise(this, body);
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
+              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
@@ -2175,13 +2193,8 @@ export class Host extends Home {
    * @param {IncomingMessage} req
    * @returns {boolean}
    */
-  private firewallCheck(requester: string, req: any): boolean {
-    return (
-      requester !== "NA" &&
-      this.neighbourhood.checkFirewall(
-        (req.headers["x-forwarded-for"] as string) ||
-        (req.connection.remoteAddress as string)
-      )
-    );
+  private firewallCheck(requester: string, remoteAddr: string): boolean {
+    // x-forward coulkd be spoofed for now lets not support
+    return this.neighbourhood.checkFirewall(remoteAddr, requester)
   }
 }
