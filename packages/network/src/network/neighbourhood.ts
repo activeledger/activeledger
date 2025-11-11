@@ -72,7 +72,7 @@ export class Neighbourhood {
    * @private
    * @type {{[reference: string]: boolean}}
    */
-  private firewall: { [reference: string]: boolean } = {};
+  private firewall: { [reference: string]: string } = {};
 
   /**
    * Count of how many neighbours (Reference Shortcut)
@@ -142,7 +142,9 @@ export class Neighbourhood {
           this.neighbours[neighbour[i].reference] = neighbour[i];
           this.houses++;
           // Add IP to firewall
-          this.firewall[(neighbour[i] as Neighbour).getAddress().host] = true;
+          this.firewall[neighbour[i].getAddress().host] = neighbour[i].reference;
+          // Invert it for multi node hosting
+          this.firewall[neighbour[i].reference] = neighbour[i].getAddress().host;
         } else {
           // Remove graceful (Being allow back in, Internal Refresh)
           this.neighbours[neighbour[i].reference].graceStop = false;
@@ -154,7 +156,9 @@ export class Neighbourhood {
         this.neighbours[neighbour.reference] = neighbour;
         this.houses++;
         // Add IP to firewall
-        this.firewall[(neighbour as Neighbour).getAddress().host] = true;
+        this.firewall[neighbour.getAddress().host] = neighbour.reference;
+        // Invert it for multi node hosting
+        this.firewall[neighbour.reference] = neighbour.getAddress().host;
       } else {
         // Remove graceful (Being allow back in, Internal Refresh)
         this.neighbours[neighbour.reference].graceStop = false;
@@ -254,10 +258,14 @@ export class Neighbourhood {
    * @param {string} remote
    * @returns {boolean}
    */
-  public checkFirewall(remote: string): boolean {
+  public checkFirewall(remote: string, nodeRef?: string): boolean {
     // IPv4 & IPv6 notation support
     if (remote.substr(0, 7) == "::ffff:") remote = remote.substr(7);
-    return this.firewall[remote] || false;
+    if (nodeRef) {
+      return this.firewall[remote] === nodeRef ? true : this.firewall[nodeRef] === remote
+    } else {
+      return this.firewall[remote] ? true : false
+    }
   }
 
   /**
