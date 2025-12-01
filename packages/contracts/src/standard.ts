@@ -41,7 +41,7 @@ export default abstract class Standard extends Stream {
    * @param {boolean} signatureless
    * @returns {Promise<boolean>}
    */
-  public verify?(signatureless: boolean): Promise<boolean>;  
+  public verify?(signatureless: boolean): Promise<boolean>;
 
   /**
    * Developer required to create a vote command for their contract.
@@ -70,4 +70,13 @@ export default abstract class Standard extends Stream {
    * @returns {Promise<any>}
    */
   public reconcile?(): Promise<any>
+
+
+ /**
+ * When a node votes false but network consensus is reached 
+ * this function will run to allow the developer to self recover
+ *
+ * @returns {Promise<any>}
+ */
+  public shutdown?(): Promise<any>
 }

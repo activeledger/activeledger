@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { ActiveLogger } from "@activeledger/activelogger";
 import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import {
@@ -278,7 +279,20 @@ class ContractControl implements IVMObject {
    * @param {string} umid
    */
   public destroy(umid: string): void {
-    delete this.smartContracts[umid];
+    try {
+      if (this.smartContracts[umid] && "shutdown" in this.smartContracts[umid]) {
+        // Contract wants to know it is shutting down
+        ActiveLogger.info(`[AC] - Calling Shutdown - ${umid}`);
+        this.smartContracts[umid].shutdown!();
+      }
+      // Give it some time to shutdown
+      setTimeout(() => {
+        ActiveLogger.info(`[AC] - Deleting - ${umid}`);
+        delete this.smartContracts[umid];
+      }, 5000);
+    } catch {
+      // Already deleted?
+    }
   }
 
   /**
