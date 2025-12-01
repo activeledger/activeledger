@@ -226,7 +226,7 @@ export class Host extends Home {
       // This should only matter to broadcast
       // non-broadcast are direct posts. May still need to add checks there
       // but that occurs at a different location
-      if (entry.$nodes) {
+      if (entry.$broadcast && entry.$nodes) {
         // Even though IP is checked, Nothing prevents them sending multiple payloads
         const nodeSpoofCheck = Object.keys(entry.$nodes);
         if (nodeSpoofCheck.length) {

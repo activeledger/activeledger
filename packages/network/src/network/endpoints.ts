@@ -135,7 +135,7 @@ export class Endpoints {
 
             // Default all to broadcast
             // $territoriality temporarily disabled until firewall check added
-            tx.$broadcast = true;
+            //tx.$broadcast = true;
 
             // Will merge with above for testing here (TODO: Make it work with broadcast)
             // fail to be broadcast if it is unanimous the performance trade off
