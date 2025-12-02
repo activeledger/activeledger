@@ -129,9 +129,9 @@ export class Endpoints {
             // } else if (!tx.$territoriality && !tx.$broadcast) {
 
             // Temp Disabled
-            // if (!tx.$territoriality && !tx.$broadcast) {
-            //   tx.$broadcast = true;
-            // }
+            if (!tx.$territoriality && !tx.$broadcast) {
+              tx.$broadcast = true;
+            }
 
             // Default all to broadcast
             // $territoriality temporarily disabled until firewall check added

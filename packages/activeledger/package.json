@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeledger",
-  "version": "3.0.2",
+  "version": "3.0.4",
   "description": "This package contains the main application for running the Activeledger blockchain",
   "keywords": [
     "blockchain",
