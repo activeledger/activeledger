@@ -113,6 +113,7 @@ export class Locker {
         //   break;
         // }
         // selfsign check
+        // what about if it is locked on itself? Maybe we can just "update"
         if (stream[i].length > 60) {
           if (!this.cell[stream[i]]) {
             this.cell[stream[i]] = {
@@ -120,6 +121,7 @@ export class Locker {
               time: Date.now(),
             };
           } else {
+             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell[stream[i]].umid}`);
             success = false;
             break;
           }

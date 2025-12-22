@@ -356,7 +356,8 @@ export class Host extends Home {
           responded: false,
         };
         // Need to check it doesn't exist
-        if (entry.$tx.$expire) {
+        // If this was the entry node it already chhecked so filter
+        if (entry.$tx.$expire && remoteAddr !== this.host) {
           if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
             if (entry.$nodes) {
               entry.$nodes[this.reference] = {
@@ -1653,20 +1654,35 @@ export class Host extends Home {
       this.processingBLQ = true;
 
       // Checked idententies. This means there is no "chance" we select the next one by bad timing
-      const checked: string[] = [];
+      // const checked: string[] = [];
+      const checked2: Set<string> = new Set();
 
       // TODO Convert to method
       if (this.busyLocksQueue.internal.length) {
         // Process Internal first (should make it so can target loops based on reason why processQue was called)
-        for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
+        busyQueueInternal: for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
+
+          // This lookup, is it slow? It maybe better to just call this.hold
+          // although the reason we avoid it is for the rentry++
+          // const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
+          // // // Skip if we have already tried
+          // if (labelOrKey?.length) {
+          //   if (checked.some((io) => labelOrKey.includes(io))) {
+          //     continue;
+          //   }
+          //   checked.push(...labelOrKey);
+          // }
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           // // Skip if we have already tried
           if (labelOrKey?.length) {
-            if (checked.some((io) => labelOrKey.includes(io))) {
-              continue;
+            for (let i = labelOrKey.length; i--;) {
+              if (checked2.has(labelOrKey[i])) {
+                continue busyQueueInternal;
+              }
+              checked2.add(labelOrKey[i]);
             }
-            checked.push(...labelOrKey);
           }
+
 
           if (
             this.hold(
@@ -1682,15 +1698,24 @@ export class Host extends Home {
 
         // Remove the empty results if any
         //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        for (let i = this.busyLocksQueue.internal.length; i--;) {
-          if (this.busyLocksQueue.internal[i].running) {
-            this.busyLocksQueue.internal.splice(i, 1);
-          }
-        }
+        // for (let i = this.busyLocksQueue.internal.length; i--;) {
+        //   if (this.busyLocksQueue.internal[i].running) {
+        //     this.busyLocksQueue.internal.splice(i, 1);
+        //   }
+        // }
       }
       if (next && internal) {
         this.hold(next);
       }
+
+      // // Should this jump the queue? 
+      // if (next && !internal) {
+      //   this.hold(next);
+      // }
+
+      // if (next) {
+      //   this.hold(next);
+      // }
 
       if (this.busyLocksQueue.external.length) {
         // Process Internal first (should make it so can target loops based on reason why processQue was called)
@@ -1719,14 +1744,32 @@ export class Host extends Home {
 
         // Remove the empty results if any
         //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
+        // for (let i = this.busyLocksQueue.external.length; i--;) {
+        //   if (this.busyLocksQueue.external[i].running) {
+        //     this.busyLocksQueue.external.splice(i, 1);
+        //   }
+        // }
+      }
+      // Should this jump the queue? 
+      if (next && !internal) {
+        this.hold(next);
+      }
+
+
+      if (this.busyLocksQueue.internal.length) {
+        for (let i = this.busyLocksQueue.internal.length; i--;) {
+          if (this.busyLocksQueue.internal[i].running) {
+            this.busyLocksQueue.internal.splice(i, 1);
+          }
+        }
+      }
+
+      if (this.busyLocksQueue.external.length) {
         for (let i = this.busyLocksQueue.external.length; i--;) {
           if (this.busyLocksQueue.external[i].running) {
             this.busyLocksQueue.external.splice(i, 1);
           }
         }
-      }
-      if (next && !internal) {
-        this.hold(next);
       }
       this.processingBLQ = false;
     } else {
@@ -2104,7 +2147,7 @@ export class Host extends Home {
           };
         }
 
-        // Write Header
+        // Write Header 
         // All outputs are JSON and
         if (data.$umid) {
           const TT = Date.now() - started;
@@ -2112,7 +2155,8 @@ export class Host extends Home {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
             ActiveLogger.info(
               `Request Response ${data.$umid ? data.$umid : "No Umid"
-              } : S=${started}, TT=${TT}ms`
+              } : S=${started}, TT=${TT}ms ${TT > 30000 ? "TTLR" : " OK"
+              }`
             );
           }
         }
