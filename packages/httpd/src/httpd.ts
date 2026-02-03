@@ -272,6 +272,7 @@ export class ActiveHttpd {
         "content-encoding": req.getHeader("content-encoding"),
         "X-Bundle": req.getHeader("x-bundle"),
         "Content-Length": req.getHeader("content-length"),
+        "Last-Event-ID": req.getHeader("last-event-id"),
       };
 
       const method = req.getMethod().toUpperCase();
