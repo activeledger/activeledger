@@ -1126,6 +1126,11 @@ export class Endpoints {
                         if (!ledger.dontRelease) {
                           host.release(tx.$umid);
                         }
+
+                        // Look into don't release above make sure its purpose valid
+                        // At this point (or before actually, where we have winner or not)
+                        // send a KnockAll to "unlock" the streams so they can continue processing. (Hence eh longer timeout)
+                        
                       };
 
                       if (resolved) {
@@ -1398,6 +1403,9 @@ export class Endpoints {
               Locker.release(holdValue, "SPI");
               ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
             }, 1000);
+
+            // Maybe increase the 1000 here, More so if we have an "unlock" somehow request (as many nodes me ask!)
+            // Or we can cache the results here given that we can assume more nodes will ask 
 
             // Fetch Request (Catch error here and forward on as an object to process in .all)
             fetchStream.push(db.get(body.$streams[i]));
