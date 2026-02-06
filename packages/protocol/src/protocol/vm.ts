@@ -128,13 +128,14 @@ export class VirtualMachine
     private dbev: ActiveDSConnect
   ) {
     super();
-
     // Initialise the emitter for listening and pass through to the contract
     this.emitter = new EventEmitter();
     // Start volatile event listener
     this.listenForVolatile();
     // start all stream fetching
     this.listenForFetch();
+    // Directly assign the script controller instance
+    this.virtualInstance = (scController as any).default;
   }
 
   /**
@@ -142,81 +143,10 @@ export class VirtualMachine
    *
    * @private
    */
-  public initialiseVirtualMachine(
-    extraBuiltins?: string[],
-    extraExternals?: string[],
-    extraMocks?: string[]
-  ): void {
-    // Toolkit Availability Check
-    // let toolkitAvailable = true;
-    // try {
-    //   // Keep this check for backward compatibility
-    //   // to prevent any corrupt / mix install bases from crashing
-    //   require.resolve("@activeledger/activetoolkits");
-    // } catch (error) {
-    //   // Toolkits not installed
-    //   toolkitAvailable = false;
-    // }
-
-    // // Manage Externals & builtin & mocks
-    // let external: string[] = ["@activeledger/activecontracts"];
-    // let builtin: string[] = ["buffer"];
-    // let mock: { [index: string]: MockBuiltinSecurity } = {};
-
-    // // With toolkit allow additional externals & builtin
-    // if (toolkitAvailable) {
-    //   external.push(
-    //     "@activeledger/activeutilities",
-    //     "@activeledger/activetoolkits"
-    //   );
-    //   builtin.push("http", "https", "url", "zlib");
-    // }
-
-    // // Add additional External & builtin by namespace if provided
-    // if (extraExternals) {
-    //   external = [...external, ...extraExternals];
-    // }
-
-    // if (extraBuiltins) {
-    //   builtin = [...builtin, ...extraBuiltins];
-    // }
-
-    // // Create Mocks
-    // if (extraMocks) {
-    //   extraMocks.forEach((libPackage) => {
-    //     mock[libPackage] = MockBuiltinSecurity;
-    //   });
-    // }
-
-    // // Create limited VM
-    // this.virtual = new NodeVM({
-    //   // This prevents data return using the new code, but might turn out to be needed after some testing
-    //   // wrapper: "none",
-    //   sandbox: {
-    //     logger: ActiveLogger,
-    //     crypto: ActiveCrypto,
-    //     secured: this.secured,
-    //     self: this.selfHost,
-    //   },
-    //   require: {
-    //     context: "sandbox",
-    //     builtin,
-    //     external,
-    //     mock,
-    //   },
-    //   // Disable Wasm to avoid sandbox escapes
-    //   wasm: false,
-    // });
-
-    // // Pull in the code to use for the VMScript
-    // const script = new VMScript(
-    //   fs.readFileSync(__dirname + "/vmscript.js", "utf-8")
-    // );
-
-    // // Initialise the virtual object using the VMScript
-    // this.virtualInstance = this.virtual.run(script);
-    //this.virtualInstance = new ContractControl()
-    this.virtualInstance = (scController as any).default;
+  public initialiseVirtualMachine(): void {
+    // This method is now a stub since vm2 is removed.
+    // The virtualInstance is assigned in the constructor.
+    // This can be removed in a future refactor.
   }
 
   /**
@@ -278,7 +208,6 @@ export class VirtualMachine
 
         // Have we loaded in a volatile to return
       }
-
     }
 
     return exported;
@@ -364,32 +293,31 @@ export class VirtualMachine
     payload: IVMDataPayload,
     contractName: string
   ): Promise<void> {
-    // Return as promise for initalise
-    return new Promise(async (resolve, reject) => {
-      if (!this.contractReferences) {
-        this.contractReferences = {};
-      }
+    if (!this.contractReferences) {
+      this.contractReferences = {};
+    }
 
-      this.contractReferences[payload.umid] = {
-        contractName,
-        contractLocation: payload.contractLocation,
-        inputs: payload.inputs,
-        tx: payload.transaction,
-        key: payload.key,
-      };
+    this.contractReferences[payload.umid] = {
+      contractName,
+      contractLocation: payload.contractLocation,
+      inputs: payload.inputs,
+      tx: payload.transaction,
+      key: payload.key,
+    };
 
-      // Setup Event Engine
-      this.event = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
+    // Setup Event Engine
+    this.event = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
 
-      try {
-        // Initialise Contract into VM (Will need to make sure require is not used and has been fully locked down)
+    return Promise.resolve()
+      .then(() => {
+        // Initialise Contract into VM
         this.virtualInstance.initialiseContract(
           payload,
           this.event,
           this.emitter
         );
 
-        // Set Sys Config
+        // Set Sys Config for default namespace contracts
         if (payload.transaction.$namespace === "default") {
           this.virtualInstance.setSysConfig(
             payload.umid,
@@ -397,23 +325,16 @@ export class VirtualMachine
           );
         }
 
-        // Start time initialise the date object
+        // Set the maximum timeout for this contract execution
         this.maxTimeout = new Date();
-
-        // Convert to max timeout date (Minutes converted to milliseconds)
         this.maxTimeout.setMilliseconds(
           ActiveOptions.get<number>("contractMaxTimeout", 20) * 60 * 1000
         );
-
-        // Continue
-        resolve();
-      } catch (e) {
-        if (e instanceof Error) {
-          // Exception
-          reject(await this.catchException(e, payload.umid));
-        }
-      }
-    });
+      })
+      .catch(async (e) => {
+        // Rethrow a formatted exception
+        throw await this.catchException(e, payload.umid);
+      });
   }
 
   /**
@@ -801,16 +722,18 @@ export class VirtualMachine
    * @param {Function} timedout
    */
   private checkTimeout(type: string, timedout: Function, umid: string): void {
-    // Setup Timeout Ticket
+    // This function recursively checks if a contract phase has timed out.
     setTimeout(() => {
-      // Has the script not finished
+      // If the script is still running...
       if (!this.scriptFinishedExec) {
-        // Has it extended its timeout
-        !this.hasBeenExtended(umid)
-          ? // Hasn't been extended so call function
-          timedout()
-          : // Check again later
+        // ...check if the contract has requested a timeout extension.
+        if (this.hasBeenExtended(umid)) {
+          // If extended, check again later.
           this.checkTimeout(type, timedout, umid);
+        } else {
+          // If not extended, trigger the timeout function.
+          timedout();
+        }
       }
     }, ActiveOptions.get<number>("contractCheckTimeout", 10000));
   }

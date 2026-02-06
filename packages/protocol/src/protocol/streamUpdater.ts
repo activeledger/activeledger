@@ -58,7 +58,7 @@ export class StreamUpdater {
    * @private
    * @type {ActiveDefinitions.LedgerStream[]}
    */
-  private inputs: ActiveDefinitions.LedgerStream[];
+  //private inputs: ActiveDefinitions.LedgerStream[];
 
   /**
    * Should this be skipped
@@ -66,7 +66,7 @@ export class StreamUpdater {
    * @private
    * @type {string[]}
    */
-  private skip: string[];
+  //private skip: string[];
 
   /**
    * Holds collisions
@@ -82,7 +82,7 @@ export class StreamUpdater {
    * @private
    * @type {boolean}
    */
-  private nhkpCheck: boolean;
+  //private nhkpCheck: boolean;
 
   /**
    * Holds reference streams
@@ -114,12 +114,6 @@ export class StreamUpdater {
     // Determanistic Collision Managamenent
     this.collisions = [];
 
-    this.skip = [];
-
-    // Cache Harden Key Flag
-    this.nhkpCheck = ActiveOptions.get<any>("security", {})
-      .hardenedKeys as boolean;
-
     // Setup refStreams
     this.refStreams = {
       new: [] as any[],
@@ -131,7 +125,7 @@ export class StreamUpdater {
     );
 
     // Get current working inputs to compare and update if not modified above
-    this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
+    // this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
   }
 
   // TODO - manage async if it is really needed
@@ -144,6 +138,8 @@ export class StreamUpdater {
   }
 
   private async processNoStreams() {
+
+    // Should we store the umid still?
     // Nothing to store which is _no longer_ strange contract may not make changes!
     // Were we first?
     if (!this.entry.$territoriality) {
@@ -155,7 +151,7 @@ export class StreamUpdater {
       this.entry.$umid
     );
 
-    // Respond with the possible early commited
+    // Respond with the possible early committed
     this.emitter.emit("commited");
 
     // Manage Post Processing (If Exists)
@@ -178,13 +174,13 @@ export class StreamUpdater {
       );
 
       // Remember to let other nodes know
-      if (this.earlyCommit) this.earlyCommit();
+      this.earlyCommit?.();
 
-      // // Respond with the possible early commited
+      // // Respond with the possible early committed
       // this.emitter.emit("commited");
     } catch (error) {
       // Don't let local error stop other nodes
-      if (this.earlyCommit) this.earlyCommit();
+      this.earlyCommit?.();
       // Ignore errors for now, As commit was still a success
       this.emitter.emit("commited");
     }
@@ -233,62 +229,6 @@ export class StreamUpdater {
     };
   }
 
-  // private handleInputs() {
-  //   const notInSkip = (index: number) =>
-  //     this.skip.indexOf(this.inputs[index].meta._id as string) === -1;
-
-  //   let i = this.inputs.length;
-  //   while (i--) {
-  //     if (
-  //       notInSkip(i) &&
-  //       this.inputs[i].meta.txs &&
-  //       this.inputs[i].meta.txs.length
-  //     ) {
-  //       // Add compact transaction
-  //       this.inputs[i].meta.txs.push(this.entry.$umid);
-
-  //       // Hardened keys?
-  //       if (this.inputs[i].state._id && this.nhkpCheck) {
-  //         this.handleNHPK(this.inputs[i]);
-  //       }
-
-  //       // Push the metadata to the docs array
-  //       this.docs.push(this.inputs[i].meta);
-  //     }
-  //   }
-  // }
-
-  // private handleNHPK(input: any) {
-  //   const inputLabel = this.shared.getLabelIOMap(
-  //     true,
-  //     input.state._id as string
-  //   );
-  //   const nhpk = this.entry.$tx.$i[inputLabel].$nhpk;
-
-  //   // Loop Signatures as they should be rewritten with authoritied nested
-  //   // That way if any new auths were added they will be skipped
-  //   const txSigAuthKeys = Object.keys(
-  //     this.entry.$sigs[input.state._id as string]
-  //   );
-
-  //   const authorities = input.meta.authorities;
-  //   const keys = Object.keys(authorities);
-
-  //   // Loop all authorities to try and find a match
-  //   let i = keys.length;
-  //   while (i--) {
-  //     const authority: ActiveDefinitions.ILedgerAuthority =
-  //       authorities[keys[i]];
-
-  //     // Get tx auth signature if existed
-  //     const txSigAuthKey = txSigAuthKeys.indexOf(authority.hash as string);
-
-  //     if (txSigAuthKey === -1) {
-  //       authority.public = nhpk[txSigAuthKeys[txSigAuthKey]];
-  //     }
-  //   }
-  // }
-
   /**
    * Handle data that is to be stored specifically against a contract
    *
@@ -326,8 +266,7 @@ export class StreamUpdater {
         continue;
       }
 
-      // New or Updating?
-      // New streams will have a volatile set as {}
+      // New or Updating? New streams will have a volatile set as {}
       if (this.streams[i].meta && !this.streams[i].meta._rev) {
         // Make sure we have an id
         if (!this.streams[i].meta._id) {
@@ -340,8 +279,6 @@ export class StreamUpdater {
 
         // Need to add transaction to all meta documents Lets keep the root transaction still
         this.streams[i].meta.txs = [this.entry.$umid];
-        // Also set as intalisiser stream (stream constructor)
-        //this.streams[i].meta.$constructor = true;
 
         // Need to remove rev
         delete this.streams[i].state._rev;
@@ -353,179 +290,99 @@ export class StreamUpdater {
           this.collisions.push(this.streams[i].meta._id as string);
         }
 
-        // Add to reference
+        // Add to new stream reference
         this.refStreams.new.push({
           id: this.shared.assumedVirtualPrefix + this.streams[i].state._id,
           name: this.streams[i].meta.name,
         });
       } else {
-        // Updated Streams, These could be inputs
-        // So update the transaction and remove for inputs for later processing
-
-        // TEMP Remove txs?
-        // if (this.streams[i].meta.txs && this.streams[i].meta.txs.length) {
-        //   //this.streams[i].meta.txs.push(this.entry.$umid);
-        //   this.skip.push(this.streams[i].meta._id as string);
-        // }
-
-        // Hardened Keys? Can probably use above func
-        // if (this.streams[i].state._id && this.nhkpCheck) {
-        //   // Get nhpk
-        //   let nhpk =
-        //     this.entry.$tx.$i[
-        //       this.shared.getLabelIOMap(
-        //         true,
-        //         this.streams[i].state._id as string
-        //       )
-        //     ].$nhpk;
-
-        //   // Loop Signatures as they should be rewritten with authoritied nested
-        //   // That way if any new auths were added they will be skipped
-        //   let txSigAuthsKeys = Object.keys(
-        //     this.entry.$sigs[this.streams[i].state._id as string]
-        //   );
-
-        //   // Loop all authorities to try and find a match
-        //   this.streams[i].meta.authorities.forEach(
-        //     (authority: ActiveDefinitions.ILedgerAuthority) => {
-        //       // Get tx auth signature if existed
-        //       const txSigAuthKey = txSigAuthsKeys.indexOf(
-        //         authority.hash as string
-        //       );
-        //       if (txSigAuthKey !== -1) {
-        //         (authority as any).public = nhpk[txSigAuthsKeys[txSigAuthKey]];
-        //       }
-        //     }
-        //   );
-        // }
-
-        // Add to reference
+        // Add to updated stream reference
         this.refStreams.updated.push({
           id: this.shared.filterPrefix(this.streams[i].state._id as string),
-          // TODO We should have this ion memory elsewhere
-          //name: this.streams[i].meta.name,
         });
       }
 
       // Data State (Developers Control)
       if (this.streams[i].state._id) this.docs.push(this.streams[i].state);
 
-      // TODO can we detect if this has been changed?
       // Meta (Stream Data) for internal usage
       if (this.streams[i].meta?._id) {
         this.docs.push(this.streams[i].meta);
       }
 
       // Volatile data which cannot really be trusted
-      if (this.streams[i].volatile && this.streams[i].volatile!._id)
+      if (this.streams[i].volatile?._id)
         this.docs.push(this.streams[i].volatile);
     }
   }
 
   private async append() {
-    let continueProcessing = true,
-      emit = true;
-
     try {
-      // TODO - Resolve and return to .all
-      // Some reason for specific contract/locking combo bulkDoc fails
-      // for now slightly slower and checking saving makes sense.
-      //await Promise.all([
-      const bulkDocs = await this.db.bulkDocs(this.docs); //,
-      if (bulkDocs.ok) {
-        this.dbev.post({
-          _id: `umid:${new Date(this.entry.$datetime).getTime()},${
-            this.entry.$umid
-          }`,
-        });
-      } else {
-        throw "Bulk Doc Insert Failed";
+      const bulkWriteResult = await this.db.bulkDocs(this.docs);
+      if (!bulkWriteResult) {
+        throw new Error("Bulk Doc Insert Failed");
       }
 
-      //]);
-      //ActiveLogger.info(x, `PROMISE RESPONSE ${this.entry.$umid}`);
+      // Only post to event db if bulk write was successful
+      await this.dbev.post({
+        _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
+          }`,
+      });
     } catch (error) {
-      continueProcessing = emit = false;
-
       ActiveLogger.debug(error, "Datastore Failure");
-      // TODO: Put in shared
-      this.shared.raiseLedgerError(1510, new Error("Failed to save"));
+      this.shared.raiseLedgerError(1510, new Error("Failed to save streams"));
+      return; // Stop processing on DB failure
     }
 
-    // Wont get response or returns here
-    // if(!this.nodeResponse.leader) {
-    //   this.emitter.emit("broadcast");
-    // }
+    // Set datetime to reflect when data is set from memory to disk
+    this.nodeResponse.datetime = new Date();
 
-    if (continueProcessing) {
-      // Set datetime to reflect when data is set from memory to disk
-      this.nodeResponse.datetime = new Date();
+    // Were we first?
+    if (!this.entry.$territoriality) {
+      this.entry.$territoriality = this.reference;
+    }
 
-      // Were we first?
-      if (!this.entry.$territoriality) {
-        this.entry.$territoriality = this.reference;
-      }
+    // If Origin Explain streams in output
+    if (this.reference === this.entry.$origin) {
+      this.entry.$streams = this.refStreams;
+    }
 
-      // If Origin Explain streams in output
-      if (this.reference === this.entry.$origin) {
-        this.entry.$streams = this.refStreams;
-      }
+    // Update response object to send to client if entry node failed
+    this.nodeResponse.streams = this.refStreams;
 
-      // Update response object to send to client if entry node failed
-      this.nodeResponse.streams = this.refStreams;
+    // Return Data for this nodes contract run
+    this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+      this.entry.$umid
+    );
 
-      // Return Data for this nodes contract run
-      this.nodeResponse.return = this.virtualMachine.getReturnContractData(
+    if (this.virtualMachine.getNewContractData(this.entry.$umid)) {
+      this.emitter.emit("contractData", {
+        contract: this.contractId,
+        data: null, // Set to null and it will refresh next call
+      });
+    }
+
+    try {
+      // Handle post processing if it exists
+      this.nodeResponse.post = await this.virtualMachine.postProcess(
+        this.entry.$territoriality === this.reference,
+        this.entry.$territoriality,
         this.entry.$umid
       );
 
-      // Wont get response or returns here from commit
-      // if (emit) {
-      //   // Respond with the possible early commited
-      //   this.emitter.emit("commited");
-      // }
+      // Update in communication (Recommended pre commit only but can be edge use cases)
+      this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
+        this.entry.$umid
+      );
 
-      if (this.virtualMachine.getNewContractData(this.entry.$umid)) {
-        this.emitter.emit("contractData", {
-          contract: this.entry.$tx.$contract.substring(0, 64), // remove @....  // Can't do this yet cache doesn't go by root id includes @=
-          //contract: this.entry.$tx.$contract, // remove @....
-          data: null, // Set to null and it will refresh next call
-        });
-      }
-
-      try {
-        // Handle post processing if it exists
-        const post = await this.virtualMachine.postProcess(
-          this.entry.$territoriality === this.reference,
-          this.entry.$territoriality,
-          this.entry.$umid
-        );
-
-        this.nodeResponse.post = post;
-
-        // if (emit) {
-        //   // Respond with the possible early commited
-        //   this.emitter.emit("commited");
-        // }
-
-        // Update in communication (Recommended pre commit only but can be edge use cases)
-        this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
-          this.entry.$umid
-        );
-
-        // Return Data for this nodes contract run
-        this.nodeResponse.return = this.virtualMachine.getReturnContractData(
-          this.entry.$umid
-        );
-
-        // Clearing All node comms?
-        this.entry = this.shared.clearAllComms(
-          this.virtualMachine,
-          this.nodeResponse.incomms
-        );
-      } catch (error) {
-        continueProcessing = false;
-      }
+      // Clearing All node comms?
+      this.entry = this.shared.clearAllComms(
+        this.virtualMachine,
+        this.nodeResponse.incomms
+      );
+    } catch (error) {
+      // Post-processing error is not critical to the commit itself, but should be logged.
+      ActiveLogger.error(error, "Post-processing failed");
     }
 
     // Broadcast commit & returns
@@ -534,12 +391,10 @@ export class StreamUpdater {
     }
 
     // Remember to let other nodes know
-    if (this.earlyCommit) this.earlyCommit();
+    this.earlyCommit?.();
 
-    if (emit) {
-      // Respond with the possible early commited
-      this.emitter.emit("commited");
-    }
+    // Respond with the possible early committed
+    this.emitter.emit("commited");
   }
 
   private async detectCollisions() {
@@ -547,33 +402,25 @@ export class StreamUpdater {
       ActiveLogger.info("Deterministic streams to be checked");
 
       // Store the promises to wait on.
-      let streamColCheck: any[] = [];
+      const existenceChecks: Promise<boolean>[] = [];
 
       let i = this.collisions.length;
       while (i--) {
         const streamId: string = this.collisions[i];
 
-        // Query datastore for streams
-        streamColCheck.push(this.db.get(streamId));
+        // Query datastore for streams, resolve true if found, false if not
+        existenceChecks.push(
+          this.db.get(streamId).then(() => true).catch(() => false)
+        );
       }
 
       // Wait for all the checks
       try {
-        const streams = await Promise.all(streamColCheck);
+        const existingStreams = await Promise.all(existenceChecks);
 
-        // This seems to have broken in perfmods but seems the same
-        // as the main branch so temp fix
-        let safe = true;
-        for (let i = streams.length; i--; ) {
-          if (streams[i]._id) {
-            safe = false;
-            break;
-          }
-        }
-
-        if (!safe) {
+        if (existingStreams.some(exists => exists)) {
           // Problem streams exist
-          ActiveLogger.debug(streams, "Deterministic Stream Name Exists");
+          ActiveLogger.debug(this.collisions, "Deterministic Stream Name Exists");
 
           // Update commit
           this.nodeResponse.commit = false;
@@ -585,10 +432,12 @@ export class StreamUpdater {
             true
           );
         } else {
+          // No collisions found
           this.append();
         }
       } catch (error) {
-        // ? Continue (Error being document not found)
+        // This block should ideally not be reached if errors are caught in the map
+        // But as a fallback, assume no collision and proceed.
         this.append();
       }
     } else {

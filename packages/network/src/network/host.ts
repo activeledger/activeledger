@@ -284,16 +284,12 @@ export class Host extends Home {
             }
           } else {
             // Add Vote information into current object!
-            if (this.processPending[entry.$umid]?.entry) {
-              if (this.processPending[entry.$umid].entry?.$nodes) {
-                // Don't overwrite self (Can't imagine this being here! It is locked)
-                if (entry.$nodes[this.reference]) {
-                  delete entry.$nodes[this.reference];
-                }
-                this.processPending[entry.$umid].entry.$nodes = Object.assign(this.processPending[entry.$umid]?.entry?.$nodes, entry.$nodes);
-              } else {
-                this.processPending[entry.$umid].entry.$nodes = entry.$nodes;
-              }
+            const pendingEntry = this.processPending[entry.$umid]?.entry;
+            if (pendingEntry) {
+              // Don't overwrite self from a broadcast
+              delete entry.$nodes[this.reference];
+              // Merge new node data into existing entry
+              pendingEntry.$nodes = { ...pendingEntry.$nodes, ...entry.$nodes };
             }
 
           }
@@ -1653,123 +1649,48 @@ export class Host extends Home {
     if (!this.processingBLQ) {
       this.processingBLQ = true;
 
-      // Checked idententies. This means there is no "chance" we select the next one by bad timing
-      // const checked: string[] = [];
+      // Checked identities. This prevents trying to lock the same stream multiple times in one queue run.
       const checked2: Set<string> = new Set();
 
-      // TODO Convert to method
+      // Process internal queue first
       if (this.busyLocksQueue.internal.length) {
-        // Process Internal first (should make it so can target loops based on reason why processQue was called)
+        const stillPending: BusyLockQueue[] = [];
         busyQueueInternal: for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
-
-          // This lookup, is it slow? It maybe better to just call this.hold
-          // although the reason we avoid it is for the rentry++
-          // const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
-          // // // Skip if we have already tried
-          // if (labelOrKey?.length) {
-          //   if (checked.some((io) => labelOrKey.includes(io))) {
-          //     continue;
-          //   }
-          //   checked.push(...labelOrKey);
-          // }
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
-          // // Skip if we have already tried
           if (labelOrKey?.length) {
-            for (let i = labelOrKey.length; i--;) {
-              if (checked2.has(labelOrKey[i])) {
+            for (const key of labelOrKey) {
+              if (checked2.has(key)) {
                 continue busyQueueInternal;
               }
-              checked2.add(labelOrKey[i]);
+              checked2.add(key);
             }
           }
 
-
-          if (
-            this.hold(
-              this.busyLocksQueue.internal[i].entry,
-              this.busyLocksQueue.internal[i].retry++
-            )
-          ) {
-            // Success, Can remove from queue
-            // cannot splice as still looping and looping in order
-            this.busyLocksQueue.internal[i].running = true;
+          if (!this.hold(this.busyLocksQueue.internal[i].entry, this.busyLocksQueue.internal[i].retry++)) {
+            // If hold fails, add it to the list of items to keep for the next run.
+            stillPending.push(this.busyLocksQueue.internal[i]);
           }
         }
-
-        // Remove the empty results if any
-        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        // for (let i = this.busyLocksQueue.internal.length; i--;) {
-        //   if (this.busyLocksQueue.internal[i].running) {
-        //     this.busyLocksQueue.internal.splice(i, 1);
-        //   }
-        // }
+        this.busyLocksQueue.internal = stillPending;
       }
+
       if (next && internal) {
         this.hold(next);
       }
 
-      // // Should this jump the queue? 
-      // if (next && !internal) {
-      //   this.hold(next);
-      // }
-
-      // if (next) {
-      //   this.hold(next);
-      // }
-
+      // Process external queue
       if (this.busyLocksQueue.external.length) {
-        // Process Internal first (should make it so can target loops based on reason why processQue was called)
+        const stillPending: BusyLockQueue[] = [];
         for (let i = 0; i < this.busyLocksQueue.external.length; i++) {
-          // Skip if we have already tried (something causes this to not work here)
-          // const labelOrKey = this.busyLocksQueue.external[i].entry.$$labelOrKey;
-          // // Skip if we have already tried
-          // if (labelOrKey?.length) {
-          //   if (checked.some((io) => labelOrKey.includes(io))) {
-          //     continue;
-          //   }
-          //   checked.push(...labelOrKey);
-          // }
-
-          if (
-            this.hold(
-              this.busyLocksQueue.external[i].entry,
-              this.busyLocksQueue.external[i].retry++
-            )
-          ) {
-            // Success, Can remove from queue
-            // cannot splice as still looping and looping in order
-            this.busyLocksQueue.external[i].running = true;
+          if (!this.hold(this.busyLocksQueue.external[i].entry, this.busyLocksQueue.external[i].retry++)) {
+            stillPending.push(this.busyLocksQueue.external[i]);
           }
         }
-
-        // Remove the empty results if any
-        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        // for (let i = this.busyLocksQueue.external.length; i--;) {
-        //   if (this.busyLocksQueue.external[i].running) {
-        //     this.busyLocksQueue.external.splice(i, 1);
-        //   }
-        // }
+        this.busyLocksQueue.external = stillPending;
       }
-      // Should this jump the queue? 
+
       if (next && !internal) {
         this.hold(next);
-      }
-
-
-      if (this.busyLocksQueue.internal.length) {
-        for (let i = this.busyLocksQueue.internal.length; i--;) {
-          if (this.busyLocksQueue.internal[i].running) {
-            this.busyLocksQueue.internal.splice(i, 1);
-          }
-        }
-      }
-
-      if (this.busyLocksQueue.external.length) {
-        for (let i = this.busyLocksQueue.external.length; i--;) {
-          if (this.busyLocksQueue.external[i].running) {
-            this.busyLocksQueue.external.splice(i, 1);
-          }
-        }
       }
       this.processingBLQ = false;
     } else {
@@ -1860,9 +1781,9 @@ export class Host extends Home {
                     ].map((stream) => stream.id);
 
                     // Also need $i, $o and $r,  Can probably reuse the .keys
-                    const input = tx.$tx.$i
-                      ? this.hybridLabelKeyId(tx.$tx.$i)
-                      : [];
+                    const input = tx.$tx.$i ?
+                      this.hybridLabelKeyId(tx.$tx.$i) :
+                      [];
                     const output = tx.$tx.$o
                       ? this.hybridLabelKeyId(tx.$tx.$o)
                       : [];
@@ -1885,8 +1806,8 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--;) {
-                      tmp.push(keys[i] + ":stream");
+                    for (const key of keys) {
+                      tmp.push(key + ":stream");
                     }
 
                     // Push tmp back into keys so we get everything

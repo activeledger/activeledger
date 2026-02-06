@@ -246,81 +246,61 @@ export class Maintain {
    * @returns {*}
    */
   private static pairing(): any {
-    // Loop Index
-    let i: number = Maintain.neighbourOrder.length;
+    const order = Maintain.neighbourOrder;
+    const orderLength = order.length;
 
-    // Where the home node is in this predictable order.
-    // (Undefined for error management)
-    let whereHomeIs: number | undefined;
+    // Find the current node's index in the sorted list of neighbours.
+    const homeIndex = order.findIndex(
+      (n) => n.reference === Maintain.home.reference
+    );
 
-    // Who is the right & left neighbour  of this home position
-    // Undefined used for loop condition
-    let isRight: Neighbour | undefined;
-    let isleft: Neighbour | undefined;
-
-    // Find Home Position
-    while (i--) {
-      // Match on reference and break
-      if (Maintain.home.reference == Maintain.neighbourOrder[i].reference) {
-        whereHomeIs = i;
-        break;
-      }
-    }
-
-    // If undefined, We were mid checking during a change over
-    // Need to refresh again for references
-    if (whereHomeIs == undefined) {
+    // If home is not found (e.g., during a network re-configuration), abort.
+    if (homeIndex === -1) {
       // No longer checking
       Maintain.checking = false;
       Maintain.rebasing = false;
       return;
     }
 
-    // Loop starting position relative to home
-    i = whereHomeIs as number;
-    while (!isRight) {
-      // Move "right" by one & Stay within range
-      if (++i >= Maintain.neighbourOrder.length) i = 0;
-      // Neighbour Home to be on our right?
-      if (
-        Maintain.neighbourOrder[i] &&
-        !Maintain.neighbourOrder[i].graceStop &&
-        Maintain.neighbourOrder[i].isHome
-      )
-        isRight = Maintain.neighbourOrder[i];
+    let isRight: Neighbour | undefined;
+    let isLeft: Neighbour | undefined;
 
-      // Return Early, Network probably reordered with new nodes
-      if (!Maintain.neighbourOrder[i]) return;
-    }
+    // Find the next available right and left neighbours in a single pass.
+    // This is more efficient than separate loops.
+    for (let i = 1; i < orderLength; i++) {
+      if (!isRight) {
+        // Look right (with wrap-around)
+        const rightIndex = (homeIndex + i) % orderLength;
+        const potentialRight = order[rightIndex];
+        if (potentialRight && !potentialRight.graceStop && potentialRight.isHome) {
+          isRight = potentialRight;
+        }
+      }
 
-    // Now Find left
-    i = whereHomeIs as number;
-    while (!isleft) {
-      // Move "left" by one & Stay within range
-      if (--i == -1) i = Maintain.neighbourOrder.length - 1;
-      // Neighbour Home to be on our left?
-      if (
-        Maintain.neighbourOrder[i] &&
-        !Maintain.neighbourOrder[i].graceStop &&
-        Maintain.neighbourOrder[i].isHome
-      )
-        isleft = Maintain.neighbourOrder[i];
+      if (!isLeft) {
+        // Look left (with wrap-around)
+        const leftIndex = (homeIndex - i + orderLength) % orderLength;
+        const potentialLeft = order[leftIndex];
+        if (potentialLeft && !potentialLeft.graceStop && potentialLeft.isHome) {
+          isLeft = potentialLeft;
+        }
+      }
 
-      // Return Early, Network probably reordered with new nodes
-      if (!Maintain.neighbourOrder[i]) return;
+      // If we've found both, we can stop searching.
+      if (isRight && isLeft) break;
     }
 
     if (
-      Home.left.reference != isleft.reference ||
-      Home.right.reference != isRight.reference
+      (isLeft && Home.left.reference != isLeft.reference) ||
+      Home.right.reference != isRight?.reference
     ) {
       // Set direct neighbours onto home
       ActiveLogger.debug(
-        { left: isleft.reference, right: isRight.reference },
+        { left: isLeft?.reference, right: isRight?.reference },
         "New Neighbour Update"
       );
       try {
-        Maintain.home.setNeighbours(isleft.reference, isRight.reference);
+        Maintain.home.setNeighbours(isLeft?.reference || null, isRight?.reference || null);
       }catch{
         ActiveLogger.fatal("Problem setting Right, Try again next loop");
         //this.pairing();
