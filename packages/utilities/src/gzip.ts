@@ -22,6 +22,7 @@
  */
 
 import * as zlib from "zlib";
+import { promisify } from "util";
 
 /**
  * Promis wrappers to native gzip
@@ -30,41 +31,13 @@ import * as zlib from "zlib";
  * @class ActiveGZip
  */
 export class ActiveGZip {
-  /**
-   * Compress data
-   *
-   * @static
-   * @param {(string | Buffer)} data
-   * @returns {Promise<string>}
-   */
-  public static gzip(data: string | Buffer): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      zlib.gzip(data, (error, data) => {
-        if (!error) {
-          resolve(data);
-        } else {
-          reject(error);
-        }
-      });
-    });
-  }
+	/**
+	 * Compress data
+	 */
+	public static gzip: (data: string | Buffer) => Promise<Buffer> = promisify(zlib.gzip);
 
-  /**
-   * Uncompress data
-   *
-   * @static
-   * @param {string} data
-   * @returns {Promise<string>}
-   */
-  public static ungzip(data: Buffer): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      zlib.gunzip(data, (error, data) => {
-        if (!error) {
-          resolve(data);
-        } else {
-          reject(error);
-        }
-      });
-    });
-  }
+	/**
+	 * Uncompress data
+	 */
+	public static ungzip: (data: Buffer) => Promise<Buffer> = promisify(zlib.gunzip);
 }

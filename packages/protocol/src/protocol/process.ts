@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import * as fs from "fs";
+import { promises as fs } from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
@@ -352,7 +352,7 @@ export class Process extends EventEmitter {
       // Quick solution to delete rules
       delete (this as any).entry;
     } else {
-      // early commit calls this to soon so can't send on so simple timeout
+      // early commit calls this too soon so can't send on so simple timeout
       setTimeout(() => {
         Process.generalContractVM.destroy(umid);
         delete (this as any).entry;
@@ -393,32 +393,28 @@ export class Process extends EventEmitter {
     contractVersion?: string,
     contractData?: ActiveDefinitions.IContractData | undefined | null
   ) {
-    ActiveLogger.debug("New TX : " + this.entry.$umid);
+    ActiveLogger.debug(`New TX : ${this.entry.$umid}`);
 
     // Compiled Contracts sit in another location
-    const setupDefaultLocation = () => {
+    const setupDefaultLocation = async () => {
       // Set isDefault flag to true
       this.isDefault = true;
 
       // Allow for individual default contrack locking
-      if (
-        fs.existsSync(
-          `${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`
-        )
-      ) {
+      if (await fs.stat(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`).catch(() => false)) {
         throw new Error("Contract Global Lock");
       }
 
       // Default Contract Location
       // Wrapped in realpathSync to resolve symbolic links
       // This prevents issues with cached contracts
-      this.contractLocation = fs.realpathSync(
+      this.contractLocation = await fs.realpath(
         `${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`
       );
     };
 
     // Ledger Transpiled Contract Location
-    const setupLocation = () => {
+    const setupLocation = async () => {
       let contract = this.entry.$tx.$contract;
 
       try {
@@ -426,8 +422,8 @@ export class Process extends EventEmitter {
         if (!this.contractPathCache[this.entry.$tx.$contract]) {
           let namespacePath = "";
 
-          try {
-            namespacePath = fs.realpathSync(
+          try { // Using sync for startup path check is acceptable
+            namespacePath = await fs.realpath(
               `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
             );
           } catch {
@@ -448,20 +444,20 @@ export class Process extends EventEmitter {
                 // Now we find the latest @ in the file system and include
                 // need to remember to update it upon upgrades. This way we don't nned to manage cache
                 // Or the VMs
-                contract =
-                  fs
-                    .readdirSync(namespacePath)
+                contract = (
+                  (await fs
+                    .readdir(namespacePath))
                     .filter((fn) => fn.includes(this.entry.$tx.$contract))
                     .sort(this.sortVersions)
-                    .pop()
-                    ?.replace(".js", "") || "notfound.404";
+                    .pop() || "notfound.404"
+                ).replace(".js", "");
               } catch {
                 throw new Error("Contract not found");
               }
             }
           }
 
-          if (!fs.existsSync(`${namespacePath}/${contract}.js`)) {
+          if (!(await fs.stat(`${namespacePath}/${contract}.js`).catch(() => false))) {
             throw new Error("Contract not found");
           }
 
@@ -475,24 +471,24 @@ export class Process extends EventEmitter {
           }
 
           // Check For Locks Global and Version
-          if (fs.existsSync(`${namespacePath}/_LOCK.${this.contractId}`)) {
+          if (await fs.stat(`${namespacePath}/_LOCK.${this.contractId}`).catch(() => false)) {
             throw new Error("Contract Global Lock");
           }
 
           //
-          if (fs.existsSync(`${namespacePath}/_LOCK.${contract}`)) {
+          if (await fs.stat(`${namespacePath}/_LOCK.${contract}`).catch(() => false)) {
             throw new Error(
               `Contract Version Lock ${contract.substring(
                 contract.indexOf("@") + 1
               )}`
             );
           }
-          // Wrapped in realpathSync to avoid issues with cached contracts
+          // Wrapped in realpath to avoid issues with cached contracts
           // And to allow us to get the ID of the contract if a label (symlink) was
           // used in the transaction
           // This needs to be here rather than where trueConrtractPath is as
           // we need the contract ID at that point to look up the latest version
-          this.contractPathCache[this.entry.$tx.$contract] = fs.realpathSync(
+          this.contractPathCache[this.entry.$tx.$contract] = await fs.realpath(
             `${namespacePath}/${contract}.js`
           );
         }
@@ -505,14 +501,14 @@ export class Process extends EventEmitter {
 
     try {
       // Is this a default contract
-      this.entry.$tx.$namespace === "default"
+      await (this.entry.$tx.$namespace === "default"
         ? setupDefaultLocation()
-        : setupLocation();
+        : setupLocation());
     } catch (error) {
       // Simple Error Return (Can't use postVote yet due to VM)
       this.entry.$nodes[this.reference].error = `Init Contract Error - ${error.message || error
         }`;
-      this.emit("commited", { instant: true });
+      this.emit("commited", { instant: true }); // Should be emitFailed
       return;
     }
 
@@ -527,7 +523,7 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = Process.generalContractVM;
 
     // Get contract file (Or From Database)
-    if (fs.existsSync(this.contractLocation)) {
+    if (await fs.stat(this.contractLocation).catch(() => false)) {
       // Now we know we can execute the contract now or more costly cpu checks
       // Build Inputs Key Maps (Reference is Stream)
       this.inputs = Object.keys(this.entry.$tx.$i || {});
@@ -1325,7 +1321,7 @@ export class Process extends EventEmitter {
    * @returns {boolean}
    */
   private canCommit(): boolean {
-    // Time to count the votes (Need to recache keys)
+    // Time to count the votes (Need to re-cache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     this.currentTrueVotes = 0;
     if (networkNodes) {
@@ -1347,10 +1343,7 @@ export class Process extends EventEmitter {
         : ActiveOptions.get<any>("consensus", {}).reached;
 
       // Return if consensus has been reached
-      return (
-        (this.currentTrueVotes / Process.networkNodeLength) * 100 >= percent ||
-        false
-      );
+      return (this.currentTrueVotes / Process.networkNodeLength) * 100 >= percent;
     } else {
       return false;
     }

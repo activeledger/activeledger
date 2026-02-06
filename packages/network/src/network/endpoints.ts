@@ -312,60 +312,57 @@ export class Endpoints {
                                 if (networkStreams.length >= consensusReached) {
 
 
-                                  // now find the ones that match
+                                  // Build a map to count votes for each revision of each stream
+                                  // and store the first seen document for that revision.
                                   const consensus: {
                                     [index: string]: {
-                                      [index: string]: number;
+                                      [revision: string]: {
+                                        votes: number;
+                                        doc: any;
+                                      };
                                     };
                                   } = {};
                                   for (let i = networkStreams.length; i--;) {
                                     const nodeStreams = networkStreams[i];
                                     if (nodeStreams?.length) {
                                       for (let ii = nodeStreams.length; ii--;) {
-                                        const noodeStream = nodeStreams[ii];
-                                        if (consensus[noodeStream._id]) {
-                                          const rev = consensus[noodeStream._id];
-                                          if (rev[noodeStream._rev]) {
-                                            rev[noodeStream._rev]++;
-                                            // if (
-                                            //   rev[noodeStream._rev] >=
-                                            //   consensusReached
-                                            // ) {
-                                            //   // Bad counting here for now do check all of them!
-                                            //   //break;
-                                            // }
-                                          } else {
-                                            rev[noodeStream._rev] = 1;
+                                        const streamDoc = nodeStreams[ii];
+                                        if (streamDoc && streamDoc._id && streamDoc._rev) {
+                                          if (!consensus[streamDoc._id]) {
+                                            consensus[streamDoc._id] = {};
                                           }
-                                        } else {
-                                          consensus[noodeStream._id] = {
-                                            [noodeStream._rev]: 1,
-                                          };
+                                          if (consensus[streamDoc._id][streamDoc._rev]) {
+                                            consensus[streamDoc._id][streamDoc._rev].votes++;
+                                          } else {
+                                            consensus[streamDoc._id][streamDoc._rev] = {
+                                              votes: 1,
+                                              doc: streamDoc,
+                                            };
+                                          }
                                         }
                                       }
                                     }
                                   }
 
-                                  // Now find that document
+                                  // Now, for each stream, find the revision with the most votes.
                                   const docs = Object.keys(consensus);
-                                  foundWinner: for (let g = docs.length; g--;) {
+                                  for (let g = docs.length; g--;) {
                                     const doc = consensus[docs[g]];
                                     if (rewrote.has(docs[g])) {
-                                      // continue;
+                                      continue;
                                     }
                                     let max = 0;
                                     let winner = "";
                                     for (let x in doc) {
-                                      if (doc[x] >= consensusReached) {
+                                      if (doc[x].votes >= consensusReached) {
                                         ActiveLogger.warn(
-                                          `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
+                                          `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
                                         );
-                                        if (doc[x] > max) {
+                                        if (doc[x].votes > max) {
                                           // Just beats it
-
-                                          max = doc[x];
+                                          max = doc[x].votes;
                                           winner = x;
-                                        } else if (doc[x] === max) {
+                                        } else if (doc[x].votes === max) {
                                           // if it is need to split x on - and compare the position at [0] if larger that one wins
 
                                           const [xPos] = x.split("-");
@@ -383,62 +380,34 @@ export class Endpoints {
                                       }
                                     }
 
-                                    // find it (foundWinner:)
-                                    for (let ii = networkStreams.length; ii--;) {
-                                      const node = networkStreams[ii];
-                                      if (node?.length) {
-                                        for (let j = node.length; j--;) {
-                                          const main = node[j];
-                                          if (main._id == docs[g]) {
-                                            if (
-                                              winner &&
-                                              !rewrote.has(main._id) &&
-                                              main._id == docs[g] &&
-                                              main._rev == winner
-                                            ) {
-                                              rewrote.set(main._id, main._rev);
-                                              const dblCheck =
-                                                await host.dbConnection.get(
-                                                  main._id
-                                                );
-                                              if (dblCheck._rev !== main._rev) {
-                                                ActiveLogger.error(
-                                                  //[main, dblCheck],
-                                                  `SPI REWRITING #1 ${main._id
-                                                  } @ ${main._rev} NOT ${dblCheck._rev
-                                                  } : ${tx.$umid
-                                                  } CACHE : ${rewrote.get(
-                                                    main._id
-                                                  )}`
-                                                );
-                                                // TODO (In both places or 1 function) this maybe MY version so don't write it!
-                                                // That may solve the data race problem for position incorrect when not entry node (maybe)
-                                                // await host.dbConnection.purge({
-                                                //   _id: main._id,
-                                                // });
-                                                await host.dbConnection.bulkDocs(
-                                                  [main],
-                                                  {
-                                                    new_edits: true,
-                                                    force_rev: main._rev,
-                                                  }
-                                                );
-                                                rewroteSomething = true;
-                                              }
-                                              // This break actually prevents multiple docs from being updated
-                                              //break foundWinner;
-                                            } else {
-                                              if (!rewrote.has(main._id)) {
-                                                ActiveLogger.warn(
-                                                  `SPI NOWINNER #1 - ${main._id}@${main._rev}`
-                                                );
-                                              }
-                                            }
+                                    // If a winner was found, write it to the local database.
+                                    if (winner && !rewrote.has(docs[g])) {
+                                      const winningDoc = doc[winner].doc;
+                                      rewrote.set(winningDoc._id, winningDoc._rev);
+                                      const dblCheck = await host.dbConnection.get(
+                                        winningDoc._id
+                                      );
+                                      if (dblCheck._rev !== winningDoc._rev) {
+                                        ActiveLogger.error(
+                                          `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
+                                        );
+                                        await host.dbConnection.bulkDocs(
+                                          [winningDoc],
+                                          {
+                                            new_edits: true,
+                                            force_rev: winningDoc._rev,
                                           }
-                                        }
+                                        );
+                                        rewroteSomething = true;
                                       }
+                                    } else {
+                                      if (!rewrote.has(docs[g])) {
+                                        ActiveLogger.warn(
+                                          `SPI NOWINNER #1 - ${docs[g]}`
+                                        );
                                     }
                                   }
+                                }
 
                                   // Shouldn't need to check umid not found 950 error here, As this was the origin node
                                   // and its position indexes were incorrect.
@@ -966,42 +935,41 @@ export class Endpoints {
                         }
 
                         // now find the ones that match
+                        // Build a map to count votes for each revision of each stream
+                        // and store the first seen document for that revision.
                         const consensus: {
                           [index: string]: {
-                            [index: string]: number;
+                            [revision: string]: {
+                              votes: number;
+                              doc: any;
+                            };
                           };
                         } = {};
                         for (let i = networkStreams.length; i--;) {
                           const nodeStreams = networkStreams[i];
                           if (nodeStreams?.length) {
                             for (let ii = nodeStreams.length; ii--;) {
-                              const noodeStream = nodeStreams[ii];
-                              if (consensus[noodeStream._id]) {
-                                const rev = consensus[noodeStream._id];
-                                if (rev[noodeStream._rev]) {
-                                  rev[noodeStream._rev]++;
-                                  // if (
-                                  //   rev[noodeStream._rev] >=
-                                  //   consensusReached
-                                  // ) {
-                                  //   // Bad counting here for now do check all of them!
-                                  //   //break;
-                                  // }
-                                } else {
-                                  rev[noodeStream._rev] = 1;
+                              const streamDoc = nodeStreams[ii];
+                              if (streamDoc && streamDoc._id && streamDoc._rev) {
+                                if (!consensus[streamDoc._id]) {
+                                  consensus[streamDoc._id] = {};
                                 }
-                              } else {
-                                consensus[noodeStream._id] = {
-                                  [noodeStream._rev]: 1,
-                                };
+                                if (consensus[streamDoc._id][streamDoc._rev]) {
+                                  consensus[streamDoc._id][streamDoc._rev].votes++;
+                                } else {
+                                  consensus[streamDoc._id][streamDoc._rev] = {
+                                    votes: 1,
+                                    doc: streamDoc,
+                                  };
+                                }
                               }
                             }
                           }
                         }
 
-                        // Now find that document
+                        // Now, for each stream, find the revision with the most votes.
                         const docs = Object.keys(consensus);
-                        foundWinner: for (let g = docs.length; g--;) {
+                        for (let g = docs.length; g--;) {
                           const doc = consensus[docs[g]];
                           if (rewrote.has(docs[g])) {
                             continue;
@@ -1009,16 +977,15 @@ export class Endpoints {
                           let max = 0;
                           let winner = "";
                           for (let x in doc) {
-                            if (doc[x] >= consensusReached) {
+                            if (doc[x].votes >= consensusReached) {
                               ActiveLogger.warn(
-                                `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
+                                `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
                               );
-                              if (doc[x] > max) {
+                              if (doc[x].votes > max) {
                                 // Just beats it
-
-                                max = doc[x];
+                                max = doc[x].votes;
                                 winner = x;
-                              } else if (doc[x] === max) {
+                              } else if (doc[x].votes === max) {
                                 // if it is need to split x on - and compare the position at [0] if larger that one wins
 
                                 const [xPos] = x.split("-");
@@ -1036,68 +1003,45 @@ export class Endpoints {
                             }
                           }
 
-                          // find it (foundWinner:)
-                          for (let ii = networkStreams.length; ii--;) {
-                            const node = networkStreams[ii];
-                            if (node?.length) {
-                              for (let j = node.length; j--;) {
-                                const main = node[j];
-                                if (main._id == docs[g]) {
-                                  if (
-                                    winner &&
-                                    !rewrote.has(main._id) &&
-                                    main._id == docs[g] &&
-                                    main._rev == winner
-                                  ) {
-                                    // Set umid so we can know to push a 950 error to check
-                                    rewrote.set(tx.$umid, true);
-                                    rewrote.set(main._id, main._rev);
-                                    const dblCheck =
-                                      await host.dbConnection.get(main._id);
-                                    if (dblCheck._rev !== main._rev) {
-                                      ActiveLogger.error(
-                                        //[main, dblCheck],
-                                        `SPI REWRITING #2 ${main._id} @ ${main._rev
-                                        } NOT ${dblCheck._rev} : ${tx.$umid
-                                        } CACHE : ${rewrote.get(main._id)}`
-                                      );
-                                      // TODO (In both places or 1 function) this maybe MY version so don't write it!
-                                      // That may solve the data race problem for position incorrect when not entry node (maybe)
-                                      // await host.dbConnection.purge({
-                                      //   _id: main._id,
-                                      // });
+                          // If a winner was found, write it to the local database.
+                          if (winner && !rewrote.has(docs[g])) {
+                            const winningDoc = doc[winner].doc;
+                            // Set umid so we can know to push a 950 error to check
+                            rewrote.set(tx.$umid, true);
+                            rewrote.set(winningDoc._id, winningDoc._rev);
+                            const dblCheck = await host.dbConnection.get(
+                              winningDoc._id
+                            );
+                            if (dblCheck._rev !== winningDoc._rev) {
+                              ActiveLogger.error(
+                                `SPI REWRITING #2 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
+                              );
 
-                                      // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
-                                      if (!dblCheck._rev) {
-                                        try {
-                                          await host.dbConnection.put(main);
-                                          ActiveLogger.warn(
-                                            `SPI 404 - Create Base for ${main._id}`
-                                          );
-                                        } catch {
-                                          ActiveLogger.error(
-                                            `SPI 404 - Failed to create ${main._id}`
-                                          );
-                                        }
-                                      }
-
-                                      await host.dbConnection.bulkDocs([main], {
-                                        new_edits: true,
-                                        force_rev: main._rev,
-                                      });
-                                      canRetry = true;
+                              // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
+                              if (!dblCheck._rev) {
+                                try {
+                                  await host.dbConnection.put(winningDoc);
+                                  ActiveLogger.warn(
+                                    `SPI 404 - Create Base for ${winningDoc._id}`
+                                  );
+                                } catch {
+                                  ActiveLogger.error(
+                                    `SPI 404 - Failed to create ${winningDoc._id}`
+                                  );
                                     }
-                                    // This break actually prevents multiple docs from being updated
-                                    //break foundWinner;
-                                  } else {
-                                    if (!rewrote.has(main._id)) {
-                                      ActiveLogger.warn(
-                                        `SPI NOWINNER #2 - ${main._id}@${main._rev}`
-                                      );
-                                    }
-                                  }
-                                }
                               }
+
+                              await host.dbConnection.bulkDocs([winningDoc], {
+                                new_edits: true,
+                                force_rev: winningDoc._rev,
+                              });
+                              canRetry = true;
+                            }
+                          } else {
+                            if (!rewrote.has(docs[g])) {
+                              ActiveLogger.warn(
+                                `SPI NOWINNER #2 - ${docs[g]}`
+                              );
                             }
                           }
                         }

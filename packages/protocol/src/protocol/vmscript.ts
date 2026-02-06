@@ -209,11 +209,7 @@ class ContractControl implements IVMObject {
    * @returns {Promise<boolean>}
    */
   public runVote(umid: string): Promise<boolean> {
-    try {
-      return this.smartContracts[umid].vote();
-    } catch {
-      return Promise.resolve(false);
-    }
+    return Promise.resolve(this.smartContracts[umid].vote()).catch(() => false);
   }
 
   /**

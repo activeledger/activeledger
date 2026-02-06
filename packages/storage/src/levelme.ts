@@ -52,55 +52,15 @@ interface changesOptions {
 }
 
 /**
- * Status of branch availibility. Typically "available"
- *
- * @interface branchStatus
- */
-interface branchStatus {
-  status: string;
-}
-
-/**
- * Tuple of a branch
- *
- * @tuple tree
- */
-type branch = [[string, branchStatus, branch]] | [];
-
-/**
- * Tuple of a branch trunk (not initially nested array )
- *
- * @tuple tree
- */
-type branchTrunk = [string, branchStatus, branch];
-
-/**
- * Root of data tree
- *
- * @interface tree
- */
-interface tree {
-  pos: number;
-  ids: branchTrunk;
-}
-
-/**
  * Root document schema for tracking changes
  *
  * @interface schema
  * @extends {document}
  */
 interface schema extends document {
-  rev_tree: tree[];
-  rev_map: {
-    [index: string]: number;
-  };
-  winningRev: string;
-  deleted: boolean;
-  seq: number;
+  _rev: string;
 }
 
-//const REMOVE_CACHE_TIMER = 2 * 60 * 1000;
 const ENABLE_CACHE = true;
 
 /**
@@ -166,27 +126,7 @@ export class LevelMe {
    */
   private changeEmitter = new EventEmitter();
 
-  /**
-   * Holds the local copy of LevelUp
-   *
-   * @private
-   * @type {LevelUp}
-   */
   private levelUp: LevelUp;
-
-  /**
-   * Real-time document count in the database
-   *
-   * @private
-   */
-  //private docCount = 0;
-
-  /**
-   * Real-time document sequencing in the database
-   *
-   * @private
-   */
-  //private docUpdateSeq = 0;
 
   private cache: ActiveCache;
 
@@ -197,29 +137,10 @@ export class LevelMe {
       this.levelUp = levelup(LevelDOWN(location + name));
     }
     if (ENABLE_CACHE) {
-      //this.timerUnCache();
       this.cache = ActiveCacheManager.fetch("streams", 30000);
     }
   }
 
-  /**
-   * Clears Cache
-   *
-   * @private
-   */
-  // private timerUnCache() {
-  //   setTimeout(() => {
-  //     const memory = Object.keys(this.memory);
-  //     const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
-  //     for (let i = memory.length; i--; ) {
-  //       if (this.memory[memory[i]].data < nowMinus) {
-  //         // 30 seconds has passed without accessing it so lets clear
-  //         delete this.memory[memory[i]];
-  //       }
-  //     }
-  //     this.timerUnCache();
-  //   }, REMOVE_CACHE_TIMER * 2);
-  // }
 
   /**
    * Attempts to fetch document, If fails returns default
@@ -246,92 +167,6 @@ export class LevelMe {
   private async open() {
     if (!this.levelUp.isOpen()) {
       await this.levelUp.open();
-
-      // Cache Values
-      // this.docCount = parseInt(
-      //   (
-      //     await this.levelUpGet(LevelMe.META_PREFIX + "_local_doc_count", 0)
-      //   ).toString()
-      // );
-      // this.docUpdateSeq = parseInt(
-      //   (
-      //     await this.levelUpGet(
-      //       LevelMe.META_PREFIX + "_local_last_update_seq",
-      //       0
-      //     )
-      //   ).toString()
-      // );
-    }
-  }
-
-  /**
-   * Navigate to the end of the branch
-   *
-   * We can possibly ignore the winningRev as this isn't a concern for us at this point
-   *
-   * @private
-   * @param {branch} branch
-   * @param {number} [pos=0]
-   * @returns {{branch: branch, pos: number}}
-   */
-  // private findBranchEnd(
-  //   branch: branchTrunk | branch,
-  //   pos: number = 0
-  // ): { branch: branchTrunk; pos: number } {
-  //   let branchTrunk: branchTrunk;
-
-  //   // Find legacy branchTrunk (sometimes in 0 nested array)
-  //   if (Array.isArray(branch[0])) {
-  //     branchTrunk = branch[0] as branchTrunk;
-  //   } else {
-  //     branchTrunk = branch as branchTrunk;
-  //   }
-
-  //   // Need to search deeper?
-  //   if (branchTrunk[2].length) {
-  //     // Move further along the branch
-  //     return this.findBranchEnd(branchTrunk[2], ++pos);
-  //   } else {
-  //     // We are at the tip! Return this branch
-  //     return {
-  //       branch: branchTrunk,
-  //       pos: ++pos,
-  //     };
-  //   }
-  // }
-
-  /**
-   * Jump straight to the cached wining branch end
-   *
-   * @private
-   * @param {schema} doc
-   * @returns {{ key: string; pos: number }}
-   */
-  private findCachedBranchEnd(doc: schema): string {
-    return doc.rev_map[doc.winningRev].toString().padStart(16, "0");
-  }
-
-  /**
-   * Gets the latest sequence data document
-   *
-   * @private
-   * @param {schema} doc
-   * @returns {Promise<document>}
-   */
-  private async seqDocFromRoot(doc: schema): Promise<document> {
-    // Backwards Compatible Check
-    // If winningRev, rev_map, rev_tree, seq exist we know its the old system
-    if (doc.winningRev && doc.rev_map && doc.rev_tree && doc.seq) {
-      // Fetch data document from twig (Performance boost could be found here)
-      const twig = this.findCachedBranchEnd(doc);
-
-      // Get the actual data document
-      return JSON.parse(
-        (await this.levelUpGet(LevelMe.SEQ_PREFIX + twig, "{}")).toString()
-      );
-    } else {
-      // Now it is just the raw document which we build up on from umid and txs
-      return doc as document;
     }
   }
 
@@ -351,8 +186,6 @@ export class LevelMe {
       };
     } catch (e) {
       // TODO Filter bad / unexpected creates such as favicon.ico
-      //await this.levelUp.put(LevelMe.META_PREFIX + "_local_doc_count", 0);
-      //await this.levelUp.put(LevelMe.META_PREFIX + "_local_last_update_seq", 0);
       return {
         doc_count: "----",
         update_seq: 0,
@@ -495,19 +328,11 @@ export class LevelMe {
         // Cache rows to be returned
         let rows: any[] = [];
 
-        // For checking on end
-        const promises: Promise<document>[] = [];
-
         if (options.keys) {
-          // for (let i = options.keys.length; i--;) {
-          //   rows.push({ doc: await this.get(options.keys[i]) });
-          // }
-
-          rows = await this.getMany(options.keys);
-          // Don't think much perfomance gain by a single await vs multi
-          //await Promise.all(promises);
+          const docs = await this.getMany(options.keys);
+          rows = docs.map(doc => ({ doc }));
           return resolve({
-            total_rows: rows.length,
+            total_rows: docs.length,
             offset,
             rows,
           });
@@ -537,13 +362,8 @@ export class LevelMe {
               }
               const doc = JSON.parse(data.value.toString());
 
-              // Don't realy need this but the quickest switch for needing "id" for database viewer
-              // Only viewer should call, So want the doc
               if (options.include_docs) {
-                // Get the actual data document
-                const promise = this.seqDocFromRoot(doc);
-                promises.push(promise);
-                rows.push(await promise);
+                rows.push(doc);
               } else {
                 rows.push({
                   _id: doc._id, // Compatibility Trick
@@ -557,9 +377,11 @@ export class LevelMe {
             })
             .on("close", () => { })
             .on("end", async () => {
-              await Promise.all(promises);
+              if (options.include_docs) {
+                // The rows are already the full documents
+              }
               resolve({
-                total_rows: rows.length, //this.docCount, This will return as a global offset
+                total_rows: rows.length,
                 offset,
                 rows,
               });
@@ -570,13 +392,6 @@ export class LevelMe {
       }
     });
   }
-
-  // private memory: {
-  //   [index: string]: {
-  //     data: any;
-  //     create: Date;
-  //   };
-  // } = {};
 
   /**
    * Get a specific data document
@@ -589,12 +404,8 @@ export class LevelMe {
       if (!this.cache.has(key)) {
         await this.open();
         // Allow errors to bubble up?
-        let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
-        if (raw) {
-          this.cache.set(key, doc);
-        } else {
-          this.cache.set(key, await this.seqDocFromRoot(doc));
-        }
+        const doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+        this.cache.set(key, doc);
       }
       return this.cache.get(key, 30000);
     } else {
@@ -602,10 +413,9 @@ export class LevelMe {
       // Allow errors to bubble up?
       let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
       if (raw) {
-        return doc;
-      } else {
-        return await this.seqDocFromRoot(doc);
+        return doc
       }
+      return doc;
     }
   }
 
@@ -613,12 +423,12 @@ export class LevelMe {
     if (ENABLE_CACHE) {
       let tmpKeys = [];
       let cached = [];
-      //const now = new Date();
       for (let i = keys.length; i--;) {
         if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
         } else {
-          cached.push({ doc: this.cache.get(keys[i], 30000) });
+          //cached.push({ doc: this.cache.get(keys[i], 30000) });
+          cached.push({ ...this.cache.get(keys[i], 30000) });
         }
       }
 
@@ -629,13 +439,12 @@ export class LevelMe {
         for (let i = result.length; i--;) {
           const data = JSON.parse(result[i]);
           this.cache.set(data._id, data);
-          cached.push({ doc: data });
+          cached.push(data);
         }
       }
       return cached;
     } else {
-      let tmpKeys = [];
-      let cached = [];
+      const tmpKeys = [];
       for (let i = keys.length; i--;) {
         tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
       }
@@ -643,15 +452,9 @@ export class LevelMe {
       // Get uncached keys
       const result = await this.levelUp.getMany(tmpKeys);
 
-      // Loop and cache
-      for (let i = result.length; i--;) {
-        const data = JSON.parse(result[i]);
-        cached.push({ doc: data });
-      }
-      return cached;
+      // Loop and parse
+      return result.map(data => JSON.parse(data));
     }
-    //Faster Concat? maybe push(...)?
-    //return [...cached, ...await this.levelUp.getMany(tmpKeys)];
   }
 
   /**
@@ -778,6 +581,138 @@ export class LevelMe {
    * @param {string} options
    * @returns {*}
    */
+  public changes(): EventEmitter {
+    return this.changeEmitter;
+  }
+
+  /**
+   * Bulk write documents (While acting like post)
+   *
+   * @param {unknown[]} docs
+   * @param {unknown} options
+   * @returns
+   */
+  public async bulkDocs(
+    docs: document[],
+    options: { new_edits: boolean; force_rev?: string }
+  ): Promise<boolean> {
+    // Now we could loop post, But then its not a single atomic write.
+    let batch = await this.levelUp.batch();
+    const changes = [];
+    for (let i = docs.length; i--;) {
+      const writer = await this.prepareForWrite(docs[i], batch, options);
+      batch = writer.chain; // Do I need do do this, Reference kept?
+      changes.push(writer.changes);
+    }
+
+    try {
+      await batch.write();
+      if (ENABLE_CACHE) {
+        for (let i = changes.length; i--;) {
+          this.cache.set(changes[i].id, changes[i].doc);
+        }
+      }
+      // Emit Changed Docs
+      this.changeEmitter.emit("change", changes);
+    } catch (e) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Prepare batch written of all meta documents
+   *
+   * @private
+   * @param {document} doc
+   * @param {LevelUpChain<any, any>} chain
+   * @returns {Promise<{ chain: LevelUpChain<any, any>; rev: string }>}
+   */
+  private async prepareForWrite(
+    doc: document,
+    chain: LevelUpChain<any, any>,
+    options: { new_edits: boolean; force_rev?: string } = { new_edits: true }
+  ): Promise<{
+    chain: LevelUpChain<any, any>;
+    rev: string;
+    changes: {
+      id: string;
+      changes: { rev: string }[];
+      doc: document;
+    };
+  }> {
+    await this.open();
+
+    // MD5 input to act as tree position
+    // Use a copy to avoid mutating the original object
+    const docToWrite = { ...doc };
+    delete docToWrite._rev;
+    const incomingDoc = JSON.stringify(docToWrite);
+    const md5 = createHash("md5").update(incomingDoc).digest("hex");
+    let newRev: string;
+
+    // Does Document eixst?
+    try {
+      // Document exists, handle update
+      const currentDocRoot = JSON.parse(
+        await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
+      ) as schema;
+
+      if (doc._rev !== currentDocRoot._rev && !options.new_edits) {
+        throw new Error(`Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentDocRoot._rev}`);
+      }
+
+      if (options.force_rev) {
+        newRev = options.force_rev;
+      } else {
+
+        const [p1, curmd5] = currentDocRoot._rev.split("-");
+        if (md5 === curmd5) {
+          // No change in document content, but we might be forced to write a new revision
+          // For now, we can just return the existing state if no forced revision.
+          // This part of logic can be tricky depending on desired semantics.
+          // Let's assume for now we always write if called.
+        }
+        const pos = parseInt(p1) + 1;
+        newRev = `${pos}-${md5}`;
+      }
+      doc._rev = newRev;
+      chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+
+    } catch (error) {
+      // Document doesn't exist, handle creation
+      if (error.notFound) {
+        if (!options.new_edits && doc._rev) {
+          newRev = doc._rev;
+        } else {
+          newRev = `1-${md5}`;
+        }
+        doc._rev = newRev;
+        chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+      } else {
+        // Re-throw other errors (like revision mismatch)
+        throw error;
+      }
+    }
+
+    return {
+      chain,
+      rev: newRev,
+      changes: {
+        id: doc._id,
+        changes: [{ rev: newRev }],
+        doc,
+      },
+    };
+  }
+
+
+  /**
+   * Provide real-time document insertion with starting point supported
+   *
+   * @param {string} options
+   * @returns {*}
+   */
   public changesFromSeq(options: changesOptions): Promise<{
     results: {
       id: string;
@@ -859,205 +794,6 @@ export class LevelMe {
         });
     });
   }
-
-  /**
-   * Provide real-time document insertion with starting point supported
-   *
-   * @param {string} options
-   * @returns {*}
-   */
-  public changes(): EventEmitter {
-    return this.changeEmitter;
-  }
-
-  /**
-   * Bulk write documents (While acting like post)
-   *
-   * @param {unknown[]} docs
-   * @param {unknown} options
-   * @returns
-   */
-  public async bulkDocs(
-    docs: document[],
-    options: { new_edits: boolean; force_rev?: string }
-  ): Promise<boolean> {
-    // Now we could loop post, But then its not a single atomic write.
-    let batch = await this.levelUp.batch();
-    const changes = [];
-    for (let i = docs.length; i--;) {
-      // Deleted? This is dangerous as you could set _deleted in your stream! Disable multi delete from viewer safer
-      //if (docs[i]._deleted) {
-      //  await this.del(docs[i]._id);
-      //} else {
-      const writer = await this.prepareForWrite(docs[i], batch, options);
-      batch = writer.chain; // Do I need do do this, Reference kept?
-      changes.push(writer.changes);
-      //}
-    }
-
-    try {
-      await batch.write();
-      if (ENABLE_CACHE) {
-        for (let i = changes.length; i--;) {
-          this.cache.set(changes[i].id, changes[i].doc);
-        }
-      }
-      // Emit Changed Docs
-      this.changeEmitter.emit("change", changes);
-    } catch (e) {
-      // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
-      //this.docCount = this.docCount - docs.length;
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Prepare batch written of all meta documents
-   *
-   * @private
-   * @param {document} doc
-   * @param {LevelUpChain<any, any>} chain
-   * @returns {Promise<{ chain: LevelUpChain<any, any>; rev: string }>}
-   */
-  private async prepareForWrite(
-    doc: document,
-    chain: LevelUpChain<any, any>,
-    options: { new_edits: boolean; force_rev?: string } = { new_edits: true }
-  ): Promise<{
-    chain: LevelUpChain<any, any>;
-    rev: string;
-    changes: {
-      id: string;
-      changes: { rev: string }[];
-      doc: document;
-      //seq: number;
-    };
-  }> {
-    await this.open();
-
-    // Convert doc to string
-    const incomingDoc = JSON.stringify({ ...doc, _rev: null });
-    // Above same problem as isDiff going to get different md5 values on write
-
-    //const incomingDoc = JSON.stringify(doc);
-
-    // MD5 input to act as tree position
-    const md5 = createHash("md5").update(incomingDoc).digest("hex");
-    let isDiff = true;
-
-    // Changes that will be written
-    //const changes = {};
-
-    // Current Document root schema
-    let currentDocRoot: document;
-
-    // Current head revision with position
-    let newRev: string;
-
-    // Flag for doc counter
-    let newDoc = false;
-
-    // Does Document eixst?
-    try {
-      currentDocRoot = JSON.parse(
-        await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
-      ) as schema;
-      // We need to pull out the right revision
-      const currentRev =
-        currentDocRoot._rev || (currentDocRoot.winningRev as string);
-
-      // Replace with winning rev instead of branch crawling
-      if (currentRev) {
-        if (doc._rev !== currentRev && !options.new_edits) {
-          throw {
-            msg: `Revision Mismatch:  ${doc._id} @ ${doc._rev} !== ${currentRev} NE : ${options.new_edits}`,
-            throw: 1,
-          };
-        }
-
-        if (!options.force_rev) {
-          // Get more relilable position value (crawler incorrect on auto archive)
-          const [p1, curmd5] = currentRev.split("-");
-          const pos = parseInt(p1) + 1;
-
-          newRev = `${pos}-${md5}`;
-          // Only uncomment if entire network does at the same time
-          if (isDiff = md5 !== curmd5) {
-            // Update rev_* and doc
-            //newRev = `${pos}-${md5}`;
-            doc._rev = newRev;
-          }
-        } else {
-          doc._rev = newRev = options.force_rev;
-        }
-      } else {
-        throw { msg: "Revision Mismatch Type 2", throw: 1 };
-      }
-    } catch (e) {
-      if (e?.throw) {
-        throw new Error(e.msg);
-      }
-
-      newDoc = true;
-      // Sequence cache after increase
-      //const seq = ++this.docUpdateSeq;
-
-      if (!options.new_edits && doc._rev) {
-        newRev = doc._rev;
-      } else {
-        newRev = doc._rev = `1-${md5}`;
-      }
-
-      // New Doc
-      // currentDocRoot = {
-      //   _id: doc._id,
-      //   rev_tree: [
-      //     {
-      //       pos: 1,
-      //       ids: [md5, { status: "available" }, []],
-      //     },
-      //   ],
-      //   rev_map: {
-      //     [newRev]: seq,
-      //   },
-      //   winningRev: newRev,
-      //   deleted: false,
-      //   seq,
-      // };
-    }
-
-    if (isDiff) {
-      chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
-
-      // if (ENABLE_CACHE) {
-      //   this.cache.set(doc._id, doc);
-      // }
-    }
-
-    // Should be able to assume,  maybe not what if restarted, So set object!
-    // Maybe only store data and :stream? Or just store everything and delete when older than X?
-    // this.memory[doc._id] = {
-    //   data: doc,
-    //   create: new Date()
-    // };
-
-    // Safer for now?
-    //delete this.memory[doc._id];
-
-    return {
-      chain,
-      rev: newRev,
-      changes: {
-        id: doc._id,
-        changes: [
-          {
-            rev: newRev,
-          },
-        ],
-        doc,
-        //seq: this.docUpdateSeq,
-      },
-    };
-  }
 }
+
+

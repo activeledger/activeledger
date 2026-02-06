@@ -101,9 +101,12 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     return false;
   }
 
-  // private bundle: any[] = [];
-  private bundleC: number = 0;
-  private bundleT: string = "";
+  /**
+   * Holds bundled requests for batch sending.
+   *
+   * @private
+   */
+  private bundle: string[] = [];
   private nextSend: NodeJS.Timeout | null;
 
   /**
@@ -119,9 +122,9 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   public knock(
     endpoint: string,
     params?: any,
-    external?: boolean,
-    resend?: number,
-    bundle?: boolean
+    external?: boolean, // Is this an external-facing endpoint?
+    resend?: number, // Max retry attempts for connection resets
+    bundle?: boolean // Should this request be bundled?
   ): Promise<any> {
     if (!params) {
       // Not Params, Sent Get without signature
@@ -140,7 +143,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     } else {
       // Default vars for request
       let url: string;
-      let post: any;
+      let post: any; // Can be the raw params or a signed/encrypted wrapper
 
       // Does the request need to be marshed externally
       if (external) {
@@ -168,10 +171,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       // Currently this boosted performance by about 4x
 
       // Send SignedFor Post Request
-      const sender = (post: Buffer, extraHeader: string) =>
-        new Promise((resolve, reject) => {
+      const sender = (postData: Buffer, extraHeader: string) =>
+        new Promise<any>((resolve, reject) => {
           let attempt = (attempts: number) => {
-            ActiveRequest.send(
+            ActiveRequest.send( // This is an async operation
               url,
               "POST",
               [
@@ -179,7 +182,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                 "content-type: application/json",
                 extraHeader,
               ],
-              post, // TODO above is a bit of a lie but managed by host
+              postData,
               ActiveOptions.get<boolean>("gzip", true),
               60
             )
@@ -243,35 +246,28 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       // Another idea is dynamic settimeout keep changing it? Such as "wait 10ms +10ms if sending again"
       // TODO make better!
       if (bundle) {
-        //this.bundle.push(JSON.stringify(post));
-        if (this.bundleC++ === 0) {
-          this.bundleT = JSON.stringify(post);
-        } else {
-          this.bundleT += ":$ALB:" + JSON.stringify(post);
-        }
+        this.bundle.push(JSON.stringify(post));
 
-        if (this.bundleC >= 100) {
+        if (this.bundle.length >= 100) {
           // Cancel & Just Send
           if (this.nextSend) {
             clearTimeout(this.nextSend);
             this.nextSend = null;
           }
 
-          const bundled = Buffer.from(this.bundleT);
-          this.bundleC = 0;
-          this.bundleT = "";
+          const bundled = Buffer.from(this.bundle.join(":$ALB:"));
+          this.bundle = [];
           sender(bundled, "X-Bundle: 1").catch(() => {
             ActiveLogger.warn("X-Bundle Error");
           });
         } else {
-          //if (this.bundle.length === 1) {
           if (!this.nextSend) {
             this.nextSend = setTimeout(() => {
-              if (this.bundleC) {
+              if (this.bundle.length > 0) {
                 this.nextSend = null;
-                const bundled = Buffer.from(this.bundleT);
-                this.bundleC = 0;
-                this.bundleT = "";
+                const bundled = Buffer.from(this.bundle.join(":$ALB:"));
+                // Clear the bundle for the next batch
+                this.bundle = [];
 
                 sender(bundled, "X-Bundle: 1").catch(() => {
                   ActiveLogger.warn("X-Bundle Error");

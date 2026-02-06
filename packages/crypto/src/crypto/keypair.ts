@@ -34,7 +34,12 @@ import { AsnParser } from "./asn";
  */
 export interface KeyHandleDetails {
   pkcs8pem: string;
-  hash?: string;
+  /**
+   * Lazily-calculated hash of the PEM.
+   *
+   * @type {string}
+   */
+  readonly hash?: string;
 }
 
 /**
@@ -96,10 +101,11 @@ export class KeyPair {
             if (
               //pem.startsWith("0x02") || // compressed y point even
               //pem.startsWith("0x03") || // compressed y point odd
-              //pem.startsWith("0x04") || // Uncompressed Public key
-              // Silly mistake private keys may start as 02 03 04 
+              //pem.startsWith("0x04") || // Uncompressed Public key // Silly mistake private keys may start as 02 03 04
               // (below 66 is to account for 0x string public keys are 64 hex privates are 64)
-              pem.length > 66 // Default to uncompressed Public Key with 0x accounted for if over 66 characters long
+              // Heuristic to differentiate public vs private hex keys.
+              // Private keys are 32 bytes (64 hex chars + '0x' = 66). Public keys are longer.
+              pem.length > 66
             ) {
               // Public
               this.createHandler(
@@ -142,11 +148,21 @@ export class KeyPair {
    */
   private createHandler(prv: string, pub: string = ""): void {
     this.handler = {
-      pub: {
-        pkcs8pem: pub,
+      get pub() {
+        return {
+          pkcs8pem: pub,
+          get hash() {
+            return Hash.getHash(pub);
+          },
+        };
       },
-      prv: {
-        pkcs8pem: prv,
+      get prv() {
+        return {
+          pkcs8pem: prv,
+          get hash() {
+            return Hash.getHash(prv);
+          },
+        };
       },
     };
   }
@@ -234,8 +250,10 @@ export class KeyPair {
   private getString(data: string | Object | Buffer): string {
     // Data Object to string
     if (Buffer.isBuffer(data)) return data.toString();
-    if (typeof data === "object") return JSON.stringify(data);
-    return data;
+    if (typeof data === "object") {
+      return JSON.stringify(data);
+    }
+    return data as string;
   }
 
   /**
@@ -247,15 +265,13 @@ export class KeyPair {
    * @returns {string[]}
    */
   private chunkString(data: string, size: number = 100): string[] {
-    let chunks = [];
-    if (data.length > size) {
-      chunks = [];
-      while (data !== "") {
-        chunks.push(data.slice(0, size));
-        data = data.slice(size);
-      }
-    } else {
-      chunks.push(data);
+    if (data.length <= size) {
+      return [data];
+    }
+    const numChunks = Math.ceil(data.length / size);
+    const chunks = new Array(numChunks);
+    for (let i = 0, o = 0; i < numChunks; ++i, o += size) {
+      chunks[i] = data.substr(o, size);
     }
     return chunks;
   }
@@ -304,10 +320,6 @@ export class KeyPair {
           this.createHandler(rsa.privateKey, rsa.publicKey);
         }
 
-        // Update Hashes
-        this.handler.pub.hash = Hash.getHash(this.handler.pub.pkcs8pem);
-        this.handler.prv.hash = Hash.getHash(this.handler.prv.pkcs8pem);
-
         return this.handler;
       case "bitcoin":
       case "ethereum":
@@ -332,10 +344,6 @@ export class KeyPair {
               : "0x" + curve.getPublicKey("hex", "uncompressed")
           );
         }
-
-        // Update Hashes
-        this.handler.pub.hash = Hash.getHash(this.handler.pub.pkcs8pem);
-        this.handler.prv.hash = Hash.getHash(this.handler.prv.pkcs8pem);
 
         return this.handler;
       default:
@@ -370,19 +378,13 @@ export class KeyPair {
       } else {
         // Split data
         let chunked = this.chunkString(this.getString(data));
-
-        // Concated Encrypted string
-        let encrypted = "";
-
-        chunked.forEach((chunk: string) => {
-          // Get Encryption Chunk
-          encrypted +=
+        return chunked
+          .map((chunk) =>
             crypto
               .publicEncrypt(this.handler.pub.pkcs8pem, Buffer.from(chunk))
-              .toString(encoding) + "|";
-        });
-
-        return encrypted.slice(0, -1);
+              .toString(encoding)
+          )
+          .join("|");
       }
     }
     throw ActiveLogger.fatal(data, `Cannot encrypt with ${this.type}`);
@@ -415,20 +417,16 @@ export class KeyPair {
       } else {
         // Get data as string
         let chunked = data.split("|");
-
-        // Concated decrypted string
-        let decrypted = "";
-
-        // Loop and decrypt
-        chunked.forEach((chunk) => {
-          decrypted += crypto
-            .privateDecrypt(
-              this.handler.prv.pkcs8pem,
-              Buffer.from(chunk, encoding)
-            )
-            .toString();
-        });
-        return Buffer.from(decrypted).toString(encoding);
+        const decrypted = chunked
+          .map((chunk) =>
+            crypto
+              .privateDecrypt(
+                this.handler.prv.pkcs8pem,
+                Buffer.from(chunk, encoding)
+              )
+          )
+          .join("");
+        return decrypted;
       }
     }
     throw ActiveLogger.fatal(data, `Cannot decrypt with ${this.type}`);

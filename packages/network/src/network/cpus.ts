@@ -32,6 +32,14 @@ import * as os from "os";
  * @class PhysicalCores
  */
 export class PhysicalCores {
+  /**
+   * Cache for the physical core count.
+   *
+   * @private
+   * @static
+   * @type {(number | null)}
+   */
+  private static coreCount: number | null = null;
     
   /**
    * Attempts to returns the total physical cpus
@@ -40,6 +48,11 @@ export class PhysicalCores {
    * @returns {number}
    */
   public static count(): number {
+    // Return from cache if already calculated
+    if (this.coreCount !== null) {
+      return this.coreCount;
+    }
+
     switch (os.platform()) {
       case "linux":
         return parseInt(
@@ -56,24 +69,33 @@ export class PhysicalCores {
         const output = child.execSync("WMIC CPU Get NumberOfCores", {
           encoding: "utf8"
         });
-        return output
+        this.coreCount = output
           .split(os.EOL)
-          .map(function parse(line: string) {
-            return parseInt(line);
-          })
-          .filter(function numbers(value: number) {
-            return !isNaN(value);
-          })
-          .reduce(function add(sum: number, number: number) {
-            return sum + number;
-          }, 0);
+          .map(line => parseInt(line, 10))
+          .filter(value => !isNaN(value))
+          .reduce((sum, number) => sum + number, 0);
+        return this.coreCount;
       default:
-        // Return logicial cpu and attempt to filter out HT intels.
-        return os.cpus().filter(function(cpu, index) {
-          const hasHyperthreading = cpu.model.includes("Intel");
-          const isOdd = index % 2 === 1;
-          return !hasHyperthreading || isOdd;
-        }).length;
+        const cpus = os.cpus();
+        // If core_id is available (modern Node on Linux), use it for a more reliable count.
+        // The 'any' cast is for older Node versions where this property might not be typed.
+        if (cpus && cpus.length > 0 && (cpus[0] as any).core_id !== undefined) {
+          const coreIds = new Set();
+          for (const cpu of cpus) {
+            coreIds.add((cpu as any).core_id);
+          }
+          this.coreCount = coreIds.size;
+          return this.coreCount;
+        } else {
+          // Fallback to original logic for other OSes or older Node versions.
+          // This attempts to filter out hyper-threaded cores on Intel CPUs.
+          this.coreCount = cpus.filter(function(cpu, index) {
+            const hasHyperthreading = cpu.model.includes("Intel");
+            const isOdd = index % 2 === 1;
+            return !hasHyperthreading || isOdd;
+          }).length;
+          return this.coreCount;
+        }
     }
   }
 }
