@@ -645,11 +645,12 @@ export class LevelMe {
 
     // MD5 input to act as tree position
     // Use a copy to avoid mutating the original object
-    const docToWrite = { ...doc };
-    delete docToWrite._rev;
-    const incomingDoc = JSON.stringify(docToWrite);
-    const md5 = createHash("md5").update(incomingDoc).digest("hex");
-    let newRev: string;
+    //const docToWrite = { ...doc };
+    //delete docToWrite._rev;
+    //const incomingDoc = JSON.stringify(docToWrite);
+    // Not backwards compatiable
+    const md5 = createHash("md5").update(JSON.stringify({ ...doc, _rev: null })).digest("hex");
+    let newRev = "";
 
     // Does Document eixst?
     try {
@@ -667,17 +668,20 @@ export class LevelMe {
       } else {
 
         const [p1, curmd5] = currentDocRoot._rev.split("-");
-        if (md5 === curmd5) {
-          // No change in document content, but we might be forced to write a new revision
-          // For now, we can just return the existing state if no forced revision.
-          // This part of logic can be tricky depending on desired semantics.
-          // Let's assume for now we always write if called.
+        //const pos = parseInt(p1) + 1;
+        //newRev = `${pos}-${md5}`;
+
+        // Md5s don't match we need to update rev, This will then get it written to disk
+        if (md5 !== curmd5) {
+          newRev = `${parseInt(p1) + 1}-${md5}`;
         }
-        const pos = parseInt(p1) + 1;
-        newRev = `${pos}-${md5}`;
+
       }
-      doc._rev = newRev;
-      chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+
+      if (newRev) {
+        doc._rev = newRev;
+        chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+      }
 
     } catch (error) {
       // Document doesn't exist, handle creation
