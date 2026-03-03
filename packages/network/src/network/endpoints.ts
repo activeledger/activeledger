@@ -1342,10 +1342,10 @@ export class Endpoints {
             // We should probably have a release timer, and also release call from calling node
             // but as multiple nodes will call  will need counter ontop of it. Using a timer now will
             // at least show this method works. The call counter will just make it release faster
-            ActiveLogger.info(`SPI EPS FETCH HOLD ${holdValue}`);
+            //ActiveLogger.info(`SPI EPS FETCH HOLD ${holdValue}`);
             setTimeout(() => {
               Locker.release(holdValue, "SPI");
-              ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
+              //ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
             }, 1000);
 
             // Maybe increase the 1000 here, More so if we have an "unlock" somehow request (as many nodes me ask!)
