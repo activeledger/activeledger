@@ -102,28 +102,38 @@ export class Locker {
   public static hold(stream: string[], umid: string): boolean;
   public static hold(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
-      // First pass: Check if all streams are available to be locked.
-      // This makes the operation more atomic and avoids a cleanup loop on failure.
-      for (const s of stream) {
-        // Heuristic: ignore short strings which are likely labels or self-signed streams not needing a lock.
-        if (s.length > 60 && this.cell[s]) {
-          ActiveLogger.info(`Lock busy for ${s}. Held by ${this.cell[s].umid}, requested by ${umid}.`);
-          return false; // Fail fast if any stream is already locked.
-        }
-      }
-
+      // Are all the streams available
+      let i = stream.length;
+      let success = true;
       const time = Date.now();
-      // Second pass: All streams are available, so acquire the locks.
-      for (const s of stream) {
-        if (s.length > 60) {
-          this.cell[s] = {
-            umid,
-            time,
-          };
+      while (i--) {
+        // Don't think this will be affected as much as release
+        // if (!Locker.hold(stream[i], umid)) {
+        //   // Update flag and quit early
+        //   success = false;
+        //   break;
+        // }
+        // selfsign check
+        // what about if it is locked on itself? Maybe we can just "update"
+        if (stream[i].length > 60) {
+          if (!this.cell[stream[i]]) {
+            this.cell[stream[i]] = {
+              umid,
+              time,
+            };
+          } else {
+             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell[stream[i]].umid}`);
+            success = false;
+            break;
+          }
         }
       }
-
-      return true;
+      if (!success) {
+        // Lets unlock the ones we manage to lock!
+        Locker.release(stream, umid);
+      }
+      // Let process know
+      return success;
     } else {
       // Single stream lock.
       // Heuristic: ignore short strings which are likely labels or self-signed streams not needing a lock.
@@ -156,9 +166,11 @@ export class Locker {
   public static release(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
       let i = stream.length;
-      for (const s of stream) {
-        if (this.cell[s]?.umid === umid) {
-          delete this.cell[s];
+      while (i--) {
+        // This maybe the problem being pushed to the bottom of the stack
+        //Locker.release(stream[i], umid);
+        if (this.cell[stream[i]] && this.cell[stream[i]].umid === umid) {
+          delete this.cell[stream[i]];
         }
       }
     } else {
