@@ -24,6 +24,7 @@
 import * as fs from "fs";
 import * as ts from "typescript";
 import { Standard, Activity } from "@activeledger/activecontracts";
+import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
  * Default Onboarding (New Account) contract
@@ -204,6 +205,461 @@ export default class Contract extends Standard {
         },
       }
     ).outputText;
+  }
+
+  /**
+   * Scan TypeScript source for security violations
+   *
+   * @private
+   * @param {string} sourceCode
+   * @param {string} namespace
+   */
+  private securityScan(sourceCode: string, namespace: string): void {
+    // Definitive denylist for identifiers (Globals and sensitive objects)
+    const bannedIdentifiers = [
+      "process",
+      "global",
+      "globalThis",
+      "eval",
+      "Function",
+      "AsyncFunction",
+      "GeneratorFunction",
+      "AsyncGeneratorFunction",
+      "module",
+      "exports",
+      "__dirname",
+      "__filename",
+      "setTimeout",
+      "setInterval",
+      "setImmediate",
+      "atob",
+      "btoa",
+      "Reflect",
+      "Proxy",
+      "WebAssembly",
+      "Symbol",
+      "arguments",
+      "caller",
+      "callee",
+      "console",
+      "debugger",
+      "fetch",
+      "SharedArrayBuffer",
+      "Atomics",
+      "performance",
+      "Performance",
+      "Intl",
+      "FinalizationRegistry",
+      "WeakRef",
+      "gc",
+      "v8",
+      "vm",
+      "worker_threads",
+      "cluster",
+      "child_process",
+      "os",
+      "path",
+      "fs",
+      "http",
+      "https",
+      "net",
+      "tls",
+      "crypto",
+      "root",
+      "window",
+      "top",
+      "stop",
+      "close",
+      "InternalError",
+    ];
+
+    // Identifiers that can be used but not reassigned or shadowed
+    const protectedIdentifiers = [
+      "ActiveLogger",
+      "ActiveRequest",
+      "ActiveCrypto",
+      "ActiveOptions",
+      "ActiveDefinitions",
+      "ActiveGZip",
+      "Standard",
+      "Activity",
+      "ActivityStream",
+      "EventEngine",
+      "PostProcessQueryEvent",
+      "Math",
+      "Date",
+      "JSON",
+      "Array",
+      "Object",
+      "String",
+      "Number",
+      "Boolean",
+      "Error",
+      "Promise",
+      "Buffer",
+      "Map",
+      "Set",
+      "Uint8Array",
+      "BigInt",
+      "URL",
+      "URLSearchParams",
+      "TextEncoder",
+      "TextDecoder",
+      "self",
+    ];
+
+    // Definitive denylist for property access (Reflection and System methods)
+    const bannedProperties = [
+      "exit",
+      "kill",
+      "spawn",
+      "fork",
+      "exec",
+      "readFile",
+      "writeFile",
+      "unlink",
+      "rmdir",
+      "mkdir",
+      "appendFile",
+      "readdir",
+      "stat",
+      "lstat",
+      "constructor",
+      "__proto__",
+      "prototype",
+      "defineProperty",
+      "defineProperties",
+      "setPrototypeOf",
+      "getPrototypeOf",
+      "assign",
+      "__defineGetter__",
+      "__defineSetter__",
+      "__lookupGetter__",
+      "__lookupSetter__",
+      "binding",
+      "internalBinding",
+      "allocUnsafe",
+      "bind",
+      "call",
+      "apply",
+      "getOwnPropertyDescriptor",
+      "getOwnPropertyDescriptors",
+      "getOwnPropertyNames",
+      "getOwnPropertySymbols",
+      "preventExtensions",
+      "isExtensible",
+      "seal",
+      "isSealed",
+      "freeze",
+      "isFrozen",
+      "toSource",
+      "valueOf",
+      "hasOwnProperty",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "toLocaleString",
+      "captureStackTrace",
+      "stackTraceLimit",
+      "stack",
+      "fileName",
+      "lineNumber",
+      "columnNumber",
+      "__count__",
+      "__noSuchMethod__",
+      "__parent__",
+      "eval",
+      "Function",
+      "global",
+      "globalThis",
+      "process",
+      "module",
+      "require",
+    ];
+
+    // Allowed modules for require/import
+    const allowedModules: string[] = ["@activeledger/activetoolkits", "@activeledger/activecontracts"];
+    const policy = {
+        allowDynamicAccess: false,
+        allowRequire: false,
+        allowEval: false,
+        allowComputedProperties: false,
+        allowProcessNextTick: false
+    };
+
+    // Fetch dynamic security configuration
+    const securityConfig = ActiveOptions.get<any>("security", { namespace: {} });
+    if (securityConfig && securityConfig.namespace && securityConfig.namespace[namespace]) {
+        const nsConfig = securityConfig.namespace[namespace];
+        if (nsConfig.std) allowedModules.push(...nsConfig.std);
+        if (nsConfig.external) allowedModules.push(...nsConfig.external);
+        if (nsConfig.policy) Object.assign(policy, nsConfig.policy);
+    }
+
+    // Skip scan for privileged namespaces?
+    const privilegedNamespaces = ["default"];
+    if (privilegedNamespaces.indexOf(namespace) !== -1) {
+      return;
+    }
+
+    const sourceFile = ts.createSourceFile(
+      "contract.ts",
+      sourceCode,
+      ts.ScriptTarget.Latest,
+      true
+    );
+
+    /**
+     * Helper to report security violations with line numbers
+     */
+    const report = (node: ts.Node, message: string): never => {
+      const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+        node.getStart()
+      );
+      throw new Error(
+        `Security Violation [${line + 1}:${character + 1}]: ${message}`
+      );
+    };
+
+    /**
+     * Helper to unwrap parenthesized or cast expressions
+     */
+    const unwrap = (node: ts.Expression): ts.Expression => {
+      while (
+        ts.isParenthesizedExpression(node) ||
+        ts.isAsExpression(node) ||
+        ts.isTypeAssertionExpression(node) ||
+        ts.isNonNullExpression(node)
+      ) {
+        node = node.expression;
+      }
+      return node;
+    };
+
+    const checkNode = (node: ts.Node): void => {
+      // Helper to detect if an identifier is being written to or shadowed
+      const isWriteAccess = (node: ts.Node): boolean => {
+        const parent = node.parent;
+        if (!parent) return false;
+
+        // Allow Import Declarations
+        if (ts.isImportSpecifier(parent) || ts.isImportClause(parent) || ts.isNamespaceImport(parent) || ts.isImportDeclaration(parent)) return false;
+
+        if (
+          ts.isBinaryExpression(parent) &&
+          parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+          parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+          parent.left === node
+        )
+          return true;
+        if (
+          ts.isPrefixUnaryExpression(parent) &&
+          (parent.operator === ts.SyntaxKind.PlusPlusToken ||
+            parent.operator === ts.SyntaxKind.MinusMinusToken)
+        )
+          return true;
+        if (ts.isPostfixUnaryExpression(parent)) return true;
+        if (ts.isVariableDeclaration(parent) && parent.name === node)
+          return true;
+        if (ts.isFunctionDeclaration(parent) && parent.name === node)
+          return true;
+        if (ts.isClassDeclaration(parent) && parent.name === node) return true;
+        if (ts.isBindingElement(parent) && parent.name === node) return true;
+
+        if (
+          (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) &&
+          parent.initializer === node
+        )
+          return true;
+
+        return false;
+      };
+
+      // Helper to check if an expression is accessing 'this'
+      const isThisAccess = (expr: ts.Expression): boolean => {
+          const unwrapped = unwrap(expr);
+          if (unwrapped.kind === ts.SyntaxKind.ThisKeyword) return true;
+          if (ts.isPropertyAccessExpression(unwrapped)) return isThisAccess(unwrapped.expression);
+          return false;
+      };
+
+      // 1. Block Banned Identifiers or Protected Shadows
+      if (ts.isIdentifier(node)) {
+        if (node.text === "require") {
+          const parent = node.parent;
+          if (!ts.isCallExpression(parent) || parent.expression !== node) {
+            report(node, `Unauthorized use of 'require' identifier`);
+          }
+        }
+        // Special Handling for Process
+        if (node.text === "process") {
+             if (ts.isPropertyAccessExpression(node.parent) && node.parent.name.text === "nextTick" && policy.allowProcessNextTick) {
+                 // Safe, allow access
+             } else {
+                 report(node, `Unauthorized use of 'process' global`);
+             }
+             // Skip further checks for process
+             return;
+        }
+        if (bannedIdentifiers.indexOf(node.text) !== -1) {
+            // Allow if part of a property access (e.g. this.setTimeout)
+            if (!(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)) {
+                report(node, `Unauthorized identifier '${node.text}'`);
+            }
+        }
+        if (
+          protectedIdentifiers.indexOf(node.text) !== -1 &&
+          isWriteAccess(node)
+        ) {
+          report(
+            node,
+            `Unauthorized modification of protected identifier '${node.text}'`
+          );
+        }
+      }
+
+      // 2. Block Banned Properties (Direct access)
+      if (ts.isPropertyAccessExpression(node)) {
+        if (
+          ts.isIdentifier(node.name) &&
+          bannedProperties.indexOf(node.name.text) !== -1
+        ) {
+          // Allow access if it is on 'this'
+          if (node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+            // Safe, continue
+          } else {
+            report(node.name, `Unauthorized property access '${node.name.text}'`);
+          }
+        }
+        const unwrappedExpr = unwrap(node.expression);
+
+        if (
+          ts.isIdentifier(unwrappedExpr) &&
+          protectedIdentifiers.indexOf(unwrappedExpr.text) !== -1 &&
+          isWriteAccess(node)
+        ) {
+          report(
+            node,
+            `Unauthorized modification of protected object '${unwrappedExpr.text}'`
+          );
+        }
+      }
+
+      // 3. Block Banned Properties (Bracket access)
+      if (ts.isElementAccessExpression(node)) {
+        let key = "";
+        let dynamicAccess = false;
+        const unwrappedExpr = unwrap(node.expression);
+        
+        if (ts.isStringLiteral(node.argumentExpression)) {
+          key = node.argumentExpression.text;
+        } else if (
+          ts.isNoSubstitutionTemplateLiteral(node.argumentExpression)
+        ) {
+          key = node.argumentExpression.text;
+        } else if (ts.isTemplateExpression(node.argumentExpression) || ts.isIdentifier(node.argumentExpression)) {
+            dynamicAccess = true;
+        } else if (ts.isNumericLiteral(node.argumentExpression)) {
+        } else {
+          // If we don't know the key, it's dynamic
+          dynamicAccess = true;
+        }
+
+        // Always allow dynamic access on 'this' properties
+        if (isThisAccess(node.expression)) {
+            // Continue
+        } else {
+            // Check for trusted objects defined in configuration
+            //const objectName = ts.isIdentifier(unwrappedExpr) ? unwrappedExpr.text : "";
+            
+            if (policy.allowDynamicAccess) {
+                // Allow, it's a known safe object and dynamic access is enabled for it
+            } else {
+                // Block all other dynamic accesses unless they are demonstrably safe
+                if (dynamicAccess) {
+                    // If the key is known and banned, block it
+                    if (key && bannedProperties.indexOf(key) !== -1) {
+                        report(node.argumentExpression, `Unauthorized element access '${key}'`);
+                    } else if (!key) {
+                        // If the key is entirely dynamic, block it for non-this
+                        report(node, `Dynamic element access is forbidden`);
+                    }
+                }
+            }
+        }
+
+        if (
+          ts.isIdentifier(unwrappedExpr) &&
+          protectedIdentifiers.indexOf(unwrappedExpr.text) !== -1 &&
+          isWriteAccess(node)
+        ) {
+          report(
+            node,
+            `Unauthorized modification of protected object '${unwrappedExpr.text}'`
+          );
+        }
+      }
+
+      // 4. Block Banned Properties in Destructuring (const { exit } = obj)
+      if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
+        const propertyName = node.propertyName ? (ts.isIdentifier(node.propertyName) ? node.propertyName.text : "") : node.name.text;
+        if (propertyName && bannedProperties.indexOf(propertyName) !== -1) {
+          report(node, `Unauthorized destructuring of property '${propertyName}'`);
+        }
+      }
+
+      // 5. Block Meta-Programming & Introspection Nodes
+      if (ts.isComputedPropertyName(node)) {
+        if (!policy.allowComputedProperties && !ts.isStringLiteral(node.expression) && !ts.isNumericLiteral(node.expression)) {
+          report(node, `Dynamic computed property names are forbidden`);
+        }
+      }
+      if (ts.isDecorator(node)) {
+        report(node, `Decorators are forbidden`);
+      }
+      if (ts.isTaggedTemplateExpression(node)) {
+        report(node, `Tagged template expressions are forbidden`);
+      }
+      if (ts.isMetaProperty(node)) {
+        report(node, `Meta properties are forbidden`);
+      }
+      if (ts.isPrivateIdentifier(node)) {
+        report(node, `Private identifiers are forbidden`);
+      }
+
+      // 6. Block Module Loading
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
+        const arg = node.arguments[0];
+        if (arg && ts.isStringLiteral(arg)) {
+          if (allowedModules.indexOf(arg.text) === -1) {
+            report(node, `Module '${arg.text}' is not on the allow-list`);
+          }
+        } else {
+          report(node, `Dynamic require is forbidden`);
+        }
+      }
+      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+        if (allowedModules.indexOf(node.moduleSpecifier.text) === -1) {
+          report(node, `Import of module '${node.moduleSpecifier.text}' is forbidden`);
+        }
+      }
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        report(node, `Dynamic import() is forbidden`);
+      }
+
+      // 7. Residual Safety
+      if (ts.isDebuggerStatement(node)) {
+        report(node, `debugger statements are forbidden`);
+      }
+      if (ts.isDeleteExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        if (bannedProperties.indexOf(node.expression.name.text) !== -1) {
+           report(node.expression.name, `Unauthorized deletion of property '${node.expression.name.text}'`);
+        }
+      }
+
+      ts.forEachChild(node, checkNode);
+    };
+
+    checkNode(sourceFile);
   }
 
   /**
@@ -498,9 +954,22 @@ export default class Contract extends Standard {
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
-      resolve(true);
+      try {
+        // Security Scan
+        this.securityScan(
+          Buffer.from(
+            this.transactions.$i[this.identity.getName()].contract as string,
+            "base64"
+          ).toString(),
+          this.namespace
+        );
+        resolve(true);
+      } catch (e) {
+        reject(e.message);
+      }
+    } else {
+        return reject("Invalid Namespace");
     }
-    return reject("Invalid Namespace");
   }
 
   /**
@@ -587,9 +1056,22 @@ export default class Contract extends Standard {
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
-      resolve(true);
+      try {
+        // Security Scan
+        this.securityScan(
+          Buffer.from(
+            this.transactions.$i[this.identity.getName()].contract as string,
+            "base64"
+          ).toString(),
+          this.namespace
+        );
+        resolve(true);
+      } catch (e) {
+        reject(e.message);
+      }
+    } else {
+        return reject("Invalid Namespace");
     }
-    return reject("Invalid Namespace");
   }
 
   /**
