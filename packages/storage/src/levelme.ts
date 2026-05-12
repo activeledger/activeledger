@@ -9,6 +9,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 import { newLineTransform } from "./newlinestream";
 import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { IStorageDriver } from "./driver";
 import { RocksDBDriver } from "./drivers/rocksdb";
 import { LevelUpChain } from "levelup";
@@ -367,24 +368,24 @@ export class LevelMe {
               limit,
             });
             
-          stream.on("data", async (data: { key: string; value: any }) => {
-              // Filter out the "skipped" keys
-              if (options.skip) {
-                options.skip--;
-                return;
-              }
-              const doc = JSON.parse(data.value.toString());
+          stream.on("data", async (data: { key: string; value: Buffer }) => {
+            // Filter out the "skipped" keys
+            if (options.skip) {
+              options.skip--;
+              return;
+            }
+            const doc = ActiveClone.deserialize(data.value) as any;
 
-              if (options.include_docs) {
-                rows.push(doc);
-              } else {
-                rows.push({
-                  _id: doc._id, // Compatibility Trick
-                  id: doc._id,
-                  key: doc._id,
-                });
-              }
-            })
+            if (options.include_docs) {
+              rows.push(doc);
+            } else {
+              rows.push({
+                _id: doc._id, // Compatibility Trick
+                id: doc._id,
+                key: doc._id,
+              });
+            }
+          })
             .on("error", (err: unknown) => {
               stream.destroy();
               reject(err);
@@ -415,14 +416,14 @@ export class LevelMe {
       if (!this.cache.has(key)) {
         await this.open();
         // Allow errors to bubble up?
-        const doc = JSON.parse(await this.driver.get(LevelMe.DOC_PREFIX + key));
+        const doc = ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
         this.cache.set(key, doc);
       }
       return this.cache.get(key, 30000);
     } else {
       await this.open();
       // Allow errors to bubble up?
-      let doc = JSON.parse(await this.driver.get(LevelMe.DOC_PREFIX + key));
+      let doc = ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
       if (raw) {
         return doc
       }
@@ -448,7 +449,7 @@ export class LevelMe {
         const result = await this.driver.getMany(tmpKeys);
         // Loop and cache
         for (let i = result.length; i--;) {
-          const data = JSON.parse(result[i]);
+          const data = ActiveClone.deserialize(result[i]) as any;
           this.cache.set(data._id, data);
           cached.push(data);
         }
@@ -464,7 +465,7 @@ export class LevelMe {
       const result = await this.driver.getMany(tmpKeys);
 
       // Loop and parse
-      return result.map(data => JSON.parse(data));
+      return result.map(data => ActiveClone.deserialize(data) as any);
     }
   }
 
@@ -531,7 +532,7 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.driver.put(LevelMe.DOC_PREFIX + key, value);
+    return this.driver.put(LevelMe.DOC_PREFIX + key, ActiveClone.serialize(value));
   }
 
   /**
@@ -663,7 +664,7 @@ export class LevelMe {
     // Does Document eixst?
     try {
       // Document exists, handle update
-      const currentDocRoot = JSON.parse(
+      const currentDocRoot = ActiveClone.deserialize(
         await this.driver.get(LevelMe.DOC_PREFIX + doc._id)
       ) as schema;
 
@@ -688,7 +689,7 @@ export class LevelMe {
 
       if (newRev) {
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, ActiveClone.serialize(doc));
       }
 
     } catch (error) {
@@ -700,7 +701,7 @@ export class LevelMe {
           newRev = `1-${md5}`;
         }
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, ActiveClone.serialize(doc));
       } else {
         // Re-throw other errors (like revision mismatch)
         throw error;
@@ -761,8 +762,8 @@ export class LevelMe {
       // Read / Search the database as a stream
       this.driver
         .createReadStream(filter)
-        .on("data", async (data: { key: string; value: any }) => {
-          const doc = JSON.parse(data.value.toString());
+        .on("data", async (data: { key: string; value: Buffer }) => {
+          const doc = ActiveClone.deserialize(data.value) as any;
           // Get sequence from keyname
           const seq = parseInt(
             data.key.toString().replace(LevelMe.SEQ_PREFIX, "")

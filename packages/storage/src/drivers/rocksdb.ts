@@ -11,12 +11,14 @@ export class RocksDBDriver implements IStorageDriver {
     mkdirSync(location, { recursive: true });
   }
 
-  public async get(key: string): Promise<string> {
-    return (await this.db.get(key));
+  public async get(key: string): Promise<Buffer> {
+    const val = await this.db.get(key);
+    return Buffer.isBuffer(val) ? val : Buffer.from(val);
   }
 
-  public async getMany(keys: string[]): Promise<string[]> {
-    return await this.db.getMany(keys);
+  public async getMany(keys: string[]): Promise<Buffer[]> {
+    const vals = await this.db.getMany(keys);
+    return vals.map((v: any) => Buffer.isBuffer(v) ? v : Buffer.from(v));
   }
 
   public async put(key: string, value: any): Promise<void> {
@@ -44,7 +46,8 @@ export class RocksDBDriver implements IStorageDriver {
         try {
           const entry = await iterator.next();
           if (entry) {
-            this.push({ key: entry[0], value: entry[1] });
+            const val = entry[1];
+            this.push({ key: entry[0], value: Buffer.isBuffer(val) ? val : Buffer.from(val) });
           } else {
             this.push(null);
             await iterator.close();
@@ -73,7 +76,7 @@ export class RocksDBDriver implements IStorageDriver {
     if (this.db?.status !== 'open' && !this.opening) {
       this.opening = true;
       try {
-        this.db = new RocksLevel(this.location);
+        this.db = new RocksLevel(this.location, { valueEncoding: 'binary' });
         await this.db.open();
       } catch (e) {
         // If opening fails, ensure the DB instance is cleared so it doesn't hold resources/locks
