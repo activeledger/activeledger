@@ -381,7 +381,14 @@ export class Process extends EventEmitter {
     return padSorting(a).localeCompare(padSorting(b));
   }
 
-  private contractPathCache: {
+  /**
+   * Cache for contract paths to avoid repeated filesystem lookups
+   *
+   * @private
+   * @static
+   * @type {{ [index: string]: string }}
+   */
+  private static contractPathCache: {
     [index: string]: string;
   } = {};
 
@@ -419,7 +426,7 @@ export class Process extends EventEmitter {
 
       try {
         // This Cache won't always fetch latest version need to "defeat it"
-        if (!this.contractPathCache[this.entry.$tx.$contract]) {
+        if (!Process.contractPathCache[this.entry.$tx.$contract]) {
           let namespacePath = "";
 
           try { // Using sync for startup path check is acceptable
@@ -488,12 +495,12 @@ export class Process extends EventEmitter {
           // used in the transaction
           // This needs to be here rather than where trueConrtractPath is as
           // we need the contract ID at that point to look up the latest version
-          this.contractPathCache[this.entry.$tx.$contract] = await fs.realpath(
+          Process.contractPathCache[this.entry.$tx.$contract] = await fs.realpath(
             `${namespacePath}/${contract}.js`
           );
         }
         this.contractLocation =
-          this.contractPathCache[this.entry.$tx.$contract];
+          Process.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
         throw e;
       }
