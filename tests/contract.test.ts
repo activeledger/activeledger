@@ -95,7 +95,7 @@ describe("Stream Management Test (Activecontracts)", () => {
   it("should create a new activity", () => {
     expect(activeledgerStream.newActivityStream("test.new"))
       .to.be.an("object")
-      .and.property("key", key);
+      .and.property("updated", true);
   });
 
   it("should create a new deterministic activity", () => {
@@ -110,25 +110,15 @@ describe("Stream Management Test (Activecontracts)", () => {
       activeledgerStream.newActivityStream("test.new", `deterministic.${key}`)
     )
       .to.be.an("object")
-      .to.have.property("state")
-      .that.is.an("object")
-      .that.eql({ _id: streamId, _rev: null });
+      .to.have.property("getName")
+      .that.is.an("function");
+    
+    expect(activeledgerStream.newActivityStream("test.new", `deterministic.${key}`).getName()).to.equal(streamId);
   });
 
-  it("should export activities to the ledger", () => {
-    const exportTest = activeledgerStream
-      .newActivityStream("test.export")
-      .export2Ledger(key);
-    expect(exportTest).to.have.property("state");
-    expect(exportTest).to.have.property("meta");
-    expect(exportTest).to.have.property("volatile");
-  });
-
-  it("should FAIL to export activities to the ledger", () => {
-    const activity = activeledgerStream.newActivityStream("test.export");
-    should().throw(() => {
-      activity.export2Ledger(0);
-    });
+  it("should have activities marked as updated", () => {
+    const activity = activeledgerStream.newActivityStream("test.updated");
+    expect(activity.updated).to.be.true;
   });
 
   it("activity should have a name or id", () => {

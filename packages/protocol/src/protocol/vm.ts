@@ -24,8 +24,8 @@
 import * as events from "events";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { Activity } from "@activeledger/activecontracts";
-import { EventEngine } from "@activeledger/activequery";
+import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
+import { QueryEngine, EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 //import { NodeVM, VMScript } from "@activeledger/vm2";
@@ -39,7 +39,6 @@ import {
 } from "./interfaces/vm.interface";
 import { createInterface } from "readline";
 //import { ContractControl } from "./vmscript";
-import * as scController from "./vmscript";
 
 /**
  * Contract Virtual Machine Controller
@@ -50,6 +49,21 @@ import * as scController from "./vmscript";
 export class VirtualMachine
   extends events.EventEmitter
   implements IVirtualMachine {
+  /**
+   * Cache of initialised smart contracts
+   *
+   * @private
+   * @type {IVMInternalCache}
+   */
+  private smartContracts: { [umid: string]: any } = {};
+
+  /**
+   * Caches the constructable contract
+   *
+   * @private
+   */
+  private contracts: { [location: string]: any } = {};
+
   /**
    * Virtual Machine Object
    *
@@ -78,9 +92,9 @@ export class VirtualMachine
    * Holds the event engine
    *
    * @private
-   * @type {EventEngine}
+   * @type {{ [umid: string]: EventEngine }}
    */
-  private event: EventEngine;
+  private events: { [umid: string]: EventEngine } = {};
 
   /**
    * Holds the event emitter
@@ -135,7 +149,6 @@ export class VirtualMachine
     // start all stream fetching
     this.listenForFetch();
     // Directly assign the script controller instance
-    this.virtualInstance = (scController as any).default;
   }
 
   /**
@@ -160,12 +173,14 @@ export class VirtualMachine
     // Fetch Activities and prepare to check
     let activities: {
       [reference: string]: Activity;
-    } = this.virtualInstance.getActivityStreams(umid);
+    } = this.smartContracts[umid].getActivityStreams();
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
-    let contractData: ActiveDefinitions.IContractData;
-    contractData = this.virtualInstance.getContractData(umid);
+    let contractData: ActiveDefinitions.IContractData | undefined;
+    if (this.smartContracts[umid].updatedContractData) {
+      contractData = this.smartContracts[umid].exportContractData();
+    }
 
     // The exported streams with changes
     let exported: ActiveDefinitions.LedgerStream[] = [];
@@ -177,19 +192,8 @@ export class VirtualMachine
     // Loop each stream and find the marked ones
     while (i--) {
       if (activities[streams[i]].updated) {
-
-        // TODO why is this umid now failing?
-
-        // exported.push(
-        //   activities[streams[i]].export2Ledger(
-        //     this.contractReferences[umid].key
-        //   )
-        // );
-
         // Activities have it referenced now
         const stream: any = {
-          //@ts-ignore
-          //meta: activities[streams[i]].meta,
           //@ts-ignore
           state: activities[streams[i]].state
         }
@@ -205,8 +209,6 @@ export class VirtualMachine
         }
 
         exported.push(stream)
-
-        // Have we loaded in a volatile to return
       }
     }
 
@@ -222,7 +224,10 @@ export class VirtualMachine
   public getNewContractData(
     umid: string
   ): boolean {
-    return this.virtualInstance.getContractData(umid);
+    if (this.smartContracts[umid].updatedContractData) {
+      return this.smartContracts[umid].exportContractData();
+    }
+    return false;
   }
 
   /**
@@ -231,8 +236,19 @@ export class VirtualMachine
    * @param {string} umid
    */
   public destroy(umid: string): void {
-    // Clear inside VM
-    this.virtualInstance.destroy(umid);
+    try {
+      if (this.smartContracts[umid] && "shutdown" in this.smartContracts[umid]) {
+        ActiveLogger.info(`[AC] - Calling Shutdown - ${umid}`);
+        this.smartContracts[umid].shutdown!();
+      }
+      setTimeout(() => {
+        delete this.smartContracts[umid];
+        delete this.events[umid];
+      }, 5000);
+    } catch {
+      // Already deleted?
+    }
+    
     // Clear references here
     if (this.contractReferences && this.contractReferences[umid]) {
       delete this.contractReferences[umid];
@@ -245,7 +261,7 @@ export class VirtualMachine
    * @returns {any}
    */
   public getInternodeCommsFromVM(umid: string): any {
-    return this.virtualInstance.getInternodeComms(umid);
+    return this.smartContracts[umid].getThisInterNodeComms();
   }
 
   /**
@@ -254,7 +270,7 @@ export class VirtualMachine
    * @returns {boolean}
    */
   public clearingInternodeCommsFromVM(umid: string): boolean {
-    return this.virtualInstance.clearInternodeComms(umid);
+    return this.smartContracts[umid].getClearInterNodeComms();
   }
 
   /**
@@ -263,7 +279,7 @@ export class VirtualMachine
    * @returns {boolean}
    */
   public getReturnContractData(umid: string): unknown {
-    return this.virtualInstance.returnContractData(umid);
+    return this.smartContracts[umid].getReturnToRemote();
   }
 
   /**
@@ -272,7 +288,7 @@ export class VirtualMachine
    * @returns {any}
    */
   public getThrowsFromVM(umid: string): string[] {
-    return this.virtualInstance.throwFrom(umid);
+    return this.smartContracts[umid].throwTo;
   }
 
   /**
@@ -285,7 +301,7 @@ export class VirtualMachine
   }
 
   /**
-   * Dynamically import the contract. Currently object is created outside VM and set as a global
+   * Dynamically import the contract.
    *
    * @returns {Promise<void>}
    */
@@ -306,23 +322,53 @@ export class VirtualMachine
     };
 
     // Setup Event Engine
-    this.event = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
+    this.events[payload.umid] = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
 
     return Promise.resolve()
       .then(() => {
         // Initialise Contract into VM
-        this.virtualInstance.initialiseContract(
-          payload,
-          this.event,
-          this.emitter
-        );
+        const contractData = payload.contractData?.data ? payload.contractData : {};
+
+        // Fetch Contract Constructable 
+        if (!this.contracts[payload.contractLocation]) {
+          this.contracts[payload.contractLocation] = require(payload.contractLocation).default;
+        }
+
+        this.smartContracts[payload.umid] =
+          new this.contracts[payload.contractLocation](
+            payload.date,
+            payload.remoteAddress,
+            payload.umid,
+            payload.transaction,
+            payload.inputs,
+            payload.outputs,
+            payload.readonly,
+            contractData,
+            payload.signatures,
+            payload.key,
+            this.emitter,
+            this.selfHost
+          );
+
+        if ("setEvent" in this.smartContracts[payload.umid]) {
+          (this.smartContracts[payload.umid] as PostProcessQueryEvent).setEvent(
+            this.events[payload.umid]
+          );
+        }
+
+        if ("setQuery" in this.smartContracts[payload.umid]) {
+          (this.smartContracts[payload.umid] as PostProcessQueryEvent).setQuery(
+            new QueryEngine(this.db, true)
+          );
+        }
 
         // Set Sys Config for default namespace contracts
         if (payload.transaction.$namespace === "default") {
-          this.virtualInstance.setSysConfig(
-            payload.umid,
-            JSON.stringify(ActiveOptions.fetch(false))
-          );
+          if ("sysConfig" in this.smartContracts[payload.umid]) {
+            (this.smartContracts[payload.umid] as unknown as any).sysConfig(
+              JSON.parse(JSON.stringify(ActiveOptions.fetch(false)))
+            );
+          }
         }
 
         // Set the maximum timeout for this contract execution
@@ -347,25 +393,24 @@ export class VirtualMachine
    * @private
    * @param {string} phase
    */
-  private setPhase(phase: string) {
-    if (this.event) {
-      this.event.setPhase(phase);
+  private setPhase(phase: string, umid: string) {
+    if (this.events[umid]) {
+      this.events[umid].setPhase(phase);
     }
   }
 
   /**
-   * Contract transaction read methods
+   * Run an unknown contract read function
    *
-   * @param {ActiveDefinitions.INodes} nodes
    * @returns {Promise<boolean>}
    */
-  public read(umid: string, readMethod: string): Promise<unknown> {
+  public async read(umid: string, readMethod: string): Promise<unknown> {
     return new Promise(async (resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.setPhase("read");
+      this.setPhase("read", umid);
 
       // Manage Timeout
       this.checkTimeout(
@@ -378,7 +423,8 @@ export class VirtualMachine
 
       try {
         // Get Commit
-        resolve(await this.virtualInstance.runRead(umid, readMethod));
+        const read = (this.smartContracts[umid] as any)[readMethod]?.();
+        resolve(read ? read : false);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Read - Error`);
         if (error instanceof Error) {
@@ -405,7 +451,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.setPhase("verify");
+      this.setPhase("verify", umid);
 
       // Manage Timeout
       this.checkTimeout(
@@ -418,8 +464,8 @@ export class VirtualMachine
 
       try {
         // Run Verify Phase
-        await this.virtualInstance.runVerify(umid, sigless);
-        resolve(true);
+        const verify = this.smartContracts[umid].verify?.(sigless);
+        resolve(verify ? verify : true);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Verify - Error`);
         if (error instanceof Error) {
@@ -440,8 +486,8 @@ export class VirtualMachine
    *
    * @returns {boolean}
    */
-  public vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean> {
-    return new Promise<boolean>(async (resolve, reject) => {
+  public vote(nodes: ActiveDefinitions.INodes, umid: string): Promise<boolean | { leader: boolean }> {
+    return new Promise<boolean | { leader: boolean }>(async (resolve, reject) => {
       // Manage INC
       this.incMarshel(nodes, umid);
 
@@ -449,7 +495,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.setPhase("vote");
+      this.setPhase("vote", umid);
 
       // Manage Timeout
       this.checkTimeout(
@@ -462,7 +508,7 @@ export class VirtualMachine
 
       try {
         // Run Vote Phase
-        resolve(await this.virtualInstance.runVote(umid));
+        resolve(await this.smartContracts[umid].vote());
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Vote - Error`);
         if (error instanceof Error) {
@@ -498,7 +544,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.setPhase("commit");
+      this.setPhase("commit", umid);
 
       // Manage Timeout
       this.checkTimeout(
@@ -511,7 +557,7 @@ export class VirtualMachine
 
       try {
         // Get Commit
-        await this.virtualInstance.runCommit(umid, possibleTerritoriality);
+        await this.smartContracts[umid].commit(possibleTerritoriality);
         // Here we may update the database from the objects (commit should return)
         // Or just manipulate / check the outputs
         resolve(true);
@@ -534,12 +580,12 @@ export class VirtualMachine
    * Contract given the opportunity to reconcile itself when node voted no but network confimed
    *
    * @param {ActiveDefinitions.INodes} nodes
-   * @returns {Promise<boolean>}
+   * @returns {Promise<any>}
    */
   public reconcile(
     nodes: ActiveDefinitions.INodes,
     umid: string
-  ): Promise<boolean> {
+  ): Promise<any> {
     return new Promise(async (resolve, reject) => {
       try {
         // Manage INC
@@ -549,8 +595,7 @@ export class VirtualMachine
         this.scriptFinishedExec = false;
 
         // Upgrade Phase
-        this.setPhase("reconcile");
-
+        this.setPhase("reconcile", umid);
         // Manage Timeout
         this.checkTimeout(
           "reconcile",
@@ -561,10 +606,14 @@ export class VirtualMachine
         );
 
         // Get Commit
-        await this.virtualInstance.reconcile(umid);
+        let result: any = Promise.resolve();
+        if (this.smartContracts[umid].reconcile) {
+          result = this.smartContracts[umid].reconcile!();
+        }
+        
         // Here we may update the database from the objects (commit should return)
         // Or just manipulate / check the outputs
-        resolve(true);
+        resolve(await result);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Reconcile - Error`);
         if (error instanceof Error) {
@@ -598,7 +647,7 @@ export class VirtualMachine
       this.scriptFinishedExec = false;
 
       // Upgrade Phase
-      this.setPhase("post");
+      this.setPhase("post", umid);
 
       // Manage Timeout
       this.checkTimeout(
@@ -611,22 +660,24 @@ export class VirtualMachine
 
       try {
         // Run Post Process
-        const postProcess: any = this.virtualInstance.postProcess(
-          umid,
-          territoriality,
-          who
-        );
-        // Do something with the returned value
-        // Maybe resolve with the data
-
+        let result: any = Promise.resolve();
+        if ("postProcess" in this.smartContracts[umid]) {
+          result = (this.smartContracts[umid] as PostProcessQueryEvent).postProcess(
+            territoriality,
+            who
+          );
+        }
+        
         // Reload Configuration Required?
         if (this.contractReferences[umid].tx.$namespace == "default") {
-          if (this.virtualInstance.reloadSysConfig(umid)) {
-            ActiveLogger.info("Reloading Configuration Request");
-            this.emit("reload");
+          if ("sysConfig" in this.smartContracts[umid]) {
+            if ((this.smartContracts[umid] as any).configReload()) {
+              ActiveLogger.info("Reloading Configuration Request");
+              this.emit("reload");
+            }
           }
         }
-        resolve(postProcess);
+        resolve(await result);
       } catch (error) {
         if (error instanceof Error) {
           // Exception
@@ -668,10 +719,9 @@ export class VirtualMachine
 
         // Any Comms to send into VM (Alternative parse directly as JSON)
         if (sendComms) {
-          return this.virtualInstance.setInternodeComms(
-            umid,
-            comms,
-            this.contractReferences[umid].key
+          return this.smartContracts[umid].setInterNodeComms(
+            this.contractReferences[umid].key,
+            comms
           );
         }
       }
@@ -746,7 +796,7 @@ export class VirtualMachine
    */
   private hasBeenExtended(umid: string): boolean {
     // Fetch new time out request from the contract
-    let timeoutRequestTime = this.virtualInstance.getTimeout(umid);
+    let timeoutRequestTime = this.smartContracts[umid].getTimeout();
 
     // Did we get a return value to work on?
     if (timeoutRequestTime) {
