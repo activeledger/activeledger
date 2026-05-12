@@ -973,7 +973,7 @@ export class Process extends EventEmitter {
 
       // All previous rounds successful continue processing
       if (continueProcessing) {
-        ActiveLogger.info(`Vote phase successful for ${payload.umid}`);
+        //ActiveLogger.info(`Vote phase successful for ${payload.umid}`);
         // Update Vote Entry
         this.nodeResponse.vote = true;
         this.nodeResponse.early = false;
@@ -1351,9 +1351,9 @@ export class Process extends EventEmitter {
         : ActiveOptions.get<any>("consensus", {}).reached;
 
       const reached = (this.currentTrueVotes / Process.networkNodeLength) * 100 >= percent;
-      if (reached) {
-        ActiveLogger.info(`Consensus reached (${this.currentTrueVotes}/${Process.networkNodeLength} votes) for ${this.entry.$umid}`);
-      }
+      // if (reached) {
+      //   ActiveLogger.info(`Consensus reached (${this.currentTrueVotes}/${Process.networkNodeLength} votes) for ${this.entry.$umid}`);
+      // }
       return reached;
     } else {
       return false;
@@ -1372,7 +1372,7 @@ export class Process extends EventEmitter {
     virtualMachine: IVirtualMachine,
     earlyCommit?: Function
   ): Promise<void> {
-    ActiveLogger.info(`Entering commit() for ${this.entry.$umid}, nodeResponse.commit: ${this.nodeResponse.commit}, isCommiting: ${this.isCommiting()}`);
+    //ActiveLogger.info(`Entering commit() for ${this.entry.$umid}, nodeResponse.commit: ${this.nodeResponse.commit}, isCommiting: ${this.isCommiting()}`);
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
@@ -1383,7 +1383,7 @@ export class Process extends EventEmitter {
       ) {
         // Consensus reached commit phase
         this.commiting = true;
-        ActiveLogger.info(`Commit proceeding for ${this.entry.$umid}`);
+        //ActiveLogger.info(`Commit proceeding for ${this.entry.$umid}`);
 
         // Make sure broadcast timeout is cleared
         clearTimeout(this.broadcastTimeout);

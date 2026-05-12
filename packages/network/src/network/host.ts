@@ -266,7 +266,7 @@ export class Host extends Home {
             //here needs to output inbound
             ActiveLogger.debug(
               //this.processPending[entry.$umid],
-              entry,
+              //entry,
               "Broadcast Recieved : " + entry.$umid
             );
             // Find Processor to send in the broadcast message
@@ -2038,20 +2038,7 @@ export class Host extends Home {
             }
             break;
           case "/a/stream": // Stream Data Management (Activerestore)
-            //if (this.firewallCheck(requester, req)) {
             response = Endpoints.streams(this.dbConnection, body);
-            //} else {
-            //  return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
-            // }
-
-            // Check Locks
-            // Wait, then check again
-            // loop this maybe?
-            // Then send response if unlocked (but what if a transaction locks it between timer?)
-            // maybe have an event that triggers it on unlock
-            // then need to return an error within time. (and deal with that in SPI)
-
-            // m,oving to postprocess will it unlock it quicker??
             break;
           default:
             return this.writeResponse(res, 404, "Not Found", gzipAccepted);
