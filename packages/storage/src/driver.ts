@@ -8,7 +8,7 @@ export interface IStorageDriver {
   getMany(keys: string[]): Promise<string[]>;
   put(key: string, value: any): Promise<void>;
   del(key: string): Promise<void>;
-  batch(): LevelUpChain<any, any>;
+  batch(): Promise<LevelUpChain<any, any>>;
   createReadStream(options: any): any;
   createValueStream(): any;
   isOpen(): boolean;

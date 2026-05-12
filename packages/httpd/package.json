@@ -44,6 +44,6 @@
   "dependencies": {
     "@activeledger/activelogger": "^2.14.6",
     "@activeledger/activeutilities": "^2.15.5",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.56.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   }
 }

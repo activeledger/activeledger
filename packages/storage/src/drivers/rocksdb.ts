@@ -1,11 +1,14 @@
 import { IStorageDriver } from "../driver";
+import { LevelUpChain } from "levelup";
+import { mkdirSync } from "fs";
 const { RocksLevel } = require("@nxtedition/rocksdb");
 
 export class RocksDBDriver implements IStorageDriver {
-  private db: any;
+  private db: any = null;
+  private opening: boolean = false;
 
-  constructor(location: string, provider: string) {
-    this.db = new RocksLevel(location);
+  constructor(private location: string, provider: string) {
+    mkdirSync(location, { recursive: true });
   }
 
   public async get(key: string): Promise<string> {
@@ -24,14 +27,17 @@ export class RocksDBDriver implements IStorageDriver {
     await this.db.del(key);
   }
 
-  public batch(): any {
+  public async batch(): Promise<LevelUpChain<any, any>> {
+    if (this.db.status !== 'open') {
+        await this.open();
+    }
     return this.db.batch();
   }
 
   public createReadStream(options: any): any {
     const iterator = this.db.iterator(options);
     const { Readable } = require("stream");
-    
+
     return new Readable({
       objectMode: true,
       async read() {
@@ -60,12 +66,22 @@ export class RocksDBDriver implements IStorageDriver {
   }
 
   public isOpen(): boolean {
-    return this.db.status === 'open';
+    return this.db?.status === 'open';
   }
 
   public async open(): Promise<void> {
-    if (this.db.status !== 'open') {
-      await this.db.open();
+    if (this.db?.status !== 'open' && !this.opening) {
+      this.opening = true;
+      try {
+        this.db = new RocksLevel(this.location);
+        await this.db.open();
+      } catch (e) {
+        // If opening fails, ensure the DB instance is cleared so it doesn't hold resources/locks
+        this.db = null;
+        throw e;
+      } finally {
+        this.opening = false;
+      }
     }
   }
 

@@ -72,6 +72,7 @@ interface process {
   finished: boolean;
   responded: boolean;
   shutdown?: boolean;
+  broadcasting?:boolean;
 }
 
 /**
@@ -1235,6 +1236,11 @@ export class Host extends Home {
    * @param {string} umid
    */
   private broadcast(umid: string, early = false, noreply = false): void {
+    // Prevent duplicate broadcast loops
+    if (this.processPending[umid] && this.processPending[umid].broadcasting) {
+      return;
+    }
+
     // Final check object exists
     if (
       this.processPending[umid]?.entry &&
@@ -1246,6 +1252,7 @@ export class Host extends Home {
           "vote" in this.processPending[umid].entry.$nodes[this.reference])) // only return if there is a vote or early
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
+      this.processPending[umid].broadcasting = true;
       ActiveLogger.debug(`Broadcasting TX ($$NR ${noreply}) : ` + umid);
 
       // Get all the neighbour nodes
@@ -1307,9 +1314,11 @@ export class Host extends Home {
         // Listen for promises
         Promise.all(promises)
           .then(() => {
+            this.processPending[umid].broadcasting = false;
             // As it is bundled we don't get a response. We need to trigger rebroadcast
           })
           .catch(() => {
+            this.processPending[umid].broadcasting = false;
             // Keep broadcasting until promises fully resolve
             // Could be down nodes (So they can have 5 minute window to get back up)
             // Or connection issues. This doesn't stop commit phase as they will eventually call us.
