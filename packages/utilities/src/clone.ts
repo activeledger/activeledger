@@ -41,4 +41,39 @@ export class ActiveClone {
   public static clone<T>(obj: T): T {
     return deserialize(serialize(obj));
   }
+
+  /**
+   * Serialize an object to a buffer
+   *
+   * @static
+   * @template T
+   * @param {T} obj
+   * @returns {Buffer}
+   */
+  public static serialize<T>(obj: T): Buffer {
+    const buf = serialize(obj);
+    return buf;
+  }
+
+  /**
+   * Deserialize a buffer back to an object (with JSON fallback)
+   *
+   * @static
+   * @template T
+   * @param {Buffer} buffer
+   * @returns {T}
+   */
+   public static deserialize<T>(buffer: Buffer): T {    const isBuffer = Buffer.isBuffer(buffer);
+    const isV8 = isBuffer && buffer.length > 0 && buffer[0] === 255;
+    
+    if (isV8) {
+      try {
+        return deserialize(buffer);
+      } catch (err) {
+        throw err;
+      }
+    }
+    // Assume JSON
+    return JSON.parse(buffer.toString());
+  }
 }
