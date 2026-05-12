@@ -560,6 +560,10 @@ export class ActiveHttpd {
       res.writeHeader("Access-Control-Allow-Origin", "*");
       res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
       res.writeHeader("Access-Control-Allow-Headers", "*");
+      res.writeHeader("X-Content-Type-Options", "nosniff");
+      res.writeHeader("X-Frame-Options", "DENY");
+      res.writeHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+      res.writeHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none';");
 
       for (const header in headers) {
         res.writeHeader(header, headers[header]);

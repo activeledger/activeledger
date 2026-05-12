@@ -30,6 +30,7 @@ import {
   ActiveOptions,
   ActiveGZip,
   ActiveRequest,
+  ActiveClone,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -1269,18 +1270,15 @@ export class Host extends Home {
         });
 
       // We need a proper copy to modify that way we still keep the original in memory for the tx
-      // const data = JSON.parse(
-      //   JSON.stringify(this.processPending[umid].entry || {})
-      // );
-      // if (!early) {
-      //   data.$nodes = {
-      //     [this.reference]:
-      //       this.processPending[umid].entry.$nodes[this.reference],
-      //   };
-      // } else {
-      //   data.$nodes = {};
-      // }
-      // Above will rarely change we should find a way to cache it
+      const data = ActiveClone.clone(this.processPending[umid].entry);
+      if (!early) {
+        data.$nodes = {
+          [this.reference]:
+            this.processPending[umid].entry.$nodes[this.reference],
+        };
+      } else {
+        data.$nodes = {};
+      }
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
@@ -2133,6 +2131,10 @@ export class Host extends Home {
     res.cork(() => {
       res.writeStatus(`${statusCode}`);
       res.writeHeader("Access-Control-Allow-Origin", "*");
+      res.writeHeader("X-Content-Type-Options", "nosniff");
+      res.writeHeader("X-Frame-Options", "DENY");
+      res.writeHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+      res.writeHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none';");
 
       if (cors) {
         res.writeHeader("Access-Control-Allow-Methods", "GET, POST");

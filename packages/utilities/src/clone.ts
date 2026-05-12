@@ -21,18 +21,24 @@
  * SOFTWARE.
  */
 
-import { ActiveGZip, ActiveRequest, ActiveClone } from "@activeledger/activeutilities";
-import { ActiveOptions } from "./options";
-import { ActiveChanges } from "./changes";
-import { ActiveDSConnect } from "./dsconnect";
-import { ActiveCache, ActiveCacheManager } from "./cache";
-export {
-  ActiveDSConnect,
-  ActiveOptions,
-  ActiveRequest,
-  ActiveChanges,
-  ActiveGZip,
-  ActiveClone,
-  ActiveCacheManager,
-  ActiveCache
-};
+import { serialize, deserialize } from "v8";
+
+/**
+ * High performance deep cloning using V8 serialization
+ *
+ * @export
+ * @class ActiveClone
+ */
+export class ActiveClone {
+  /**
+   * Deep clone an object
+   *
+   * @static
+   * @template T
+   * @param {T} obj
+   * @returns {T}
+   */
+  public static clone<T>(obj: T): T {
+    return deserialize(serialize(obj));
+  }
+}
