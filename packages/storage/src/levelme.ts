@@ -130,10 +130,12 @@ export class LevelMe {
 
   private cache: ActiveCache;
 
+  private openingPromise: Promise<void> | null = null;
+
   constructor(location: string, private name: string, provider: string) {
     this.driver = new RocksDBDriver(location + name, provider);
     if (ENABLE_CACHE) {
-      this.cache = ActiveCacheManager.fetch("streams", 30000);
+      this.cache = ActiveCacheManager.fetch(`streams:${this.name}`, 30000);
     }
   }
 
@@ -161,14 +163,22 @@ export class LevelMe {
    *
    * @private
    */
-  private async open() {
+  private async open(): Promise<void> {
+    if (this.openingPromise) {
+      return this.openingPromise;
+    }
+
     if (!this.driver.isOpen()) {
-      try {
-        await this.driver.open();
-      } catch (e) {
-        console.error("LevelMe.open() FAILED:", e);
-        throw e;
-      }
+      this.openingPromise = (async () => {
+        try {
+          await this.driver.open();
+        } catch (e) {
+          throw e;
+        } finally {
+          this.openingPromise = null;
+        }
+      })();
+      return this.openingPromise;
     }
   }
 
@@ -201,8 +211,8 @@ export class LevelMe {
    * Close the underlying leveldb connction
    *
    */
-  public close() {
-    this.driver.close();
+  public async close() {
+    await this.driver.close();
   }
 
   /**
@@ -348,15 +358,16 @@ export class LevelMe {
           }
 
           // Read / Search the database as a stream
-          this.driver
+          const stream = this.driver
             .createReadStream({
               gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
               lt: options.endkey
                 ? LevelMe.DOC_PREFIX + options.endkey
                 : LevelMe.META_PREFIX,
               limit,
-            })
-            .on("data", async (data: { key: string; value: any }) => {
+            });
+            
+          stream.on("data", async (data: { key: string; value: any }) => {
               // Filter out the "skipped" keys
               if (options.skip) {
                 options.skip--;
@@ -375,13 +386,11 @@ export class LevelMe {
               }
             })
             .on("error", (err: unknown) => {
+              stream.destroy();
               reject(err);
             })
             .on("close", () => { })
             .on("end", async () => {
-              if (options.include_docs) {
-                // The rows are already the full documents
-              }
               resolve({
                 total_rows: rows.length,
                 offset,
@@ -502,7 +511,7 @@ export class LevelMe {
    * @returns
    */
   public async post(doc: document) {
-    const writer = await this.prepareForWrite(doc, this.driver.batch());
+    const writer = await this.prepareForWrite(doc, await this.driver.batch());
     try {
       await writer.chain.write();
       if (ENABLE_CACHE) {

@@ -246,6 +246,8 @@ export class ActiveHttpd {
       }
     });
 
+    // Note: uWebSockets.js uses SO_REUSEPORT by default, which allows multiple instances
+    // to bind to the same port. Instance locking is handled externally.
     this.server.listen(port, (token: us_listen_socket) => {
       this.listenSocket = token;
     });

@@ -22,12 +22,13 @@
  */
 import * as http from "http";
 import * as path from "path";
-import { promises as fs } from "fs";
+import { promises as fsPromises, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { randomUUID } from "crypto";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
+import { ActiveLogger } from "@activeledger/activelogger";
 import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 (function () {
@@ -55,10 +56,23 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
    *
    * @param {ActiveHttpd} httpd host
    */
-  const terminate = (host: ActiveHttpd) => {
+  const terminate = async (host: ActiveHttpd) => {
     if (!isShuttingDown) {
       isShuttingDown = true;
       host.shutdown();
+      
+      // Close all databases
+      const dbNames = Object.keys(dbCache);
+      for (const name of dbNames) {
+        try {
+          await dbCache[name].close();
+          ActiveLogger.info(`Closed database: ${name}`);
+        } catch (err) {
+          ActiveLogger.error(`Error closing database ${name}:`, err);
+        }
+      }
+      unlinkSync(lockFile);
+      process.exit(0);
     }
   }
 
@@ -74,7 +88,12 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       throw new Error(`invalid database - ${name}`);
     }
     if (!dbCache[name]) {
-      dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+      try {
+        dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+      } catch (err) {
+        throw err;
+      }
+    } else {
     }
     return dbCache[name];
   };
@@ -115,6 +134,30 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 
   // Index
+  const lockFile = "./.activeledger-db-lock.pid";
+
+  // Check for lock file
+  try {
+    const pid = readFileSync(lockFile, "utf8");
+    process.kill(parseInt(pid), 0);
+    ActiveLogger.fatal("Instance already running");
+    process.exit(1);
+  } catch (err) {
+    // No lock file or process not running
+  }
+
+  // Write lock file
+  writeFileSync(lockFile, process.pid.toString());
+
+  // Ensure lock file removed on exit
+  // process.on("exit", () => {
+  //   try {
+  //     unlinkSync(lockFile);
+  //   } catch (err) {
+  //     // Ignore
+  //   }
+  // });
+
   http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
@@ -131,10 +174,10 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // List all databases
   http.use("_all_dbs", "GET", async () => {
     // Check to see if it is a directory and not a special directory
-    const files = await fs.readdir(DIR_PREFIX);
+    const files = await fsPromises.readdir(DIR_PREFIX);
     const dbs = [];
     for (const file of files) {
-      const stat = await fs.lstat(DIR_PREFIX + file);
+      const stat = await fsPromises.lstat(DIR_PREFIX + file);
       if (stat.isDirectory() && file !== process.argv[2] && file !== "pouch__all_dbs__" && file !== "_replicator" && !file.includes("-mrview-")) {
         dbs.push(file);
       }
@@ -152,9 +195,9 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
     // Now add data_size
     info.data_size = 0;
-    const files = await fs.readdir(DIR_PREFIX + incoming.url[0]);
+    const files = await fsPromises.readdir(DIR_PREFIX + incoming.url[0]);
     for (const source of files) {
-      const stat = await fs.stat(DIR_PREFIX + incoming.url[0] + "/" + source);
+      const stat = await fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source);
       info.data_size += stat.size;
     }
     return info;
@@ -173,11 +216,11 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // Delete Database Local Var
   const deleteDb = async (dir: string) => {
     // Read all files and delete
-    const files = await fs.readdir(dir);
-    await Promise.all(files.map(source => fs.unlink(dir + "/" + source)));
+    const files = await fsPromises.readdir(dir);
+    await Promise.all(files.map(source => fsPromises.unlink(dir + "/" + source)));
 
     // Delete the folder
-    await fs.rmdir(dir);
+    await fsPromises.rmdir(dir);
   };
 
   // Delete Database
@@ -187,7 +230,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
     // Check Folder
     try {
-      await fs.access(dir);
+      await fsPromises.access(dir);
     } catch {
       // Directory doesn't exist, so we're good.
       return { ok: true };
@@ -841,11 +884,11 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
 
     try {
-      await fs.access(file);
-      const data = await fs.readFile(file);
+      await fsPromises.access(file);
+      const data = await fsPromises.readFile(file);
       const response = {
         mime: `${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"}`,
-        data,
+        data: data as Buffer,
       }
       fauxtonCache[file] = response;
       return response;
