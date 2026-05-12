@@ -5,13 +5,13 @@ import {
   writeFileSync,
   unlinkSync,
 } from "fs";
-import RocksDB from "rocksdb";
-import { LevelUp, default as levelup, LevelUpChain } from "levelup";
-import LevelDOWN from "leveldown";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
 import { newLineTransform } from "./newlinestream";
 import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
+import { IStorageDriver } from "./driver";
+import { RocksDBDriver } from "./drivers/rocksdb";
+import { LevelUpChain } from "levelup";
 
 /**
  * Generic Data Document
@@ -20,8 +20,8 @@ import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
  */
 interface document {
   _id: string;
-  _rev?: string;
-  [index: string]: unknown;
+  _rev?: string | null;
+  [key: string]: any;
 }
 
 /**
@@ -126,16 +126,12 @@ export class LevelMe {
    */
   private changeEmitter = new EventEmitter();
 
-  private levelUp: LevelUp;
+  private driver: IStorageDriver;
 
   private cache: ActiveCache;
 
   constructor(location: string, private name: string, provider: string) {
-    if (provider === "rocks") {
-      this.levelUp = levelup(RocksDB(location + name));
-    } else {
-      this.levelUp = levelup(LevelDOWN(location + name));
-    }
+    this.driver = new RocksDBDriver(location + name, provider);
     if (ENABLE_CACHE) {
       this.cache = ActiveCacheManager.fetch("streams", 30000);
     }
@@ -153,7 +149,8 @@ export class LevelMe {
    */
   private async levelUpGet<T>(document: string, defaultvalue: T) {
     try {
-      return (await this.levelUp.get(document)) as T;
+      await this.open();
+      return (await this.driver.get(document)) as unknown as T;
     } catch {
       return defaultvalue;
     }
@@ -165,8 +162,13 @@ export class LevelMe {
    * @private
    */
   private async open() {
-    if (!this.levelUp.isOpen()) {
-      await this.levelUp.open();
+    if (!this.driver.isOpen()) {
+      try {
+        await this.driver.open();
+      } catch (e) {
+        console.error("LevelMe.open() FAILED:", e);
+        throw e;
+      }
     }
   }
 
@@ -200,7 +202,7 @@ export class LevelMe {
    *
    */
   public close() {
-    this.levelUp.close();
+    this.driver.close();
   }
 
   /**
@@ -263,7 +265,7 @@ export class LevelMe {
     writeFileSync(`${filename}.status`, filename);
     const writer = createWriteStream(filename);
 
-    this.levelUp
+    this.driver
       .createValueStream()
       .on("data", async (data: any) => {
         writer.write(data.toString() + "\n");
@@ -303,14 +305,14 @@ export class LevelMe {
 
   // public async restore() {
   //   await this.open();
-  //   this.levelUp
+  //   this.driver
   //     .createReadStream()
   //     .pipe(JSONStream.stringify("", "", ""))
   //     .pipe(createWriteStream("./backup.txt"));
 
   //   createReadStream("backup.txt")
   //     .pipe(JSONStream.parse())
-  //     .pipe(this.levelUp.createKeyStream);
+  //     .pipe(this.driver.createKeyStream);
   // }
 
   /**
@@ -346,7 +348,7 @@ export class LevelMe {
           }
 
           // Read / Search the database as a stream
-          this.levelUp
+          this.driver
             .createReadStream({
               gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
               lt: options.endkey
@@ -404,14 +406,14 @@ export class LevelMe {
       if (!this.cache.has(key)) {
         await this.open();
         // Allow errors to bubble up?
-        const doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+        const doc = JSON.parse(await this.driver.get(LevelMe.DOC_PREFIX + key));
         this.cache.set(key, doc);
       }
       return this.cache.get(key, 30000);
     } else {
       await this.open();
       // Allow errors to bubble up?
-      let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
+      let doc = JSON.parse(await this.driver.get(LevelMe.DOC_PREFIX + key));
       if (raw) {
         return doc
       }
@@ -434,7 +436,7 @@ export class LevelMe {
 
       // Get uncached keys
       if (tmpKeys.length) {
-        const result = await this.levelUp.getMany(tmpKeys);
+        const result = await this.driver.getMany(tmpKeys);
         // Loop and cache
         for (let i = result.length; i--;) {
           const data = JSON.parse(result[i]);
@@ -450,7 +452,7 @@ export class LevelMe {
       }
 
       // Get uncached keys
-      const result = await this.levelUp.getMany(tmpKeys);
+      const result = await this.driver.getMany(tmpKeys);
 
       // Loop and parse
       return result.map(data => JSON.parse(data));
@@ -464,7 +466,7 @@ export class LevelMe {
    * @returns
    */
   public async getSeq(seq: string) {
-    return this.levelUp.get(LevelMe.SEQ_PREFIX + seq);
+    return this.driver.get(LevelMe.SEQ_PREFIX + seq);
   }
 
   /**
@@ -478,18 +480,15 @@ export class LevelMe {
     return new Promise((resolve, reject) => {
       // No definition as of yet, So lets check it exists
       //@ts-ignore
-      if (this.levelUp.compactRange) {
+      if (this.driver.compactRange) {
         // We could range everything with null, null but only the sequence files create the mass storage
         // so as a performance trade off we will only compact across that range
 
         //@ts-ignore
-        this.levelUp.compactRange(
+        this.driver.compactRange(
           `${LevelMe.SEQ_PREFIX}0000000000000000`,
-          `${LevelMe.SEQ_PREFIX}9999999999999999`,
-          (args: unknown) => {
-            resolve(args);
-          }
-        );
+          `${LevelMe.SEQ_PREFIX}9999999999999999`
+        ).then(resolve).catch(reject);
       } else {
         reject("Compact Range not found");
       }
@@ -503,7 +502,7 @@ export class LevelMe {
    * @returns
    */
   public async post(doc: document) {
-    const writer = await this.prepareForWrite(doc, this.levelUp.batch());
+    const writer = await this.prepareForWrite(doc, this.driver.batch());
     try {
       await writer.chain.write();
       if (ENABLE_CACHE) {
@@ -523,7 +522,7 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.levelUp.put(LevelMe.DOC_PREFIX + key, value);
+    return this.driver.put(LevelMe.DOC_PREFIX + key, value);
   }
 
   /**
@@ -545,7 +544,7 @@ export class LevelMe {
    */
   public async del(key: string): Promise<void> {
     await this.open();
-    const batch = await this.levelUp.batch();
+    const batch = await this.driver.batch();
 
     // For now just delete the document key (not sequence)
     // _local_doc_count need to reduce count
@@ -566,7 +565,7 @@ export class LevelMe {
    */
   public async delSeq(keys: string[]): Promise<void> {
     await this.open();
-    const batch = await this.levelUp.batch();
+    const batch = await this.driver.batch();
 
     for (let i = keys.length; i--;) {
       batch.del(LevelMe.SEQ_PREFIX + keys[i]);
@@ -597,7 +596,7 @@ export class LevelMe {
     options: { new_edits: boolean; force_rev?: string }
   ): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
-    let batch = await this.levelUp.batch();
+    let batch = await this.driver.batch();
     const changes = [];
     for (let i = docs.length; i--;) {
       const writer = await this.prepareForWrite(docs[i], batch, options);
@@ -656,7 +655,7 @@ export class LevelMe {
     try {
       // Document exists, handle update
       const currentDocRoot = JSON.parse(
-        await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
+        await this.driver.get(LevelMe.DOC_PREFIX + doc._id)
       ) as schema;
 
       if (doc._rev !== currentDocRoot._rev && !options.new_edits) {
@@ -751,7 +750,7 @@ export class LevelMe {
       }
 
       // Read / Search the database as a stream
-      this.levelUp
+      this.driver
         .createReadStream(filter)
         .on("data", async (data: { key: string; value: any }) => {
           const doc = JSON.parse(data.value.toString());

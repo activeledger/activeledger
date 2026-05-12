@@ -38,24 +38,16 @@
     "@types/leveldown": "4.0.3",
     "@types/levelup": "5.1.1",
     "@types/node": "18.0.0",
-    "@types/rocksdb": "3.0.1",
     "copyfiles": "2.4.1",
     "typescript": "4.7.3"
   },
-  "files": [
-    "es",
-    "lib"
-  ],
-  "types": "./lib/index.d.ts",
-  "jsnext:main": "./es/index.js",
-  "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "^2.14.6",
     "@activeledger/activeoptions": "^2.15.7",
     "@activeledger/activeutilities": "^2.15.5",
     "@activeledger/httpd": "^2.15.5",
+    "@nxtedition/rocksdb": "^15.4.1",
     "leveldown": "6.1.1",
-    "levelup": "5.1.1",
-    "rocksdb": "5.2.1"
+    "levelup": "5.1.1"
   }
 }

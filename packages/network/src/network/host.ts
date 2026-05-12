@@ -1270,15 +1270,15 @@ export class Host extends Home {
         });
 
       // We need a proper copy to modify that way we still keep the original in memory for the tx
-      const data = ActiveClone.clone(this.processPending[umid].entry);
-      if (!early) {
-        data.$nodes = {
-          [this.reference]:
-            this.processPending[umid].entry.$nodes[this.reference],
-        };
-      } else {
-        data.$nodes = {};
-      }
+      // const data = ActiveClone.clone(this.processPending[umid].entry);
+      // if (!early) {
+      //   data.$nodes = {
+      //     [this.reference]:
+      //       this.processPending[umid].entry.$nodes[this.reference],
+      //   };
+      // } else {
+      //   data.$nodes = {};
+      // }
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {

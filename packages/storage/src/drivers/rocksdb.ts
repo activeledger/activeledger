@@ -1,0 +1,83 @@
+import { IStorageDriver } from "../driver";
+const { RocksLevel } = require("@nxtedition/rocksdb");
+
+export class RocksDBDriver implements IStorageDriver {
+  private db: any;
+
+  constructor(location: string, provider: string) {
+    this.db = new RocksLevel(location);
+  }
+
+  public async get(key: string): Promise<string> {
+    return (await this.db.get(key));
+  }
+
+  public async getMany(keys: string[]): Promise<string[]> {
+    return await this.db.getMany(keys);
+  }
+
+  public async put(key: string, value: any): Promise<void> {
+    await this.db.put(key, value);
+  }
+
+  public async del(key: string): Promise<void> {
+    await this.db.del(key);
+  }
+
+  public batch(): any {
+    return this.db.batch();
+  }
+
+  public createReadStream(options: any): any {
+    const iterator = this.db.iterator(options);
+    const { Readable } = require("stream");
+    
+    return new Readable({
+      objectMode: true,
+      async read() {
+        try {
+          const entry = await iterator.next();
+          if (entry) {
+            this.push({ key: entry[0], value: entry[1] });
+          } else {
+            this.push(null);
+            await iterator.close();
+          }
+        } catch (err) {
+          this.emit("error", err);
+          this.push(null);
+        }
+      },
+      async destroy(err: Error | null, callback: (error: Error | null) => void) {
+        await iterator.close();
+        callback(err);
+      }
+    });
+  }
+
+  public createValueStream(): any {
+    return this.db.values();
+  }
+
+  public isOpen(): boolean {
+    return this.db.status === 'open';
+  }
+
+  public async open(): Promise<void> {
+    if (this.db.status !== 'open') {
+      await this.db.open();
+    }
+  }
+
+  public async close(): Promise<void> {
+    await this.db.close();
+  }
+
+  public async compactRange(start: string, end: string): Promise<void> {
+    // RocksLevel now handles compaction internally or via properties; 
+    // for this driver we keep the API consistent.
+    if (typeof (this.db as any).compactRange === 'function') {
+        await (this.db as any).compactRange(start, end);
+    }
+  }
+}
