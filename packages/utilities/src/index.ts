@@ -23,4 +23,5 @@
 
 import { ActiveRequest } from "./request";
 import { ActiveGZip } from "./gzip";
-export { ActiveRequest, ActiveGZip };
+import { ActiveClone } from "./clone";
+export { ActiveRequest, ActiveGZip, ActiveClone };

@@ -22,7 +22,7 @@
  */
 
 import * as events from "events";
-import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect, ActiveClone } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
 import { QueryEngine, EventEngine } from "@activeledger/activequery";
@@ -366,7 +366,7 @@ export class VirtualMachine
         if (payload.transaction.$namespace === "default") {
           if ("sysConfig" in this.smartContracts[payload.umid]) {
             (this.smartContracts[payload.umid] as unknown as any).sysConfig(
-              JSON.parse(JSON.stringify(ActiveOptions.fetch(false)))
+              ActiveClone.clone(ActiveOptions.fetch(false))
             );
           }
         }
