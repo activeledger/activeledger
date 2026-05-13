@@ -1295,7 +1295,7 @@ export class Process extends EventEmitter {
       ActiveLogger.debug(
         `Sending -> ${this.right.reference} - ${this.entry.$umid}`
       );
-      return await this.right.knock("init", this.entry);
+      return await this.right.knock("init-legacy", this.entry);
     } catch (e) {
       // Manage E? (Should partly self manage if node goes down)
       if (retries <= 2) {
