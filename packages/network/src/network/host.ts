@@ -412,7 +412,7 @@ export class Host extends Home {
   constructor() {
     super();
 
-    if (ActiveOptions.get<boolean>("p2pStream", false)) {
+    if (ActiveOptions.get<boolean>("p2pStreamServer", false)) {
       // Start P2P TCP Server
       this.p2pServer = net.createServer((socket: net.Socket) => {
         ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
