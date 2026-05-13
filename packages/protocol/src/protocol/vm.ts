@@ -163,6 +163,21 @@ export class VirtualMachine
   }
 
   /**
+   * Safe accessor for smart contracts
+   *
+   * @private
+   * @param {string} umid
+   * @returns {*}
+   */
+  private getContract(umid: string): any {
+    if (!this.smartContracts[umid]) {
+        ActiveLogger.warn(`[AC] Contract ${umid} accessed but not found (already destroyed?)`);
+        return null;
+    }
+    return this.smartContracts[umid];
+  }
+
+  /**
    * Extract All changed streams
    *
    * @returns {{ [reference: string]: Activity }}
@@ -170,16 +185,19 @@ export class VirtualMachine
   public getActivityStreamsFromVM(
     umid: string
   ): ActiveDefinitions.LedgerStream[] {
+    const contract = this.getContract(umid);
+    if (!contract) return [];
+
     // Fetch Activities and prepare to check
     let activities: {
       [reference: string]: Activity;
-    } = this.smartContracts[umid].getActivityStreams();
+    } = contract.getActivityStreams();
     let streams: string[] = Object.keys(activities);
     let i = streams.length;
 
     let contractData: ActiveDefinitions.IContractData | undefined;
-    if (this.smartContracts[umid].updatedContractData) {
-      contractData = this.smartContracts[umid].exportContractData();
+    if (contract.updatedContractData) {
+      contractData = contract.exportContractData();
     }
 
     // The exported streams with changes
@@ -224,8 +242,9 @@ export class VirtualMachine
   public getNewContractData(
     umid: string
   ): boolean {
-    if (this.smartContracts[umid].updatedContractData) {
-      return this.smartContracts[umid].exportContractData();
+    const contract = this.getContract(umid);
+    if (contract && contract.updatedContractData) {
+      return contract.exportContractData();
     }
     return false;
   }
@@ -261,7 +280,7 @@ export class VirtualMachine
    * @returns {any}
    */
   public getInternodeCommsFromVM(umid: string): any {
-    return this.smartContracts[umid].getThisInterNodeComms();
+    const contract = this.getContract(umid); return contract ? contract.getThisInterNodeComms() : null;
   }
 
   /**
@@ -270,7 +289,7 @@ export class VirtualMachine
    * @returns {boolean}
    */
   public clearingInternodeCommsFromVM(umid: string): boolean {
-    return this.smartContracts[umid].getClearInterNodeComms();
+    const contract = this.getContract(umid); return contract ? contract.getClearInterNodeComms() : false;
   }
 
   /**
@@ -795,8 +814,12 @@ export class VirtualMachine
    * @returns {boolean}
    */
   private hasBeenExtended(umid: string): boolean {
+    // Check if contract exists before accessing
+    const contract = this.getContract(umid);
+    if (!contract) return false;
+    
     // Fetch new time out request from the contract
-    let timeoutRequestTime = this.smartContracts[umid].getTimeout();
+    let timeoutRequestTime = contract.getTimeout();
 
     // Did we get a return value to work on?
     if (timeoutRequestTime) {
