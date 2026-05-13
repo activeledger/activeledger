@@ -24,6 +24,7 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
 
 /**
@@ -950,9 +951,7 @@ export class Activity {
    */
   public getState(): ActiveDefinitions.IState {
     // Deep copy
-    let state: ActiveDefinitions.IState = JSON.parse(
-      JSON.stringify(this.state)
-    );
+    let state: ActiveDefinitions.IState = ActiveClone.clone(this.state);
 
     // Remove _id & _rev
     if ((state as ActiveDefinitions.IFullState)._id)

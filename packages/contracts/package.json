@@ -46,6 +46,7 @@
     "@activeledger/activecrypto": "^2.15.7",
     "@activeledger/activedefinitions": "^2.15.7",
     "@activeledger/activelogger": "^2.14.6",
-    "@activeledger/activequery": "^2.15.7"
+    "@activeledger/activequery": "^2.15.7",
+    "@activeledger/activeutilities": "^2.15.5"
   }
 }
