@@ -144,11 +144,17 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       params &&
       !external &&
       this.p2pClient &&
-      ActiveOptions.get<boolean>("p2pStream", false)
+      ActiveOptions.get<boolean>("p2pStream", false) &&
+      endpoint === 'init' // Other end only calls init
     ) {
       // P2P Messaging
       this.p2pClient.send(Buffer.from(JSON.stringify(params)), Home.reference);
       return Promise.resolve({ ok: 1 });
+    } else {
+      // Allow us to force http mostly for knock right non broadcast
+      if (endpoint === 'init-legacy') {
+        endpoint = 'init'
+      }
     }
 
     // Legacy HTTP/2 Fallback
