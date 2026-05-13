@@ -27,6 +27,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
 import { Neighbourhood } from "./neighbourhood";
+import { P2PClient } from "./p2pClient";
 
 /**
  * Manages Node Connection Information
@@ -35,6 +36,13 @@ import { Neighbourhood } from "./neighbourhood";
  * @class Neighbour
  */
 export class Neighbour implements ActiveDefinitions.INeighbourBase {
+  /**
+   * Persistent client for P2P messaging
+   *
+   * @type {P2PClient}
+   */
+  public p2pClient: P2PClient;
+
   /**
    * Holds the reference value of the NodeNeighbour
    *
@@ -61,6 +69,11 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     public isHome: boolean = false,
     private identity?: ActiveCrypto.KeyPair
   ) {
+    if (ActiveOptions.get<boolean>("p2pStream", false)) {
+      this.p2pClient = new P2PClient(host, port + 1);
+      this.p2pClient.connect();
+    }
+
     this.reference = ActiveCrypto.Hash.getHash(
       host + port + ActiveOptions.get<string>("network", ""),
       "sha1"
@@ -126,6 +139,19 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     resend?: number, // Max retry attempts for connection resets
     bundle?: boolean // Should this request be bundled?
   ): Promise<any> {
+    // Persistent P2P Broadcast Path
+    if (
+      params &&
+      !external &&
+      this.p2pClient &&
+      ActiveOptions.get<boolean>("p2pStream", false)
+    ) {
+      // P2P Messaging
+      this.p2pClient.send(Buffer.from(JSON.stringify(params)), Home.reference);
+      return Promise.resolve({ ok: 1 });
+    }
+
+    // Legacy HTTP/2 Fallback
     if (!params) {
       // Not Params, Sent Get without signature
       return new Promise((resolve, reject) => {
@@ -201,10 +227,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               })
               .catch((error: any) => {
                 if (error && error.response && error.response.data) {
-                  // ActiveLogger.error(
-                  //   error.response.data,
-                  //   `${this.host}:${this.port}/${endpoint} - POST Failed`
-                  // );
                   reject(error.response.data);
                 } else {
                   // TODO : If connection failure rebase neighbourhood?
@@ -223,10 +245,6 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                       error,
                       `Network Error - ${this.host}:${this.port}/${endpoint}`
                     );
-                    // ActiveLogger.error(
-                    //   post,
-                    //   `Data sent which caused the error`
-                    // );
                     if (extraHeader !== "X-Bundle: 1") {
                       reject("Network Communication Error");
                     } else {
