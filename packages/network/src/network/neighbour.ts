@@ -25,6 +25,7 @@ import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { Home } from "./home";
 import { Neighbourhood } from "./neighbourhood";
 import { P2PClient } from "./p2pClient";
@@ -148,7 +149,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       endpoint === 'init' // Other end only calls init
     ) {
       // P2P Messaging
-      this.p2pClient.send(Buffer.from(JSON.stringify(params)), Home.reference);
+      this.p2pClient.send(ActiveClone.serialize(params), Home.reference);
       return Promise.resolve({ ok: 1 });
     } else {
       // Allow us to force http mostly for knock right non broadcast
