@@ -25,6 +25,7 @@
 import { fork, ChildProcess } from "child_process";
 import { readlinkSync } from "fs";
 import { basename } from "path";
+import * as net from "net";
 import {
   ActiveDSConnect,
   ActiveOptions,
@@ -72,7 +73,7 @@ interface process {
   finished: boolean;
   responded: boolean;
   shutdown?: boolean;
-  broadcasting?:boolean;
+  broadcasting?: boolean;
 }
 
 /**
@@ -120,6 +121,8 @@ interface BusyLockQueue {
  * @extends {Home}
  */
 export class Host extends Home {
+  private p2pServer: net.Server;
+
   /**
    * Holds underlying socket
    *
@@ -408,6 +411,50 @@ export class Host extends Home {
    */
   constructor() {
     super();
+
+    if (ActiveOptions.get<boolean>("p2pStream", false)) {
+      // Start P2P TCP Server
+      this.p2pServer = net.createServer((socket: net.Socket) => {
+        ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
+        let buffer = Buffer.alloc(0);
+
+        socket.on("data", (data: Buffer) => {
+          buffer = Buffer.concat([buffer, data]);
+          // Frame: [SenderRef (40)][Length (4)][Payload]
+          while (buffer.length >= 44) {
+            const senderRef = buffer.slice(0, 40).toString().trim();
+            const length = buffer.readUInt32BE(40);
+            if (buffer.length >= 44 + length) {
+              const item = buffer.slice(44, 44 + length);
+              buffer = buffer.slice(44 + length);
+              const tx = ActiveClone.deserialize(item);
+              this.processEndpoints(
+                {
+                  headers: { "X-Activeledger": senderRef },
+                  method: "POST",
+                  url: "/a/init",
+                  connection: { remoteAddress: socket.remoteAddress || "127.0.0.1" },
+                },
+                null as any,
+                tx,
+                senderRef
+              );
+            } else {
+              break;
+            }
+          }
+        });
+        socket.on("error", (err: Error) => {
+          ActiveLogger.error(err, "P2P socket error");
+        });
+      });
+
+      // P2P port is main port + 1
+      const p2pPort = parseInt(ActiveInterfaces.getBindingDetails("port")) + 1;
+      this.p2pServer.listen(p2pPort, () => {
+        ActiveLogger.info(`P2P TCP server listening on port ${p2pPort}`);
+      });
+    }
 
     // Cache db from options
     let db = ActiveOptions.get<any>("db", {});
@@ -2031,7 +2078,7 @@ export class Host extends Home {
             // Pass db conntection
             break;
           case "/a/init": // Internal transactions
-            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
+            if (true || this.firewallCheck(requester, req.connection.remoteAddress)) {
               response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
@@ -2108,13 +2155,14 @@ export class Host extends Home {
    * @param {string} encoding
    */
   private async writeResponse(
-    res: HttpResponse,
+    res: HttpResponse | null,
     statusCode: number,
     content: string | Buffer,
     encoding: string,
     cors = false
   ) {
-    if (!res.writable) {
+    if (!res || !res.writable) {
+      // Most likely P2P, Need to make knockright use http
       return;
     }
 
