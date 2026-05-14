@@ -65,10 +65,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @param {number} port
    */
   constructor(
-    protected host: string,
-    protected port: number,
+    public host: string,
+    public port: number,
     public isHome: boolean = false,
-    private identity?: ActiveCrypto.KeyPair
+    public identity?: ActiveCrypto.KeyPair
   ) {
     if (ActiveOptions.get<boolean>("p2pStream", false)) {
       this.p2pClient = new P2PClient(host, port + 1);

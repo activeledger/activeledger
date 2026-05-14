@@ -216,54 +216,6 @@ export class LevelMe {
   }
 
   /**
-   * @deprecated
-   *
-   * @param {unknown} options
-   */
-  public async createIndex(options: unknown) {
-    ActiveLogger.fatal("createIndex is deprecated");
-  }
-
-  /**
-   * @deprecated
-   *
-   * @param {unknown} options
-   */
-  public async deleteIndex(options: unknown) {
-    ActiveLogger.fatal("deleteIndex is deprecated");
-  }
-
-  /**
-   * @deprecated
-   *
-   * @param {unknown} options
-   */
-  public async explain(options: unknown) {
-    ActiveLogger.fatal("explain is deprecated");
-  }
-
-  /**
-   * @deprecated
-   *
-   * @param {unknown} options
-   */
-  public async find(options: unknown) {
-    ActiveLogger.fatal("find is deprecated");
-  }
-
-  /**
-   * @deprecated
-   *
-   * @param {unknown} options
-   */
-  public async getIndexes() {
-    ActiveLogger.fatal("getIndexes is deprecated");
-    return {
-      indexes: [],
-    };
-  }
-
-  /**
    * Backup this database
    *
    * @param {string} [filename]
@@ -371,52 +323,57 @@ export class LevelMe {
           }
 
           // Read / Search the database as a stream
-          const stream = this.driver
-            .createReadStream({
-              gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
-              lt: options.endkey
-                ? LevelMe.DOC_PREFIX + options.endkey
-                : LevelMe.META_PREFIX,
-              limit,
-            });
-            
-          stream.on("data", async (data: { key: string; value: Buffer }) => {
+          const stream = this.driver.createReadStream({
+            gte: LevelMe.DOC_PREFIX + (options.startkey || ""),
+            lt: options.endkey
+              ? LevelMe.DOC_PREFIX + options.endkey
+              : LevelMe.META_PREFIX,
+            limit,
+          });
+
+          // Track pending deserialization promises in stream order
+          const docPromises: Promise<any>[] = [];
+
+          stream.on("data", (data: { key: string; value: Buffer }) => {
             // Filter out the "skipped" keys
             if (options.skip) {
               options.skip--;
               return;
             }
-            const doc = await ActiveClone.deserialize(data.value) as any;
 
-            if (options.include_docs) {
-              rows.push(doc);
-            } else {
-              rows.push({
-                _id: doc._id, // Compatibility Trick
-                id: doc._id,
-                key: doc._id,
-              });
-            }
+            // Push the promise into the array to maintain order
+            docPromises.push(
+              ActiveClone.deserialize(data.value).then((doc: any) => {
+                if (options.include_docs) {
+                  return doc;
+                } else {
+                  return {
+                    _id: doc._id, // Compatibility Trick
+                    id: doc._id,
+                    key: doc._id,
+                  };
+                }
+              })
+            );
           })
             .on("error", (err: unknown) => {
               stream.destroy();
               reject(err);
             })
-            .on("close", () => { })
             .on("end", async () => {
+              // Await all promises in the original stream order
+              const rows = await Promise.all(docPromises);
               resolve({
                 total_rows: rows.length,
                 offset,
                 rows,
               });
-            });
-        }
+            });        }
       } catch (e) {
         reject(e);
       }
     });
   }
-
   /**
    * Get a specific data document
    *

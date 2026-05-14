@@ -22,7 +22,7 @@
  */
 
 import { ActiveLogger } from "@activeledger/activelogger";
-import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
+import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import {
   IVMDataPayload,
@@ -103,7 +103,7 @@ class ContractControl implements IVMObject {
     // }
 
     if ("setEvent" in this.smartContracts[payload.umid]) {
-      (this.smartContracts[payload.umid] as PostProcessQueryEvent).setEvent(
+      (this.smartContracts[payload.umid] as PostProcessEvent).setEvent(
         event
       );
     }
@@ -247,7 +247,7 @@ class ContractControl implements IVMObject {
   ): Promise<any> {
     if ("postProcess" in this.smartContracts[umid]) {
       // Run post process
-      return (this.smartContracts[umid] as PostProcessQueryEvent).postProcess(
+      return (this.smartContracts[umid] as PostProcessEvent).postProcess(
         territoriality,
         who
       );

@@ -836,15 +836,12 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
   // Find API
   http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Database
-    let db = getDB(incoming.url[0]);
-    return await db.find(incoming.body);
+    return { error: "find is deprecated" };
   });
 
   // Explain
   http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
-    let db = getDB(incoming.url[0]);
-    return await db.explain(incoming.body);
+    return { error: "explain is deprecated" };
   });
 
   // Fauxton

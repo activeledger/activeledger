@@ -182,7 +182,7 @@ class Processor {
             });
           break;
         case "hk":
-          this.housekeeping(m.data.right, m.data.neighbourhood);
+          this.housekeeping(m.data.right ?? Home.right, m.data.neighbourhood);
           break;
         case "tx":
           // Create new Protocol Process object for transaction
@@ -668,7 +668,6 @@ class Processor {
     neighbours?: { [reference: string]: Neighbour }
   ) {
     // TODO if bundle we need to send it before rewriting this?
-
     // Create new right neighbour with identity if known
     Home.right = new Neighbour(
       right.host,
