@@ -272,23 +272,15 @@ export class ActiveHttpd {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer;
+      let chunks: Buffer[] = [];
 
       /* Register data cb */
       res.onData((ab, isLast) => {
-        let chunk = Buffer.from(ab);
+        // Create a copy of the ArrayBuffer as it's owned by uWebSockets and will be recycled
+        chunks.push(Buffer.from(ab));
+        
         if (isLast) {
-          if (buffer) {
-            return resolve(Buffer.concat([buffer, chunk]));
-          } else {
-            return resolve(chunk);
-          }
-        } else {
-          if (buffer) {
-            buffer = Buffer.concat([buffer, chunk]);
-          } else {
-            buffer = Buffer.concat([chunk]);
-          }
+          resolve(Buffer.concat(chunks));
         }
       });
     });
