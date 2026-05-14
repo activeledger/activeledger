@@ -27,6 +27,7 @@ import {
   ActiveGZip,
   ActiveCacheManager,
 } from "@activeledger/activeoptions";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -1538,21 +1539,18 @@ export class Endpoints {
    */
   public static postConvertor(
     host: Host,
-    body: string,
+    body: string | Buffer,
     encryptHeader: boolean
   ): Promise<any> {
     return new Promise(async (resolve, reject) => {
-      // Is this an encrypted external transaction that need passing.
+      let data: Buffer;
+
+      // Handle Decryption if needed
       if (encryptHeader) {
-        // Decrypt & Parse
         ActiveLogger.info("Encrypted Transaction Inbound");
         try {
-          // Decrypt
-          resolve(
-            JSON.parse(Buffer.from(host.decrypt(body), "base64").toString())
-          );
+          data = Buffer.from(host.decrypt(body as string), "base64");
         } catch {
-          // Error trying to decrypt
           ActiveLogger.error("Sent 500 Response (1700)");
           return reject({
             statusCode: 500,
@@ -1560,50 +1558,39 @@ export class Endpoints {
           });
         }
       } else {
-        // body should now be a json string to be converted, However check
-        // that it still isn't in its Buffer form!
-        let bodyObject;
-        try {
-          bodyObject = (await this.makeSureNotBuffer(JSON.parse(body))) as any;
-        } catch (e) {
-          throw e;
-        }
-        // Internal Transaction Messesing (Encrypted & Signing Security)
-        if (bodyObject.$neighbour && bodyObject.$packet) {
-          //ActiveLogger.debug(bodyObject, "Converting Signed for Post");
-          try {
-            // Maybe coming from activerestore
-            if (bodyObject.$enc) {
-            }
-          } catch (e) { }
+        data = typeof body === "string" ? Buffer.from(body) : body;
+      }
 
-          // We don't encrypt to ourselve
-          if (bodyObject.$neighbour.reference != host.reference) {
-            // Decrypt Trasanction First (As Signing Pre Encryption)
+      try {
+        const bodyObject = await ActiveClone.deserialize(data);
+        
+        // Internal Transaction Messaging (Encrypted & Signing Security)
+        if (bodyObject && (bodyObject as any).$neighbour && (bodyObject as any).$packet) {
+          const bodyObj = bodyObject as any;
+          // We don't encrypt to ourselves
+          if (bodyObj.$neighbour.reference != host.reference) {
+            // Decrypt Transaction First
             if (
-              bodyObject.$enc ||
+              bodyObj.$enc ||
               ActiveOptions.get<any>("security", {}).encryptedConsensus
             ) {
-              bodyObject.$packet = JSON.parse(
-                Buffer.from(
-                  host.decrypt(bodyObject.$packet),
-                  "base64"
-                ).toString()
+              bodyObj.$packet = await ActiveClone.deserialize(
+                Buffer.from(host.decrypt(bodyObj.$packet), "base64")
               );
             }
           }
 
-          // Verify Signature (but we do verify)
+          // Verify Signature
           if (
-            bodyObject.$neighbour.signature ||
+            bodyObj.$neighbour.signature ||
             ActiveOptions.get<any>("security", {}).signedConsensus
           ) {
             if (
               !host.neighbourhood
-                .get(bodyObject.$neighbour.reference)
+                .get(bodyObj.$neighbour.reference)
                 .verifySignature(
-                  bodyObject.$neighbour.signature,
-                  bodyObject.$packet
+                  bodyObj.$neighbour.signature,
+                  bodyObj.$packet
                 )
             ) {
               // Bad Message
@@ -1617,13 +1604,19 @@ export class Endpoints {
 
           // Open signed post
           return resolve({
-            from: bodyObject.$neighbour.reference,
-            body: bodyObject.$packet,
+            from: bodyObj.$neighbour.reference,
+            body: bodyObj.$packet,
           });
         } else {
           // Resolve as just the object
           resolve({ body: bodyObject });
         }
+      } catch (e) {
+        ActiveLogger.error(e, "Deserialization Error");
+        return reject({
+          statusCode: 500,
+          content: "Deserialization Error",
+        });
       }
     });
   }

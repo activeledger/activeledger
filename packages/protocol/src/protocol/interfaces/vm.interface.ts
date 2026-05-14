@@ -24,8 +24,8 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import {
   Standard,
-  PostProcessQueryEvent,
   Activity,
+  PostProcessEvent,
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { EventEmitter } from "events";
@@ -67,7 +67,7 @@ export interface IVMDataPayload {
 }
 
 export interface IVMInternalCache {
-  [umid: string]: PostProcessQueryEvent | Standard;
+  [umid: string]: PostProcessEvent | Standard;
 }
 
 export interface IContractKeyHolder {

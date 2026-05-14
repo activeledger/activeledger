@@ -416,18 +416,28 @@ export class Host extends Home {
       // Start P2P TCP Server
       this.p2pServer = net.createServer((socket: net.Socket) => {
         ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
-        let buffer = Buffer.alloc(0);
+        let chunks: Buffer[] = [];
+        let bufferLength = 0;
 
-        socket.on("data", (data: Buffer) => {
-          buffer = Buffer.concat([buffer, data]);
+        socket.on("data", async (data: Buffer) => {
+          chunks.push(data);
+          bufferLength += data.length;
+
           // Frame: [SenderRef (40)][Length (4)][Payload]
-          while (buffer.length >= 44) {
-            const senderRef = buffer.slice(0, 40).toString().trim();
-            const length = buffer.readUInt32BE(40);
-            if (buffer.length >= 44 + length) {
-              const item = buffer.slice(44, 44 + length);
-              buffer = buffer.slice(44 + length);
-              const tx = ActiveClone.deserialize(item);
+          while (bufferLength >= 44) {
+            const fullBuffer = Buffer.concat(chunks);
+            const senderRef = fullBuffer.slice(0, 40).toString().trim();
+            const length = fullBuffer.readUInt32BE(40);
+
+            if (bufferLength >= 44 + length) {
+              const item = fullBuffer.slice(44, 44 + length);
+
+              // Clean up consumed data
+              const remaining = fullBuffer.slice(44 + length);
+              chunks = remaining.length > 0 ? [remaining] : [];
+              bufferLength = remaining.length;
+
+              const tx = await ActiveClone.deserialize(item);
               this.processEndpoints(
                 {
                   headers: { "X-Activeledger": senderRef },
@@ -841,7 +851,7 @@ export class Host extends Home {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer = Buffer.alloc(0);
+      let chunks: Buffer[] = [];
 
       res.onData((ab, isLast) => {
         if (res.aborted) {
@@ -849,24 +859,19 @@ export class Host extends Home {
           return;
         }
 
+        // CRITICAL: Copy the data synchronously now.
         if (ab.byteLength > 0) {
-          // I found some non-last onData with 0 byte length
-          //const copy = copyArrayBuffer(ab); // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
-          //totalSize += copy.byteLength;
-          buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+          const buffer = Buffer.allocUnsafe(ab.byteLength);
+          buffer.set(new Uint8Array(ab));
+          chunks.push(buffer);
         }
 
         if (isLast) {
-          // If this is the last chunk, process the final buffer
-          // Convert the buffer to a string and parse it as JSON
-          // this will fail if the buffer doesn't contain a valid JSON (e.g. length = 0)
-          //const resolveValue = JSON.parse(buffer.toString());
-          resolve(buffer);
+          resolve(Buffer.concat(chunks));
         }
       });
     });
   }
-
   // https://stackoverflow.com/questions/2786632/how-can-i-convert-ipv6-address-to-ipv4-address/23147817#23147817
   private parseIp6(str: string) {
     //init

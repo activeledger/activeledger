@@ -276,9 +276,18 @@ export class ActiveHttpd {
 
       /* Register data cb */
       res.onData((ab, isLast) => {
-        // Create a copy of the ArrayBuffer as it's owned by uWebSockets and will be recycled
-        chunks.push(Buffer.from(ab));
-        
+        if (res.aborted) {
+          reject(new Error("Request aborted"));
+          return;
+        }
+
+        // CRITICAL: Copy the data synchronously now.
+        if (ab.byteLength > 0) {
+          const buffer = Buffer.allocUnsafe(ab.byteLength);
+          buffer.set(new Uint8Array(ab));
+          chunks.push(buffer);
+        }
+
         if (isLast) {
           resolve(Buffer.concat(chunks));
         }

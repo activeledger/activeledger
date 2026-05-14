@@ -25,6 +25,7 @@ import * as fs from "fs";
 import { ChildProcess } from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger } from "@activeledger/activelogger";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
@@ -322,7 +323,13 @@ export class Home extends Neighbour {
   public setRight(right: string): void {
     if (right) {
       // Set for this process
-      Home.right = this.neighbourhood.get(right);
+      const neighbour = this.neighbourhood.get(right);
+      if (!neighbour) {
+        ActiveLogger.warn(`[AC] - Right neighbour ${right} not found in neighbourhood map yet`);
+        return;
+      }
+
+      Home.right = neighbour;
 
       // Still able to connect or shutdowning from the network?
       if (Home.right && !Home.right.graceStop) {
@@ -336,7 +343,14 @@ export class Home extends Neighbour {
       const hkMsg = {
         type: "hk",
         data: {
-          right: Home.right,
+          right: {
+            host: Home.right.host,
+            port: Home.right.port,
+            reference: Home.right.reference,
+            isHome: Home.right.isHome,
+            graceStop: Home.right.graceStop,
+            identity: Home.right.identity
+          },
         },
       };
       this.processors.forEach((processor) => {
@@ -356,7 +370,13 @@ export class Home extends Neighbour {
   public setLeft(left: string): void {
     if (left) {
       // Set for this process
-      Home.left = this.neighbourhood.get(left);
+      const neighbour = this.neighbourhood.get(left);
+      if (!neighbour) {
+        ActiveLogger.warn(`[AC] - Left neighbour ${left} not found in neighbourhood map yet`);
+        return;
+      }
+
+      Home.left = neighbour;
 
       // Still able to connect or shutdowning from the network?
       if (Home.left && !Home.left.graceStop) {

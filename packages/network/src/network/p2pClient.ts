@@ -1,11 +1,13 @@
 import * as net from "net";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
+import { ActiveFrame } from "@activeledger/activeutilities";
 
 export class P2PClient extends EventEmitter {
   private socket?: net.Socket;
   private isConnected: boolean = false;
-  private buffer: Buffer = Buffer.alloc(0);
+  private chunks: Buffer[] = [];
+  private bufferLength: number = 0;
   private reconnectTimer?: NodeJS.Timeout;
 
   constructor(private host: string, private port: number) {
@@ -29,23 +31,26 @@ export class P2PClient extends EventEmitter {
       this.isConnected = true;
       ActiveLogger.info(`Connected to peer at ${this.host}:${this.port}`);
     });
+    
+    this.chunks = [];
+    this.bufferLength = 0;
 
     this.socket.on("data", (data: Buffer) => {
-      this.buffer = Buffer.concat([this.buffer, data]);
-      
-      // Process all complete frames in the buffer
-      while (this.buffer.length >= 4) {
-        const length = this.buffer.readUInt32BE(0);
-        if (this.buffer.length >= 4 + length) {
-          const item = this.buffer.slice(4, 4 + length);
-          this.emit("message", item);
-          this.buffer = this.buffer.slice(4 + length);
-        } else {
-          break;
-        }
+      this.chunks.push(data);
+      this.bufferLength += data.length;
+
+      // Process all complete frames
+      let frame = ActiveFrame.read(this.chunks, this.bufferLength);
+      while (frame) {
+        this.emit("message", frame.item);
+        
+        // Clean up consumed data
+        this.chunks = frame.remaining.length > 0 ? [frame.remaining] : [];
+        this.bufferLength = frame.remaining.length;
+        
+        frame = ActiveFrame.read(this.chunks, this.bufferLength);
       }
     });
-
     this.socket.on("close", () => {
       this.isConnected = false;
       ActiveLogger.warn(`Connection lost to ${this.host}:${this.port}, reconnecting...`);

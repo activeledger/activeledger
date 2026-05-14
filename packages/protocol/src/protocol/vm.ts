@@ -24,8 +24,8 @@
 import * as events from "events";
 import { ActiveOptions, ActiveDSConnect, ActiveClone } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
-import { QueryEngine, EventEngine } from "@activeledger/activequery";
+import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
+import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 //import { NodeVM, VMScript } from "@activeledger/vm2";
@@ -387,14 +387,8 @@ export class VirtualMachine
           );
 
         if ("setEvent" in this.smartContracts[payload.umid]) {
-          (this.smartContracts[payload.umid] as PostProcessQueryEvent).setEvent(
+          (this.smartContracts[payload.umid] as PostProcessEvent).setEvent(
             this.events[payload.umid]
-          );
-        }
-
-        if ("setQuery" in this.smartContracts[payload.umid]) {
-          (this.smartContracts[payload.umid] as PostProcessQueryEvent).setQuery(
-            new QueryEngine(this.db, true)
           );
         }
 
@@ -698,7 +692,7 @@ export class VirtualMachine
         // Run Post Process
         let result: any = Promise.resolve();
         const contract = this.getContract(umid, "postProcess"); if (contract && "postProcess" in contract) {
-          result = (contract as PostProcessQueryEvent).postProcess(
+          result = (contract as PostProcessEvent).postProcess(
             territoriality,
             who
           );
