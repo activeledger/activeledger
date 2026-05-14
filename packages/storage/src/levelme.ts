@@ -532,7 +532,7 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value));
+    return this.driver.put(LevelMe.DOC_PREFIX + key, await await ActiveClone.serialize(value, { enableCompression: true }));
   }
 
   /**
@@ -689,7 +689,7 @@ export class LevelMe {
 
       if (newRev) {
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, await await ActiveClone.serialize(doc, { enableCompression: true }));
       }
 
     } catch (error) {
@@ -701,7 +701,7 @@ export class LevelMe {
           newRev = `1-${md5}`;
         }
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, await await ActiveClone.serialize(doc, { enableCompression: true }));
       } else {
         // Re-throw other errors (like revision mismatch)
         throw error;
