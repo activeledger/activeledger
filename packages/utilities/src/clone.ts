@@ -30,7 +30,20 @@ const packr = new Packr({
   structuredClone: true,
 });
 
-const COMPRESSION_THRESHOLD = 2048; // 2KB
+export const COMPRESSION_THRESHOLD = 2048; // 2KB
+
+export interface SerializationOptions {
+  enableCompression?: boolean;
+}
+
+export const DEFAULT_SERIALIZATION_OPTIONS: SerializationOptions = {
+  enableCompression: true,
+};
+
+export enum SerializationType {
+  Uncompressed = 0x00,
+  Gzip = 0x01
+}
 
 /**
  * High performance deep cloning using native V8 and serialization using MessagePack + optional Gzip
@@ -57,20 +70,21 @@ export class ActiveClone {
    * @static
    * @template T
    * @param {T} obj
-   * @param {boolean} [enableCompression=true]
+   * @param {SerializationOptions} [options=DEFAULT_SERIALIZATION_OPTIONS]
    * @returns {Promise<Buffer>}
    */
-  public static async serialize<T>(obj: T, enableCompression: boolean = true): Promise<Buffer> {
+  public static async serialize<T>(
+    obj: T,
+    options: SerializationOptions = DEFAULT_SERIALIZATION_OPTIONS
+  ): Promise<Buffer> {
     const binary = packr.pack(obj);
     
-    if (enableCompression && binary.length > COMPRESSION_THRESHOLD) {
-      // 0x01: Compressed
+    if (options.enableCompression && binary.length > COMPRESSION_THRESHOLD) {
       const compressed = await ActiveGZip.gzip(binary);
-      return Buffer.concat([Buffer.from([0x01]), compressed]);
+      return Buffer.concat([Buffer.from([SerializationType.Gzip]), compressed]);
     }
     
-    // 0x00: Uncompressed
-    return Buffer.concat([Buffer.from([0x00]), binary]);
+    return Buffer.concat([Buffer.from([SerializationType.Uncompressed]), binary]);
   }
 
   /**
@@ -92,11 +106,11 @@ export class ActiveClone {
     }
 
     // 2. Handle Binary Data (Flagged)
-    if (buffer.length > 0 && (buffer[0] === 0x00 || buffer[0] === 0x01)) {
+    if (buffer.length > 0 && (buffer[0] === SerializationType.Uncompressed || buffer[0] === SerializationType.Gzip)) {
         let data = buffer.slice(1);
         
-        // Decompress if flag 0x01
-        if (buffer[0] === 0x01) {
+        // Decompress if flag SerializationType.Gzip
+        if (buffer[0] === SerializationType.Gzip) {
             data = await ActiveGZip.ungzip(data);
         }
 
