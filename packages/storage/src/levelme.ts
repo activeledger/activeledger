@@ -1,9 +1,8 @@
 import { createHash } from "crypto";
+import * as fs from "fs";
 import {
   createWriteStream,
   createReadStream,
-  writeFileSync,
-  unlinkSync,
 } from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { EventEmitter } from "events";
@@ -269,24 +268,30 @@ export class LevelMe {
    *
    * @param {string} [filename]
    */
-  public backup(filename?: string) {
+  public async backup(filename?: string) {
     if (!filename) {
       filename = `${Date.now()}.alb`;
     }
-    writeFileSync(`${filename}.status`, filename);
+    await fs.promises.writeFile(`${filename}.status`, filename);
     const writer = createWriteStream(filename);
 
-    this.driver
-      .createValueStream()
-      .on("data", async (data: any) => {
-        writer.write(data.toString() + "\n");
-      })
-      .on("error", () => { })
-      .on("close", () => { })
-      .on("end", () => {
-        writer.end();
-        unlinkSync(`${filename}.status`);
-      });
+    return new Promise((resolve, reject) => {
+      this.driver
+        .createValueStream()
+        .on("data", async (data: any) => {
+          writer.write(data.toString() + "\n");
+        })
+        .on("error", reject)
+        .on("end", async () => {
+          writer.end();
+          try {
+            await fs.promises.unlink(`${filename}.status`);
+            resolve(undefined);
+          } catch (err) {
+            reject(err);
+          }
+        });
+    });
   }
 
   /**
@@ -294,24 +299,31 @@ export class LevelMe {
    *
    * @param {string} filename
    */
-  public restore(filename: string) {
-    writeFileSync(`${filename}.status`, "running");
+  public async restore(filename: string) {
+    await fs.promises.writeFile(`${filename}.status`, "running");
 
-    createReadStream(filename)
-      .pipe(newLineTransform())
-      .on("data", async (data: Buffer) => {
-        try {
-          const doc = JSON.parse(data.toString());
-          ActiveLogger.info(`Restoring ${doc._id}`);
-          await this.bulkDocs(doc, { new_edits: true });
-        } catch {
-          ActiveLogger.warn(`Restoring FAILED`);
-        }
-      })
-      .on("error", () => { })
-      .on("end", () => {
-        unlinkSync(`${filename}.status`);
-      });
+    return new Promise((resolve, reject) => {
+      createReadStream(filename)
+        .pipe(newLineTransform())
+        .on("data", async (data: Buffer) => {
+          try {
+            const doc = JSON.parse(data.toString());
+            ActiveLogger.info(`Restoring ${doc._id}`);
+            await this.bulkDocs(doc, { new_edits: true });
+          } catch {
+            ActiveLogger.warn(`Restoring FAILED`);
+          }
+        })
+        .on("error", reject)
+        .on("end", async () => {
+          try {
+            await fs.promises.unlink(`${filename}.status`);
+            resolve(undefined);
+          } catch (err) {
+            reject(err);
+          }
+        });
+    });
   }
 
   // public async restore() {
