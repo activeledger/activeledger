@@ -46,6 +46,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "msgpackr": "^2.0.1",
     "undici": "6.18.2"
   }
 }
