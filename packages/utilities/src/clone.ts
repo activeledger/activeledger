@@ -117,12 +117,11 @@ export class ActiveClone {
         try {
             return packr.unpack(data);
         } catch {
-            // Fallback to JSON
-            return JSON.parse(data.toString());
+            // If binary parsing fails, it is not binary data
         }
     }
 
-    // 3. Fallback to JSON (for raw legacy buffers)
+    // 3. Fallback to JSON (for raw legacy buffers or binary-failed)
     return JSON.parse(buffer.toString());
   }
 }
