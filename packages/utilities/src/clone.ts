@@ -22,16 +22,25 @@
  */
 
 import { serialize, deserialize } from "v8";
+import { Packr } from "msgpackr";
+import { ActiveGZip } from "./gzip";
+
+const packr = new Packr({
+  useRecords: true,
+  structuredClone: true,
+});
+
+const COMPRESSION_THRESHOLD = 2048; // 2KB
 
 /**
- * High performance deep cloning using V8 serialization
+ * High performance deep cloning using native V8 and serialization using MessagePack + optional Gzip
  *
  * @export
  * @class ActiveClone
  */
 export class ActiveClone {
   /**
-   * Deep clone an object
+   * Deep clone an object using native V8 serialization (optimized for in-memory)
    *
    * @static
    * @template T
@@ -43,37 +52,63 @@ export class ActiveClone {
   }
 
   /**
-   * Serialize an object to a buffer
+   * Serialize an object to a buffer using MessagePack + optional Gzip
    *
    * @static
    * @template T
    * @param {T} obj
-   * @returns {Buffer}
+   * @param {boolean} [enableCompression=true]
+   * @returns {Promise<Buffer>}
    */
-  public static serialize<T>(obj: T): Buffer {
-    const buf = serialize(obj);
-    return buf;
+  public static async serialize<T>(obj: T, enableCompression: boolean = true): Promise<Buffer> {
+    const binary = packr.pack(obj);
+    
+    if (enableCompression && binary.length > COMPRESSION_THRESHOLD) {
+      // 0x01: Compressed
+      const compressed = await ActiveGZip.gzip(binary);
+      return Buffer.concat([Buffer.from([0x01]), compressed]);
+    }
+    
+    // 0x00: Uncompressed
+    return Buffer.concat([Buffer.from([0x00]), binary]);
   }
 
   /**
-   * Deserialize a buffer back to an object (with JSON fallback)
+   * Deserialize a buffer back to an object (V8 -> Gzip -> MessagePack -> JSON fallback)
    *
    * @static
    * @template T
    * @param {Buffer} buffer
-   * @returns {T}
+   * @returns {Promise<T>}
    */
-   public static deserialize<T>(buffer: Buffer): T {    const isBuffer = Buffer.isBuffer(buffer);
-    const isV8 = isBuffer && buffer.length > 0 && buffer[0] === 255;
-    
-    if (isV8) {
+  public static async deserialize<T>(buffer: Buffer): Promise<T> {
+    // 1. Try V8 (Signature 0xff)
+    if (buffer.length > 0 && buffer[0] === 255) {
       try {
         return deserialize(buffer);
       } catch (err) {
         throw err;
       }
     }
-    // Assume JSON
+
+    // 2. Handle Binary Data (Flagged)
+    if (buffer.length > 0 && (buffer[0] === 0x00 || buffer[0] === 0x01)) {
+        let data = buffer.slice(1);
+        
+        // Decompress if flag 0x01
+        if (buffer[0] === 0x01) {
+            data = await ActiveGZip.ungzip(data);
+        }
+
+        try {
+            return packr.unpack(data);
+        } catch {
+            // Fallback to JSON
+            return JSON.parse(data.toString());
+        }
+    }
+
+    // 3. Fallback to JSON (for raw legacy buffers)
     return JSON.parse(buffer.toString());
   }
 }

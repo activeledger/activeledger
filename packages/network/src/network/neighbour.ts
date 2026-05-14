@@ -133,7 +133,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @param {boolean} [external]
    * @returns {Promise<any>}
    */
-  public knock(
+  public async knock(
     endpoint: string,
     params?: any,
     external?: boolean, // Is this an external-facing endpoint?
@@ -149,7 +149,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       endpoint === 'init' // Other end only calls init
     ) {
       // P2P Messaging
-      this.p2pClient.send(ActiveClone.serialize(params), Home.reference);
+      this.p2pClient.send(await ActiveClone.serialize(params), Home.reference);
       return Promise.resolve({ ok: 1 });
     } else {
       // Allow us to force http mostly for knock right non broadcast
