@@ -374,7 +374,7 @@ export class LevelMe {
               options.skip--;
               return;
             }
-            const doc = ActiveClone.deserialize(data.value) as any;
+            const doc = await ActiveClone.deserialize(data.value) as any;
 
             if (options.include_docs) {
               rows.push(doc);
@@ -416,14 +416,14 @@ export class LevelMe {
       if (!this.cache.has(key)) {
         await this.open();
         // Allow errors to bubble up?
-        const doc = ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
+        const doc = await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
         this.cache.set(key, doc);
       }
       return this.cache.get(key, 30000);
     } else {
       await this.open();
       // Allow errors to bubble up?
-      let doc = ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
+      let doc = await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
       if (raw) {
         return doc
       }
@@ -449,7 +449,7 @@ export class LevelMe {
         const result = await this.driver.getMany(tmpKeys);
         // Loop and cache
         for (let i = result.length; i--;) {
-          const data = ActiveClone.deserialize(result[i]) as any;
+          const data = await ActiveClone.deserialize(result[i]) as any;
           this.cache.set(data._id, data);
           cached.push(data);
         }
@@ -465,7 +465,11 @@ export class LevelMe {
       const result = await this.driver.getMany(tmpKeys);
 
       // Loop and parse
-      return result.map(data => ActiveClone.deserialize(data) as any);
+      const parsed = await Promise.all(result.map(async (data) => {
+          const doc = await ActiveClone.deserialize(data) as any;
+          return doc;
+      }));
+      return parsed;
     }
   }
 
@@ -532,7 +536,7 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.driver.put(LevelMe.DOC_PREFIX + key, await await ActiveClone.serialize(value, { enableCompression: true }));
+    return this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
   }
 
   /**
@@ -763,7 +767,7 @@ export class LevelMe {
       this.driver
         .createReadStream(filter)
         .on("data", async (data: { key: string; value: Buffer }) => {
-          const doc = ActiveClone.deserialize(data.value) as any;
+          const doc = await ActiveClone.deserialize(data.value) as any;
           // Get sequence from keyname
           const seq = parseInt(
             data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
