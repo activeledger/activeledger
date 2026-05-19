@@ -423,6 +423,7 @@ export class Process extends EventEmitter {
     // Ledger Transpiled Contract Location
     const setupLocation = async () => {
       let contract = this.entry.$tx.$contract;
+      this.contractId = contract.split("@")[0];
 
       try {
         // This Cache won't always fetch latest version need to "defeat it"
@@ -437,7 +438,6 @@ export class Process extends EventEmitter {
             throw new Error("Namespace not found");
           }
 
-          this.contractId = this.entry.$tx.$contract.split("@")[0];
 
           if (contractVersion) {
             contract = contractVersion;
