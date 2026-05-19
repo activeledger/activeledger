@@ -145,6 +145,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       params &&
       !external &&
       this.p2pClient &&
+      this.p2pClient.ready &&
       ActiveOptions.get<boolean>("p2pStream", false) &&
       endpoint === 'init' // Other end only calls init
     ) {

@@ -6,12 +6,18 @@ import { ActiveFrame } from "@activeledger/activeutilities";
 export class P2PClient extends EventEmitter {
   private socket?: net.Socket;
   private isConnected: boolean = false;
+  private hasEverConnected: boolean = false;
+  private startTime: number = Date.now();
   private chunks: Buffer[] = [];
   private bufferLength: number = 0;
   private reconnectTimer?: NodeJS.Timeout;
 
   constructor(private host: string, private port: number) {
     super();
+  }
+
+  public get ready(): boolean {
+    return this.isConnected;
   }
 
   public stop(): void {
@@ -25,10 +31,18 @@ export class P2PClient extends EventEmitter {
 
   public connect(): void {
     if (this.isConnected) return;
+    
+    // Grace period check: 10 minutes
+    const gracePeriodPassed = (Date.now() - this.startTime) > (10 * 60 * 1000);
+    if (gracePeriodPassed && !this.hasEverConnected) {
+      ActiveLogger.warn(`P2P grace period expired for ${this.host}:${this.port}, disabling P2P.`);
+      return;
+    }
 
     this.socket = net.createConnection(this.port, this.host);
     this.socket.on("connect", () => {
       this.isConnected = true;
+      this.hasEverConnected = true;
       ActiveLogger.info(`Connected to peer at ${this.host}:${this.port}`);
     });
     
@@ -36,6 +50,7 @@ export class P2PClient extends EventEmitter {
     this.bufferLength = 0;
 
     this.socket.on("data", (data: Buffer) => {
+      // ... same as before
       this.chunks.push(data);
       this.bufferLength += data.length;
 
@@ -54,8 +69,14 @@ export class P2PClient extends EventEmitter {
     this.socket.on("close", () => {
       this.isConnected = false;
       ActiveLogger.warn(`Connection lost to ${this.host}:${this.port}, reconnecting...`);
-      this.reconnectTimer = setTimeout(() => this.connect(), 2000);
-      this.reconnectTimer.unref();
+      
+      // Determine retry behavior based on history
+      if (this.hasEverConnected || (Date.now() - this.startTime) <= (10 * 60 * 1000)) {
+        this.reconnectTimer = setTimeout(() => this.connect(), 2000);
+        this.reconnectTimer.unref();
+      } else {
+        ActiveLogger.warn(`P2P reconnection window closed for ${this.host}:${this.port}`);
+      }
     });
 
     this.socket.on("error", (err) => {
