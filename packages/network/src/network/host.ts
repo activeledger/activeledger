@@ -270,7 +270,7 @@ export class Host extends Home {
             ActiveLogger.debug(
               //this.processPending[entry.$umid],
               //entry,
-              "Broadcast Recieved : " + entry.$umid
+              `Broadcast Recieved [${internal ? "P2P" : "HTTP"}] : ` + entry.$umid
             );
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
