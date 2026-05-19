@@ -2121,7 +2121,7 @@ export class Host extends Home {
           if (TT > 5) {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
             ActiveLogger.info(
-              `Request Response ${data.$umid ? data.$umid : "No Umid"
+              `[RR] ${data.$umid ? data.$umid : "No Umid"
               } : S=${started}, TT=${TT}ms ${TT > 30000 ? "TTLR" : " OK"
               }`
             );
@@ -2139,7 +2139,7 @@ export class Host extends Home {
         // Basic error handling for now. As a lot of errors will still be sent as ok responses.
         ActiveLogger.error(error, "Failed to send response back");
         ActiveLogger.info(
-          `Request Response ERROR : S=${started}, TT=${Date.now() - started}ms`
+          `[RR] ERROR : S=${started}, TT=${Date.now() - started}ms`
         );
         this.writeResponse(
           res,
