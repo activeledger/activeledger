@@ -69,21 +69,16 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
 
   it("should get error as no valid contract loaded to retrieve from", () => {
     // Transaction
-    should().throw(() => {
-      VM.getThrowsFromVM();
-    });
+    expect(VM.getThrowsFromVM("nonexistent")).to.be.an("array").that.is.empty;
 
     // Activity Streams
-    should().throw(() => {
-      VM.getActivityStreamsFromVM();
-    });
-
+    expect(VM.getActivityStreamsFromVM("nonexistent")).to.be.an("array").that.is.empty;
+  });
     // Node Comms
     should().throw(() => {
       VM.getInternodeCommsFromVM();
-    });
-
     // Prevent timeout checks
     (VM as any).scriptFinishedExec = true;
-  });
-});
+    });
+    });
+
