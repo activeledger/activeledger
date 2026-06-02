@@ -759,7 +759,8 @@ export class Endpoints {
     host: Host,
     body: any,
     remoteAddr: string,
-    retried = false
+    retried = false,
+    isP2P = false
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       // Is the network stable?
@@ -781,7 +782,7 @@ export class Endpoints {
 
       // Send into host pool
       host
-        .pending(tx, remoteAddr, true, retried)
+        .pending(tx, remoteAddr, true, retried, isP2P)
         .then(async (ledger: any) => {
           let canRetry = false;
           let resolved = false;
