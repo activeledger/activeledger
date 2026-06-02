@@ -224,7 +224,8 @@ export class Host extends Home {
     entry: ActiveDefinitions.LedgerEntry,
     remoteAddr: string,
     internal = false,
-    forceRestart = false
+    forceRestart = false,
+    isP2P = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
 
@@ -270,7 +271,7 @@ export class Host extends Home {
             ActiveLogger.debug(
               //this.processPending[entry.$umid],
               //entry,
-              `Broadcast Recieved [${internal ? "P2P" : "HTTP"}] : ` + entry.$umid
+              `Broadcast Recieved [${isP2P ? "P2P" : "HTTP"}] : ` + entry.$umid
             );
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
@@ -447,7 +448,8 @@ export class Host extends Home {
                 },
                 null as any,
                 tx,
-                senderRef
+                senderRef,
+                true
               );
             } else {
               break;
@@ -1977,7 +1979,8 @@ export class Host extends Home {
     },
     res: HttpResponse,
     body?: any,
-    from?: string
+    from?: string,
+    isP2P = false,
   ) {
     // Internal or External Request
     let requester = (req.headers["X-Activeledger"] as string) || "NA";
@@ -2083,8 +2086,8 @@ export class Host extends Home {
             // Pass db conntection
             break;
           case "/a/init": // Internal transactions
-            if (true || this.firewallCheck(requester, req.connection.remoteAddress)) {
-              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress);
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
+              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress, false, isP2P);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
