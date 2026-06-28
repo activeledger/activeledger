@@ -427,7 +427,10 @@ export class Process extends EventEmitter {
 
       try {
         // This Cache won't always fetch latest version need to "defeat it"
-        if (!Process.contractPathCache[this.entry.$tx.$contract]) {
+        if (
+          !Process.contractPathCache[this.entry.$tx.$contract] ||
+          (contractVersion && !Process.contractPathCache[this.entry.$tx.$contract].endsWith(`${contractVersion}.js`))
+        ) {
           let namespacePath = "";
 
           try { // Using sync for startup path check is acceptable
