@@ -311,10 +311,17 @@ class Processor {
           break;
         case "contractLatestVersion":
           if (m.data.refresh) {
-            // Drastic but captures all scenarios, Maybe faster
-            this.latestContractVersion = {};
+            if (m.data.contract) {
+              delete this.latestContractVersion[m.data.contract];
+              ActiveProtocol.Process.clearContractPathCache(m.data.contract);
+            } else {
+              this.latestContractVersion = {};
+              ActiveProtocol.Process.clearContractPathCache();
+            }
           }
-          this.latestContractVersion[m.data.contract] = m.data.file;
+          if (m.data.contract) {
+            this.latestContractVersion[m.data.contract] = m.data.file;
+          }
           break;
         case "contractData":
           this.latestContractData[m.data.contract] = m.data.data;
