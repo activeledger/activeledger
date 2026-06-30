@@ -102,7 +102,9 @@ export class Maintain {
       Maintain.healthTimer();
     }, Maintain.getInterval());
     if (!boot) {
-      ActiveLogger.debug("Checking Neighbourhood");
+      if (Maintain.home && Maintain.home.getStatus() !== NeighbourStatus.Stable) {
+        ActiveLogger.debug("Checking Neighbourhood");
+      }
       Maintain.checkNeighbourhood();
     }
   }
@@ -160,12 +162,12 @@ export class Maintain {
    */
   public static rebaseNeighbourhood(): void {
     // Only Rebase if recognised
-    ActiveLogger.debug("Rebase Request");
     if (
       (!Maintain.rebasing &&
         Maintain.home.getStatus() == NeighbourStatus.Recognised) ||
       Maintain.home.getStatus() == NeighbourStatus.Unrecognised
     ) {
+      ActiveLogger.debug("Rebase Request");
       Maintain.rebasing = true;
       // If still checking wait to retry
       if (Maintain.checking) {

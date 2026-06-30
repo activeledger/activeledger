@@ -20,6 +20,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { ILedgerRemovedAuthority } from "./ledger";
 
 /**
  * Contains the data state of the ledger entry created by the contract
@@ -60,6 +61,7 @@ export interface IMeta extends IFullState {
   hash?: string;
   contractlock?: Array<string>;
   acl?: { [reference: string]: string };
+  removedAuthorities?: Array<ILedgerRemovedAuthority>;
 } 
 
 /**
