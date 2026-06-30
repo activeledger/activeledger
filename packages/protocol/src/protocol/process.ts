@@ -397,7 +397,11 @@ export class Process extends EventEmitter {
    */
   public static clearContractPathCache(contractId?: string) {
     if (contractId) {
-      delete Process.contractPathCache[contractId];
+      for (const key of Object.keys(Process.contractPathCache)) {
+        if (key === contractId || Process.contractPathCache[key].includes(contractId)) {
+          delete Process.contractPathCache[key];
+        }
+      }
     } else {
       Process.contractPathCache = {};
     }
