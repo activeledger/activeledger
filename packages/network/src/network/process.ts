@@ -312,7 +312,11 @@ class Processor {
         case "contractLatestVersion":
           if (m.data.refresh) {
             if (m.data.contract) {
-              delete this.latestContractVersion[m.data.contract];
+              for (const key of Object.keys(this.latestContractVersion)) {
+                if (key === m.data.contract || this.latestContractVersion[key].includes(m.data.contract)) {
+                  delete this.latestContractVersion[key];
+                }
+              }
               ActiveProtocol.Process.clearContractPathCache(m.data.contract);
             } else {
               this.latestContractVersion = {};
