@@ -393,6 +393,17 @@ export class Process extends EventEmitter {
   } = {};
 
   /**
+   * Clears the contract path cache
+   */
+  public static clearContractPathCache(contractId?: string) {
+    if (contractId) {
+      delete Process.contractPathCache[contractId];
+    } else {
+      Process.contractPathCache = {};
+    }
+  }
+
+  /**
    * Starts the consensus and commit phase processing
    *
    */
