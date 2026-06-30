@@ -211,6 +211,7 @@ export interface ILedgerAuthority {
   hash?: string;
   label?: string;
   metadata?: any;
+  umid?: string;
 }
 
 /**

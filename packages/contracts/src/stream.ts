@@ -733,6 +733,7 @@ export class Activity {
             type,
             stake: 100,
             hash: ActiveCrypto.Hash.getHash(pubKey, "sha256"),
+            umid: this.umid ?? ""
           },
         ];
         // Set Update Flag
@@ -771,6 +772,9 @@ export class Activity {
         authority.forEach((auth) => {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
+          }
+          if (this.umid) {
+            auth.umid = this.umid;
           }
         });
 
