@@ -227,6 +227,25 @@ export class VirtualMachine
         if (activities[streams[i]].updatedMeta) {
           //@ts-ignore
           stream.meta = activities[streams[i]].meta;
+
+          // If we are performing a staged rollout, hide the new auditing features
+          // until the 'build' flag is configured to 400 or higher. This allows
+          // legacy nodes to process transactions without data schema conflicts.
+          const build = ActiveOptions.get<number>("build", 0);
+          if (build < 400) {
+            if (stream.meta) {
+              if (stream.meta.removedAuthorities) {
+                delete stream.meta.removedAuthorities;
+              }
+              if (Array.isArray(stream.meta.authorities)) {
+                for (const auth of stream.meta.authorities) {
+                  if (auth && "umid" in auth) {
+                    delete (auth as any).umid;
+                  }
+                }
+              }
+            }
+          }
         }
 
         if (activities[streams[i]].volatileUpdated) {
