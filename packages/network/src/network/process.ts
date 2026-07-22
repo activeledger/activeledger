@@ -452,6 +452,14 @@ class Processor {
    * @private
    */
   private reloadDown(data: any) {
+    try {
+      // Re-read config.json to capture any live updates (such as "build" number)
+      ActiveOptions.parseConfig();
+      ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+    } catch (e) {
+      ActiveLogger.error(e, "Child process failed to re-parse config.json");
+    }
+
     // Reload Neighbourhood
     ActiveOptions.extendConfig()
       .then((config: any) => {
