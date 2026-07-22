@@ -229,10 +229,10 @@ export class VirtualMachine
           stream.meta = activities[streams[i]].meta;
 
           // If we are performing a staged rollout, hide the new auditing features
-          // until the 'build' flag is configured to 400 or higher. This allows
+          // until the 'build' flag is configured to 40000 or higher. This allows
           // legacy nodes to process transactions without data schema conflicts.
           const build = ActiveOptions.get<number>("build", 0);
-          if (build < 400) {
+          if (build < 40000) {
             if (stream.meta) {
               if (stream.meta.removedAuthorities) {
                 delete stream.meta.removedAuthorities;

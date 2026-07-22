@@ -2028,6 +2028,52 @@ export class Host extends Home {
           //   // Loop Hybrids, Find matching auth
           //   const hAuth = req.headers["x-activeledger"] as string;
           //   break;
+          case "/a/admin-reload":
+            if(!ActiveOptions.get<boolean>("remote", false)) {
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "failed",
+                  message: "remote disabled"
+                }),
+                gzipAccepted
+              );
+            }
+
+            try {
+              // 1. Reload the host/master's config.json
+              ActiveOptions.parseConfig();
+              ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+
+              // 2. Broadcast the reload signal to all child processes
+              this.reload();
+
+              ActiveLogger.info(
+                "Host and child processes config.json reloaded successfully via admin API"
+              );
+
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "success",
+                  build: ActiveOptions.get("build", 0),
+                }),
+                gzipAccepted
+              );
+            } catch (error: any) {
+              ActiveLogger.error(error, "Admin reload error");
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "failed",
+                  message: error.message || "Internal Error"
+                }),
+                gzipAccepted
+              );
+            }          
           default:
             // All Stream Management with start point
             if (this.firewallCheck(requester, req.connection.remoteAddress)) {
