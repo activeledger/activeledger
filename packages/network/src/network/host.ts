@@ -1232,8 +1232,11 @@ export class Host extends Home {
       // TODO detect leader!
       //this.processPending[umid].entry.$nodes
 
-      // We only want to send our value
-      const data = (!early || !this.processPending[umid].entry.$nodes[this.reference].early)
+      // We only want to send our value, and only once it's resolved - an
+      // unresolved early placeholder must never be sent as if it were a
+      // real vote, regardless of why broadcast() was called (early flag
+      // here only affects $$noreply, not whether our own data is ready).
+      const data = !this.processPending[umid].entry.$nodes[this.reference].early
         ? Object.assign(this.processPending[umid].entry, {
             $nodes: {
               [this.reference]:
