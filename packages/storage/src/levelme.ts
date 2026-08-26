@@ -1048,6 +1048,10 @@ export class LevelMe {
 
       if (ENABLE_CACHE) {
         this.cache.set(cacheKey, doc);
+        // The resolved (non-raw) shape is now stale - drop it so the next
+        // non-raw get() recomputes it from the fresh raw doc instead of
+        // returning what was there before this write.
+        this.cache.delete(doc._id);
       }
     }
 
