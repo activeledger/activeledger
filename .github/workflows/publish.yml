@@ -23,6 +23,9 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: "@activeledger"
 
+      - name: Install root dependencies
+        run: npm ci
+
       - name: Bootstrap workspace
         run: npx lerna bootstrap
 
