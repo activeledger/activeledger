@@ -1,0 +1,35 @@
+name: Publish packages
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://npm.pkg.github.com
+          scope: "@activeledger"
+
+      - name: Bootstrap workspace
+        run: npx lerna bootstrap
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Publish to GitHub Packages
+        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://npm.pkg.github.com/
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
