@@ -78,6 +78,14 @@ export class KeyPair {
   private readonly webpackBypassCheck = "generateKeyPairSync";
 
   /**
+   * Cached parsed public KeyObject for verify(), keyed by the pem it was
+   * parsed from. Avoids re-parsing the same PEM/DER on every verify call.
+   *
+   * @private
+   */
+  private cachedVerifyKey?: { pem: string; key: crypto.KeyObject };
+
+  /**
    * Creates an instance of KeyPair.
    * @param {*} [type="rsa"]
    * @param {*} [pem]
@@ -497,6 +505,20 @@ export class KeyPair {
   }
 
   /**
+   * Returns a parsed public KeyObject for verify(), reusing the cached
+   * one when the underlying pem hasn't changed.
+   *
+   * @private
+   */
+  private getVerifyKeyObject(): crypto.KeyObject {
+    const pem = this.handler.pub.pkcs8pem;
+    if (!this.cachedVerifyKey || this.cachedVerifyKey.pem !== pem) {
+      this.cachedVerifyKey = { pem, key: crypto.createPublicKey(pem) };
+    }
+    return this.cachedVerifyKey.key;
+  }
+
+  /**
    * Verify
    *
    * @param {*} data
@@ -524,24 +546,22 @@ export class KeyPair {
       // Data Object to string
       data = this.getString(data);
 
+      // Parsing the PEM/DER into a KeyObject is the expensive part of
+      // verify() - cache it since the public key is immutable per instance.
+      const pubKey = this.getVerifyKeyObject();
+
       switch (this.type) {
         case "rsa":
           verify = crypto.createVerify("RSA-SHA256");
           verify.update(data);
-          return verify.verify(
-            this.handler.pub.pkcs8pem,
-            Buffer.from(signature, encoding)
-          );
+          return verify.verify(pubKey, Buffer.from(signature, encoding));
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
           try {
             verify = crypto.createVerify("sha256");
             verify.update(data);
-            return verify.verify(
-              this.handler.pub.pkcs8pem,
-              Buffer.from(signature, encoding)
-            );
+            return verify.verify(pubKey, Buffer.from(signature, encoding));
           } catch {
             if (this.enableCompatMode()) {
               return this.verify(data, signature);
