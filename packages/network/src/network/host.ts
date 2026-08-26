@@ -1236,11 +1236,14 @@ export class Host extends Home {
       // unresolved early placeholder must never be sent as if it were a
       // real vote, regardless of why broadcast() was called (early flag
       // here only affects $$noreply, not whether our own data is ready).
-      const data = !this.processPending[umid].entry.$nodes[this.reference].early
+      // Note: when early=true the outer if above allows entry even when
+      // $nodes[this.reference] doesn't exist yet (see the commented-out
+      // check above), so this must not assume it's set.
+      const selfEntry = this.processPending[umid].entry.$nodes[this.reference];
+      const data = selfEntry && !selfEntry.early
         ? Object.assign(this.processPending[umid].entry, {
             $nodes: {
-              [this.reference]:
-                this.processPending[umid].entry.$nodes[this.reference],
+              [this.reference]: selfEntry,
             },
           })
         : Object.assign(this.processPending[umid].entry, {
