@@ -763,7 +763,7 @@ export class Host extends Home {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer = Buffer.alloc(0);
+      const chunks: Buffer[] = [];
 
       res.onData((ab, isLast) => {
         if (res.aborted) {
@@ -773,9 +773,8 @@ export class Host extends Home {
 
         if (ab.byteLength > 0) {
           // I found some non-last onData with 0 byte length
-          //const copy = copyArrayBuffer(ab); // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
-          //totalSize += copy.byteLength;
-          buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+          // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
+          chunks.push(Buffer.from(ab.slice(0)));
         }
 
         if (isLast) {
@@ -783,7 +782,13 @@ export class Host extends Home {
           // Convert the buffer to a string and parse it as JSON
           // this will fail if the buffer doesn't contain a valid JSON (e.g. length = 0)
           //const resolveValue = JSON.parse(buffer.toString());
-          resolve(buffer);
+          resolve(
+            chunks.length === 0
+              ? Buffer.alloc(0)
+              : chunks.length === 1
+              ? chunks[0]
+              : Buffer.concat(chunks)
+          );
         }
       });
     });
