@@ -42,6 +42,11 @@ setGlobalDispatcher(
     connect: {
       rejectUnauthorized: false,
     },
+    // Nodes repeatedly talk to the same small, fixed set of neighbours.
+    // undici's 4s default tears the socket down between consensus rounds
+    // more often than needed, forcing a fresh TCP+TLS handshake. 30s keeps
+    // connections warm across typical gaps without holding them open forever.
+    keepAliveTimeout: 30_000,
   })
 );
 
