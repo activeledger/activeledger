@@ -1623,7 +1623,7 @@ export class Host extends Home {
       this.processingBLQ = true;
 
       // Checked idententies. This means there is no "chance" we select the next one by bad timing
-      const checked: string[] = [];
+      const checked: Set<string> = new Set();
 
       // TODO Convert to method
       if (this.busyLocksQueue.internal.length) {
@@ -1632,10 +1632,10 @@ export class Host extends Home {
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           // // Skip if we have already tried
           if (labelOrKey?.length) {
-            if (checked.some((io) => labelOrKey.includes(io))) {
+            if (labelOrKey.some((io) => checked.has(io))) {
               continue;
             }
-            checked.push(...labelOrKey);
+            labelOrKey.forEach((io) => checked.add(io));
           }
 
           if (
