@@ -54,13 +54,22 @@ export function options(
 }
 
 /**
+ * Cached OpenAPI File contents (Swagger) - the file is static at runtime,
+ * so read it once instead of on every request.
+ */
+let openApiCache: Buffer | undefined;
+
+/**
  * Return OpenAPI File (Swagger)
  *
  * @export
  * @returns {Buffer}
  */
 export function openApi(): Buffer {
-  return readFileSync(__dirname + "/../openapi.json");
+  if (!openApiCache) {
+    openApiCache = readFileSync(__dirname + "/../openapi.json");
+  }
+  return openApiCache;
 }
 
 /**
