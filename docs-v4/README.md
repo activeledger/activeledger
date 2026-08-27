@@ -13,7 +13,7 @@ The repository is an npm/lerna monorepo. Three of these are things you actually 
 | Package | npm name | What it is |
 |---|---|---|
 | **activeledger** | `@activeledger/activeledger` | The node itself — consensus, networking, the CLI. This is the only one you strictly need. |
-| **core** | `@activeledger/activecore` | REST API over the ledger data (events, subscriptions, OpenAPI/Swagger). Optional but recommended. See [core.md](core.md). |
+| core | `@activeledger/activecore` | REST API over the ledger data (events, subscriptions, OpenAPI/Swagger). Off by default (`autostart.core: false`) — considered increasingly redundant next to the storage engine's own direct API. See [core.md](core.md). |
 | **restore** | `@activeledger/activerestore` | Watches for a node falling behind or coming up empty and heals it from the rest of the network. Optional but recommended. See [restore.md](restore.md). |
 | hybrid | `@activeledger/activehybrid` | Runs `core`+`restore` bundled with a node in one process, for smaller deployments. |
 | network | `@activeledger/activenetwork` | The gossip/consensus engine and both transports (HTTP and the newer P2P stream). See [transport.md](transport.md), [network-internals.md](network-internals.md), and [spi.md](spi.md) for the network's revision-conflict self-healing. |
@@ -34,9 +34,11 @@ The repository is an npm/lerna monorepo. Three of these are things you actually 
 You need Node.js. **Use 20.x** — the native HTTP server binding (`uWebSockets.js`) only supports Node 18/20/22/23, and this monorepo has been built and tested against `20.11.0` specifically.
 
 ```bash
-npm i -g @activeledger/activeledger @activeledger/activerestore @activeledger/activecore
+npm i -g @activeledger/activeledger @activeledger/activerestore
 activeledger
 ```
+
+`@activeledger/activecore` is still installable and usable if you want it, but isn't part of the default recommendation any more — see [core.md](core.md).
 
 On first run this generates a node identity (`.identity`), a default `config.json`, and starts the embedded LevelDB data store. See [configuration.md](configuration.md) for what's in that file, and [cli.md](cli.md) for every CLI flag and the multi-node testnet setup — including a couple of port-collision gotchas that aren't obvious until you hit them.
 

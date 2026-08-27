@@ -30,7 +30,7 @@ This reflects the actual current default config (`packages/activeledger/src/defa
     "reached": 60
   },
   "autostart": {
-    "core": true,
+    "core": false,
     "restore": true
   },
   "hybrid": [],
@@ -90,7 +90,9 @@ Percentage of the network that must agree during the vote phase for a transactio
 
 ## `autostart`
 
-Whether `core` and `restore` launch automatically alongside the main process. **Gets silently forced to `false`** by the CLI whenever you pass a `--port` other than the default `5260` (see [cli.md](cli.md)) — the reasoning is that a non-default-port instance is assumed to be one of several on the same host, and `core`/`restore` have their own fixed ports (`api.port`) that would collide across instances. This interacts with P2P in a way worth knowing before you hit it: a node left on the *literal* default port keeps `autostart.core` on, and `core`'s port (`api.port`, default `5261`) collides with the P2P server's port (`host` port + 1) the instant you turn `p2pStreamServer` on. See the P2P section of [transport.md](transport.md).
+Whether `core` and `restore` launch automatically alongside the main process. **`core` defaults to `false`** — see [core.md](core.md) for why (it's being considered redundant in favour of the storage engine's own direct API). `restore` still defaults to `true`. Either gets silently forced to `false` by the CLI whenever you pass a `--port` other than the default `5260` (see [cli.md](cli.md)) — the reasoning is that a non-default-port instance is assumed to be one of several on the same host, and `core`/`restore` have their own fixed ports (`api.port`) that would collide across instances.
+
+If you do re-enable `autostart.core` explicitly, there's a P2P interaction worth knowing before you hit it: a node left on the *literal* default port with `core` turned back on has `core`'s port (`api.port`, default `5261`) colliding with the P2P server's port (`host` port + 1) the instant you also turn `p2pStreamServer` on. See the P2P section of [transport.md](transport.md).
 
 ## `hybrid`
 

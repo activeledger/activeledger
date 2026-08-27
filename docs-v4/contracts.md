@@ -14,7 +14,7 @@ import { Standard, PostProcess, Event, Activity, Stream } from "@activeledger/ac
   - `commit(possibleTerritoriality?: boolean): Promise<any>` — required. Actually write the resulting state, once consensus is reached.
   - `verify(signatureless: boolean): Promise<boolean>` — optional. An earlier check for whether this contract even understands the transaction shape, before the vote phase runs.
 - **`PostProcess`** — extends `Standard`, adds an abstract `postProcess(...)` hook that runs after a successful commit, for side effects that shouldn't block the transaction's own completion (notifying an external system, chaining another action).
-- **`Event`** — extends `Standard`, adds the ability to emit named events from within the contract (`packages/query/src/index.ts`'s `EventEngine`, despite living in a package literally named "query" — see the note below). Events are stored and can trigger external processing via `core`'s SSE/subscriptions API.
+- **`Event`** — extends `Standard`, adds the ability to emit named events from within the contract (`packages/query/src/index.ts`'s `EventEngine`, despite living in a package literally named "query" — see the note below). Events are stored and can be consumed live over SSE — directly from the storage engine (recommended, see [storage.md](storage.md#the-self-hosted-engine-has-its-own-full-http-api-and-its-the-recommended-way-to-read-data-and-events)) or via `core`'s equivalent, less-preferred endpoint (see [core.md](core.md)).
 
 ## What used to also be here: `Query`
 
