@@ -12,7 +12,7 @@
     "selfhost": {
       "host": "127.0.0.1",
       "port": "5259",
-      "engine": "rocks"
+      "engine": "level"
     },
     "url": "http://[user]:[pass]@[host]:[port]",
     "database": "activeledger",
