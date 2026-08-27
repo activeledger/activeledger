@@ -1680,9 +1680,16 @@ export class Host extends Home {
   public release(umid: string) {
     if (this.processPending[umid]) {
       const entry = this.processPending[umid].entry;
-      // Ask for releases
+      // Ask for releases - hold() already computed and cached this on the
+      // entry, no need to redo the $i/$o walk here (recomputing ignored the
+      // $selfsign/dedupe logic hold() applies too, which is harmless for
+      // release - Locker.release() is idempotent per key - but still wasted
+      // work on every single transaction completion).
       Locker.release(
-        [...this.labelOrKey(entry.$tx.$i), ...this.labelOrKey(entry.$tx.$o)],
+        entry.$$labelOrKey || [
+          ...this.labelOrKey(entry.$tx.$i),
+          ...this.labelOrKey(entry.$tx.$o),
+        ],
         entry.$umid
       );
 
