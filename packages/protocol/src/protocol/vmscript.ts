@@ -21,7 +21,8 @@
  * SOFTWARE.
  */
 
-import { Activity, PostProcessQueryEvent } from "@activeledger/activecontracts";
+import { ActiveLogger } from "@activeledger/activelogger";
+import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import {
   IVMDataPayload,
@@ -102,7 +103,7 @@ class ContractControl implements IVMObject {
     // }
 
     if ("setEvent" in this.smartContracts[payload.umid]) {
-      (this.smartContracts[payload.umid] as PostProcessQueryEvent).setEvent(
+      (this.smartContracts[payload.umid] as PostProcessEvent).setEvent(
         event
       );
     }
@@ -246,7 +247,7 @@ class ContractControl implements IVMObject {
   ): Promise<any> {
     if ("postProcess" in this.smartContracts[umid]) {
       // Run post process
-      return (this.smartContracts[umid] as PostProcessQueryEvent).postProcess(
+      return (this.smartContracts[umid] as PostProcessEvent).postProcess(
         territoriality,
         who
       );
@@ -278,7 +279,20 @@ class ContractControl implements IVMObject {
    * @param {string} umid
    */
   public destroy(umid: string): void {
-    delete this.smartContracts[umid];
+    try {
+      if (this.smartContracts[umid] && "shutdown" in this.smartContracts[umid]) {
+        // Contract wants to know it is shutting down
+        ActiveLogger.info(`[AC] - Calling Shutdown - ${umid}`);
+        this.smartContracts[umid].shutdown!();
+      }
+      // Give it some time to shutdown
+      setTimeout(() => {
+        ActiveLogger.info(`[AC] - Deleting - ${umid}`);
+        delete this.smartContracts[umid];
+      }, 5000);
+    } catch {
+      // Already deleted?
+    }
   }
 
   /**

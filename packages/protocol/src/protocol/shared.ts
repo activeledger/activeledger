@@ -118,12 +118,7 @@ export class Shared {
     let checkIOMap = inputs ? this.ioLabelMap.i : this.ioLabelMap.o;
 
     // If map empty default to key stream
-    if (!Object.keys(checkIOMap).length) {
-      return this.filterMap[streamId] ? this.filterMap[streamId] : streamId;
-    }
-    return checkIOMap[this.filterMap[streamId]]
-      ? checkIOMap[this.filterMap[streamId]]
-      : checkIOMap[streamId];
+    return checkIOMap[this.filterMap[streamId] || streamId] || this.filterMap[streamId] || streamId;
   }
 
   /**
@@ -223,24 +218,6 @@ export class Shared {
     noWait = false
   ) {
     try {
-      // CSVE - contract skip vote error db (restore engine slightly different)
-      // try {
-      //   if (reason && this.getGlobalReason(reason)?.indexOf("#CSVEDB") !== -1) {
-          
-      //     this.emitter.emitFailed(
-      //       {
-      //         status: code,
-      //         error: this.getGlobalReason(reason) as string,
-      //       },
-      //       noWait
-      //     );
-      //     return;
-      //   }
-      // } catch (e) {
-      //   ActiveLogger.error(reason, "Global Reason Empty");
-      //   throw e;
-      // }
-
 
       // Store in database for activerestore to review
       const dbDoc = (this._storedSingleErrorDoc = await this.storeError(
@@ -298,8 +275,6 @@ export class Shared {
     reason: Error | string,
     priority: number = 0
   ): Promise<any> {
-    // const getReason = () =>
-    //   reason && reason.message ? reason.message : reason;
     if (priority >= this._errorOut.priority) {
       this._errorOut.code = code;
       this._errorOut.reason = this.getGlobalReason(reason) as string;
@@ -336,7 +311,7 @@ export class Shared {
 
       // Now if we store another error it won't be processed
       this._storeSingleError = true;
-
+      ActiveLogger.error(doc, "TX Error Logged umid : " + this.entry.$umid);
       return this.dbe.post(doc);
     } else {
       return Promise.resolve(this._storedSingleErrorDoc);
@@ -352,17 +327,7 @@ export class Shared {
    * @returns
    */
   private getGlobalReason(reason: any): string {
-    if(reason) {
-      if(reason.message) {
-        return reason.message.toString();
-      }
-      if(reason.error) {
-        return reason.error.toString();
-      }
-      return reason.toString();
-    }else{
-      return "Uncaught Error Reason"
-    }
+    return reason?.message?.toString() || reason?.error?.toString() || reason?.toString() || "Uncaught Error Reason";
   }
 
   /**

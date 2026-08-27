@@ -25,6 +25,7 @@ import * as fs from "fs";
 import { ChildProcess } from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveLogger } from "@activeledger/activelogger";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
@@ -254,28 +255,16 @@ export class Home extends Neighbour {
    * @returns {string}
    */
   public terriBuildMap(): void {
-    // Get the neighbours
-    let neighbourhood = this.neighbourhood.get();
-    let keys = this.neighbourhood.keys();
-    let i = keys.length;
-
-    // Temporary Array for holding references
-    let tempMap: string[] = [];
-
-    // Loop all neighbours
-    while (i--) {
-      // Add to temporary array (Unless stopping)
-      let neighbour = neighbourhood[keys[i]];
-      if (!neighbour.graceStop) {
-        tempMap.push(neighbour.reference);
-      }
-    }
-
-    // Sort the order of the neighbours
-    this.tMap = tempMap.sort((x, y): number => {
-      if (x > y) return 1;
-      return -1;
-    });
+    // Get all active neighbours, map to their references, and sort them.
+    // This creates a deterministic order for territoriality calculations.
+    this.tMap = Object.values(this.neighbourhood.get())
+      .filter((neighbour) => !neighbour.graceStop)
+      .map((neighbour) => neighbour.reference)
+      .sort((a, b) => {
+        if (a > b) return 1;
+        if (a < b) return -1;
+        return 0;
+      });
   }
 
   /**
@@ -287,23 +276,24 @@ export class Home extends Neighbour {
    */
   public terriMap(commitAt: string): string {
     // How many votes are needed for consesus
-    // Round up as we need whole number int for lookup
     let votes = Math.ceil(
       (ActiveOptions.get<any>("consensus", {}).reached / 100) * this.tMap.length
     );
 
-    // Get Commit Position
+    // Find the position of the target commit node in the sorted map.
     let commitPos = this.tMap.indexOf(commitAt);
 
     // Make sure it exists
     if (commitPos !== -1) {
-      // Current position (Plus 1 for index)
-      let sendPos = this.tMap.indexOf(commitAt) - votes + 1;
+      // Calculate the entry node's position by counting backwards from the commit node.
+      // The +1 accounts for the entry node itself being part of the consensus group.
+      let sendPos = commitPos - votes + 1;
 
-      // In range?
+      // Handle wrap-around for the circular network topology.
       if (sendPos >= 0) {
         return this.tMap[sendPos];
       } else {
+        // If the index is negative, wrap around from the end of the array.
         return this.tMap.slice(sendPos)[0];
       }
     }
@@ -333,7 +323,13 @@ export class Home extends Neighbour {
   public setRight(right: string): void {
     if (right) {
       // Set for this process
-      Home.right = this.neighbourhood.get(right);
+      const neighbour = this.neighbourhood.get(right);
+      if (!neighbour) {
+        ActiveLogger.warn(`[AC] - Right neighbour ${right} not found in neighbourhood map yet`);
+        return;
+      }
+
+      Home.right = neighbour;
 
       // Still able to connect or shutdowning from the network?
       if (Home.right && !Home.right.graceStop) {
@@ -347,7 +343,14 @@ export class Home extends Neighbour {
       const hkMsg = {
         type: "hk",
         data: {
-          right: Home.right,
+          right: {
+            host: Home.right.host,
+            port: Home.right.port,
+            reference: Home.right.reference,
+            isHome: Home.right.isHome,
+            graceStop: Home.right.graceStop,
+            identity: Home.right.identity
+          },
         },
       };
       this.processors.forEach((processor) => {
@@ -367,7 +370,13 @@ export class Home extends Neighbour {
   public setLeft(left: string): void {
     if (left) {
       // Set for this process
-      Home.left = this.neighbourhood.get(left);
+      const neighbour = this.neighbourhood.get(left);
+      if (!neighbour) {
+        ActiveLogger.warn(`[AC] - Left neighbour ${left} not found in neighbourhood map yet`);
+        return;
+      }
+
+      Home.left = neighbour;
 
       // Still able to connect or shutdowning from the network?
       if (Home.left && !Home.left.graceStop) {

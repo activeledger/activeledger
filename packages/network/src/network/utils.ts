@@ -20,8 +20,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-import * as os from "os";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
@@ -83,29 +81,31 @@ export class ActiveInterfaces {
     let argv = ActiveOptions.fetch(true);
     let config = ActiveOptions.fetch(false);
 
-    // Is host defined?
-    if (config.host) {
-      let [host, port] = config.host.split(":");
+    // Determine host and port from config file first, then command-line arguments.
+    const hostString = config.host || argv.host;
+
+    if (hostString) {
+      const [host, portStr] = hostString.split(":");
       this.bindingHost = host;
-      this.bindingPort = parseInt(port);
+
+      // Use port from host string, then from --port argument, then default.
+      let port = parseInt(portStr, 10);
+      if (isNaN(port)) {
+        port = argv.port;
+      }
+      if (isNaN(port)) {
+        port = 5260;
+      }
+      this.bindingPort = port;
     } else {
-      if (argv.host) {
-        let [host, port] = argv.host.split(":");
-        if (port) {
-          this.bindingHost = host;
-          this.bindingPort = parseInt(port);
-          return;
-        } else {
-          if (argv.port) {
-            this.bindingHost = host;
-            this.bindingPort = argv.port;
-          } else {
-            this.bindingHost = host;
-            this.bindingPort = 5260;
-          }
-        }
+      // Fallback for when only --port is provided without a host
+      const port = parseInt(argv.port, 10);
+      if (argv.host === undefined && !isNaN(port)) {
+        // This case is unlikely but handled for completeness.
+        // It assumes a default host if only a port is specified.
+        this.bindingPort = port;
       } else {
-        throw new Error("IP:Port Binding not found");
+        throw new Error("IP:Port Binding not found in configuration or arguments.");
       }
     }
   }

@@ -105,7 +105,7 @@ export class ActiveOptions {
             const winston = require("winston");
             require("winston-daily-rotate-file");
             const transport = new winston.transports.DailyRotateFile({
-              filename: `./winstonlogs/application-%DATE%.log`,
+              filename: `./winstonlogs/application-${process.pid}-%DATE%.log`,
               datePattern: "YYYY-MM-DD-HH",
               zippedArchive: true,
               maxSize: "20m",

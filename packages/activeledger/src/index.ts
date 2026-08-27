@@ -85,7 +85,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
       process.exit();
     });
 } else {
-  CLIHandler.start();
+  CLIHandler.start(version);
 }
 
 process.on("SIGTERM", async () => {

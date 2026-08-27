@@ -24,6 +24,7 @@
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
 
 /**
@@ -732,6 +733,7 @@ export class Activity {
             type,
             stake: 100,
             hash: ActiveCrypto.Hash.getHash(pubKey, "sha256"),
+            umid: this.umid ?? ""
           },
         ];
         // Set Update Flag
@@ -771,6 +773,9 @@ export class Activity {
           if (!auth.hash) {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
+          if (this.umid) {
+            auth.umid = this.umid;
+          }
         });
 
         // Do we have the authority array
@@ -798,39 +803,67 @@ export class Activity {
   }
 
   /**
-   * Iterate over the allowed authorities and remove the keys which cannot control this Activity Stream
+   * Iterate over the allowed authorities and remove the keys which cannot control this Activity Stream.
+   * Can accept a specific public key, an array of public keys, or a custom filter callback.
    *
-   * @param {(string | string[])} pubKey
+   * @param {(string | string[] | ((authority: ActiveDefinitions.ILedgerAuthority) => boolean))} pubKeyOrFilter
    */
-  public deleteAuthorities(pubKey: string | string[]): void {
+  public deleteAuthorities(
+    pubKeyOrFilter:
+      | string
+      | string[]
+      | ((authority: ActiveDefinitions.ILedgerAuthority) => boolean)
+  ): void {
     if (this.safeMode) {
       throw new Error("Cannot delete authorities in Safe Mode");
     } else {
       // Only Inputs & New Streams can be here
       if (this.signature || (this.umid && this.name)) {
+        // Keep track of which authorities are being removed
+        let removed: ActiveDefinitions.ILedgerAuthority[] = [];
+
         // Filter out the authorities being passed
         let filteredAuthorities = this.meta.authorities.filter(
-          (authority: any) => {
-            // Array Filter
-            if (pubKey instanceof Array) {
-              let i = pubKey.length;
-              while (i--) {
-                if (authority.public == pubKey[i]) {
-                  return false;
-                }
-              }
+          (authority: ActiveDefinitions.ILedgerAuthority) => {
+            let isRemoved = false;
+            if (typeof pubKeyOrFilter === "function") {
+              isRemoved = pubKeyOrFilter(authority);
+            } else if (pubKeyOrFilter instanceof Array) {
+              isRemoved = pubKeyOrFilter.indexOf(authority.public) !== -1;
             } else {
-              // Direct Filter
-              if (authority.public == pubKey) {
-                return false;
-              }
+              isRemoved = authority.public === pubKeyOrFilter;
+            }
+
+            if (isRemoved) {
+              removed.push(authority);
+              return false;
             }
             return true;
           }
         );
+
         // Make sure we still have an authority over the stream
         if (filteredAuthorities.length) {
           this.meta.authorities = filteredAuthorities;
+
+          // Map removed authorities to lightweight audit entries (excluding the public key)
+          const revokedUmid = this.umid || "";
+          const historyEntries: ActiveDefinitions.ILedgerRemovedAuthority[] = removed.map((auth) => ({
+            hash: auth.hash,
+            label: auth.label,
+            umid: auth.umid,
+            revoked: revokedUmid,
+          }));
+
+          if (historyEntries.length > 0) {
+            if (!this.meta.removedAuthorities) {
+              this.meta.removedAuthorities = [];
+            }
+            this.meta.removedAuthorities.push(...historyEntries);
+          }
+
+          // Set Update Flag
+          this.updatedMeta = this.updated = true;
         } else {
           throw new Error("Operation denied this will delete all authorities");
         }
@@ -950,9 +983,7 @@ export class Activity {
    */
   public getState(): ActiveDefinitions.IState {
     // Deep copy
-    let state: ActiveDefinitions.IState = JSON.parse(
-      JSON.stringify(this.state)
-    );
+    let state: ActiveDefinitions.IState = ActiveClone.clone(this.state);
 
     // Remove _id & _rev
     if ((state as ActiveDefinitions.IFullState)._id)
