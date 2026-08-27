@@ -28,6 +28,8 @@ How it works: each node holds a persistent TCP socket to every peer (2-second re
 
 It carries the entire gossip lifecycle described in [architecture.md](architecture.md) — both the origin's initial `init` fan-out and every peer's vote re-broadcast go through the same code path (`neighbour.ts`'s `knock("init", ...)`), gated on P2P being viable for that peer. It is *not* a partial implementation limited to one phase, contrary to what an isolated `TODO` comment in `protocol/process.ts` (about "Consensus Vote Reconciling not available on broadcast p2p method") might suggest in isolation — that TODO is scoped narrowly to one rare minority-dissent recovery edge case (a node that voted `false` locally but the network reached consensus anyway), not general vote-carrying.
 
+"Fire-and-forget" isn't just the common case, either: the receiving server (`host.ts`'s `p2pServer`) never writes a response back on the socket, and the client's own receive-side code (buffering, frame parsing, an event to hook into — see [utilities.md](utilities.md#activeframe-correct-in-design-but-its-counterpart-in-the-p2p-client-is-dead-code)) has nothing listening to it. There is currently no response path over P2P at all, in either direction.
+
 ## Why HTTP stays the recommendation for now
 
 This session ran a real, controlled comparison: a 4-node network, bare-host (not Docker), submitting the same 100 self-signed onboarding transactions with HTTP, then again with both P2P flags on. **Result: ~4.88 TPS with HTTP, ~4.86 TPS with P2P — no meaningful difference, well within noise.**
