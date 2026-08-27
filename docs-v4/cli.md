@@ -19,6 +19,10 @@ Checked against `packages/activeledger/src/index.ts` and `packages/activeledger/
 | `--assert [contract stream id]` / `--assert-network [contract stream id]` | Move a running network from file-based to ledger-based configuration — see [`docs/en-gb/dynamic-nodes.md`](../docs/en-gb/dynamic-nodes.md), still accurate. Optionally lock the new config stream to an additional already-deployed contract. |
 | `--sign <file>` | Sign a file (or, if it's a transaction, just its `$tx` contents) with this node's identity. Used for the node-add/remove and namespace request/revoke flows. |
 
+### A harmless dead-code detail in the storage engine's own restart guard
+
+Not something you'll notice in practice, but worth knowing if you're ever reading `datastore.ts`: it has two independent guards against restarting the storage engine after a deliberate `--stop` — a `datastore.isShuttingDown` flag, set by `cli.ts`'s own shutdown routine before it signals anything, and a `signal !== "SIGTERM"` check in the storage subprocess's `exit` handler, with a comment stating the actual intent ("If killed via activeledger --stop check for SIGTERM signal and don't restart if it is"). Only the first one actually works. `selfhost.ts`'s own `SIGTERM`/`SIGINT`/`SIGQUIT` handler intercepts the signal and calls `process.exit(0)` itself (a graceful shutdown, closing databases first) rather than letting the raw signal kill the process — so Node's child `exit` event always reports `signal` as `null`, never the literal string `"SIGTERM"`, regardless of what actually triggered the shutdown. The `signal !== "SIGTERM"` check is therefore always true and never does anything; `isShuttingDown` is what actually prevents the restart-after-`--stop` case, and it does so correctly on its own. No user-visible effect, just misleading if you go looking for how the guard works from the comment alone.
+
 ## Flags for a single node's setup
 
 | Flag | Does |
