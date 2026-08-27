@@ -23,7 +23,7 @@
     "reached": 60
   },
   "autostart": {
-    "core": true,
+    "core": false,
     "restore": true
   },
   "hybrid": [],
