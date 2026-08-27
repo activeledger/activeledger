@@ -54,6 +54,33 @@ Because those can genuinely differ, the in-memory read cache keys them separatel
 
 **`seqDocFromRoot()`/`findCachedBranchEnd()` were entirely absent from `hpe-11a`'s rewrite of this file** — not modified, just gone, along with every call site that used them. For a document already in the current format this made no observable difference (resolving is a no-op for those anyway), which is presumably why it went unnoticed. For any document still in the old rev-tree format, though, it meant `get()` would return the raw rev-tree root — pointers and metadata — instead of the actual data document. This was caught and fixed during the merge, not before it; it's a good illustration of why a "clean" merge (no conflict markers) doesn't mean nothing was lost — both branches can touch nearby-but-different lines and still produce a semantically broken result that git's line-based diff has no way to flag.
 
+## The self-hosted engine has its own full HTTP API — and it's the recommended way to read data and events
+
+This is a significant correction to how [core.md](core.md) originally framed things, and came from the project's own direction rather than from reading the code cold: `core` is being considered increasingly redundant. The self-hosted storage engine (`packages/storage/src/selfhost.ts`, listening on `db.selfhost.port` — `5259` by default, see [configuration.md](configuration.md)) exposes a substantial, mostly CouchDB-compatible HTTP API of its own, directly — no need to go through `core` at all if you have (or can get) network access to it:
+
+- **`GET /<database>/events`** — a direct SSE stream of everything a contract has emitted via `this.event.emit(...)` (see [contracts.md](contracts.md)), filtered to `event:`-prefixed keys and reconnect-safe via `Last-Event-ID`. This is a live, real endpoint — verified directly: `curl -N http://127.0.0.1:5259/activeledgerevents/events` (using the default `db.event` database name) streams events as they're emitted, in the same shape `core`'s `/api/events` was documented as providing — except this one actually worked in testing, where getting `core`'s equivalent running hit real operational friction (see [core.md](core.md)).
+- **`GET /<database>/_changes`** — the general CouchDB-style changes feed, same idea, not filtered to events specifically.
+- **`GET /<database>/<doc-id>`** and **`POST /<database>/_all_docs`** — direct document reads, single or bulk.
+- **`POST /<database>/_find`** / **`POST /<database>/_explain`** — Mango-style queries (a real, working feature here — unrelated to the SQL/Mango `Query` contract base class that was removed, see [contracts.md](contracts.md)).
+- **`POST /<database>/_backup`** / **`POST /<database>/_restore`** — the backup/restore mechanism referenced in [cli.md](cli.md), reachable directly over HTTP too, not just the CLI flags.
+- **`GET /<database>/_all_dbs`**, **`GET /_session`**, **`GET /<database>/transactions`**, **`GET /<database>/umids`** and more — a fuller surface than is worth enumerating exhaustively here; read `selfhost.ts`'s `http.use(...)` registrations directly if you need something not listed.
+
+**If you have localhost (or otherwise trusted network) access to a node**, this is the direct, low-overhead way to read ledger state and subscribe to events — not `core`'s REST wrapper around the same data. `core` still exists and still works for what it does, but treat it as the less-preferred path going forward rather than the default recommendation this doc set originally gave it.
+
+### Reading data through a transaction instead
+
+There's a second way to read data that doesn't touch the storage HTTP API at all: submit a normal transaction whose contract calls `this.returnToRemote(data)` (`Stream`'s protected helper, `packages/contracts/src/stream.ts`) instead of writing anything. The submitting client gets the data back directly in the transaction response under `$responses`:
+
+```js
+// A read-only contract: no $o, vote() reads state via getActivityStreams(),
+// commit() calls this.returnToRemote(state) instead of mutating anything.
+const readTx = { $tx: { $namespace: ns, $contract: contractStreamId, $i: { [identityId]: {} } } };
+const res = await submit({ ...readTx, $sigs: { [identityId]: kp.sign(readTx.$tx) } });
+// res.$responses[0] is whatever the contract passed to returnToRemote()
+```
+
+Verified working with a normal, real signature on `$i` (no `$o` at all needed — see [contracts.md](contracts.md#the-rule-the-deployment-docs-dont-mention-io-streams-must-already-exist-unless-selfsign), this only needs the *input* stream to exist, since there's no output being written). **What wasn't confirmed**: whether this can go further and skip the signature requirement entirely. Submitting with `$sigs` missing is rejected outright (`"$sigs not found"`), and submitting with `$sigs: {}` gets past that gate but then fails per-stream signature verification (`"Input Signature Incorrect"`) — in this session's testing, at least one real, valid signature on the referenced `$i` stream was still required. If a genuinely signature-free read path exists, it wasn't found here; treat "read via a normally-signed transaction, no `$o` required" as the confirmed capability, and the stronger "no signature needed at all" claim as unverified rather than assume it's wrong — it may need a different transaction shape or contract pattern this session didn't try.
+
 ## `classic-level` and this monorepo's TypeScript version
 
 `classic-level`'s type definitions use `Symbol.asyncDispose` (the TC39 explicit resource management proposal), which this monorepo's pinned TypeScript (`4.7.3`, from 2022) doesn't know about — it predates that feature landing in TypeScript's own lib definitions. Rather than bump TypeScript monorepo-wide (a much bigger, riskier change), `packages/storage/tsconfig.json` has `skipLibCheck: true`, scoped to just that package — the standard, low-risk way to deal with a third-party dependency's type definitions using newer language features than your own compiler targets, without disabling type-checking on your own code.

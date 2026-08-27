@@ -58,6 +58,8 @@ On success:
 
 `$summary` reports how many nodes voted and committed out of the total participating. The new stream ID under `$streams.new` is what you reference as `$i`/`$o`/`$r` in future transactions involving this identity.
 
+**`$responses`** (not shown above — only present when a contract actually returns something): a contract can call `this.returnToRemote(data)` from `commit()` to hand arbitrary data back to the submitting client, landing in `$responses` in the transaction response. This is a real, verified way to *read* data through a normal transaction rather than a storage HTTP call — a contract with `$i` but no `$o` that just reads state and calls `returnToRemote()` instead of mutating anything. See [storage.md](storage.md#reading-data-through-a-transaction-instead) for a worked example and what was and wasn't confirmed about the signature requirements for this pattern.
+
 ## A worked example: onboard, then a follow-up transaction
 
 Everything in this section was run against a real single node this session — not just read from source. The code is complete and was actually executed; the JSON responses shown are genuine output, not constructed examples. If you're writing a client against Activeledger, this is a confirmed-working starting point as of `v4.1.0`.
