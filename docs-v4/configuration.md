@@ -2,7 +2,7 @@
 
 This reflects the actual current default config (`packages/activeledger/src/default.config.json`) and how each field is consumed in code, checked against `v4.1.0`. It supersedes [`docs/en-gb/configuration.md`](../docs/en-gb/configuration.md), which documents an older field set (missing `remote`, `build`, `hybrid`, `experimental`, `api`, `engine`, and both P2P flags entirely).
 
-`config.json` is generated on first run (or via `--setup-only`, see [cli.md](cli.md)) in the node's working directory. It's read by the main `activeledger` process; `core` and `restore` read the same file when run separately.
+`config.json` is generated on first run (or via `--setup-only`, see [cli.md](cli.md)) in the node's working directory. It's read by the main `activeledger` process; `core` and `restore` read the same file when run separately. One precedence detail worth knowing before you go looking for why a CLI flag "isn't working": `config.json` wins over a same-named CLI flag, not the other way round — see [options.md](options.md#activeoptions-config-precedence-is-not-what-youd-guess) for why.
 
 ```json
 {
