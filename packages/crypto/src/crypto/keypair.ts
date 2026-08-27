@@ -473,7 +473,7 @@ export class KeyPair {
       case "rsa":
         sign = crypto.createSign("RSA-SHA256");
         sign.update(data);
-        return new Buffer(
+        return Buffer.from(
           sign.sign(this.handler.prv.pkcs8pem, "hex"),
           "hex"
         ).toString(encoding);
@@ -483,7 +483,7 @@ export class KeyPair {
         try {
           sign = crypto.createSign("sha256");
           sign.update(data);
-          return new Buffer(
+          return Buffer.from(
             sign.sign(this.handler.prv.pkcs8pem, "hex"),
             "hex"
           ).toString(encoding);
