@@ -61,6 +61,29 @@ const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 const MAX_RETRIES = 35; // Bubbling up error (may need different counters)
 
 /**
+ * Reads the first `n` bytes across the front of a chunk array without
+ * concatenating everything buffered so far - almost always just chunks[0]
+ * if it's already big enough, only falling back to a (small) concat of the
+ * leading chunks that actually make up those n bytes.
+ *
+ * @param {Buffer[]} chunks
+ * @param {number} n
+ * @returns {Buffer}
+ */
+function peekBytes(chunks: Buffer[], n: number): Buffer {
+  if (chunks.length > 0 && chunks[0].length >= n) {
+    return chunks[0];
+  }
+  let total = 0;
+  let end = 0;
+  while (end < chunks.length && total < n) {
+    total += chunks[end].length;
+    end++;
+  }
+  return Buffer.concat(chunks.slice(0, end));
+}
+
+/**
  * Process object used to manage an individual transaction
  *
  * @interface process
@@ -426,11 +449,20 @@ export class Host extends Home {
 
           // Frame: [SenderRef (40)][Length (4)][Payload]
           while (bufferLength >= 44) {
-            const fullBuffer = Buffer.concat(chunks);
-            const senderRef = fullBuffer.slice(0, 40).toString().trim();
-            const length = fullBuffer.readUInt32BE(40);
+            // Peek just the 44-byte header without concatenating the whole
+            // buffered backlog - almost always already in chunks[0] alone.
+            // A multi-chunk message (e.g. a large contract deploy) used to
+            // pay a full Buffer.concat() of everything received so far on
+            // every single TCP segment while still waiting for the rest of
+            // the frame to arrive - O(n^2) for an n-segment message.
+            const header = peekBytes(chunks, 44);
+            const length = header.readUInt32BE(40);
 
             if (bufferLength >= 44 + length) {
+              // Frame complete - now it's safe/necessary to do the one
+              // full concat needed to slice out the item.
+              const fullBuffer = Buffer.concat(chunks);
+              const senderRef = fullBuffer.slice(0, 40).toString().trim();
               const item = fullBuffer.slice(44, 44 + length);
 
               // Clean up consumed data
