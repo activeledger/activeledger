@@ -105,7 +105,7 @@ Both verified working, real captured responses: `[{"via":"default read()"}]` and
 
 **`verify()`/`vote()`/`commit()` still need to exist on the class** (they're `Standard`'s abstract requirements) even for a contract that's only ever used in read mode — they just never run for an `$i`-less transaction. `verify()`'s own `selfsigned` parameter is unrelated to this: it's `$entry.$selfsign`, not a signal that the transaction is read-only.
 
-This is a different mechanism from `returnToRemote()` (see [storage.md](storage.md#reading-data-through-a-transaction-instead)), which is the equivalent "send data back to the caller" tool for the *normal* vote/commit lifecycle, called from inside `commit()`. Read mode's named method just returns its value directly — no `returnToRemote()` call needed there.
+This is a different mechanism from `returnToRemote()` (`Stream`'s protected `returnToRemote(data)`/`getReturnToRemote()` pair, `packages/contracts/src/stream.ts` — see [transactions.md](transactions.md#response) for how its output surfaces in `$responses`), which is the equivalent "send data back to the caller" tool for the *normal* vote/commit lifecycle, called from inside `commit()`. Read mode's named method just returns its value directly — no `returnToRemote()` call needed there.
 
 ## Deployment mechanics
 
