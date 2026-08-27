@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import * as fs from "fs";
+import { promises as fs } from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
@@ -36,8 +36,10 @@ import { PermissionsChecker } from "./permissionsChecker";
 import { LedgerEntry } from "@activeledger/activedefinitions/lib/definitions";
 
 // Increasing baseline timeout, Contracts should error or complete before timeouts are reached
+const BROADCAST_TIMEOUT_EARLY = 60 * 1000;
 const BROADCAST_TIMEOUT_VOTE = 60 * 1000;
 const BROADCAST_TIMEOUT_COMMIT = 60 * 1000;
+// Timers are in groups so they can be adjusted with general improvements. Such as queue weight by votes cast
 
 /**
  * Class controls the processing of this nodes consensus
@@ -197,7 +199,7 @@ export class Process extends EventEmitter {
    * @private
    * @type {number}
    */
-  private currentVotes: number;
+  private currentTrueVotes: number;
 
   /**
    * A cache of the secure namespaces
@@ -350,7 +352,7 @@ export class Process extends EventEmitter {
       // Quick solution to delete rules
       delete (this as any).entry;
     } else {
-      // early commit calls this to soon so can't send on so simple timeout
+      // early commit calls this too soon so can't send on so simple timeout
       setTimeout(() => {
         Process.generalContractVM.destroy(umid);
         delete (this as any).entry;
@@ -379,9 +381,31 @@ export class Process extends EventEmitter {
     return padSorting(a).localeCompare(padSorting(b));
   }
 
-  private contractPathCache: {
+  /**
+   * Cache for contract paths to avoid repeated filesystem lookups
+   *
+   * @private
+   * @static
+   * @type {{ [index: string]: string }}
+   */
+  private static contractPathCache: {
     [index: string]: string;
   } = {};
+
+  /**
+   * Clears the contract path cache
+   */
+  public static clearContractPathCache(contractId?: string) {
+    if (contractId) {
+      for (const key of Object.keys(Process.contractPathCache)) {
+        if (key === contractId || Process.contractPathCache[key].includes(contractId)) {
+          delete Process.contractPathCache[key];
+        }
+      }
+    } else {
+      Process.contractPathCache = {};
+    }
+  }
 
   /**
    * Starts the consensus and commit phase processing
@@ -391,48 +415,47 @@ export class Process extends EventEmitter {
     contractVersion?: string,
     contractData?: ActiveDefinitions.IContractData | undefined | null
   ) {
-    ActiveLogger.debug("New TX : " + this.entry.$umid);
+    ActiveLogger.debug(`New TX : ${this.entry.$umid}`);
 
     // Compiled Contracts sit in another location
-    const setupDefaultLocation = () => {
+    const setupDefaultLocation = async () => {
       // Set isDefault flag to true
       this.isDefault = true;
 
       // Allow for individual default contrack locking
-      if (
-        fs.existsSync(
-          `${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`
-        )
-      ) {
+      if (await fs.stat(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`).catch(() => false)) {
         throw new Error("Contract Global Lock");
       }
 
       // Default Contract Location
       // Wrapped in realpathSync to resolve symbolic links
       // This prevents issues with cached contracts
-      this.contractLocation = fs.realpathSync(
+      this.contractLocation = await fs.realpath(
         `${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`
       );
     };
 
     // Ledger Transpiled Contract Location
-    const setupLocation = () => {
+    const setupLocation = async () => {
       let contract = this.entry.$tx.$contract;
+      this.contractId = contract.split("@")[0];
 
       try {
         // This Cache won't always fetch latest version need to "defeat it"
-        if (!this.contractPathCache[this.entry.$tx.$contract]) {
+        if (
+          !Process.contractPathCache[this.entry.$tx.$contract] ||
+          (contractVersion && !Process.contractPathCache[this.entry.$tx.$contract].endsWith(`${contractVersion}.js`))
+        ) {
           let namespacePath = "";
 
-          try {
-            namespacePath = fs.realpathSync(
+          try { // Using sync for startup path check is acceptable
+            namespacePath = await fs.realpath(
               `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
             );
           } catch {
             throw new Error("Namespace not found");
           }
 
-          this.contractId = this.entry.$tx.$contract.split("@")[0];
 
           if (contractVersion) {
             contract = contractVersion;
@@ -446,20 +469,20 @@ export class Process extends EventEmitter {
                 // Now we find the latest @ in the file system and include
                 // need to remember to update it upon upgrades. This way we don't nned to manage cache
                 // Or the VMs
-                contract =
-                  fs
-                    .readdirSync(namespacePath)
+                contract = (
+                  (await fs
+                    .readdir(namespacePath))
                     .filter((fn) => fn.includes(this.entry.$tx.$contract))
                     .sort(this.sortVersions)
-                    .pop()
-                    ?.replace(".js", "") || "notfound.404";
+                    .pop() || "notfound.404"
+                ).replace(".js", "");
               } catch {
                 throw new Error("Contract not found");
               }
             }
           }
 
-          if (!fs.existsSync(`${namespacePath}/${contract}.js`)) {
+          if (!(await fs.stat(`${namespacePath}/${contract}.js`).catch(() => false))) {
             throw new Error("Contract not found");
           }
 
@@ -473,29 +496,29 @@ export class Process extends EventEmitter {
           }
 
           // Check For Locks Global and Version
-          if (fs.existsSync(`${namespacePath}/_LOCK.${this.contractId}`)) {
+          if (await fs.stat(`${namespacePath}/_LOCK.${this.contractId}`).catch(() => false)) {
             throw new Error("Contract Global Lock");
           }
 
           //
-          if (fs.existsSync(`${namespacePath}/_LOCK.${contract}`)) {
+          if (await fs.stat(`${namespacePath}/_LOCK.${contract}`).catch(() => false)) {
             throw new Error(
               `Contract Version Lock ${contract.substring(
                 contract.indexOf("@") + 1
               )}`
             );
           }
-          // Wrapped in realpathSync to avoid issues with cached contracts
+          // Wrapped in realpath to avoid issues with cached contracts
           // And to allow us to get the ID of the contract if a label (symlink) was
           // used in the transaction
           // This needs to be here rather than where trueConrtractPath is as
           // we need the contract ID at that point to look up the latest version
-          this.contractPathCache[this.entry.$tx.$contract] = fs.realpathSync(
+          Process.contractPathCache[this.entry.$tx.$contract] = await fs.realpath(
             `${namespacePath}/${contract}.js`
           );
         }
         this.contractLocation =
-          this.contractPathCache[this.entry.$tx.$contract];
+          Process.contractPathCache[this.entry.$tx.$contract];
       } catch (e) {
         throw e;
       }
@@ -503,15 +526,14 @@ export class Process extends EventEmitter {
 
     try {
       // Is this a default contract
-      this.entry.$tx.$namespace === "default"
+      await (this.entry.$tx.$namespace === "default"
         ? setupDefaultLocation()
-        : setupLocation();
+        : setupLocation());
     } catch (error) {
       // Simple Error Return (Can't use postVote yet due to VM)
-      this.entry.$nodes[this.reference].error = `Init Contract Error - ${
-        error.message || error
-      }`;
-      this.emit("commited", { instant: true });
+      this.entry.$nodes[this.reference].error = `Init Contract Error - ${error.message || error
+        }`;
+      this.emit("commited", { instant: true }); // Should be emitFailed
       return;
     }
 
@@ -526,7 +548,7 @@ export class Process extends EventEmitter {
     const virtualMachine: IVirtualMachine = Process.generalContractVM;
 
     // Get contract file (Or From Database)
-    if (fs.existsSync(this.contractLocation)) {
+    if (await fs.stat(this.contractLocation).catch(() => false)) {
       // Now we know we can execute the contract now or more costly cpu checks
       // Build Inputs Key Maps (Reference is Stream)
       this.inputs = Object.keys(this.entry.$tx.$i || {});
@@ -655,7 +677,7 @@ export class Process extends EventEmitter {
                   1255,
                   new Error(
                     "Self signed publicKey property not found in $i " +
-                      inputs[i]
+                    inputs[i]
                   )
                 );
               }
@@ -721,6 +743,32 @@ export class Process extends EventEmitter {
       return;
     }
 
+    // Just wamring up (This should be an object so uselss being herE?)
+    // Actually think this will never run like this, Where is it actually filtered? (I think on send!)
+    // if (node.early) {
+    //   // Copy paste testing
+    //   // if (!this.nodeResponse.vote && this.broadcastTimeout) {
+    //   //   clearInterval(this.broadcastTimeout);
+    //   //   this.broadcastTimeout = setTimeout(
+    //   //     () => {
+    //   //       if (!this.isCommiting()) {
+    //   //         // Entire Network didn't reach consensus in time
+    //   //         ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
+    //   //         return this.shared.raiseLedgerError(
+    //   //           1510,
+    //   //           new Error(
+    //   //             "Failed Network Voting Timeout - Voters Timed Out"
+    //   //           )
+    //   //         );
+    //   //       }
+    //   //     },
+    //   //     // Longer timeout to allow for longer voting round
+    //   //     BROADCAST_TIMEOUT_EARLY
+    //   //   );
+    //   // }
+    //   return;
+    // }
+
     // Don't overwrite self
     if (node[this.reference]) {
       delete node[this.reference];
@@ -735,11 +783,11 @@ export class Process extends EventEmitter {
       // need to make sure streams exists
       const nodes = Object.keys(this.entry.$nodes);
       // Do we have any votes left if not can fast forward
-      if (!this.hasOutstandingVotes(nodes.length) && !this.canCommit()) {
+      if (!(this.hasOutstandingVotes(/*nodes.length*/)) && !this.canCommit()) {
         this.emitFailed(this.willEmitData);
       } else {
         // Waiting on commit confirmation for streams
-        for (let i = nodes.length; i--; ) {
+        for (let i = nodes.length; i--;) {
           if (this.entry.$nodes[nodes[i]].streams) {
             // We have 1 nodes $stream record can fast forward the error throwing
             this.emitFailed(this.willEmitData);
@@ -943,8 +991,10 @@ export class Process extends EventEmitter {
 
       // All previous rounds successful continue processing
       if (continueProcessing) {
+        //ActiveLogger.info(`Vote phase successful for ${payload.umid}`);
         // Update Vote Entry
         this.nodeResponse.vote = true;
+        this.nodeResponse.early = false;
 
         // Internode Communication picked up here, Doesn't mean every node
         // Will get all values (Early send back) but gives the best chance of getting most of the nodes communicating
@@ -979,6 +1029,7 @@ export class Process extends EventEmitter {
       } catch (error) {
         // Do something with the error
         this.nodeResponse.error = "Read Error - " + JSON.stringify(error);
+        this.nodeResponse.early = false;
       }
 
       // Prevents false positive error log "failed to commit before timeout"
@@ -1009,9 +1060,10 @@ export class Process extends EventEmitter {
       if (this.entry.$broadcast && !(this.entry as any).$wait) {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
-        //if (this.entry.$origin === this.reference) {
+        if (this.entry.$origin === this.reference) {
+          // Now we collect votes within the queue maybe we can just send with orign node?
           this.emit("broadcast", true);
-        //}
+        }
         // The reason this should be fine is the orign is the entry node, It is sending this out
         // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
       }
@@ -1030,7 +1082,7 @@ export class Process extends EventEmitter {
 
       if (this.entry.$sigs) {
         const sigKeys = Object.keys(this.entry.$sigs);
-        for (let i = sigKeys.length; i--; ) {
+        for (let i = sigKeys.length; i--;) {
           $sigs[this.shared.filterPrefix(sigKeys[i])] =
             this.entry.$sigs[sigKeys[i]];
           // Not going to add unfiltered (even though it would ovewrite)
@@ -1072,6 +1124,7 @@ export class Process extends EventEmitter {
   private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
     // Set voting completed state
     this.voting = false;
+    this.nodeResponse.early = false;
 
     // Voting has concluded (with a real vote or a real error) - this
     // node's response is no longer a placeholder, so network/host.ts's
@@ -1162,13 +1215,13 @@ export class Process extends EventEmitter {
             // IF error has status and error this came from another node which has erroed (not unreachable)
             ActiveOptions.get<boolean>("debug", false)
               ? this.shared.raiseLedgerError(
-                  error.status || 1502,
-                  new Error(error.error || error)
-                ) // rethrow same error
+                error.status || 1502,
+                new Error(error.error || error)
+              ) // rethrow same error
               : this.shared.raiseLedgerError(
-                  1501,
-                  new Error("Bad Knock Transaction")
-                ); // Generic error 404/ 500
+                1501,
+                new Error("Bad Knock Transaction")
+              ); // Generic error 404/ 500
           }
         });
       } else {
@@ -1176,9 +1229,9 @@ export class Process extends EventEmitter {
 
         error
           ? this.shared.raiseLedgerError(
-              error.code || 1000,
-              error.reason || error
-            ) // Of course if next is origin we need to send back for the promises!
+            error.code || 1000,
+            error.reason || error
+          ) // Of course if next is origin we need to send back for the promises!
           : this.commit(virtualMachine); // Run the Commit Phase
       }
     }
@@ -1225,15 +1278,29 @@ export class Process extends EventEmitter {
    * Return if missing votes (Doesn't account for enough votes)
    *
    * @private
-   * @param {number} [nodes]
    * @returns {boolean}
    */
-  private hasOutstandingVotes(nodes?: number): boolean {
+  private hasOutstandingVotes(/*nodes?: number*/): boolean {
     const neighbours = ActiveOptions.get<Array<any>>(
       "neighbourhood",
       []
     ).length;
-    return !!(neighbours - (nodes || Object.keys(this.entry.$nodes).length));
+    return !!(neighbours - this.countOutstandingVotes());
+  }
+
+  /**
+   * Only returns the nodes which have voted (both yes and no excludes early communications)
+   * @returns
+   */
+  private countOutstandingVotes(): number {
+    const nodes = Object.keys(this.entry.$nodes);
+    let votedNodes = 0;
+    for (let i = nodes.length; i--;) {
+      if (!this.entry.$nodes[nodes[i]].early) {
+        votedNodes++;
+      }
+    }
+    return votedNodes;
   }
 
   /**
@@ -1252,7 +1319,7 @@ export class Process extends EventEmitter {
       ActiveLogger.debug(
         `Sending -> ${this.right.reference} - ${this.entry.$umid}`
       );
-      return await this.right.knock("init", this.entry);
+      return await this.right.knock("init-legacy", this.entry);
     } catch (e) {
       // Manage E? (Should partly self manage if node goes down)
       if (retries <= 2) {
@@ -1286,14 +1353,19 @@ export class Process extends EventEmitter {
    * @returns {boolean}
    */
   private canCommit(): boolean {
-    // Time to count the votes (Need to recache keys)
+    // Time to count the votes (Need to re-cache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
-    this.currentVotes = 0;
+    this.currentTrueVotes = 0;
     if (networkNodes) {
       // Small performance boost if we voted no
       //if (skipBoost /*|| this.nodeResponse.vote*/) {
-      for (let i = networkNodes.length; i--; ) {
-        if (this.entry.$nodes[networkNodes[i]].vote) this.currentVotes++;
+      for (let i = networkNodes.length; i--;) {
+        // Must filter on early as well
+        if (
+          !this.entry.$nodes[networkNodes[i]].early &&
+          this.entry.$nodes[networkNodes[i]].vote
+        )
+          this.currentTrueVotes++;
       }
       //}
 
@@ -1302,11 +1374,11 @@ export class Process extends EventEmitter {
         ? 100
         : ActiveOptions.get<any>("consensus", {}).reached;
 
-      // Return if consensus has been reached
-      return (
-        (this.currentVotes / Process.networkNodeLength) * 100 >= percent ||
-        false
-      );
+      const reached = (this.currentTrueVotes / Process.networkNodeLength) * 100 >= percent;
+      // if (reached) {
+      //   ActiveLogger.info(`Consensus reached (${this.currentTrueVotes}/${Process.networkNodeLength} votes) for ${this.entry.$umid}`);
+      // }
+      return reached;
     } else {
       return false;
     }
@@ -1324,6 +1396,7 @@ export class Process extends EventEmitter {
     virtualMachine: IVirtualMachine,
     earlyCommit?: Function
   ): Promise<void> {
+    //ActiveLogger.info(`Entering commit() for ${this.entry.$umid}, nodeResponse.commit: ${this.nodeResponse.commit}, isCommiting: ${this.isCommiting()}`);
     // If we haven't commited process as normal
     if (!this.nodeResponse.commit && !this.isCommiting()) {
       // check we can commit still
@@ -1334,6 +1407,7 @@ export class Process extends EventEmitter {
       ) {
         // Consensus reached commit phase
         this.commiting = true;
+        //ActiveLogger.info(`Commit proceeding for ${this.entry.$umid}`);
 
         // Make sure broadcast timeout is cleared
         clearTimeout(this.broadcastTimeout);
@@ -1390,15 +1464,15 @@ export class Process extends EventEmitter {
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
-                1302,
-                new Error(
-                  "Commit Failure - " + JSON.stringify(error.message || error)
-                )
+              1302,
+              new Error(
+                "Commit Failure - " + JSON.stringify(error.message || error)
               )
+            )
             : this.shared.raiseLedgerError(
-                1301,
-                new Error("Failed Commit Transaction")
-              );
+              1301,
+              new Error("Failed Commit Transaction")
+            );
         }
       } else {
         // If Early commit we don't need to manage these errors
@@ -1491,16 +1565,19 @@ export class Process extends EventEmitter {
             );
           } else {
             // Are there any outstanding node responses which could mean consensus can still be reached
-            const neighbours = ActiveOptions.get<Array<any>>(
-              "neighbourhood",
-              []
-            ).length;
+            // const neighbours = ActiveOptions.get<Array<any>>(
+            //   "neighbourhood",
+            //   []
+            // ).length;
             const consensusNeeded = ActiveOptions.get<any>(
               "consensus",
               {}
             ).reached;
             const outstandingVoters =
-              neighbours - Object.keys(this.entry.$nodes).length;
+              Process.networkNodeLength - this.countOutstandingVotes();
+
+            // We need to filter out early here! Still being counted!!
+
             // Basic check, If no nodes to respond and we failed to reach consensus we will fail
             if (!outstandingVoters) {
               // Clear current timeout to prevent it from running
@@ -1534,7 +1611,8 @@ export class Process extends EventEmitter {
               // Solution:
               // Find how many current votes their currently is if the rest of the nodes will vote yes can we reach consensus
               if (
-                ((this.currentVotes + outstandingVoters) / neighbours) * 100 >=
+                ((this.currentTrueVotes + outstandingVoters) / Process.networkNodeLength) *
+                100 >=
                 consensusNeeded
               ) {
                 // It *should* be possible to still reach consensus
@@ -1556,7 +1634,8 @@ export class Process extends EventEmitter {
                   },
                   this.isCommiting()
                     ? BROADCAST_TIMEOUT_COMMIT
-                    : BROADCAST_TIMEOUT_VOTE
+                    // No votes, Shorter timeout (maybe throw better error code to requeue?)
+                    : this.currentTrueVotes === 0 ? BROADCAST_TIMEOUT_EARLY : BROADCAST_TIMEOUT_VOTE
                 );
               } else {
                 // Did we vote no and raise our error?
@@ -1670,7 +1749,7 @@ export class Process extends EventEmitter {
     // Check the first one, If labelled then loop all.
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         map[streamId] = streams[i];

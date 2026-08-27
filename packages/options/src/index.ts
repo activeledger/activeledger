@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveGZip, ActiveRequest } from "@activeledger/activeutilities";
+import { ActiveGZip, ActiveRequest, ActiveClone } from "@activeledger/activeutilities";
 import { ActiveOptions } from "./options";
 import { ActiveChanges } from "./changes";
 import { ActiveDSConnect } from "./dsconnect";
@@ -32,6 +32,7 @@ export {
   ActiveRequest,
   ActiveChanges,
   ActiveGZip,
+  ActiveClone,
   ActiveCacheManager,
   ActiveCache
 };

@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeutilities",
-  "version": "4.0.0",
+  "version": "4.1.0",
   "description": "This package manages shared classes between Activeledger and Activetoolkits",
   "publishConfig": {
     "access": "public"
@@ -46,6 +46,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "msgpackr": "^2.0.1",
     "undici": "6.18.2"
   }
 }

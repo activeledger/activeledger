@@ -21,32 +21,36 @@
  * SOFTWARE.
  */
 
-import { EventEngine } from "@activeledger/activequery";
-import Query from "./query";
-
 /**
- * Provides the standard contract layout for Active developers to extend
- * so they can concentrate on their code. This is the first of a list of approved "base" classes.
+ * P2P Frame Utility
  *
  * @export
- * @abstract
- * @class Standard
+ * @class ActiveFrame
  */
-export default abstract class QueryEvents extends Query {
+export class ActiveFrame {
   /**
-   * Holds the query object to lookup the ledger
+   * Reads a frame from the chunk array
    *
-   * @protected
-   * @type {EventEngine}
+   * @static
+   * @param {Buffer[]} chunks
+   * @param {number} bufferLength
+   * @returns {{ item: Buffer; remaining: Buffer; consumed: number } | null}
    */
-  protected event: EventEngine;
+  public static read(chunks: Buffer[], bufferLength: number): { item: Buffer; remaining: Buffer; consumed: number } | null {
+    if (bufferLength < 4) return null;
 
-  /**
-   * Sets the event engine. Used as a hook from the VM to know to inject the EventEngine
-   *
-   * @param {EventEngine} engine
-   */
-  public setEvent(engine: EventEngine) {
-    this.event = engine;
+    const fullBuffer = Buffer.concat(chunks);
+    const length = fullBuffer.readUInt32BE(0);
+
+    if (bufferLength >= 4 + length) {
+      const item = fullBuffer.slice(4, 4 + length);
+      const remaining = fullBuffer.slice(4 + length);
+      return {
+        item,
+        remaining,
+        consumed: 4 + length,
+      };
+    }
+    return null;
   }
 }
