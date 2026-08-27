@@ -1,9 +1,10 @@
 import { IStorageDriver } from "../driver";
 import { LevelUpChain } from "levelup";
 import { mkdirSync } from "fs";
-const { RocksLevel } = require("@nxtedition/rocksdb");
+import { ClassicLevel } from "classic-level";
+import { Readable } from "stream";
 
-export class RocksDBDriver implements IStorageDriver {
+export class LevelDBDriver implements IStorageDriver {
   private db: any = null;
   private opening: boolean = false;
 
@@ -14,10 +15,10 @@ export class RocksDBDriver implements IStorageDriver {
   public async get(key: string): Promise<Buffer> {
     const val = await this.db.get(key);
     if (val === undefined) {
-      // abstract-level-based drivers resolve undefined for a missing key
-      // instead of throwing (unlike the older levelup/leveldown API) -
-      // callers (prepareForWrite() in particular) check error.notFound to
-      // detect a new document, so restore that convention here.
+      // classic-level resolves undefined for a missing key instead of
+      // throwing (unlike the older levelup/leveldown API) - callers
+      // (prepareForWrite() in particular) check error.notFound to detect
+      // a new document, so restore that convention here.
       const err: any = new Error(`Key not found in database [${key}]`);
       err.notFound = true;
       err.code = "LEVEL_NOT_FOUND";
@@ -48,7 +49,6 @@ export class RocksDBDriver implements IStorageDriver {
 
   public createReadStream(options: any): any {
     const iterator = this.db.iterator(options);
-    const { Readable } = require("stream");
 
     return new Readable({
       objectMode: true,
@@ -74,8 +74,33 @@ export class RocksDBDriver implements IStorageDriver {
     });
   }
 
+  // classic-level's values()/keys() return a modern async-iterable, not a
+  // classic Node Readable stream - levelme.ts's backup() needs .on("data"),
+  // so wrap it the same way createReadStream() wraps the kv iterator.
   public createValueStream(): any {
-    return this.db.values();
+    const iterator = this.db.values();
+
+    return new Readable({
+      objectMode: true,
+      async read() {
+        try {
+          const val = await iterator.next();
+          if (val !== undefined) {
+            this.push(Buffer.isBuffer(val) ? val : Buffer.from(val));
+          } else {
+            this.push(null);
+            await iterator.close();
+          }
+        } catch (err) {
+          this.emit("error", err);
+          this.push(null);
+        }
+      },
+      async destroy(err: Error | null, callback: (error: Error | null) => void) {
+        await iterator.close();
+        callback(err);
+      }
+    });
   }
 
   public isOpen(): boolean {
@@ -86,7 +111,7 @@ export class RocksDBDriver implements IStorageDriver {
     if (this.db?.status !== 'open' && !this.opening) {
       this.opening = true;
       try {
-        this.db = new RocksLevel(this.location, { valueEncoding: 'binary' });
+        this.db = new ClassicLevel(this.location, { valueEncoding: 'binary' });
         await this.db.open();
       } catch (e) {
         // If opening fails, ensure the DB instance is cleared so it doesn't hold resources/locks
@@ -103,8 +128,6 @@ export class RocksDBDriver implements IStorageDriver {
   }
 
   public async compactRange(start: string, end: string): Promise<void> {
-    // RocksLevel now handles compaction internally or via properties; 
-    // for this driver we keep the API consistent.
     if (typeof (this.db as any).compactRange === 'function') {
         await (this.db as any).compactRange(start, end);
     }

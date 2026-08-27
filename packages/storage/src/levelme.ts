@@ -10,7 +10,7 @@ import { newLineTransform } from "./newlinestream";
 import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { IStorageDriver } from "./driver";
-import { RocksDBDriver } from "./drivers/rocksdb";
+import { LevelDBDriver } from "./drivers/leveldb";
 import { LevelUpChain } from "levelup";
 
 /**
@@ -133,7 +133,7 @@ export class LevelMe {
   private openingPromise: Promise<void> | null = null;
 
   constructor(location: string, private name: string, provider: string) {
-    this.driver = new RocksDBDriver(location + name, provider);
+    this.driver = new LevelDBDriver(location + name, provider);
     if (ENABLE_CACHE) {
       this.cache = ActiveCacheManager.fetch(`streams:${this.name}`, 30000);
     }

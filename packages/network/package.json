@@ -43,13 +43,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.0.0",
-    "@activeledger/activedefinitions": "4.0.0",
-    "@activeledger/activelogger": "4.0.0",
-    "@activeledger/activeoptions": "4.0.0",
-    "@activeledger/activeprotocol": "4.0.0",
-    "@activeledger/activequery": "4.0.0",
-    "@activeledger/activeutilities": "4.0.0",
+    "@activeledger/activecrypto": "4.1.0",
+    "@activeledger/activedefinitions": "4.1.0",
+    "@activeledger/activelogger": "4.1.0",
+    "@activeledger/activeoptions": "4.1.0",
+    "@activeledger/activeprotocol": "4.1.0",
+    "@activeledger/activequery": "4.1.0",
+    "@activeledger/activeutilities": "4.1.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
