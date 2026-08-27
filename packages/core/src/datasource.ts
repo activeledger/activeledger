@@ -21,7 +21,6 @@
  * SOFTWARE.
  */
 
-import { QueryEngine } from "@activeledger/activequery";
 import {
   ActiveOptions,
   ActiveDSConnect,
@@ -67,15 +66,6 @@ export class ActiveledgerDatasource {
    * @type {ActiveChanges}
    */
   private static events: ActiveChanges;
-
-  /**
-   * DB Query Engine
-   *
-   * @private
-   * @static
-   * @type {QueryEngine}
-   */
-  private static query: QueryEngine;
 
   /**
    * Object of known network neighbour nodes
@@ -143,13 +133,6 @@ export class ActiveledgerDatasource {
           ActiveOptions.get<any>("db", {}).event
       );
 
-      // Add Query Engine
-      // this.query = new QueryEngine(
-      //   this.db,
-      //   false,
-      //   ActiveOptions.get<number>("queryLimit", 0)
-      // );
-
       // Add Changes Watcher
       this.changes = new ActiveChanges("Activities", this.db);
 
@@ -158,21 +141,6 @@ export class ActiveledgerDatasource {
     }
     return this.db;
   }
-
-  /**
-   * Returns Query Engine
-   *
-   * @deprecated
-   * @static
-   * @returns {QueryEngine}
-   */
-  // public static getQuery(): QueryEngine {
-  //   // Make sure we have db connection
-  //   this.getDb();
-
-  //   // Return Query Object
-  //   return this.query;
-  // }
 
   /**
    * Returns Change Object

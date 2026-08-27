@@ -65,6 +65,32 @@ export class Locker {
   private static timer: NodeJS.Timeout | null;
 
   /**
+   * Check the locker has a stream locked
+   *
+   * @static
+   * @param {string} stream
+   * @return {*}  {boolean}
+   */
+  public static has(stream: string): boolean {
+    return !!this.cell[stream];
+  }
+
+  /**
+   * Checks to see if the stream is locked to this value (umid or spi)
+   *
+   * @static
+   * @param {string} stream
+   * @param {string} umid
+   * @return {*}  {boolean}
+   */
+  public static is(stream: string, umid: string): boolean {
+    if (this.has(stream)) {
+      return this.cell[stream].umid === umid;
+    }
+    return false;
+  }
+
+  /**
    * Attempts to lock streams
    *
    * @static
@@ -79,6 +105,7 @@ export class Locker {
       // Are all the streams available
       let i = stream.length;
       let success = true;
+      const time = Date.now();
       while (i--) {
         // Don't think this will be affected as much as release
         // if (!Locker.hold(stream[i], umid)) {
@@ -87,13 +114,15 @@ export class Locker {
         //   break;
         // }
         // selfsign check
+        // what about if it is locked on itself? Maybe we can just "update"
         if (stream[i].length > 60) {
           if (!this.cell[stream[i]]) {
             this.cell[stream[i]] = {
               umid,
-              time: Date.now(),
+              time,
             };
           } else {
+             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell[stream[i]].umid}`);
             success = false;
             break;
           }
@@ -106,11 +135,12 @@ export class Locker {
       // Let process know
       return success;
     } else {
-      // Self signed lets not lock up (assuming will be less than 64, using 60 as buffer)
+      // Single stream lock.
+      // Heuristic: ignore short strings which are likely labels or self-signed streams not needing a lock.
       if (stream.length < 60) {
         return true;
       }
-
+ 
       // Is the single stream available?
       if (!this.cell[stream]) {
         this.cell[stream] = {
@@ -119,6 +149,7 @@ export class Locker {
         };
         return true;
       }
+      ActiveLogger.info(`Lock busy for ${stream}. Held by ${this.cell[stream].umid}, requested by ${umid}.`);
       return false;
     }
   }
@@ -200,6 +231,9 @@ export class Locker {
         this.cell[locks[i]] &&
         Date.now() - (this.cell[locks[i]].time as number) >= releaseTime
       ) {
+        ActiveLogger.warn(
+          `Auto-releasing stuck lock for stream ${locks[i]} held by ${this.cell[locks[i]].umid}`
+        );
         Locker.release(locks[i], this.cell[locks[i]].umid);
       }
     }

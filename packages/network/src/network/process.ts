@@ -182,7 +182,7 @@ class Processor {
             });
           break;
         case "hk":
-          this.housekeeping(m.data.right, m.data.neighbourhood);
+          this.housekeeping(m.data.right ?? Home.right, m.data.neighbourhood);
           break;
         case "tx":
           // Create new Protocol Process object for transaction
@@ -311,10 +311,21 @@ class Processor {
           break;
         case "contractLatestVersion":
           if (m.data.refresh) {
-            // Drastic but captures all scenarios, Maybe faster
-            this.latestContractVersion = {};
+            if (m.data.contract) {
+              for (const key of Object.keys(this.latestContractVersion)) {
+                if (key === m.data.contract || this.latestContractVersion[key].includes(m.data.contract)) {
+                  delete this.latestContractVersion[key];
+                }
+              }
+              ActiveProtocol.Process.clearContractPathCache(m.data.contract);
+            } else {
+              this.latestContractVersion = {};
+              ActiveProtocol.Process.clearContractPathCache();
+            }
           }
-          this.latestContractVersion[m.data.contract] = m.data.file;
+          if (m.data.contract) {
+            this.latestContractVersion[m.data.contract] = m.data.file;
+          }
           break;
         case "contractData":
           this.latestContractData[m.data.contract] = m.data.data;
@@ -441,6 +452,14 @@ class Processor {
    * @private
    */
   private reloadDown(data: any) {
+    try {
+      // Re-read config.json to capture any live updates (such as "build" number)
+      ActiveOptions.parseConfig();
+      ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+    } catch (e) {
+      ActiveLogger.error(e, "Child process failed to re-parse config.json");
+    }
+
     // Reload Neighbourhood
     ActiveOptions.extendConfig()
       .then((config: any) => {
@@ -668,7 +687,6 @@ class Processor {
     neighbours?: { [reference: string]: Neighbour }
   ) {
     // TODO if bundle we need to send it before rewriting this?
-
     // Create new right neighbour with identity if known
     Home.right = new Neighbour(
       right.host,

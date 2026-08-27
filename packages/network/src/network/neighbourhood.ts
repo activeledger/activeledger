@@ -72,7 +72,7 @@ export class Neighbourhood {
    * @private
    * @type {{[reference: string]: boolean}}
    */
-  private firewall: { [reference: string]: boolean } = {};
+  private firewall: { [reference: string]: string } = {};
 
   /**
    * Count of how many neighbours (Reference Shortcut)
@@ -110,16 +110,15 @@ export class Neighbourhood {
 
     // Add Known Neighbours
     //this.add((config.neighbourhood as Neighbour[]));
-    let i = neighbourhood.length;
-    while (i--) {
+    for (const neighbour of neighbourhood) {
       this.add(
         new Neighbour(
-          neighbourhood[i].host,
-          neighbourhood[i].port,
+          neighbour.host,
+          neighbour.port,
           false,
           new ActiveCrypto.KeyPair(
-            neighbourhood[i].identity.type,
-            neighbourhood[i].identity.public
+            neighbour.identity.type,
+            neighbour.identity.public
           )
         )
       );
@@ -142,7 +141,9 @@ export class Neighbourhood {
           this.neighbours[neighbour[i].reference] = neighbour[i];
           this.houses++;
           // Add IP to firewall
-          this.firewall[(neighbour[i] as Neighbour).getAddress().host] = true;
+          this.firewall[neighbour[i].getAddress().host] = neighbour[i].reference;
+          // Invert it for multi node hosting
+          this.firewall[neighbour[i].reference] = neighbour[i].getAddress().host;
         } else {
           // Remove graceful (Being allow back in, Internal Refresh)
           this.neighbours[neighbour[i].reference].graceStop = false;
@@ -154,7 +155,9 @@ export class Neighbourhood {
         this.neighbours[neighbour.reference] = neighbour;
         this.houses++;
         // Add IP to firewall
-        this.firewall[(neighbour as Neighbour).getAddress().host] = true;
+        this.firewall[neighbour.getAddress().host] = neighbour.reference;
+        // Invert it for multi node hosting
+        this.firewall[neighbour.reference] = neighbour.getAddress().host;
       } else {
         // Remove graceful (Being allow back in, Internal Refresh)
         this.neighbours[neighbour.reference].graceStop = false;
@@ -172,22 +175,20 @@ export class Neighbourhood {
 
     // Gracefully Shutdown Current Neighbours
     let keys = this.keys();
-    let i = keys.length;
-    while (i--) {
-      this.neighbours[keys[i]].graceStop = true;
+    for (const key of keys) {
+      this.neighbours[key].graceStop = true;
     }
 
     // Add neighbours
-    i = neighbours.length;
-    while (i--) {
+    for (const neighbour of neighbours) {
       this.add(
         new Neighbour(
-          neighbours[i].host,
-          neighbours[i].port,
+          neighbour.host,
+          neighbour.port,
           false,
           new ActiveCrypto.KeyPair(
-            neighbours[i].identity.type,
-            neighbours[i].identity.public
+            neighbour.identity.type,
+            neighbour.identity.public
           )
         )
       );
@@ -209,24 +210,22 @@ export class Neighbourhood {
   public get(p1?: string | boolean, p2?: Neighbour): any {
     if (p1) {
       if (typeof p1 == "boolean") {
-        // Get Keys as an array
-        let keys = this.keys();
+        const keys = this.keys();
+        const getRandomNeighbour = () => this.neighbours[keys[(keys.length * Math.random()) << 0]];
 
-        // Are we removing a neighbour?
-        if (p2) {
-          let i = keys.length;
-          while (i--) {
-            if (keys[i] == p2.reference) {
-              keys.splice(i, 1);
-              break;
-            }
+        let neighbour = getRandomNeighbour();
+
+        // If a neighbour to skip is provided, retry until we get a different one.
+        // This is more efficient than copying and splicing the keys array.
+        if (p2 && keys.length > 1) {
+          while (neighbour.reference === p2.reference) {
+            neighbour = getRandomNeighbour();
           }
         }
 
-        // Curently not in use, But will need to support graceful stop
+        // TODO: Add graceful stop handling if needed in the future.
 
-        // Random with bitshift to select
-        return this.neighbours[keys[(keys.length * Math.random()) << 0]];
+        return neighbour;
       } else {
         if (this.neighbours[p1]) return this.neighbours[p1];
         return null;
@@ -254,10 +253,14 @@ export class Neighbourhood {
    * @param {string} remote
    * @returns {boolean}
    */
-  public checkFirewall(remote: string): boolean {
+  public checkFirewall(remote: string, nodeRef?: string): boolean {
     // IPv4 & IPv6 notation support
     if (remote.substr(0, 7) == "::ffff:") remote = remote.substr(7);
-    return this.firewall[remote] || false;
+    if (nodeRef) {
+      return this.firewall[remote] === nodeRef ? true : this.firewall[nodeRef] === remote
+    } else {
+      return this.firewall[remote] ? true : false
+    }
   }
 
   /**
@@ -296,34 +299,20 @@ export class Neighbourhood {
     force: boolean = false
   ): Promise<any> {
     // Build up promises (Object.Entries may be better)
-    let neighbours = this.keys();
+    const neighbourKeys = this.keys();
 
-    // Loop each neighbour to get promise
-    let i = neighbours.length;
-
-    // Holds Promises
-    let knocks: Promise<any>[] = [];
-
-    while (i--) {
-      if (force || this.neighbours[neighbours[i]].isHome)
-        // While these could resolve before .all is called .alld does manage it
-        knocks.push(
-          new Promise((resolve, reject) => {
-            // We want to catch all errors and only return the data
-            this.neighbours[neighbours[i]]
-              .knock(endpoint, params)
-              .then((response) => {
-                // Pass over the data response
-                resolve(response.data);
-              })
-              .catch((e) => {
-                // Do nothing with error (Don't want to interrupt)
-                ActiveLogger.debug(e, "Knock All Single Knock Failure");
-                resolve({ error: true });
-              });
+    const knocks = neighbourKeys
+      .filter(key => force || this.neighbours[key].isHome)
+      .map(key =>
+        this.neighbours[key]
+          .knock(endpoint, params)
+          .then(response => response.data) // Pass over the data response on success
+          .catch(e => {
+            // On failure, resolve with an error object instead of rejecting the whole Promise.all
+            ActiveLogger.debug(e, `Knock failed for ${key} during knockAll`);
+            return { error: true, from: key };
           })
-        );
-    }
+      );
 
     // Return all the promises at once
     return Promise.all(knocks);

@@ -48,7 +48,7 @@ describe("Cryptographic Test (Activecrypto)", () => {
     let keyPriv = new ActiveCrypto.KeyPair("rsa", rsa.prv.pkcs8pem);
     expect(keyPriv.decrypt(encrypt))
       .to.be.an("string")
-      .and.equal(Buffer.from(random).toString("base64"));
+      .and.equal(random);
   }).timeout(5000);
 
   it("should create a new elliptic key", () => {
