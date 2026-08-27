@@ -29,7 +29,17 @@ export class LevelDBDriver implements IStorageDriver {
 
   public async getMany(keys: string[]): Promise<Buffer[]> {
     const vals = await this.db.getMany(keys);
-    return vals.map((v: any) => Buffer.isBuffer(v) ? v : Buffer.from(v));
+    // classic-level resolves undefined per-key for anything missing from
+    // the batch (matching get()'s single-key behaviour) rather than
+    // throwing - callers (permissionsChecker's stream lookups in
+    // particular) request keys that legitimately don't always exist
+    // (e.g. an optional ":stream" companion document) and rely on
+    // getMany() simply omitting those, not on positional correspondence
+    // to the input keys, so filter rather than converting undefined and
+    // crashing the whole batch.
+    return vals
+      .filter((v: any) => v !== undefined)
+      .map((v: any) => Buffer.isBuffer(v) ? v : Buffer.from(v));
   }
 
   public async put(key: string, value: any): Promise<void> {
