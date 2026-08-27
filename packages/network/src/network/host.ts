@@ -763,7 +763,7 @@ export class Host extends Home {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer = Buffer.alloc(0);
+      const chunks: Buffer[] = [];
 
       res.onData((ab, isLast) => {
         if (res.aborted) {
@@ -773,9 +773,8 @@ export class Host extends Home {
 
         if (ab.byteLength > 0) {
           // I found some non-last onData with 0 byte length
-          //const copy = copyArrayBuffer(ab); // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
-          //totalSize += copy.byteLength;
-          buffer = Buffer.concat([buffer, Buffer.from(ab)]);
+          // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
+          chunks.push(Buffer.from(ab.slice(0)));
         }
 
         if (isLast) {
@@ -783,7 +782,13 @@ export class Host extends Home {
           // Convert the buffer to a string and parse it as JSON
           // this will fail if the buffer doesn't contain a valid JSON (e.g. length = 0)
           //const resolveValue = JSON.parse(buffer.toString());
-          resolve(buffer);
+          resolve(
+            chunks.length === 0
+              ? Buffer.alloc(0)
+              : chunks.length === 1
+              ? chunks[0]
+              : Buffer.concat(chunks)
+          );
         }
       });
     });
@@ -1227,12 +1232,18 @@ export class Host extends Home {
       // TODO detect leader!
       //this.processPending[umid].entry.$nodes
 
-      // We only want to send our value
-      const data = (!early || !this.processPending[umid].entry.$nodes[this.reference].early)
+      // We only want to send our value, and only once it's resolved - an
+      // unresolved early placeholder must never be sent as if it were a
+      // real vote, regardless of why broadcast() was called (early flag
+      // here only affects $$noreply, not whether our own data is ready).
+      // Note: when early=true the outer if above allows entry even when
+      // $nodes[this.reference] doesn't exist yet (see the commented-out
+      // check above), so this must not assume it's set.
+      const selfEntry = this.processPending[umid].entry.$nodes[this.reference];
+      const data = selfEntry && !selfEntry.early
         ? Object.assign(this.processPending[umid].entry, {
             $nodes: {
-              [this.reference]:
-                this.processPending[umid].entry.$nodes[this.reference],
+              [this.reference]: selfEntry,
             },
           })
         : Object.assign(this.processPending[umid].entry, {
@@ -1618,7 +1629,7 @@ export class Host extends Home {
       this.processingBLQ = true;
 
       // Checked idententies. This means there is no "chance" we select the next one by bad timing
-      const checked: string[] = [];
+      const checked: Set<string> = new Set();
 
       // TODO Convert to method
       if (this.busyLocksQueue.internal.length) {
@@ -1627,10 +1638,10 @@ export class Host extends Home {
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           // // Skip if we have already tried
           if (labelOrKey?.length) {
-            if (checked.some((io) => labelOrKey.includes(io))) {
+            if (labelOrKey.some((io) => checked.has(io))) {
               continue;
             }
-            checked.push(...labelOrKey);
+            labelOrKey.forEach((io) => checked.add(io));
           }
 
           if (

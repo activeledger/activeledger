@@ -447,23 +447,17 @@ export class ActiveHttpd {
 
   private readBuffer(res: HttpResponse): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      let buffer: Buffer;
+      const chunks: Buffer[] = [];
 
       /* Register data cb */
       res.onData((ab, isLast) => {
-        let chunk = Buffer.from(ab);
+        // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
+        chunks.push(Buffer.from(ab.slice(0)));
+
         if (isLast) {
-          if (buffer) {
-            return resolve(Buffer.concat([buffer, chunk]));
-          } else {
-            return resolve(chunk);
-          }
-        } else {
-          if (buffer) {
-            buffer = Buffer.concat([buffer, chunk]);
-          } else {
-            buffer = Buffer.concat([chunk]);
-          }
+          return resolve(
+            chunks.length === 1 ? chunks[0] : Buffer.concat(chunks)
+          );
         }
       });
     });

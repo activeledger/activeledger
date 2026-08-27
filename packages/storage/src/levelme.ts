@@ -586,17 +586,20 @@ export class LevelMe {
    */
   public async get(key: string, raw = false) {
     if (ENABLE_CACHE) {
-      if (!this.cache.has(key)) {
+      // raw and non-raw reads store different shapes for the same id, so
+      // they need distinct cache keys or one mode poisons the other.
+      const cacheKey = raw ? `raw:${key}` : key;
+      if (!this.cache.has(cacheKey)) {
         await this.open();
         // Allow errors to bubble up?
         let doc = JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + key));
         if (raw) {
-          this.cache.set(key, doc);
+          this.cache.set(cacheKey, doc);
         } else {
-          this.cache.set(key, await this.seqDocFromRoot(doc));
+          this.cache.set(cacheKey, await this.seqDocFromRoot(doc));
         }
       }
-      return this.cache.get(key, 30000);
+      return this.cache.get(cacheKey, 30000);
     } else {
       await this.open();
       // Allow errors to bubble up?
@@ -745,8 +748,14 @@ export class LevelMe {
     // _local_doc_count need to reduce count
     batch.del(LevelMe.DOC_PREFIX + key);
 
-    if (ENABLE_CACHE && this.cache.has(key)) {
-      this.cache.delete(key);
+    if (ENABLE_CACHE) {
+      if (this.cache.has(key)) {
+        this.cache.delete(key);
+      }
+      const rawKey = `raw:${key}`;
+      if (this.cache.has(rawKey)) {
+        this.cache.delete(rawKey);
+      }
     }
 
     await batch.write();
@@ -899,6 +908,16 @@ export class LevelMe {
     } catch (e) {
       // Unwinde the counter increases, Incorrect count should be ok as long as it overeads
       //this.docCount = this.docCount - docs.length;
+
+      // prepareForWrite() optimistically populated the cache for every doc
+      // in this batch before the write was confirmed - since it failed,
+      // those entries were never actually persisted, so drop them.
+      if (ENABLE_CACHE) {
+        for (let i = docs.length; i--; ) {
+          this.cache.delete(docs[i]._id);
+          this.cache.delete(`raw:${docs[i]._id}`);
+        }
+      }
       return false;
     }
     return true;
@@ -950,10 +969,15 @@ export class LevelMe {
     // Flag for doc counter
     let newDoc = false;
 
+    // Raw root doc shares its cache key with get(key, true) - see below
+    const cacheKey = `raw:${doc._id}`;
+
     // Does Document eixst?
     try {
-      currentDocRoot = JSON.parse(
-        await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id)
+      currentDocRoot = (
+        ENABLE_CACHE && this.cache.has(cacheKey)
+          ? this.cache.get(cacheKey, 30000)
+          : JSON.parse(await this.levelUp.get(LevelMe.DOC_PREFIX + doc._id))
       ) as schema;
       // We need to pull out the right revision
       const currentRev =
@@ -1023,7 +1047,11 @@ export class LevelMe {
       chain.put(LevelMe.DOC_PREFIX + doc._id, JSON.stringify(doc));
 
       if (ENABLE_CACHE) {
-        this.cache.set(doc._id, doc);
+        this.cache.set(cacheKey, doc);
+        // The resolved (non-raw) shape is now stale - drop it so the next
+        // non-raw get() recomputes it from the fresh raw doc instead of
+        // returning what was there before this write.
+        this.cache.delete(doc._id);
       }
     }
 

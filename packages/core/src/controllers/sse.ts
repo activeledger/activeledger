@@ -81,16 +81,10 @@ export class SSE {
     // Connection still open?
     if (this.res.writable) {
       // Write new event
-      if (
-        !this.res.write(
-          `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
-        )
-      ) {
-        return true;
-      } else {
-        process.nextTick(() => {});
-        return true;
-      }
+      this.res.write(
+        `id:${sequence}\nevent: message\ndata:${JSON.stringify(prepare)}\n\n`
+      );
+      return true;
     } else {
       // End Server Side
       this.res.end();
