@@ -25,7 +25,7 @@ A transaction is a single JSON document POSTed to any node's root URL (`http://<
 ```
 
 - **`$tx.$namespace`** / **`$tx.$contract`** — which deployed contract handles this transaction. `default`/`onboard` is the contract bundled with every node, for registering new identities.
-- **`$tx.$i`** / **`$tx.$o`** — input and output streams. Each key is a stream ID the transaction reads or writes; the contract decides what those keys mean.
+- **`$tx.$i`** / **`$tx.$o`** — input and output streams. Each key is a stream ID the transaction reads or writes; the contract decides what those keys mean. **Every stream referenced in either has to already exist unless the transaction is `$selfsign`** — see [contracts.md](contracts.md#the-rule-the-deployment-docs-dont-mention-io-streams-must-already-exist-unless-selfsign) for why, it's the single easiest mistake to make writing your first non-onboarding transaction.
 - **`$sigs`** — one signature per stream ID referenced in `$i`, covering the entire `$tx` object (not just that stream's portion of it). The signing key must correspond to the identity already on that stream — except for onboarding, see below.
 - **`$selfsign`** — set when a brand-new identity is authorising its own onboarding transaction. There's no existing ledger authority to sign against yet, so the transaction is signed by the very key it's registering.
 

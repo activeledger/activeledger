@@ -1,6 +1,6 @@
 # Smart contracts
 
-Contracts are TypeScript classes, uploaded to the ledger as a transaction (registered under a namespace so ownership and origin can be verified), transpiled and cached, and run inside a sandboxed VM. This overview is checked against `packages/contracts/src/*.ts` at `v4.1.0`; the deployment mechanics (registering a namespace, deploying, upgrading, running) are unchanged from [`docs/en-gb/contracts/deployment/`](../docs/en-gb/contracts/deployment/) — those are still accurate and not reproduced here.
+Contracts are TypeScript classes, uploaded to the ledger as a transaction (registered under a namespace so ownership and origin can be verified), transpiled and cached, and run inside a sandboxed VM. This overview is checked against `packages/contracts/src/*.ts` at `v4.1.0`. The deployment *mechanics* (registering a namespace, deploying, upgrading, running) in [`docs/en-gb/contracts/deployment/`](../docs/en-gb/contracts/deployment/) are still structurally accurate — the transaction shapes are right — but their examples are silent on one rule that will trip up a first attempt at writing a real contract; see the worked example below, which was actually deployed and run against a live node rather than just read from source.
 
 ## Base classes
 
@@ -41,14 +41,136 @@ Each phase is watched for timeout — checked periodically (`contractCheckTimeou
 this.setTimeout(15000);
 ```
 
-## Deployment
+## Deployment mechanics
 
-Unchanged from the existing docs — worth reading in this order:
+Transaction shapes for each step, unchanged from the existing docs:
 
 1. [Register a namespace](../docs/en-gb/contracts/deployment/namespace.md)
 2. [Deploy a contract](../docs/en-gb/contracts/deployment/deploy.md)
 3. [Upgrade a contract version](../docs/en-gb/contracts/deployment/upgrade.md)
 4. [Run a contract](../docs/en-gb/contracts/deployment/run.md)
+
+## The rule the deployment docs don't mention: `$i`/`$o` streams must already exist, unless `$selfsign`
+
+This is the single most important thing to know before writing your first contract beyond onboarding, and it isn't stated anywhere in the existing docs' abstract examples. Found by actually deploying and running a real contract against a live node — the first two attempts below are exactly what went wrong, not a hypothetical.
+
+**A normal (non-`$selfsign`) transaction cannot spontaneously create a brand-new output stream by just naming it in `$o`.** `process.ts` only skips the existing-stream check for both `$i` and `$o` when `$entry.$selfsign` is true:
+
+```ts
+if (!this.entry.$selfsign) {
+  const inputStreams = await this.permissionChecker.process(this.inputs);
+  const outputStreams = await this.permissionChecker.process(this.outputs, false);
+  // ...
+}
+```
+
+For any transaction that isn't self-signed, **every** stream referenced in `$i` *and* `$o` gets looked up first, and the transaction fails with `950`/"Stream(s) not found" (see the error table in [transactions.md](transactions.md#error-reference)) if any of them don't already exist — this is a general check, not specific to inputs. `$selfsign` is what the onboarding contract uses to create a stream from nothing; it isn't a general "create a new record" mechanism a normal contract can reach for. A contract that legitimately wants to *initialize* new state generally does so by writing to a stream that something upstream (typically onboarding, or another prior transaction) already created — not by inventing a fresh key inline.
+
+### Worked example
+
+A minimal contract that writes a message onto an existing stream's state:
+
+```ts
+import { Standard, Activity } from "@activeledger/activecontracts";
+
+export default class Greeter extends Standard {
+  private oActivity: Activity;
+  private message: string;
+
+  public verify(selfsigned: boolean): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      if (selfsigned) {
+        reject("No self sign");
+      } else {
+        resolve(true);
+      }
+    });
+  }
+
+  public vote(): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const oStreams = Object.keys(this.transactions.$o);
+      if (!oStreams.length) {
+        reject("Need an output stream");
+        return;
+      }
+      this.oActivity = this.getActivityStreams(oStreams[0]);
+      this.message = this.transactions.$o[oStreams[0]].message as string;
+      if (!this.message) {
+        reject("Need a message");
+        return;
+      }
+      resolve(true);
+    });
+  }
+
+  public commit(): Promise<any> {
+    return new Promise<any>((resolve) => {
+      const state = this.oActivity.getState();
+      state.message = this.message;
+      state.updatedAt = new Date().toISOString();
+      this.oActivity.setState(state);
+      resolve(true);
+    });
+  }
+}
+```
+
+Deploy it (base64-encoded source, uploaded under a namespace the deploying identity already owns — see [transactions.md](transactions.md) for `submit()`/`KeyPair` setup, omitted here for brevity):
+
+```js
+const contractSrc = fs.readFileSync("./greeter-contract.ts", "utf8");
+const deployTxBody = {
+  $namespace: "default",
+  $contract: "contract",
+  $i: {
+    [identityId]: {
+      version: "0.0.1",
+      namespace: myNamespace,
+      name: "greeter",
+      contract: Buffer.from(contractSrc).toString("base64"),
+    },
+  },
+};
+const deployTx = { $tx: deployTxBody, $sigs: { [identityId]: kp.sign(deployTxBody) } };
+const deployRes = await submit(deployTx);
+const contractStreamId = deployRes.$streams.new[0].id;
+```
+
+Real captured response — `$namespace`/`$contract` becomes deploy's own `$contract: "contract"` call, and the *new contract's* stream id comes back the same way an onboarded identity's does:
+
+```json
+{
+  "$streams": {
+    "new": [{ "id": "14bcafd35488de48d3d4e8c08d381ccc679986a15bb225760fff7e80c7b72722", "name": "contract.greetertest.../greeter@0.0.1" }],
+    "updated": []
+  }
+}
+```
+
+Then run it — `$contract` is now the deployed contract's *stream id* (or `id@version`, per the deployment docs), and critically, `$o` targets a stream that **already exists** (here, the caller's own identity stream, updating it in place rather than inventing a new one):
+
+```js
+const runTxBody = {
+  $namespace: myNamespace,
+  $contract: contractStreamId,
+  $i: { [identityId]: {} },
+  $o: { [identityId]: { message: "hello from the docs test" } },
+};
+const runTx = { $tx: runTxBody, $sigs: { [identityId]: kp.sign(runTxBody) } };
+const runRes = await submit(runTx);
+```
+
+Real captured response:
+
+```json
+{
+  "$summary": { "total": 1, "vote": 1, "commit": 1 },
+  "$streams": { "new": [], "updated": [{ "id": "4f618836d870e1c4893830560f134f4f6672374ee4946b8157ecbdc005cbae34" }] }
+}
+```
+
+The first attempt at this — targeting a made-up `"greeting-output"` key that had never existed — failed every time with `950`/"Stream(s) not found," for exactly the reason explained above. Retargeting `$o` at a stream that genuinely already existed (the same identity stream used as `$i`) is what made it work.
 
 ## Building and submitting the onboarding contract's transaction
 
