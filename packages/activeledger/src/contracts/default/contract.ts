@@ -26,6 +26,173 @@ import * as ts from "typescript";
 import { Standard, Activity } from "@activeledger/activecontracts";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
+// Read-only security denylists used by securityScan() below. Unlike
+// allowedModules/policy (which get extended per-call from namespace
+// config), these three are never mutated - only ever looked up via
+// indexOf() - so they're safe to build once at module load instead of
+// on every single contract deploy/update.
+
+// Definitive denylist for identifiers (Globals and sensitive objects)
+const BANNED_IDENTIFIERS = [
+  "process",
+  "global",
+  "globalThis",
+  "eval",
+  "Function",
+  "AsyncFunction",
+  "GeneratorFunction",
+  "AsyncGeneratorFunction",
+  "module",
+  "exports",
+  "__dirname",
+  "__filename",
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "atob",
+  "btoa",
+  "Reflect",
+  "Proxy",
+  "WebAssembly",
+  "Symbol",
+  "arguments",
+  "caller",
+  "callee",
+  "console",
+  "debugger",
+  "fetch",
+  "SharedArrayBuffer",
+  "Atomics",
+  "performance",
+  "Performance",
+  "Intl",
+  "FinalizationRegistry",
+  "WeakRef",
+  "gc",
+  "v8",
+  "vm",
+  "worker_threads",
+  "cluster",
+  "child_process",
+  "os",
+  "path",
+  "fs",
+  "http",
+  "https",
+  "net",
+  "tls",
+  "crypto",
+  "root",
+  "window",
+  "top",
+  "stop",
+  "close",
+  "InternalError",
+];
+
+// Identifiers that can be used but not reassigned or shadowed
+const PROTECTED_IDENTIFIERS = [
+  "ActiveLogger",
+  "ActiveRequest",
+  "ActiveCrypto",
+  "ActiveOptions",
+  "ActiveDefinitions",
+  "ActiveGZip",
+  "Standard",
+  "Activity",
+  "ActivityStream",
+  "EventEngine",
+  "PostProcessQueryEvent",
+  "Math",
+  "Date",
+  "JSON",
+  "Array",
+  "Object",
+  "String",
+  "Number",
+  "Boolean",
+  "Error",
+  "Promise",
+  "Buffer",
+  "Map",
+  "Set",
+  "Uint8Array",
+  "BigInt",
+  "URL",
+  "URLSearchParams",
+  "TextEncoder",
+  "TextDecoder",
+  "self",
+];
+
+// Definitive denylist for property access (Reflection and System methods)
+const BANNED_PROPERTIES = [
+  "exit",
+  "kill",
+  "spawn",
+  "fork",
+  "exec",
+  "readFile",
+  "writeFile",
+  "unlink",
+  "rmdir",
+  "mkdir",
+  "appendFile",
+  "readdir",
+  "stat",
+  "lstat",
+  "constructor",
+  "__proto__",
+  "prototype",
+  "defineProperty",
+  "defineProperties",
+  "setPrototypeOf",
+  "getPrototypeOf",
+  "assign",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+  "binding",
+  "internalBinding",
+  "allocUnsafe",
+  "bind",
+  "call",
+  "apply",
+  "getOwnPropertyDescriptor",
+  "getOwnPropertyDescriptors",
+  "getOwnPropertyNames",
+  "getOwnPropertySymbols",
+  "preventExtensions",
+  "isExtensible",
+  "seal",
+  "isSealed",
+  "freeze",
+  "isFrozen",
+  "toSource",
+  "valueOf",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "captureStackTrace",
+  "stackTraceLimit",
+  "stack",
+  "fileName",
+  "lineNumber",
+  "columnNumber",
+  "__count__",
+  "__noSuchMethod__",
+  "__parent__",
+  "eval",
+  "Function",
+  "global",
+  "globalThis",
+  "process",
+  "module",
+  "require",
+];
+
 /**
  * Default Onboarding (New Account) contract
  *
@@ -215,167 +382,6 @@ export default class Contract extends Standard {
    * @param {string} namespace
    */
   private securityScan(sourceCode: string, namespace: string): void {
-    // Definitive denylist for identifiers (Globals and sensitive objects)
-    const bannedIdentifiers = [
-      "process",
-      "global",
-      "globalThis",
-      "eval",
-      "Function",
-      "AsyncFunction",
-      "GeneratorFunction",
-      "AsyncGeneratorFunction",
-      "module",
-      "exports",
-      "__dirname",
-      "__filename",
-      "setTimeout",
-      "setInterval",
-      "setImmediate",
-      "atob",
-      "btoa",
-      "Reflect",
-      "Proxy",
-      "WebAssembly",
-      "Symbol",
-      "arguments",
-      "caller",
-      "callee",
-      "console",
-      "debugger",
-      "fetch",
-      "SharedArrayBuffer",
-      "Atomics",
-      "performance",
-      "Performance",
-      "Intl",
-      "FinalizationRegistry",
-      "WeakRef",
-      "gc",
-      "v8",
-      "vm",
-      "worker_threads",
-      "cluster",
-      "child_process",
-      "os",
-      "path",
-      "fs",
-      "http",
-      "https",
-      "net",
-      "tls",
-      "crypto",
-      "root",
-      "window",
-      "top",
-      "stop",
-      "close",
-      "InternalError",
-    ];
-
-    // Identifiers that can be used but not reassigned or shadowed
-    const protectedIdentifiers = [
-      "ActiveLogger",
-      "ActiveRequest",
-      "ActiveCrypto",
-      "ActiveOptions",
-      "ActiveDefinitions",
-      "ActiveGZip",
-      "Standard",
-      "Activity",
-      "ActivityStream",
-      "EventEngine",
-      "PostProcessQueryEvent",
-      "Math",
-      "Date",
-      "JSON",
-      "Array",
-      "Object",
-      "String",
-      "Number",
-      "Boolean",
-      "Error",
-      "Promise",
-      "Buffer",
-      "Map",
-      "Set",
-      "Uint8Array",
-      "BigInt",
-      "URL",
-      "URLSearchParams",
-      "TextEncoder",
-      "TextDecoder",
-      "self",
-    ];
-
-    // Definitive denylist for property access (Reflection and System methods)
-    const bannedProperties = [
-      "exit",
-      "kill",
-      "spawn",
-      "fork",
-      "exec",
-      "readFile",
-      "writeFile",
-      "unlink",
-      "rmdir",
-      "mkdir",
-      "appendFile",
-      "readdir",
-      "stat",
-      "lstat",
-      "constructor",
-      "__proto__",
-      "prototype",
-      "defineProperty",
-      "defineProperties",
-      "setPrototypeOf",
-      "getPrototypeOf",
-      "assign",
-      "__defineGetter__",
-      "__defineSetter__",
-      "__lookupGetter__",
-      "__lookupSetter__",
-      "binding",
-      "internalBinding",
-      "allocUnsafe",
-      "bind",
-      "call",
-      "apply",
-      "getOwnPropertyDescriptor",
-      "getOwnPropertyDescriptors",
-      "getOwnPropertyNames",
-      "getOwnPropertySymbols",
-      "preventExtensions",
-      "isExtensible",
-      "seal",
-      "isSealed",
-      "freeze",
-      "isFrozen",
-      "toSource",
-      "valueOf",
-      "hasOwnProperty",
-      "isPrototypeOf",
-      "propertyIsEnumerable",
-      "toLocaleString",
-      "captureStackTrace",
-      "stackTraceLimit",
-      "stack",
-      "fileName",
-      "lineNumber",
-      "columnNumber",
-      "__count__",
-      "__noSuchMethod__",
-      "__parent__",
-      "eval",
-      "Function",
-      "global",
-      "globalThis",
-      "process",
-      "module",
-      "require",
-    ];
-
     // Allowed modules for require/import
     const allowedModules: string[] = ["@activeledger/activetoolkits", "@activeledger/activecontracts"];
     const policy = {
@@ -500,14 +506,14 @@ export default class Contract extends Standard {
              // Skip further checks for process
              return;
         }
-        if (bannedIdentifiers.indexOf(node.text) !== -1) {
+        if (BANNED_IDENTIFIERS.indexOf(node.text) !== -1) {
             // Allow if part of a property access (e.g. this.setTimeout)
             if (!(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)) {
                 report(node, `Unauthorized identifier '${node.text}'`);
             }
         }
         if (
-          protectedIdentifiers.indexOf(node.text) !== -1 &&
+          PROTECTED_IDENTIFIERS.indexOf(node.text) !== -1 &&
           isWriteAccess(node)
         ) {
           report(
@@ -521,7 +527,7 @@ export default class Contract extends Standard {
       if (ts.isPropertyAccessExpression(node)) {
         if (
           ts.isIdentifier(node.name) &&
-          bannedProperties.indexOf(node.name.text) !== -1
+          BANNED_PROPERTIES.indexOf(node.name.text) !== -1
         ) {
           // Allow access if it is on 'this'
           if (node.expression.kind === ts.SyntaxKind.ThisKeyword) {
@@ -534,7 +540,7 @@ export default class Contract extends Standard {
 
         if (
           ts.isIdentifier(unwrappedExpr) &&
-          protectedIdentifiers.indexOf(unwrappedExpr.text) !== -1 &&
+          PROTECTED_IDENTIFIERS.indexOf(unwrappedExpr.text) !== -1 &&
           isWriteAccess(node)
         ) {
           report(
@@ -577,7 +583,7 @@ export default class Contract extends Standard {
                 // Block all other dynamic accesses unless they are demonstrably safe
                 if (dynamicAccess) {
                     // If the key is known and banned, block it
-                    if (key && bannedProperties.indexOf(key) !== -1) {
+                    if (key && BANNED_PROPERTIES.indexOf(key) !== -1) {
                         report(node.argumentExpression, `Unauthorized element access '${key}'`);
                     } else if (!key) {
                         // If the key is entirely dynamic, block it for non-this
@@ -589,7 +595,7 @@ export default class Contract extends Standard {
 
         if (
           ts.isIdentifier(unwrappedExpr) &&
-          protectedIdentifiers.indexOf(unwrappedExpr.text) !== -1 &&
+          PROTECTED_IDENTIFIERS.indexOf(unwrappedExpr.text) !== -1 &&
           isWriteAccess(node)
         ) {
           report(
@@ -602,7 +608,7 @@ export default class Contract extends Standard {
       // 4. Block Banned Properties in Destructuring (const { exit } = obj)
       if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
         const propertyName = node.propertyName ? (ts.isIdentifier(node.propertyName) ? node.propertyName.text : "") : node.name.text;
-        if (propertyName && bannedProperties.indexOf(propertyName) !== -1) {
+        if (propertyName && BANNED_PROPERTIES.indexOf(propertyName) !== -1) {
           report(node, `Unauthorized destructuring of property '${propertyName}'`);
         }
       }
@@ -651,7 +657,7 @@ export default class Contract extends Standard {
         report(node, `debugger statements are forbidden`);
       }
       if (ts.isDeleteExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        if (bannedProperties.indexOf(node.expression.name.text) !== -1) {
+        if (BANNED_PROPERTIES.indexOf(node.expression.name.text) !== -1) {
            report(node.expression.name, `Unauthorized deletion of property '${node.expression.name.text}'`);
         }
       }
