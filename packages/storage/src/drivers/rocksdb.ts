@@ -28,7 +28,13 @@ export class RocksDBDriver implements IStorageDriver {
 
   public async getMany(keys: string[]): Promise<Buffer[]> {
     const vals = await this.db.getMany(keys);
-    return vals.map((v: any) => Buffer.isBuffer(v) ? v : Buffer.from(v));
+    // See leveldb.ts's getMany() - same fix, same reasoning: abstract-level
+    // -based drivers resolve undefined per-key for a missing entry rather
+    // than throwing, and callers rely on getMany() omitting those, not on
+    // positional correspondence to the input keys.
+    return vals
+      .filter((v: any) => v !== undefined)
+      .map((v: any) => Buffer.isBuffer(v) ? v : Buffer.from(v));
   }
 
   public async put(key: string, value: any): Promise<void> {
