@@ -16,7 +16,7 @@ The repository is an npm/lerna monorepo. Three of these are things you actually 
 | **core** | `@activeledger/activecore` | REST API over the ledger data (events, subscriptions, OpenAPI/Swagger). Optional but recommended. See [core.md](core.md). |
 | **restore** | `@activeledger/activerestore` | Watches for a node falling behind or coming up empty and heals it from the rest of the network. Optional but recommended. See [restore.md](restore.md). |
 | hybrid | `@activeledger/activehybrid` | Runs `core`+`restore` bundled with a node in one process, for smaller deployments. |
-| network | `@activeledger/activenetwork` | The gossip/consensus engine and both transports (HTTP and the newer P2P stream). See [transport.md](transport.md). |
+| network | `@activeledger/activenetwork` | The gossip/consensus engine and both transports (HTTP and the newer P2P stream). See [transport.md](transport.md) and [network-internals.md](network-internals.md). |
 | protocol | `@activeledger/activeprotocol` | The consensus state machine and the contract VM sandbox. See [architecture.md](architecture.md). |
 | storage | `@activeledger/activestorage` | The embedded data engine (LevelDB via `classic-level`) and the CouchDB-compatible external option. See [storage.md](storage.md). |
 | contracts | `@activeledger/activecontracts` | Base classes smart contracts inherit from. See [contracts.md](contracts.md). |
@@ -24,7 +24,7 @@ The repository is an npm/lerna monorepo. Three of these are things you actually 
 | httpd | `@activeledger/httpd` | The lightweight HTTP server (built on uWebSockets.js) used by the network host and self-hosted storage. See [httpd.md](httpd.md). |
 | query | `@activeledger/activequery` | Now just the contract event engine (`EventEngine`). The SQL/Mango query sub-feature was removed in the `hpe-11a`→`v4.1` merge — it was already dead, commented-out code, unused by anything. |
 | options | `@activeledger/activeoptions` | CLI/config parsing, a TTL-based (not LRU) cache used by the storage layer, and the CouchDB HTTP client. See [options.md](options.md). |
-| definitions | `@activeledger/activedefinitions` | Shared TypeScript types for the ledger entry / transaction shape. |
+| definitions | `@activeledger/activedefinitions` | Shared TypeScript types for the ledger entry / transaction shape, including a weighted multi-authority model most docs miss entirely. See [definitions.md](definitions.md). |
 | utilities | `@activeledger/activeutilities` | HTTP request helper (undici-based), gzip helper, and `ActiveClone` — the MessagePack+gzip serializer introduced in `v4.1` for the P2P transport and storage layer. |
 | logger | `@activeledger/activelogger` | Structured console logging. |
 | toolkits | `@activeledger/activetoolkits` | PDF generation (`PDF`) and an HTTP client re-export — one of only two modules a contract is allowed to `import` by default inside the VM sandbox. See [toolkits.md](toolkits.md). |
@@ -71,11 +71,13 @@ POST that as JSON to the root of any node (`http://127.0.0.1:5260/` in the defau
 If you're new to the codebase, this is roughly the order these docs assume:
 
 1. [architecture.md](architecture.md) — the consensus/gossip model, why streams are the unit of concurrency, the contract VM lifecycle.
-2. [transport.md](transport.md) — how nodes actually talk to each other (HTTP today by default; an optional P2P transport that exists but isn't yet the better choice).
-3. [storage.md](storage.md) — the embedded data engine, and the RocksDB-that-wasn't story.
-4. [httpd.md](httpd.md) — the custom HTTP layer underneath both of the above.
-5. [crypto.md](crypto.md) — key types, signing, and the transaction-signing convention.
-6. [options.md](options.md) — config precedence (it's not what you'd guess), the TTL cache, the CouchDB client.
-7. [configuration.md](configuration.md) and [cli.md](cli.md) — running a real node or a local testnet.
-8. [contracts.md](contracts.md), [toolkits.md](toolkits.md), and [transactions.md](transactions.md) — building on top of the ledger, and the VM sandbox's import allowlist.
-9. [core.md](core.md) and [restore.md](restore.md) — the two optional companion services.
+2. [network-internals.md](network-internals.md) — node identity, the neighbour state machine, and the worker process pool underneath the architecture above.
+3. [transport.md](transport.md) — how nodes actually talk to each other (HTTP today by default; an optional P2P transport that exists but isn't yet the better choice).
+4. [storage.md](storage.md) — the embedded data engine, and the RocksDB-that-wasn't story.
+5. [httpd.md](httpd.md) — the custom HTTP layer underneath both of the above.
+6. [crypto.md](crypto.md) — key types, signing, and the transaction-signing convention.
+7. [definitions.md](definitions.md) — the shared type vocabulary, and a weighted multi-authority model that isn't documented anywhere else.
+8. [options.md](options.md) — config precedence (it's not what you'd guess), the TTL cache, the CouchDB client.
+9. [configuration.md](configuration.md) and [cli.md](cli.md) — running a real node or a local testnet.
+10. [contracts.md](contracts.md), [toolkits.md](toolkits.md), and [transactions.md](transactions.md) — building on top of the ledger, and the VM sandbox's import allowlist.
+11. [core.md](core.md) and [restore.md](restore.md) — the two optional companion services.
