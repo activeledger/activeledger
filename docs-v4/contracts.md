@@ -22,6 +22,10 @@ Earlier documentation (and `docs/en-gb/contracts/query.md`, still present, marke
 
 If you have older contracts extending `Query`, they'll need to move to plain `Standard` (or `Event`, if what you actually needed was event emission rather than ad-hoc querying) — there's no query replacement as of `v4.1.0`.
 
+## The VM sandbox's import allowlist
+
+Contract code runs with `eval`, `require`, dynamic property access, and direct `process`/`global` access all disabled (`packages/activeledger/src/contracts/default/contract.ts`'s VM policy). More specifically relevant if you're writing a contract with a dependency: **only an explicit allowlist of modules can be imported at all**, and by default that list is exactly `@activeledger/activetoolkits` (see [toolkits.md](toolkits.md) — PDF generation, an HTTP client re-export) and `@activeledger/activecontracts` (this package, for chaining base classes). A network can extend that allowlist per-namespace via `security.namespace[<namespace>].std`/`.external` in config, but nothing beyond those two is importable out of the box. If a contract needs some other capability, either it needs to be requested into that namespace's allowlist, or built as a `toolkits`-style pre-approved module.
+
 ## Contract lifecycle and timeouts
 
 Four phases, each a promise: **Verify** (optional, pre-vote) → **Vote** (broadcast to peers) → **Commit** (writes state, once consensus reached) → **Post** (side effects, doesn't block the transaction). See [architecture.md](architecture.md#the-contract-vm-lifecycle) for how these interact with the network layer.
