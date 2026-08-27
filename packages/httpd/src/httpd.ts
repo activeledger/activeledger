@@ -171,7 +171,10 @@ export class ActiveHttpd {
       };
 
       const method = req.getMethod().toUpperCase();
-      const query = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
+      const rawQuery = req.getQuery();
+      const query = rawQuery
+        ? Object.fromEntries(new URLSearchParams(rawQuery).entries())
+        : {};
       const url2 = req.getUrl();
       const path = url2.split("?")[0];
 
