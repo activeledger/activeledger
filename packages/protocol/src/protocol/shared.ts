@@ -310,13 +310,20 @@ export class Shared {
     if (!this._storeSingleError && this.entry) {
       // Take a copy of entry, To manipulate the $nodes incomms
       // Reason for copy is this node maybe the one that errors and the incomms maybe useful elsewhere
-      const tmpEntry = JSON.parse(
-        JSON.stringify(this.entry)
-      ) as ActiveDefinitions.LedgerEntry;
-      const nodeErrors = Object.keys(tmpEntry.$nodes);
+      // Only $nodes (and each node record within it) needs to be its own
+      // copy, everything else can be shared with the original entry.
+      const nodeErrors = Object.keys(this.entry.$nodes);
+      const clonedNodes: ActiveDefinitions.INodes = {};
       for (let i = nodeErrors.length; i--; ) {
-        tmpEntry.$nodes[nodeErrors[i]].incomms = null;
+        clonedNodes[nodeErrors[i]] = {
+          ...this.entry.$nodes[nodeErrors[i]],
+          incomms: null,
+        };
       }
+      const tmpEntry: ActiveDefinitions.LedgerEntry = {
+        ...this.entry,
+        $nodes: clonedNodes,
+      };
       // Build document for database
       const doc = {
         _id: `${this.entry.$umid}:${Date.now()}`,

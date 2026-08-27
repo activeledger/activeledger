@@ -37,11 +37,19 @@ interface IHTTPResponse {
   data: unknown;
 }
 
+// Below this many bytes, gzip's CPU cost outweighs the bandwidth it saves.
+const GZIP_MIN_BYTES = 1024;
+
 setGlobalDispatcher(
   new Agent({
     connect: {
       rejectUnauthorized: false,
     },
+    // Nodes repeatedly talk to the same small, fixed set of neighbours.
+    // undici's 4s default tears the socket down between consensus rounds
+    // more often than needed, forcing a fresh TCP+TLS handshake. 30s keeps
+    // connections warm across typical gaps without holding them open forever.
+    keepAliveTimeout: 30_000,
   })
 );
 
@@ -97,13 +105,13 @@ export class ActiveRequest {
         (options.headers as any)["content-type"] = "application/json";
       }
 
-      // Compressable?
-      if (enableGZip) {
+      // Compressable? Below GZIP_MIN_BYTES the compression CPU cost outweighs
+      // the bandwidth saved, so skip it - the receiver already falls back to
+      // treating the body as plain JSON whenever content-encoding isn't "gzip".
+      if (enableGZip && data.length >= GZIP_MIN_BYTES) {
         // Compress
         data = await ActiveGZip.gzip(data);
         (options.headers as any)["content-encoding"] = "gzip";
-        // options.headers.push("Content-Encoding: gzip")
-        // options.headers.push("Content-Encoding-2: gzip")
       }
 
       // Additional Post headers

@@ -1073,6 +1073,12 @@ export class Process extends EventEmitter {
     // Set voting completed state
     this.voting = false;
 
+    // Voting has concluded (with a real vote or a real error) - this
+    // node's response is no longer a placeholder, so network/host.ts's
+    // broadcast() is now safe to send it. nodeResponse aliases
+    // entry.$nodes[reference], so this also updates the entry directly.
+    delete this.nodeResponse.early;
+
     if (!this.entry) {
       // Unhandled contract error issues
       ActiveLogger.debug(`postVote entry is missing?`);
