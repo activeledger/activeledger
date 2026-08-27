@@ -42,8 +42,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "4.0.0",
-    "@activeledger/activeutilities": "4.0.0",
+    "@activeledger/activelogger": "4.1.0",
+    "@activeledger/activeutilities": "4.1.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   }
 }

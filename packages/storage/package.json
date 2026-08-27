@@ -35,19 +35,17 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/leveldown": "4.0.3",
     "@types/levelup": "5.1.1",
     "@types/node": "18.0.0",
     "copyfiles": "2.4.1",
+    "levelup": "5.1.1",
     "typescript": "4.7.3"
   },
   "dependencies": {
-    "@activeledger/activelogger": "4.0.0",
-    "@activeledger/activeoptions": "4.0.0",
-    "@activeledger/activeutilities": "4.0.0",
-    "@activeledger/httpd": "4.0.0",
-    "@nxtedition/rocksdb": "^15.4.1",
-    "leveldown": "6.1.1",
-    "levelup": "5.1.1"
+    "@activeledger/activelogger": "4.1.0",
+    "@activeledger/activeoptions": "4.1.0",
+    "@activeledger/activeutilities": "4.1.0",
+    "@activeledger/httpd": "4.1.0",
+    "classic-level": "^3.0.0"
   }
 }

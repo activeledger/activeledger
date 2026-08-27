@@ -37,14 +37,14 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
-    "@activeledger/activecrypto": "4.0.0",
-    "@activeledger/activelogger": "4.0.0",
-    "@activeledger/activenetwork": "4.0.0",
-    "@activeledger/activeoptions": "4.0.0",
-    "@activeledger/activequery": "4.0.0",
-    "@activeledger/activestorage": "4.0.0",
-    "@activeledger/activeutilities": "4.0.0",
-    "@activeledger/httpd": "4.0.0"
+    "@activeledger/activecrypto": "4.1.0",
+    "@activeledger/activelogger": "4.1.0",
+    "@activeledger/activenetwork": "4.1.0",
+    "@activeledger/activeoptions": "4.1.0",
+    "@activeledger/activequery": "4.1.0",
+    "@activeledger/activestorage": "4.1.0",
+    "@activeledger/activeutilities": "4.1.0",
+    "@activeledger/httpd": "4.1.0"
   },
   "devDependencies": {
     "@types/node": "18.0.0",
