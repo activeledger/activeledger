@@ -58,7 +58,7 @@ On success:
 
 `$summary` reports how many nodes voted and committed out of the total participating. The new stream ID under `$streams.new` is what you reference as `$i`/`$o`/`$r` in future transactions involving this identity.
 
-**`$responses`** (not shown above — only present when a contract actually returns something): a contract can call `this.returnToRemote(data)` from `commit()` to hand arbitrary data back to the submitting client, landing in `$responses` in the transaction response. This is a real, verified way to *read* data through a normal transaction rather than a storage HTTP call — a contract with `$i` but no `$o` that just reads state and calls `returnToRemote()` instead of mutating anything. See [storage.md](storage.md#reading-data-through-a-transaction-instead) for a worked example and what was and wasn't confirmed about the signature requirements for this pattern.
+**`$responses`** (not shown above — only present when a contract actually returns something): populated two ways. A normal vote/commit transaction's contract can call `this.returnToRemote(data)` from `commit()` to hand data back to the client. Separately — and this is the more useful one for pure reads — **a transaction with no `$i` at all skips vote/commit entirely** and calls a dedicated read-only method on the contract instead (named by `$entry`, defaulting to `read()`), returning that method's return value via `$responses`, genuinely without needing a real signature (`$sigs: {}` is enough). See [contracts.md](contracts.md#a-third-lifecycle-signature-free-reads-via-entry) for the full mechanism and two verified working examples.
 
 ## A worked example: onboard, then a follow-up transaction
 

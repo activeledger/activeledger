@@ -41,6 +41,72 @@ Each phase is watched for timeout — checked periodically (`contractCheckTimeou
 this.setTimeout(15000);
 ```
 
+## A third lifecycle: signature-free reads via `$entry`
+
+Separate from vote/commit entirely, and genuinely signature-free — confirmed live, correcting an earlier, incomplete finding in this doc set that mistakenly concluded no signature-free read path existed. The actual mechanism, traced to `protocol/process.ts`:
+
+```ts
+// If no $i or $sigs (only need to check on 1 as they're required)
+if (this.entry.$tx.$i) {
+  // ... normal verify -> vote -> commit lifecycle ...
+} else {
+  // Read only so lets call the $entry (or default which is read())
+  this.nodeResponse.return = await virtualMachine.read(
+    payload.umid,
+    this.entry.$tx.$entry || "read"
+  );
+}
+```
+
+**The branch is decided purely by whether `$tx.$i` is present.** Omit it, and the transaction skips `verify()`/`vote()`/`commit()` altogether and instead calls a plain, no-argument method on your contract instance — named by `$tx.$entry`, or literally `read()` if `$entry` is omitted — and whatever that method returns comes straight back to the client in the response's `$responses` field. Use `$o` (not `$i`) to tell the contract which stream(s) to read, since `$i` is what's deliberately absent here.
+
+The one thing that still has to be present, even though nothing in it needs to verify against anything: `$sigs`, but as a genuinely empty object (`$sigs: {}`) works fine — `ExternalInitalise` (see [transactions.md](transactions.md)) only rejects a transaction for `$sigs` being *absent* (`!tx.$sigs`), not empty, and with no `$i` there's no per-stream signature check for anything inside it to fail against.
+
+```ts
+// A contract supporting both the default read() and a named alternative
+export default class Reader extends Standard {
+  public verify(selfsigned: boolean): Promise<boolean> {
+    return new Promise((resolve) => resolve(true));
+  }
+  public vote(): Promise<boolean> {
+    return new Promise((resolve) => resolve(true));
+  }
+  public commit(): Promise<any> {
+    return new Promise((resolve) => resolve(true));
+  }
+
+  // Called for $entry omitted or $entry: "read"
+  public read(): any {
+    const oStreams = Object.keys(this.transactions.$o || {});
+    const activity: Activity = this.getActivityStreams(oStreams[0]);
+    return activity.getState();
+  }
+
+  // Called for $entry: "summary"
+  public summary(): any {
+    const oStreams = Object.keys(this.transactions.$o || {});
+    const activity: Activity = this.getActivityStreams(oStreams[0]);
+    return { name: activity.getState().name };
+  }
+}
+```
+
+```js
+// No $i. $sigs present but empty. $o names the stream to read.
+const readTx = { $namespace: ns, $contract: contractStreamId, $o: { [identityId]: {} } };
+const res = await submit({ $tx: readTx, $sigs: {} });
+// res.$responses[0] === whatever read() returned
+
+const namedRes = await submit({ $tx: { ...readTx, $entry: "summary" }, $sigs: {} });
+// namedRes.$responses[0] === whatever summary() returned
+```
+
+Both verified working, real captured responses: `[{"via":"default read()"}]` and `[{"via":"custom $entry=summary","name":"<streamId>"}]` respectively, against a contract implementing exactly the shape above.
+
+**`verify()`/`vote()`/`commit()` still need to exist on the class** (they're `Standard`'s abstract requirements) even for a contract that's only ever used in read mode — they just never run for an `$i`-less transaction. `verify()`'s own `selfsigned` parameter is unrelated to this: it's `$entry.$selfsign`, not a signal that the transaction is read-only.
+
+This is a different mechanism from `returnToRemote()` (see [storage.md](storage.md#reading-data-through-a-transaction-instead)), which is the equivalent "send data back to the caller" tool for the *normal* vote/commit lifecycle, called from inside `commit()`. Read mode's named method just returns its value directly — no `returnToRemote()` call needed there.
+
 ## Deployment mechanics
 
 Transaction shapes for each step, unchanged from the existing docs:

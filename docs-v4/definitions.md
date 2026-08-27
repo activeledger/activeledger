@@ -14,6 +14,7 @@ Every stream (a contract's persisted state — see [architecture.md](architectur
 
 This is the object that flows through the whole lifecycle described in [architecture.md](architecture.md) and [transactions.md](transactions.md) — what a client submits (`$tx`, `$sigs`, `$selfsign`) gets progressively filled in by the origin node (`$umid`, `$datetime`, `$origin`, `$nodes`) as it moves through gossip, vote, and commit. A few fields beyond what [transactions.md](transactions.md) already covers, worth knowing exist:
 
+- **`$tx.$entry`** — names which contract method to call for a signature-free, `$i`-less read transaction (defaults to `read()`) — see [contracts.md](contracts.md#a-third-lifecycle-signature-free-reads-via-entry). Also reused, unrelated to reads, by the bundled `contract`/`setup` contracts to select an operation (`"link"`/`"unlink"`/`"approve"` etc. — see [`docs/en-gb/contracts/deployment/`](../docs/en-gb/contracts/deployment/)).
 - **`$broadcast`** — gossip (the default) vs. territoriality/ring-relay (see [architecture.md](architecture.md#two-propagation-modes-gossip-broadcast-vs-ring-relay)).
 - **`$multi`** — marks a transaction as touching multiple streams' authorities at once (multi-signature territory — see below).
 - **`$instant`** — an expedited path, bypassing some of the normal broadcast waiting.

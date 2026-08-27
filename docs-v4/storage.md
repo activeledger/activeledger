@@ -69,17 +69,7 @@ This is a significant correction to how [core.md](core.md) originally framed thi
 
 ### Reading data through a transaction instead
 
-There's a second way to read data that doesn't touch the storage HTTP API at all: submit a normal transaction whose contract calls `this.returnToRemote(data)` (`Stream`'s protected helper, `packages/contracts/src/stream.ts`) instead of writing anything. The submitting client gets the data back directly in the transaction response under `$responses`:
-
-```js
-// A read-only contract: no $o, vote() reads state via getActivityStreams(),
-// commit() calls this.returnToRemote(state) instead of mutating anything.
-const readTx = { $tx: { $namespace: ns, $contract: contractStreamId, $i: { [identityId]: {} } } };
-const res = await submit({ ...readTx, $sigs: { [identityId]: kp.sign(readTx.$tx) } });
-// res.$responses[0] is whatever the contract passed to returnToRemote()
-```
-
-Verified working with a normal, real signature on `$i` (no `$o` at all needed — see [contracts.md](contracts.md#the-rule-the-deployment-docs-dont-mention-io-streams-must-already-exist-unless-selfsign), this only needs the *input* stream to exist, since there's no output being written). **What wasn't confirmed**: whether this can go further and skip the signature requirement entirely. Submitting with `$sigs` missing is rejected outright (`"$sigs not found"`), and submitting with `$sigs: {}` gets past that gate but then fails per-stream signature verification (`"Input Signature Incorrect"`) — in this session's testing, at least one real, valid signature on the referenced `$i` stream was still required. If a genuinely signature-free read path exists, it wasn't found here; treat "read via a normally-signed transaction, no `$o` required" as the confirmed capability, and the stronger "no signature needed at all" claim as unverified rather than assume it's wrong — it may need a different transaction shape or contract pattern this session didn't try.
+There's a second way to read data that doesn't touch the storage HTTP API at all: a transaction with no `$i` calls a dedicated read-only method on the contract (named by `$entry`, defaulting to `read()`) instead of running the normal vote/commit lifecycle, and — genuinely, verified — needs no real signature at all, just an empty `$sigs: {}`. This is a completely different, and correct, mechanism from what an earlier pass of this section described (which mistakenly concluded signature-free reads weren't possible, based on a test that kept `$i` in the transaction — the actual trigger for skipping signature checks is omitting `$i` entirely, not emptying `$sigs` on a transaction that still has one). See [contracts.md](contracts.md#a-third-lifecycle-signature-free-reads-via-entry) for the full mechanism, a working contract example, and two verified real transactions (default `read()` and a custom `$entry` name).
 
 ## `classic-level` and this monorepo's TypeScript version
 
