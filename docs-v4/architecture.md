@@ -19,6 +19,16 @@ Locking happens per-stream (`packages/network/src/network/locker.ts`), not globa
 
 Each transaction gets dispatched to a worker process from a pool sized to the number of physical CPU cores (`network/host.ts`, `PhysicalCores.count()`). This is a real, current resource limit on this codebase specifically — a benchmark run on a machine that's busy with other work will bottleneck on CPU contention for these workers, not on network transport. That's exactly what happened in this session's own benchmark (see [transport.md](transport.md)): swapping the transport made no measurable difference to throughput, because CPU time (contract execution, RSA sign/verify) was the actual bottleneck.
 
+## Two propagation modes: gossip broadcast vs. ring relay
+
+The gossip description above is the default (`$tx.$broadcast: true`, which `ExternalInitalise` sets automatically unless territoriality is already in play — see [transactions.md](transactions.md)). There's a second mode for non-broadcast ("territoriality") transactions: instead of fanning out to everyone, the transaction is relayed node-to-node around a ring. Every node tracks two fixed neighbours, `Home.left` and `Home.right` (`packages/network/src/network/home.ts`) — visible in `GET /a/status`'s response. For a non-broadcast transaction whose origin isn't already this node's right neighbour, `host.ts` forwards it on to `Home.right` (`host.ts:~1612`) rather than broadcasting, and it continues around the ring that way.
+
+`maintain.ts` continuously checks that a node's actual `left`/`right` match what the rest of the network expects (`Home.left.reference`/`Home.right.reference` against the neighbourhood's own view) — this is part of the network's self-healing: if a neighbour drops or the ring's shape drifts, this is what notices.
+
+## Locking has its own independent timeout — shorter than a contract's
+
+`Locker` (`packages/network/src/network/locker.ts`) holds per-stream locks as `{ umid, time }`, and a background checker force-releases any lock older than `AUTO_RELEASE_TIME` — **3 minutes**, hardcoded (`locker.ts`). This is a genuinely easy trap: a contract's own timeout budget (`contractMaxTimeout`, default 20 minutes — see [configuration.md](configuration.md)) sounds like the real ceiling on a long-running contract, but the stream lock backing that transaction gets force-released after 3 minutes regardless, independent of whatever the contract's own timeout logic thinks it's still allowed. A contract that calls `this.setTimeout()` to legitimately extend its own runtime past 3 minutes is not protected from its lock being freed out from under it by this separate mechanism. If you're writing a contract that's deliberately slow, this — not `contractMaxTimeout` — is the number that actually matters first.
+
 ## The `$nodes` map and the early-vote pitfall
 
 Every transaction's ledger entry carries a `$nodes` object, keyed by node reference, tracking what each node has decided so far. This is worth understanding in some detail because it's the source of a real bug this session fixed (three commits: `78de5a0`, `243b1d6`, `eb9cb53`, all now in `master`).
