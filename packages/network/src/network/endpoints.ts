@@ -27,6 +27,7 @@ import {
   ActiveGZip,
   ActiveCacheManager,
 } from "@activeledger/activeoptions";
+import { ActiveClone } from "@activeledger/activeutilities";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -34,6 +35,7 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
+import { Locker } from "./locker";
 
 const MAX_COUNTERS = 10;
 
@@ -126,9 +128,15 @@ export class Endpoints {
             // if (host.neighbourhood.count() < 4) {
             //   tx.$broadcast = false;
             // } else if (!tx.$territoriality && !tx.$broadcast) {
+
+            // Temp Disabled
             if (!tx.$territoriality && !tx.$broadcast) {
               tx.$broadcast = true;
             }
+
+            // Default all to broadcast
+            // $territoriality temporarily disabled until firewall check added
+            //tx.$broadcast = true;
 
             // Will merge with above for testing here (TODO: Make it work with broadcast)
             // fail to be broadcast if it is unanimous the performance trade off
@@ -192,7 +200,7 @@ export class Endpoints {
                     if (tx?.$nodes) {
                       // Get nodes to count
                       let nodes = Object.keys(tx.$nodes);
-                      for (let i = nodes.length; i--; ) {
+                      for (let i = nodes.length; i--;) {
                         summary.total++;
                         if (tx.$nodes[nodes[i]].vote) summary.vote++;
                         if (tx.$nodes[nodes[i]].commit) summary.commit++;
@@ -237,7 +245,7 @@ export class Endpoints {
                           (summary.errors?.filter(
                             (e) => e.indexOf("Stream Position Incorrect") !== -1
                           ).length || 0) >=
-                            Math.floor((summary.errors?.length || 0) / 3) || // the majority disagreed
+                          Math.floor((summary.errors?.length || 0) / 3) || // the majority disagreed
                           // However what about I am the only one that is wrong (As they may send via me)
                           tx.$nodes[Home.reference].error?.indexOf(
                             "Stream Position Incorrect"
@@ -265,7 +273,7 @@ export class Endpoints {
                               );
 
                               // loop and add :stream
-                              for (let i = streams.length; i--; ) {
+                              for (let i = streams.length; i--;) {
                                 //if (!rewrote.has(streams[i])) {
                                 streams.push(`${streams[i]}:stream`);
                                 //} else {
@@ -298,202 +306,181 @@ export class Endpoints {
                                   (ActiveOptions.get<any>("consensus", {})
                                     .reached /
                                     100) *
-                                    host.neighbourhood.count() -
-                                    1 // -1 here if we want to exclude this node
+                                  host.neighbourhood.count() -
+                                  1 // -1 here if we want to exclude this node
                                 );
 
-                                // now find the ones that match
-                                const consensus: {
-                                  [index: string]: {
-                                    [index: string]: number;
-                                  };
-                                } = {};
-                                for (let i = networkStreams.length; i--; ) {
-                                  const nodeStreams = networkStreams[i];
-                                  if (nodeStreams?.length) {
-                                    for (let ii = nodeStreams.length; ii--; ) {
-                                      const noodeStream = nodeStreams[ii];
-                                      if (consensus[noodeStream._id]) {
-                                        const rev = consensus[noodeStream._id];
-                                        if (rev[noodeStream._rev]) {
-                                          rev[noodeStream._rev]++;
-                                          // if (
-                                          //   rev[noodeStream._rev] >=
-                                          //   consensusReached
-                                          // ) {
-                                          //   // Bad counting here for now do check all of them!
-                                          //   //break;
-                                          // }
-                                        } else {
-                                          rev[noodeStream._rev] = 1;
-                                        }
-                                      } else {
-                                        consensus[noodeStream._id] = {
-                                          [noodeStream._rev]: 1,
-                                        };
-                                      }
-                                    }
-                                  }
-                                }
+                                if (networkStreams.length >= consensusReached) {
 
-                                // Now find that document
-                                const docs = Object.keys(consensus);
-                                foundWinner: for (let g = docs.length; g--; ) {
-                                  const doc = consensus[docs[g]];
-                                  if (rewrote.has(docs[g])) {
-                                    // continue;
-                                  }
-                                  let max = 0;
-                                  let winner = "";
-                                  for (let x in doc) {
-                                    if (doc[x] >= consensusReached) {
-                                      ActiveLogger.warn(
-                                        `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
-                                      );
-                                      if (doc[x] > max) {
-                                        // Just beats it
 
-                                        max = doc[x];
-                                        winner = x;
-                                      } else if (doc[x] === max) {
-                                        // if it is need to split x on - and compare the position at [0] if larger that one wins
-
-                                        const [xPos] = x.split("-");
-                                        const [wPos] = winner.split("-");
-
-                                        if (+xPos > +wPos) {
-                                          ActiveLogger.warn(
-                                            `SPI matching max (${max}) but has higher position`
-                                          );
-                                          winner = x;
-                                        }
-                                        // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
-                                        // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
-                                      }
-                                    }
-                                  }
-
-                                  // find it (foundWinner:)
-                                  for (let ii = networkStreams.length; ii--; ) {
-                                    const node = networkStreams[ii];
-                                    if (node?.length) {
-                                      for (let j = node.length; j--; ) {
-                                        const main = node[j];
-                                        if (main._id == docs[g]) {
-                                          if (
-                                            winner &&
-                                            !rewrote.has(main._id) &&
-                                            main._id == docs[g] &&
-                                            main._rev == winner
-                                          ) {
-                                            rewrote.set(main._id, main._rev);
-                                            const dblCheck =
-                                              await host.dbConnection.get(
-                                                main._id
-                                              );
-                                            if (dblCheck._rev !== main._rev) {
-                                              ActiveLogger.error(
-                                                //[main, dblCheck],
-                                                `SPI REWRITING #1 ${
-                                                  main._id
-                                                } @ ${main._rev} NOT ${
-                                                  dblCheck._rev
-                                                } : ${
-                                                  tx.$umid
-                                                } CACHE : ${rewrote.get(
-                                                  main._id
-                                                )}`
-                                              );
-                                              // TODO (In both places or 1 function) this maybe MY version so don't write it!
-                                              // That may solve the data race problem for position incorrect when not entry node (maybe)
-                                              // await host.dbConnection.purge({
-                                              //   _id: main._id,
-                                              // });
-                                              await host.dbConnection.bulkDocs(
-                                                [main],
-                                                {
-                                                  new_edits: true,
-                                                  force_rev: main._rev,
-                                                }
-                                              );
-                                              rewroteSomething = true;
-                                            }
-                                            // This break actually prevents multiple docs from being updated
-                                            //break foundWinner;
+                                  // Build a map to count votes for each revision of each stream
+                                  // and store the first seen document for that revision.
+                                  const consensus: {
+                                    [index: string]: {
+                                      [revision: string]: {
+                                        votes: number;
+                                        doc: any;
+                                      };
+                                    };
+                                  } = {};
+                                  for (let i = networkStreams.length; i--;) {
+                                    const nodeStreams = networkStreams[i];
+                                    if (nodeStreams?.length) {
+                                      for (let ii = nodeStreams.length; ii--;) {
+                                        const streamDoc = nodeStreams[ii];
+                                        if (streamDoc && streamDoc._id && streamDoc._rev) {
+                                          if (!consensus[streamDoc._id]) {
+                                            consensus[streamDoc._id] = {};
+                                          }
+                                          if (consensus[streamDoc._id][streamDoc._rev]) {
+                                            consensus[streamDoc._id][streamDoc._rev].votes++;
                                           } else {
-                                            if (!rewrote.has(main._id)) {
-                                              ActiveLogger.warn(
-                                                `SPI NOWINNER #1 - ${main._id}@${main._rev}`
-                                              );
-                                            }
+                                            consensus[streamDoc._id][streamDoc._rev] = {
+                                              votes: 1,
+                                              doc: streamDoc,
+                                            };
                                           }
                                         }
                                       }
                                     }
                                   }
+
+                                  // Now, for each stream, find the revision with the most votes.
+                                  const docs = Object.keys(consensus);
+                                  for (let g = docs.length; g--;) {
+                                    const doc = consensus[docs[g]];
+                                    if (rewrote.has(docs[g])) {
+                                      continue;
+                                    }
+                                    let max = 0;
+                                    let winner = "";
+                                    for (let x in doc) {
+                                      if (doc[x].votes >= consensusReached) {
+                                        ActiveLogger.warn(
+                                          `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
+                                        );
+                                        if (doc[x].votes > max) {
+                                          // Just beats it
+                                          max = doc[x].votes;
+                                          winner = x;
+                                        } else if (doc[x].votes === max) {
+                                          // if it is need to split x on - and compare the position at [0] if larger that one wins
+
+                                          const [xPos] = x.split("-");
+                                          const [wPos] = winner.split("-");
+
+                                          if (+xPos > +wPos) {
+                                            ActiveLogger.warn(
+                                              `SPI matching max (${max}) but has higher position`
+                                            );
+                                            winner = x;
+                                          }
+                                          // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
+                                          // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
+                                        }
+                                      }
+                                    }
+
+                                    // If a winner was found, write it to the local database.
+                                    if (winner && !rewrote.has(docs[g])) {
+                                      const winningDoc = doc[winner].doc;
+                                      rewrote.set(winningDoc._id, winningDoc._rev);
+                                      const dblCheck = await host.dbConnection.get(
+                                        winningDoc._id
+                                      );
+                                      if (dblCheck._rev !== winningDoc._rev) {
+                                        ActiveLogger.error(
+                                          `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
+                                        );
+                                        await host.dbConnection.bulkDocs(
+                                          [winningDoc],
+                                          {
+                                            new_edits: true,
+                                            force_rev: winningDoc._rev,
+                                          }
+                                        );
+                                        rewroteSomething = true;
+                                      }
+                                    } else {
+                                      if (!rewrote.has(docs[g])) {
+                                        ActiveLogger.warn(
+                                          `SPI NOWINNER #1 - ${docs[g]}`
+                                        );
+                                    }
+                                  }
                                 }
 
-                                // Shouldn't need to check umid not found 950 error here, As this was the origin node
-                                // and its position indexes were incorrect.
+                                  // Shouldn't need to check umid not found 950 error here, As this was the origin node
+                                  // and its position indexes were incorrect.
 
-                                //  need TO ONLY run this if SPI rewrites occured?
-                                // also need to attach orignal umid to reference against! As this is double spend potential
-                                // retry!
+                                  //  need TO ONLY run this if SPI rewrites occured?
+                                  // also need to attach orignal umid to reference against! As this is double spend potential
+                                  // retry!
 
-                                if (rewroteSomething) {
-                                  delete (initTx as any).$nodes;
-                                  delete (initTx as any).$revs;
-                                  delete (initTx as any).$streams;
-                                  const originalUmid = initTx.$umid;
-                                  // Should be seen as a new tx
-                                  initTx.$umid = ActiveCrypto.Hash.getHash(
-                                    JSON.stringify(initTx) + counter
-                                  );
-                                  ActiveLogger.warn(
-                                    initTx,
-                                    `SPI (Rewrite) Resending #1 ${counter}`
-                                  );
-                                  setTimeout(() => {
-                                    // Adjusted umid, send original
+                                  if (rewroteSomething) {
+                                    delete (initTx as any).$nodes;
+                                    delete (initTx as any).$revs;
+                                    delete (initTx as any).$streams;
+                                    // Adjusted umid, send original, release before we modify shared object
                                     if (!response.dontRelease) {
-                                      host.release(originalUmid);
+                                      host.release(initTx.$umid);
                                     }
-                                    resendable(initTx, ++counter);
-                                  }, 50);
-                                  return;
-                                } else {
-                                  // Return to calling client! All ok so release
-                                  if (!response.dontRelease) {
-                                    host.release(tx.$umid);
-                                  }
-                                  // Resolve thiscopy paste, We are within a timeout so not ideal
-                                  const output: ActiveDefinitions.LedgerResponse =
+                                    // Should be seen as a new tx
+                                    initTx.$umid = ActiveCrypto.Hash.getHash(
+                                      JSON.stringify(initTx) + counter
+                                    );
+                                    ActiveLogger.warn(
+                                      initTx,
+                                      `SPI (Rewrite) Resending #1 ${counter}`
+                                    );
+                                    setTimeout(() => {
+                                      resendable(initTx, ++counter);
+                                    }, 50);
+                                    return;
+                                  } else {
+                                    // Return to calling client! All ok so release
+                                    if (!response.dontRelease) {
+                                      host.release(tx.$umid);
+                                    }
+                                    // Resolve thiscopy paste, We are within a timeout so not ideal
+                                    const output: ActiveDefinitions.LedgerResponse =
                                     {
                                       $umid: tx.$umid,
                                       $summary: summary,
                                       $streams: tx.$streams,
                                     };
-                                  // Optional Responses to add
-                                  if (responses.length) {
-                                    output.$responses = responses;
-                                  }
+                                    // Optional Responses to add
+                                    if (responses.length) {
+                                      output.$responses = responses;
+                                    }
 
-                                  // Append Debug View
-                                  if (
-                                    ActiveOptions.get<boolean>("debug", false)
-                                  ) {
-                                    output.$debug = tx;
-                                  }
+                                    // Append Debug View
+                                    if (
+                                      ActiveOptions.get<boolean>("debugToClient", false)
+                                    ) {
+                                      output.$debug = tx;
+                                    }
 
+                                    ActiveLogger.warn(
+                                      output,
+                                      `SPI Failed to find an issue returning to client`
+                                    );
+
+                                    return resolve({
+                                      statusCode: 200,
+                                      content: output,
+                                    });
+                                  }
+                                } else {
                                   ActiveLogger.warn(
-                                    output,
-                                    `SPI Failed to find an issue returning to client`
+                                    `SPI Skipped not enough returned for consensus yet (${networkStreams.length}/${consensusReached})`
                                   );
-
+                                  // Maybe retry  somehow? They could be spi lock failures
                                   return resolve({
                                     statusCode: 200,
                                     content: output,
                                   });
+
                                 }
                               }
                             }
@@ -520,7 +507,10 @@ export class Endpoints {
                             delete (initTx as any).$nodes;
                             delete (initTx as any).$revs;
                             delete (initTx as any).$streams;
-                            const originalUmid = initTx.$umid;
+                            // Adjusted umid, send original, release before we modify shared object
+                            if (!response.dontRelease) {
+                              host.release(initTx.$umid);
+                            }
                             initTx.$umid = ActiveCrypto.Hash.getHash(
                               JSON.stringify(initTx) + counter
                             );
@@ -529,9 +519,6 @@ export class Endpoints {
                               `SPI Resending #2 ${counter} in 5s`
                             );
                             setTimeout(() => {
-                              if (!response.dontRelease) {
-                                host.release(originalUmid);
-                              }
                               resendable(initTx, ++counter);
                             }, 50);
                             return;
@@ -562,7 +549,7 @@ export class Endpoints {
                     }
 
                     // Append Debug View
-                    if (ActiveOptions.get<boolean>("debug", false)) {
+                    if (ActiveOptions.get<boolean>("debugToClient", false)) {
                       output.$debug = tx;
                     }
 
@@ -646,12 +633,12 @@ export class Endpoints {
         // We can either send them all at once or in seq depends on transaction lets default to all at once
         const results = [] as any[];
         if (body.$seq) {
-          for (let i = body.$multi.length; i--; ) {
+          for (let i = body.$multi.length; i--;) {
             results.push(await process(body.$multi[i]));
             // deal with catch problem
           }
           const response = [];
-          for (let i = results.length; i--; ) {
+          for (let i = results.length; i--;) {
             response.push(results[i].content);
           }
           resolve({
@@ -659,12 +646,12 @@ export class Endpoints {
             content: response,
           });
         } else {
-          for (let i = body.$multi.length; i--; ) {
+          for (let i = body.$multi.length; i--;) {
             results.push(process(body.$multi[i]));
           }
           const results2 = (await Promise.all(results)) as any[];
           const response = [];
-          for (let i = results2.length; i--; ) {
+          for (let i = results2.length; i--;) {
             response.push(results2[i].content);
           }
           resolve({
@@ -687,7 +674,7 @@ export class Endpoints {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       // Stream label or self
       const addr = this.filterPrefix(txIO[keys[i]].$stream || keys[i]);
       if (addr.length === 64) {
@@ -771,7 +758,9 @@ export class Endpoints {
   public static InternalInitalise(
     host: Host,
     body: any,
-    retried = false
+    remoteAddr: string,
+    retried = false,
+    isP2P = false
   ): Promise<any> {
     return new Promise((resolve, reject) => {
       // Is the network stable?
@@ -793,7 +782,7 @@ export class Endpoints {
 
       // Send into host pool
       host
-        .pending(tx, true, retried)
+        .pending(tx, remoteAddr, true, retried, isP2P)
         .then(async (ledger: any) => {
           let canRetry = false;
           let resolved = false;
@@ -812,7 +801,7 @@ export class Endpoints {
           // Only safe to run if we can get a lock
           // downside of not doing this is the node can be out of date for a while
           // we can alkways keep trying to get a lock or for when it ISN't locked
-          const rewrote = ActiveCacheManager.fetch("rewrote", 1500);
+          const rewrote = ActiveCacheManager.fetch("rewrote", 500);
 
           if (ledger?.data?.$nodes && !rewrote.has(tx.$umid)) {
             // rewrote.set(tx.$umid, 1);
@@ -857,7 +846,7 @@ export class Endpoints {
                   const nodes = Object.keys(ledger.data.$nodes);
 
                   //let commited = false;
-                  for (let i = nodes.length; i--; ) {
+                  for (let i = nodes.length; i--;) {
                     if (ledger.data.$nodes[nodes[i]].commit) {
                       check = true;
                       break;
@@ -898,7 +887,7 @@ export class Endpoints {
                     // const rewrote = CacheManager.fetch("rewrote", 10000);
 
                     // loop and add :stream
-                    for (let i = streams.length; i--; ) {
+                    for (let i = streams.length; i--;) {
                       // Stop it checking a stream multiple times from different umids
                       //if (!rewrote.has(streams[i])) {
                       streams.push(`${streams[i]}:stream`);
@@ -935,47 +924,54 @@ export class Endpoints {
                         const consensusReached = Math.ceil(
                           (ActiveOptions.get<any>("consensus", {}).reached /
                             100) *
-                            host.neighbourhood.count() -
-                            1 // -1 here if we want to exclude this node
+                          host.neighbourhood.count() -
+                          1 // -1 here if we want to exclude this node
                         );
 
+                        if (networkStreams.length < consensusReached) {
+                          ActiveLogger.warn(
+                            `SPI Skipped not enough returned for consensus yet (${networkStreams.length}/${consensusReached})`
+                          );
+                          // Maybe retry tmp somehow? They could be spi lock failures
+                          return;
+                        }
+
                         // now find the ones that match
+                        // Build a map to count votes for each revision of each stream
+                        // and store the first seen document for that revision.
                         const consensus: {
                           [index: string]: {
-                            [index: string]: number;
+                            [revision: string]: {
+                              votes: number;
+                              doc: any;
+                            };
                           };
                         } = {};
-                        for (let i = networkStreams.length; i--; ) {
+                        for (let i = networkStreams.length; i--;) {
                           const nodeStreams = networkStreams[i];
                           if (nodeStreams?.length) {
-                            for (let ii = nodeStreams.length; ii--; ) {
-                              const noodeStream = nodeStreams[ii];
-                              if (consensus[noodeStream._id]) {
-                                const rev = consensus[noodeStream._id];
-                                if (rev[noodeStream._rev]) {
-                                  rev[noodeStream._rev]++;
-                                  // if (
-                                  //   rev[noodeStream._rev] >=
-                                  //   consensusReached
-                                  // ) {
-                                  //   // Bad counting here for now do check all of them!
-                                  //   //break;
-                                  // }
-                                } else {
-                                  rev[noodeStream._rev] = 1;
+                            for (let ii = nodeStreams.length; ii--;) {
+                              const streamDoc = nodeStreams[ii];
+                              if (streamDoc && streamDoc._id && streamDoc._rev) {
+                                if (!consensus[streamDoc._id]) {
+                                  consensus[streamDoc._id] = {};
                                 }
-                              } else {
-                                consensus[noodeStream._id] = {
-                                  [noodeStream._rev]: 1,
-                                };
+                                if (consensus[streamDoc._id][streamDoc._rev]) {
+                                  consensus[streamDoc._id][streamDoc._rev].votes++;
+                                } else {
+                                  consensus[streamDoc._id][streamDoc._rev] = {
+                                    votes: 1,
+                                    doc: streamDoc,
+                                  };
+                                }
                               }
                             }
                           }
                         }
 
-                        // Now find that document
+                        // Now, for each stream, find the revision with the most votes.
                         const docs = Object.keys(consensus);
-                        foundWinner: for (let g = docs.length; g--; ) {
+                        for (let g = docs.length; g--;) {
                           const doc = consensus[docs[g]];
                           if (rewrote.has(docs[g])) {
                             continue;
@@ -983,16 +979,15 @@ export class Endpoints {
                           let max = 0;
                           let winner = "";
                           for (let x in doc) {
-                            if (doc[x] >= consensusReached) {
+                            if (doc[x].votes >= consensusReached) {
                               ActiveLogger.warn(
-                                `SPI ${doc[x]} >= ${consensusReached} for ${docs[g]}@${x}`
+                                `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
                               );
-                              if (doc[x] > max) {
+                              if (doc[x].votes > max) {
                                 // Just beats it
-
-                                max = doc[x];
+                                max = doc[x].votes;
                                 winner = x;
-                              } else if (doc[x] === max) {
+                              } else if (doc[x].votes === max) {
                                 // if it is need to split x on - and compare the position at [0] if larger that one wins
 
                                 const [xPos] = x.split("-");
@@ -1010,70 +1005,45 @@ export class Endpoints {
                             }
                           }
 
-                          // find it (foundWinner:)
-                          for (let ii = networkStreams.length; ii--; ) {
-                            const node = networkStreams[ii];
-                            if (node?.length) {
-                              for (let j = node.length; j--; ) {
-                                const main = node[j];
-                                if (main._id == docs[g]) {
-                                  if (
-                                    winner &&
-                                    !rewrote.has(main._id) &&
-                                    main._id == docs[g] &&
-                                    main._rev == winner
-                                  ) {
-                                    // Set umid so we can know to push a 950 error to check
-                                    rewrote.set(tx.$umid, true);
-                                    rewrote.set(main._id, main._rev);
-                                    const dblCheck =
-                                      await host.dbConnection.get(main._id);
-                                    if (dblCheck._rev !== main._rev) {
-                                      ActiveLogger.error(
-                                        //[main, dblCheck],
-                                        `SPI REWRITING #2 ${main._id} @ ${
-                                          main._rev
-                                        } NOT ${dblCheck._rev} : ${
-                                          tx.$umid
-                                        } CACHE : ${rewrote.get(main._id)}`
-                                      );
-                                      // TODO (In both places or 1 function) this maybe MY version so don't write it!
-                                      // That may solve the data race problem for position incorrect when not entry node (maybe)
-                                      // await host.dbConnection.purge({
-                                      //   _id: main._id,
-                                      // });
+                          // If a winner was found, write it to the local database.
+                          if (winner && !rewrote.has(docs[g])) {
+                            const winningDoc = doc[winner].doc;
+                            // Set umid so we can know to push a 950 error to check
+                            rewrote.set(tx.$umid, true);
+                            rewrote.set(winningDoc._id, winningDoc._rev);
+                            const dblCheck = await host.dbConnection.get(
+                              winningDoc._id
+                            );
+                            if (dblCheck._rev !== winningDoc._rev) {
+                              ActiveLogger.error(
+                                `SPI REWRITING #2 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
+                              );
 
-                                      // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
-                                      if (!dblCheck._rev) {
-                                        try {
-                                          await host.dbConnection.put(main);
-                                          ActiveLogger.warn(
-                                            `SPI 404 - Create Base for ${main._id}`
-                                          );
-                                        } catch {
-                                          ActiveLogger.error(
-                                            `SPI 404 - Failed to create ${main._id}`
-                                          );
-                                        }
-                                      }
-
-                                      await host.dbConnection.bulkDocs([main], {
-                                        new_edits: true,
-                                        force_rev: main._rev,
-                                      });
-                                      canRetry = true;
+                              // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
+                              if (!dblCheck._rev) {
+                                try {
+                                  await host.dbConnection.put(winningDoc);
+                                  ActiveLogger.warn(
+                                    `SPI 404 - Create Base for ${winningDoc._id}`
+                                  );
+                                } catch {
+                                  ActiveLogger.error(
+                                    `SPI 404 - Failed to create ${winningDoc._id}`
+                                  );
                                     }
-                                    // This break actually prevents multiple docs from being updated
-                                    //break foundWinner;
-                                  } else {
-                                    if (!rewrote.has(main._id)) {
-                                      ActiveLogger.warn(
-                                        `SPI NOWINNER #2 - ${main._id}@${main._rev}`
-                                      );
-                                    }
-                                  }
-                                }
                               }
+
+                              await host.dbConnection.bulkDocs([winningDoc], {
+                                new_edits: true,
+                                force_rev: winningDoc._rev,
+                              });
+                              canRetry = true;
+                            }
+                          } else {
+                            if (!rewrote.has(docs[g])) {
+                              ActiveLogger.warn(
+                                `SPI NOWINNER #2 - ${docs[g]}`
+                              );
                             }
                           }
                         }
@@ -1085,6 +1055,7 @@ export class Endpoints {
                           ActiveLogger.warn(tx.$umid, `SPI Adding 950 Checker`);
                           // No need to await but help with catching errors flow
                           await host.dbErrorConnection.post({
+                            _id: `${tx.$umid}:${Date.now()}`,
                             code: 950,
                             processed: false,
                             umid: tx.$umid,
@@ -1101,12 +1072,18 @@ export class Endpoints {
                         if (!ledger.dontRelease) {
                           host.release(tx.$umid);
                         }
+
+                        // Look into don't release above make sure its purpose valid
+                        // At this point (or before actually, where we have winner or not)
+                        // send a KnockAll to "unlock" the streams so they can continue processing. (Hence eh longer timeout)
+                        
                       };
 
                       if (resolved) {
                         setTimeout(async () => {
                           ActiveLogger.warn(`SPI WAITING - ${tx.$umid}`);
                           tmp();
+                          // This timer is key, If cannot find a good value will need to implement locking and retrying
                         }, 500);
                       } else {
                         ActiveLogger.warn(`SPI NOW - ${tx.$umid}`);
@@ -1120,7 +1097,7 @@ export class Endpoints {
                             `SPI RETRY as it was unanimous and written`
                           );
                           tx.$spiRetry = true;
-                          this.InternalInitalise(host, tx, true)
+                          this.InternalInitalise(host, tx, remoteAddr, true)
                             .then(resolve)
                             .catch(reject);
                         } else {
@@ -1249,7 +1226,7 @@ export class Endpoints {
 
       // Send into host pool
       host
-        .pending(tx)
+        .pending(tx, Home.host)
         .then((ledger) => resolve(ledger))
         .catch((error) => {
           ActiveLogger.fatal(tx, "last tx sent in");
@@ -1348,7 +1325,7 @@ export class Endpoints {
         // Restrict Access to any volatile requests
         const fetchStream = [];
 
-        for (let i = body.$streams.length; i--; ) {
+        for (let i = body.$streams.length; i--;) {
           // Check that :volatile doesn't exist
           if (body.$streams[i].indexOf(":volatile") !== -1) {
             // End exectuion
@@ -1358,41 +1335,74 @@ export class Endpoints {
             });
           }
 
-          // Fetch Request (Catch error here and forward on as an object to process in .all)
-          fetchStream.push(
-            db.get(body.$streams[i]).catch((error) => {
-              return { _error: error };
-            })
-          );
+          const holdValue = body.$streams[i].replace(":stream", "");
+
+          // If it doesn't have it and can hold return
+          if (
+            Locker.hold(holdValue, "SPI") /*|| Locker.is(holdValue, "SPI")*/
+          ) {
+            // We should probably have a release timer, and also release call from calling node
+            // but as multiple nodes will call  will need counter ontop of it. Using a timer now will
+            // at least show this method works. The call counter will just make it release faster
+            //ActiveLogger.info(`SPI EPS FETCH HOLD ${holdValue}`);
+            setTimeout(() => {
+              Locker.release(holdValue, "SPI");
+              //ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
+            }, 1000);
+
+            // Maybe increase the 1000 here, More so if we have an "unlock" somehow request (as many nodes me ask!)
+            // Or we can cache the results here given that we can assume more nodes will ask 
+
+            // Fetch Request (Catch error here and forward on as an object to process in .all)
+            fetchStream.push(db.get(body.$streams[i]));
+            //}
+          } else {
+            // Now it may exist we need to check it is SPI for other nodes
+            if (Locker.is(holdValue, "SPI")) {
+              fetchStream.push(db.get(body.$streams[i]));
+            }
+          }
         }
 
-        // Wait for all streams to be returned
-        Promise.all(fetchStream)
-          .then((docs: any) => {
-            // Could just pass docs but that will send unnecessary data at this point
-            const streams = [];
-            for (let i = docs.length; i--; ) {
-              // Make sure not an error
-              if (docs[i]._id) {
-                // streams.push({
-                //   _id: docs[i]._id,
-                //   _rev: docs[i]._rev,
-                // });
-                streams.push(docs[i]);
+        if (fetchStream.length) {
+          // Wait for all streams to be returned
+          Promise.all(fetchStream)
+            .then((docs: any) => {
+              // Could just pass docs but that will send unnecessary data at this point
+              const streams = [];
+              for (let i = docs.length; i--;) {
+                // Make sure not an error
+                if (docs[i]._id) {
+                  // streams.push({
+                  //   _id: docs[i]._id,
+                  //   _rev: docs[i]._rev,
+                  // });
+                  streams.push(docs[i]);
+
+                  // Problem, it seems when unlocking they select wrong one next?
+                  // const holdValue = docs[i]._id.replace(":stream", "");
+                  // Locker.release(holdValue, "SPI");
+                  // ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
+                }
               }
-            }
-            return resolve({
-              statusCode: 200,
-              content: streams,
+              return resolve({
+                statusCode: 200,
+                content: streams,
+              });
+            })
+            .catch(() => {
+              // Don't mind an error so lets say everyting is ok
+              return resolve({
+                statusCode: 200,
+                content: [],
+              });
             });
-          })
-          .catch(() => {
-            // Don't mind an error so lets say everyting is ok
-            return resolve({
-              statusCode: 200,
-              content: [],
-            });
+        } else {
+          return resolve({
+            statusCode: 200,
+            content: [],
           });
+        }
       } else {
         if (body.$stream && body.$rev) {
           // Restrict Access to any volatile requests
@@ -1530,21 +1540,18 @@ export class Endpoints {
    */
   public static postConvertor(
     host: Host,
-    body: string,
+    body: string | Buffer,
     encryptHeader: boolean
   ): Promise<any> {
     return new Promise(async (resolve, reject) => {
-      // Is this an encrypted external transaction that need passing.
+      let data: Buffer;
+
+      // Handle Decryption if needed
       if (encryptHeader) {
-        // Decrypt & Parse
         ActiveLogger.info("Encrypted Transaction Inbound");
         try {
-          // Decrypt
-          resolve(
-            JSON.parse(Buffer.from(host.decrypt(body), "base64").toString())
-          );
+          data = Buffer.from(host.decrypt(body as string), "base64");
         } catch {
-          // Error trying to decrypt
           ActiveLogger.error("Sent 500 Response (1700)");
           return reject({
             statusCode: 500,
@@ -1552,50 +1559,39 @@ export class Endpoints {
           });
         }
       } else {
-        // body should now be a json string to be converted, However check
-        // that it still isn't in its Buffer form!
-        let bodyObject;
-        try {
-          bodyObject = (await this.makeSureNotBuffer(JSON.parse(body))) as any;
-        } catch (e) {
-          throw e;
-        }
-        // Internal Transaction Messesing (Encrypted & Signing Security)
-        if (bodyObject.$neighbour && bodyObject.$packet) {
-          //ActiveLogger.debug(bodyObject, "Converting Signed for Post");
-          try {
-            // Maybe coming from activerestore
-            if (bodyObject.$enc) {
-            }
-          } catch (e) {}
+        data = typeof body === "string" ? Buffer.from(body) : body;
+      }
 
-          // We don't encrypt to ourselve
-          if (bodyObject.$neighbour.reference != host.reference) {
-            // Decrypt Trasanction First (As Signing Pre Encryption)
+      try {
+        const bodyObject = await ActiveClone.deserialize(data);
+        
+        // Internal Transaction Messaging (Encrypted & Signing Security)
+        if (bodyObject && (bodyObject as any).$neighbour && (bodyObject as any).$packet) {
+          const bodyObj = bodyObject as any;
+          // We don't encrypt to ourselves
+          if (bodyObj.$neighbour.reference != host.reference) {
+            // Decrypt Transaction First
             if (
-              bodyObject.$enc ||
+              bodyObj.$enc ||
               ActiveOptions.get<any>("security", {}).encryptedConsensus
             ) {
-              bodyObject.$packet = JSON.parse(
-                Buffer.from(
-                  host.decrypt(bodyObject.$packet),
-                  "base64"
-                ).toString()
+              bodyObj.$packet = await ActiveClone.deserialize(
+                Buffer.from(host.decrypt(bodyObj.$packet), "base64")
               );
             }
           }
 
-          // Verify Signature (but we do verify)
+          // Verify Signature
           if (
-            bodyObject.$neighbour.signature ||
+            bodyObj.$neighbour.signature ||
             ActiveOptions.get<any>("security", {}).signedConsensus
           ) {
             if (
               !host.neighbourhood
-                .get(bodyObject.$neighbour.reference)
+                .get(bodyObj.$neighbour.reference)
                 .verifySignature(
-                  bodyObject.$neighbour.signature,
-                  bodyObject.$packet
+                  bodyObj.$neighbour.signature,
+                  bodyObj.$packet
                 )
             ) {
               // Bad Message
@@ -1609,13 +1605,19 @@ export class Endpoints {
 
           // Open signed post
           return resolve({
-            from: bodyObject.$neighbour.reference,
-            body: bodyObject.$packet,
+            from: bodyObj.$neighbour.reference,
+            body: bodyObj.$packet,
           });
         } else {
           // Resolve as just the object
           resolve({ body: bodyObject });
         }
+      } catch (e) {
+        ActiveLogger.error(e, "Deserialization Error");
+        return reject({
+          statusCode: 500,
+          content: "Deserialization Error",
+        });
       }
     });
   }

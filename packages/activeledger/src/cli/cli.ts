@@ -46,8 +46,9 @@ export class CLIHandler {
    *
    * @static
    */
-  public static async start(): Promise<void> {
+  public static async start(version:string): Promise<void> {
     this.statsHandler.init();
+    CLIHandler.version = version;
     await CLIHandler.pidHandler.init();
     await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
     await CLIHandler.statsHandler.resetUptime();
@@ -103,7 +104,7 @@ export class CLIHandler {
   public static async restart(auto?: boolean): Promise<void> {
     ActiveLogger.info("Restarting");
     await this.stop(true);
-    await this.start();
+    await this.start(CLIHandler.version);
     await CLIHandler.statsHandler.updateRestartCount(auto);
     ActiveLogger.info("Restart complete");
   }
@@ -438,7 +439,7 @@ export class CLIHandler {
 
       // Lets now startup Activeledger
       // Let them know!
-      ActiveLogger.info("Activeledger Boot Process Started");
+      ActiveLogger.info("Activeledger Boot Process Started @ Version " + CLIHandler.version);
 
       // Reference datastore to pass to terminate if needed
       let datastore: ActiveDataStore;

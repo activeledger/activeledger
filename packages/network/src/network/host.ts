@@ -25,11 +25,13 @@
 import { fork, ChildProcess } from "child_process";
 import { readlinkSync } from "fs";
 import { basename } from "path";
+import * as net from "net";
 import {
   ActiveDSConnect,
   ActiveOptions,
   ActiveGZip,
   ActiveRequest,
+  ActiveClone,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -71,6 +73,7 @@ interface process {
   finished: boolean;
   responded: boolean;
   shutdown?: boolean;
+  broadcasting?: boolean;
 }
 
 /**
@@ -118,6 +121,8 @@ interface BusyLockQueue {
  * @extends {Home}
  */
 export class Host extends Home {
+  private p2pServer: net.Server;
+
   /**
    * Holds underlying socket
    *
@@ -217,10 +222,29 @@ export class Host extends Home {
    */
   public pending(
     entry: ActiveDefinitions.LedgerEntry,
+    remoteAddr: string,
     internal = false,
-    forceRestart = false
+    forceRestart = false,
+    isP2P = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
+
+      // This should only matter to broadcast
+      // non-broadcast are direct posts. May still need to add checks there
+      // but that occurs at a different location
+      if (entry.$broadcast && entry.$nodes) {
+        // Even though IP is checked, Nothing prevents them sending multiple payloads
+        const nodeSpoofCheck = Object.keys(entry.$nodes);
+        if (nodeSpoofCheck.length) {
+          for (let i = nodeSpoofCheck.length; i--;) {
+            const nodeCheck = nodeSpoofCheck[i];
+            if (!this.neighbourhood.checkFirewall(remoteAddr, nodeCheck)) {
+              return reject("Bad Neighbour Payload");
+            }
+          }
+        }
+      }
+
       if (forceRestart && this.processPending[entry.$umid]) {
         this.destroy(entry.$umid, true);
         delete this.processPending[entry.$umid];
@@ -246,8 +270,8 @@ export class Host extends Home {
             //here needs to output inbound
             ActiveLogger.debug(
               //this.processPending[entry.$umid],
-              entry,
-              "Broadcast Recieved : " + entry.$umid
+              //entry,
+              `Broadcast Recieved [${isP2P ? "P2P" : "HTTP"}] : ` + entry.$umid
             );
             // Find Processor to send in the broadcast message
             const processor = this.findProcessor(
@@ -264,6 +288,16 @@ export class Host extends Home {
             } else {
               // Not found, Lets just return the umid anyway it may confirm or will timeout
             }
+          } else {
+            // Add Vote information into current object!
+            const pendingEntry = this.processPending[entry.$umid]?.entry;
+            if (pendingEntry) {
+              // Don't overwrite self from a broadcast
+              delete entry.$nodes[this.reference];
+              // Merge new node data into existing entry
+              pendingEntry.$nodes = { ...pendingEntry.$nodes, ...entry.$nodes };
+            }
+
           }
           if (!entry.$$noreply) {
             this.broadcast(entry.$umid, false, true);
@@ -302,7 +336,7 @@ export class Host extends Home {
               try {
                 this.processPending[entry.$umid].responded = true;
                 ActiveLogger.debug("Client Response TX : " + entry.$umid);
-              } catch {}
+              } catch { }
             }
           },
           reject: (response: any) => {
@@ -315,7 +349,7 @@ export class Host extends Home {
               reject(response);
               try {
                 this.processPending[entry.$umid].responded = true;
-              } catch {}
+              } catch { }
             }
             //}, 10);
           },
@@ -324,7 +358,8 @@ export class Host extends Home {
           responded: false,
         };
         // Need to check it doesn't exist
-        if (entry.$tx.$expire) {
+        // If this was the entry node it already chhecked so filter
+        if (entry.$tx.$expire && remoteAddr !== this.host) {
           if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
             if (entry.$nodes) {
               entry.$nodes[this.reference] = {
@@ -378,6 +413,61 @@ export class Host extends Home {
   constructor() {
     super();
 
+    if (ActiveOptions.get<boolean>("p2pStreamServer", false)) {
+      // Start P2P TCP Server
+      this.p2pServer = net.createServer((socket: net.Socket) => {
+        ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
+        let chunks: Buffer[] = [];
+        let bufferLength = 0;
+
+        socket.on("data", async (data: Buffer) => {
+          chunks.push(data);
+          bufferLength += data.length;
+
+          // Frame: [SenderRef (40)][Length (4)][Payload]
+          while (bufferLength >= 44) {
+            const fullBuffer = Buffer.concat(chunks);
+            const senderRef = fullBuffer.slice(0, 40).toString().trim();
+            const length = fullBuffer.readUInt32BE(40);
+
+            if (bufferLength >= 44 + length) {
+              const item = fullBuffer.slice(44, 44 + length);
+
+              // Clean up consumed data
+              const remaining = fullBuffer.slice(44 + length);
+              chunks = remaining.length > 0 ? [remaining] : [];
+              bufferLength = remaining.length;
+
+              const tx = await ActiveClone.deserialize(item);
+              this.processEndpoints(
+                {
+                  headers: { "X-Activeledger": senderRef },
+                  method: "POST",
+                  url: "/a/init",
+                  connection: { remoteAddress: socket.remoteAddress || "127.0.0.1" },
+                },
+                null as any,
+                tx,
+                senderRef,
+                true
+              );
+            } else {
+              break;
+            }
+          }
+        });
+        socket.on("error", (err: Error) => {
+          ActiveLogger.error(err, "P2P socket error");
+        });
+      });
+
+      // P2P port is main port + 1
+      const p2pPort = parseInt(ActiveInterfaces.getBindingDetails("port")) + 1;
+      this.p2pServer.listen(p2pPort, () => {
+        ActiveLogger.info(`P2P TCP server listening on port ${p2pPort}`);
+      });
+    }
+
     // Cache db from options
     let db = ActiveOptions.get<any>("db", {});
 
@@ -401,7 +491,7 @@ export class Host extends Home {
 
     // Set hybrid doc name
     if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--; ) {
+      for (let i = this.hybridHosts.length; i--;) {
         const hybrid = this.hybridHosts[i];
         hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
       }
@@ -661,7 +751,7 @@ export class Host extends Home {
         } else {
           bundles = [bodyString];
         }
-        for (let i = bundles.length; i--; ) {
+        for (let i = bundles.length; i--;) {
           if (bundles[i]) {
             // All posted data should be JSON
             // Convert data for potential encryption
@@ -771,17 +861,14 @@ export class Host extends Home {
           return;
         }
 
+        // CRITICAL: Copy the data synchronously now, every return of onData neuters the ArrayBuffer
         if (ab.byteLength > 0) {
-          // I found some non-last onData with 0 byte length
-          // Immediately copy the ArrayBuffer into a Buffer, every return of onData neuters the ArrayBuffer
-          chunks.push(Buffer.from(ab.slice(0)));
+          const buffer = Buffer.allocUnsafe(ab.byteLength);
+          buffer.set(new Uint8Array(ab));
+          chunks.push(buffer);
         }
 
         if (isLast) {
-          // If this is the last chunk, process the final buffer
-          // Convert the buffer to a string and parse it as JSON
-          // this will fail if the buffer doesn't contain a valid JSON (e.g. length = 0)
-          //const resolveValue = JSON.parse(buffer.toString());
           resolve(
             chunks.length === 0
               ? Buffer.alloc(0)
@@ -793,7 +880,6 @@ export class Host extends Home {
       });
     });
   }
-
   // https://stackoverflow.com/questions/2786632/how-can-i-convert-ipv6-address-to-ipv4-address/23147817#23147817
   private parseIp6(str: string) {
     //init
@@ -971,7 +1057,7 @@ export class Host extends Home {
           setTimeout(() => {
             ActiveLogger.fatal(pFork, "Sending Kill Signal");
             //Find the bad process
-            for (let i = this.processors.length; i--; ) {
+            for (let i = this.processors.length; i--;) {
               if (this.processors[i].pid === pFork.pid) {
                 this.processors.splice(i, 1);
                 break;
@@ -1070,7 +1156,7 @@ export class Host extends Home {
                   this.listenSocket = token;
                   ActiveLogger.info(
                     "Activeledger listening on port " +
-                      ActiveInterfaces.getBindingDetails("port")
+                    ActiveInterfaces.getBindingDetails("port")
                   );
                 }
               );
@@ -1210,6 +1296,11 @@ export class Host extends Home {
    * @param {string} umid
    */
   private broadcast(umid: string, early = false, noreply = false): void {
+    // Prevent duplicate broadcast loops
+    if (this.processPending[umid] && this.processPending[umid].broadcasting) {
+      return;
+    }
+
     // Final check object exists
     if (
       this.processPending[umid]?.entry &&
@@ -1221,6 +1312,7 @@ export class Host extends Home {
           "vote" in this.processPending[umid].entry.$nodes[this.reference])) // only return if there is a vote or early
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
+      this.processPending[umid].broadcasting = true;
       ActiveLogger.debug(`Broadcasting TX ($$NR ${noreply}) : ` + umid);
 
       // Get all the neighbour nodes
@@ -1247,13 +1339,11 @@ export class Host extends Home {
             },
           })
         : Object.assign(this.processPending[umid].entry, {
-            $nodes: {},
-          });
+          $nodes: {},
+        });
 
       // We need a proper copy to modify that way we still keep the original in memory for the tx
-      // const data = JSON.parse(
-      //   JSON.stringify(this.processPending[umid].entry || {})
-      // );
+      // const data = ActiveClone.clone(this.processPending[umid].entry);
       // if (!early) {
       //   data.$nodes = {
       //     [this.reference]:
@@ -1262,7 +1352,6 @@ export class Host extends Home {
       // } else {
       //   data.$nodes = {};
       // }
-      // Above will rarely change we should find a way to cache it
 
       // Experienced a blank target from above assign, Double check to prevent bad loop
       if (data) {
@@ -1272,7 +1361,7 @@ export class Host extends Home {
           data.$$noreply = true;
         }
         // Loop them all and broadcast the transaction
-        for (let i = nodes.length; i--; ) {
+        for (let i = nodes.length; i--;) {
           let node = neighbourhood[nodes[i]];
           // TODO the entry.$nodes check only valid for leader? It can probably be reduced for non leaders
 
@@ -1280,8 +1369,8 @@ export class Host extends Home {
           if (
             node.isHome &&
             node.reference !==
-              this
-                .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
+            this
+              .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
           ) {
             // Need to detect if we have already sent and got response for nodes for performance
             promises.push(node.knock("init", data, false, 0, true));
@@ -1291,9 +1380,11 @@ export class Host extends Home {
         // Listen for promises
         Promise.all(promises)
           .then(() => {
+            this.processPending[umid].broadcasting = false;
             // As it is bundled we don't get a response. We need to trigger rebroadcast
           })
           .catch(() => {
+            this.processPending[umid].broadcasting = false;
             // Keep broadcasting until promises fully resolve
             // Could be down nodes (So they can have 5 minute window to get back up)
             // Or connection issues. This doesn't stop commit phase as they will eventually call us.
@@ -1351,7 +1442,7 @@ export class Host extends Home {
     const keys = Object.keys(txIO || {});
     const out: string[] = [];
 
-    for (let i = keys.length; i--; ) {
+    for (let i = keys.length; i--;) {
       // So we can have multisig without having to hold lock on same stream
       if (!txIO[keys[i]].$sigOnly) {
         // Stream label or self
@@ -1414,7 +1505,10 @@ export class Host extends Home {
       const robin = this.getRobin();
       // Make sure we have the response object
       if (!this.processPending[v.$umid].entry.$nodes)
-        this.processPending[v.$umid].entry.$nodes = {};
+        // Make sure it exists
+        if (!this.processPending[v.$umid].entry.$nodes) {
+          this.processPending[v.$umid].entry.$nodes = {};
+        }
 
       // Setup this node response
       this.processPending[v.$umid].entry.$nodes[Home.reference] = {
@@ -1628,79 +1722,44 @@ export class Host extends Home {
     if (!this.processingBLQ) {
       this.processingBLQ = true;
 
-      // Checked idententies. This means there is no "chance" we select the next one by bad timing
+      // Checked identities. This prevents trying to lock the same stream multiple times in one queue run.
       const checked: Set<string> = new Set();
 
-      // TODO Convert to method
+      // Process internal queue first
       if (this.busyLocksQueue.internal.length) {
-        // Process Internal first (should make it so can target loops based on reason why processQue was called)
-        for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
+        const stillPending: BusyLockQueue[] = [];
+        busyQueueInternal: for (let i = 0; i < this.busyLocksQueue.internal.length; i++) {
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
-          // // Skip if we have already tried
           if (labelOrKey?.length) {
             if (labelOrKey.some((io) => checked.has(io))) {
-              continue;
+              continue busyQueueInternal;
             }
             labelOrKey.forEach((io) => checked.add(io));
           }
 
-          if (
-            this.hold(
-              this.busyLocksQueue.internal[i].entry,
-              this.busyLocksQueue.internal[i].retry++
-            )
-          ) {
-            // Success, Can remove from queue
-            // cannot splice as still looping and looping in order
-            this.busyLocksQueue.internal[i].running = true;
+          if (!this.hold(this.busyLocksQueue.internal[i].entry, this.busyLocksQueue.internal[i].retry++)) {
+            // If hold fails, add it to the list of items to keep for the next run.
+            stillPending.push(this.busyLocksQueue.internal[i]);
           }
         }
-
-        // Remove the empty results if any
-        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        for (let i = this.busyLocksQueue.internal.length; i--; ) {
-          if (this.busyLocksQueue.internal[i].running) {
-            this.busyLocksQueue.internal.splice(i, 1);
-          }
-        }
+        this.busyLocksQueue.internal = stillPending;
       }
+
       if (next && internal) {
         this.hold(next);
       }
 
+      // Process external queue
       if (this.busyLocksQueue.external.length) {
-        // Process Internal first (should make it so can target loops based on reason why processQue was called)
+        const stillPending: BusyLockQueue[] = [];
         for (let i = 0; i < this.busyLocksQueue.external.length; i++) {
-          // Skip if we have already tried (something causes this to not work here)
-          // const labelOrKey = this.busyLocksQueue.external[i].entry.$$labelOrKey;
-          // // Skip if we have already tried
-          // if (labelOrKey?.length) {
-          //   if (checked.some((io) => labelOrKey.includes(io))) {
-          //     continue;
-          //   }
-          //   checked.push(...labelOrKey);
-          // }
-
-          if (
-            this.hold(
-              this.busyLocksQueue.external[i].entry,
-              this.busyLocksQueue.external[i].retry++
-            )
-          ) {
-            // Success, Can remove from queue
-            // cannot splice as still looping and looping in order
-            this.busyLocksQueue.external[i].running = true;
+          if (!this.hold(this.busyLocksQueue.external[i].entry, this.busyLocksQueue.external[i].retry++)) {
+            stillPending.push(this.busyLocksQueue.external[i]);
           }
         }
-
-        // Remove the empty results if any
-        //this.busyLocksQueue = this.busyLocksQueue.filter((n) => n.running);
-        for (let i = this.busyLocksQueue.external.length; i--; ) {
-          if (this.busyLocksQueue.external[i].running) {
-            this.busyLocksQueue.external.splice(i, 1);
-          }
-        }
+        this.busyLocksQueue.external = stillPending;
       }
+
       if (next && !internal) {
         this.hold(next);
       }
@@ -1793,9 +1852,9 @@ export class Host extends Home {
                     ].map((stream) => stream.id);
 
                     // Also need $i, $o and $r,  Can probably reuse the .keys
-                    const input = tx.$tx.$i
-                      ? this.hybridLabelKeyId(tx.$tx.$i)
-                      : [];
+                    const input = tx.$tx.$i ?
+                      this.hybridLabelKeyId(tx.$tx.$i) :
+                      [];
                     const output = tx.$tx.$o
                       ? this.hybridLabelKeyId(tx.$tx.$o)
                       : [];
@@ -1805,9 +1864,8 @@ export class Host extends Home {
 
                     // Missing Contract
                     if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${
-                        tx.$tx.$namespace
-                      }/${tx.$tx.$contract}.js`;
+                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
+                        }/${tx.$tx.$contract}.js`;
                       // Maybe symlink?
                       try {
                         keys.push(basename(readlinkSync(path), ".js"));
@@ -1819,8 +1877,8 @@ export class Host extends Home {
 
                     // Loop all and append :stream to get meta data
                     const tmp = [];
-                    for (let i = keys.length; i--; ) {
-                      tmp.push(keys[i] + ":stream");
+                    for (const key of keys) {
+                      tmp.push(key + ":stream");
                     }
 
                     // Push tmp back into keys so we get everything
@@ -1899,7 +1957,7 @@ export class Host extends Home {
     // Means first has to be labelled but we don't want to loop when not needed
     if (txIO[streams[0]].$stream) {
       const streamMap: string[] = [];
-      for (let i = streams.length; i--; ) {
+      for (let i = streams.length; i--;) {
         // Stream label or self
         let streamId = txIO[streams[i]].$stream || streams[i];
         streamMap.push(streamId);
@@ -1931,7 +1989,8 @@ export class Host extends Home {
     },
     res: HttpResponse,
     body?: any,
-    from?: string
+    from?: string,
+    isP2P = false,
   ) {
     // Internal or External Request
     let requester = (req.headers["X-Activeledger"] as string) || "NA";
@@ -1968,7 +2027,7 @@ export class Host extends Home {
             response = Endpoints.status(this, requester);
             break;
           case "/a/all": // All Stream Management
-            if (this.firewallCheck(requester, req)) {
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               response = Endpoints.all(this.dbConnection);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
@@ -1979,9 +2038,55 @@ export class Host extends Home {
           //   // Loop Hybrids, Find matching auth
           //   const hAuth = req.headers["x-activeledger"] as string;
           //   break;
+          case "/a/admin-reload":
+            if(!ActiveOptions.get<boolean>("remote", false)) {
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "failed",
+                  message: "remote disabled"
+                }),
+                gzipAccepted
+              );
+            }
+
+            try {
+              // 1. Reload the host/master's config.json
+              ActiveOptions.parseConfig();
+              ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
+
+              // 2. Broadcast the reload signal to all child processes
+              this.reload();
+
+              ActiveLogger.info(
+                "Host and child processes config.json reloaded successfully via admin API"
+              );
+
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "success",
+                  build: ActiveOptions.get("build", 0),
+                }),
+                gzipAccepted
+              );
+            } catch (error: any) {
+              ActiveLogger.error(error, "Admin reload error");
+              return this.writeResponse(
+                res,
+                200,
+                JSON.stringify({
+                  status: "failed",
+                  message: error.message || "Internal Error"
+                }),
+                gzipAccepted
+              );
+            }          
           default:
             // All Stream Management with start point
-            if (this.firewallCheck(requester, req)) {
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               if (req.url) {
                 let match = req.url.substr(0, 7);
                 switch (match) {
@@ -2031,33 +2136,20 @@ export class Host extends Home {
               this,
               body,
               (req.headers["x-activeledger-encrypt"] as unknown as boolean) ||
-                false,
+              false,
               this.dbConnection
             );
             // Pass db conntection
             break;
           case "/a/init": // Internal transactions
-            if (this.firewallCheck(requester, req)) {
-              response = Endpoints.InternalInitalise(this, body);
+            if (this.firewallCheck(requester, req.connection.remoteAddress)) {
+              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress, false, isP2P);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
           case "/a/stream": // Stream Data Management (Activerestore)
-            //if (this.firewallCheck(requester, req)) {
             response = Endpoints.streams(this.dbConnection, body);
-            //} else {
-            //  return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
-            // }
-
-            // Check Locks
-            // Wait, then check again
-            // loop this maybe?
-            // Then send response if unlocked (but what if a transaction locks it between timer?)
-            // maybe have an event that triggers it on unlock
-            // then need to return an error within time. (and deal with that in SPI)
-
-            // m,oving to postprocess will it unlock it quicker??
             break;
           default:
             return this.writeResponse(res, 404, "Not Found", gzipAccepted);
@@ -2081,16 +2173,16 @@ export class Host extends Home {
           };
         }
 
-        // Write Header
+        // Write Header 
         // All outputs are JSON and
         if (data.$umid) {
           const TT = Date.now() - started;
           if (TT > 5) {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
             ActiveLogger.info(
-              `Request Response ${
-                data.$umid ? data.$umid : "No Umid"
-              } : S=${started}, TT=${TT}ms`
+              `[RR] ${data.$umid ? data.$umid : "No Umid"
+              } : S=${started}, TT=${TT}ms ${TT > 30000 ? "TTLR" : " OK"
+              }`
             );
           }
         }
@@ -2106,7 +2198,7 @@ export class Host extends Home {
         // Basic error handling for now. As a lot of errors will still be sent as ok responses.
         ActiveLogger.error(error, "Failed to send response back");
         ActiveLogger.info(
-          `Request Response ERROR : S=${started}, TT=${Date.now() - started}ms`
+          `[RR] ERROR : S=${started}, TT=${Date.now() - started}ms`
         );
         this.writeResponse(
           res,
@@ -2127,13 +2219,14 @@ export class Host extends Home {
    * @param {string} encoding
    */
   private async writeResponse(
-    res: HttpResponse,
+    res: HttpResponse | null,
     statusCode: number,
     content: string | Buffer,
     encoding: string,
     cors = false
   ) {
-    if (!res.writable) {
+    if (!res || !res.writable) {
+      // Most likely P2P, Need to make knockright use http
       return;
     }
 
@@ -2146,6 +2239,10 @@ export class Host extends Home {
     res.cork(() => {
       res.writeStatus(`${statusCode}`);
       res.writeHeader("Access-Control-Allow-Origin", "*");
+      res.writeHeader("X-Content-Type-Options", "nosniff");
+      res.writeHeader("X-Frame-Options", "DENY");
+      res.writeHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+      res.writeHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none';");
 
       if (cors) {
         res.writeHeader("Access-Control-Allow-Methods", "GET, POST");
@@ -2171,13 +2268,8 @@ export class Host extends Home {
    * @param {IncomingMessage} req
    * @returns {boolean}
    */
-  private firewallCheck(requester: string, req: any): boolean {
-    return (
-      requester !== "NA" &&
-      this.neighbourhood.checkFirewall(
-        (req.headers["x-forwarded-for"] as string) ||
-          (req.connection.remoteAddress as string)
-      )
-    );
+  private firewallCheck(requester: string, remoteAddr: string): boolean {
+    // x-forward coulkd be spoofed for now lets not support
+    return this.neighbourhood.checkFirewall(remoteAddr, requester)
   }
 }

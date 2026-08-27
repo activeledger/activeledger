@@ -211,7 +211,22 @@ export interface ILedgerAuthority {
   hash?: string;
   label?: string;
   metadata?: any;
+  umid?: string;
 }
+
+/**
+ * Historical record of a removed authority key for non-repudiation auditing
+ * 
+ * @export
+ * @interface ILedgerRemovedAuthority
+ */
+export interface ILedgerRemovedAuthority {
+  hash?: string;
+  label?: string;
+  umid?: string;
+  revoked: string;
+}
+
 
 /**
  * Type Checking Methods for validation

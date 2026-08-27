@@ -22,14 +22,17 @@
  */
 import * as http from "http";
 import * as path from "path";
-import * as fs from "fs";
+import { promises as fsPromises, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { randomUUID } from "crypto";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
+import { ActiveLogger } from "@activeledger/activelogger";
 import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 (function () {
+  const fauxtonCache: { [key: string]: { mime: string; data: Buffer } } = {};
   // Fauxton Path
   const FAUXTON_PATH = __dirname + "/fauxton/";
 
@@ -45,6 +48,34 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // Database Connection Cache
   let dbCache: { [index: string]: LevelMe } = {};
 
+  // Track if we are shutting down
+  let isShuttingDown = false;
+
+  /**
+   * Graceful Shutdown
+   *
+   * @param {ActiveHttpd} httpd host
+   */
+  const terminate = async (host: ActiveHttpd) => {
+    if (!isShuttingDown) {
+      isShuttingDown = true;
+      host.shutdown();
+      
+      // Close all databases
+      const dbNames = Object.keys(dbCache);
+      for (const name of dbNames) {
+        try {
+          await dbCache[name].close();
+          ActiveLogger.info(`Closed database: ${name}`);
+        } catch (err) {
+          ActiveLogger.error(`Error closing database ${name}:`, err);
+        }
+      }
+      unlinkSync(lockFile);
+      process.exit(0);
+    }
+  }
+
   /**
    * Manages Pouch Connections
    *
@@ -57,7 +88,12 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       throw new Error(`invalid database - ${name}`);
     }
     if (!dbCache[name]) {
-      dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+      try {
+        dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+      } catch (err) {
+        throw err;
+      }
+    } else {
     }
     return dbCache[name];
   };
@@ -69,13 +105,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
    * @param {number} [a]
    * @returns {number}
    */
-  const uuidGenV4 = (a?: number): number =>
-    a
-      ? (a ^ ((Math.random() * 16) >> (a / 4))).toString(16)
-      : (([1e7] as any) + -1e3 + -4e3 + -8e3 + -1e11).replace(
-          /[018]/g,
-          uuidGenV4
-        );
+  const uuidGenV4 = (): string => randomUUID();
 
   /**
    * Checks for the existant of _id if not ads it and returns
@@ -91,7 +121,43 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // Create Light Server
   let http = new ActiveHttpd();
 
+  // Attempt better shutdown
+  process.on("SIGINT", () => {
+    terminate(http);
+  });
+  process.on("SIGTERM", () => {
+    terminate(http);
+  });
+  process.on("SIGQUIT", () => {
+    terminate(http);
+  });
+
+
   // Index
+  const lockFile = "./.activeledger-db-lock.pid";
+
+  // Check for lock file
+  try {
+    const pid = readFileSync(lockFile, "utf8");
+    process.kill(parseInt(pid), 0);
+    ActiveLogger.fatal("Instance already running");
+    process.exit(1);
+  } catch (err) {
+    // No lock file or process not running
+  }
+
+  // Write lock file
+  writeFileSync(lockFile, process.pid.toString());
+
+  // Ensure lock file removed on exit
+  // process.on("exit", () => {
+  //   try {
+  //     unlinkSync(lockFile);
+  //   } catch (err) {
+  //     // Ignore
+  //   }
+  // });
+
   http.use("/", "GET", () => {
     return {
       activeledger: "Welcome to Activeledger data!",
@@ -101,22 +167,24 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   });
 
   // Standard Session
-  http.use("_session", "ALL", () => {
+  http.use("_session", "GET", () => {
     return { ok: true, userCtx: { name: null, roles: ["_admin"] } };
   });
 
   // List all databases
-  http.use("_all_dbs", "ALL", async () => {
+  http.use("_all_dbs", "GET", async () => {
     // Check to see if it is a directory and not a special directory
-    const isDirectory = (source: string) =>
-      fs.lstatSync(DIR_PREFIX + source).isDirectory() &&
-      source != process.argv[2] &&
-      source != "pouch__all_dbs__" &&
-      source != "_replicator" &&
-      source.indexOf("-mrview-") === -1;
+    const files = await fsPromises.readdir(DIR_PREFIX);
+    const dbs = [];
+    for (const file of files) {
+      const stat = await fsPromises.lstat(DIR_PREFIX + file);
+      if (stat.isDirectory() && file !== process.argv[2] && file !== "pouch__all_dbs__" && file !== "_replicator" && !file.includes("-mrview-")) {
+        dbs.push(file);
+      }
+    }
 
     // Return directories
-    return fs.readdirSync(DIR_PREFIX).filter(isDirectory);
+    return dbs;
   });
 
   // Get Database Info
@@ -127,11 +195,11 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
     // Now add data_size
     info.data_size = 0;
-    fs.readdirSync(DIR_PREFIX + incoming.url[0]).map((source: string) => {
-      info.data_size += fs.statSync(
-        DIR_PREFIX + incoming.url[0] + "/" + source
-      ).size;
-    });
+    const files = await fsPromises.readdir(DIR_PREFIX + incoming.url[0]);
+    for (const source of files) {
+      const stat = await fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source);
+      info.data_size += stat.size;
+    }
     return info;
   });
 
@@ -146,14 +214,13 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   });
 
   // Delete Database Local Var
-  const deleteDb = (dir: string) => {
+  const deleteDb = async (dir: string) => {
     // Read all files and delete
-    fs.readdirSync(dir).map((source: string) => {
-      fs.unlinkSync(dir + "/" + source);
-    });
+    const files = await fsPromises.readdir(dir);
+    await Promise.all(files.map(source => fsPromises.unlink(dir + "/" + source)));
 
     // Delete the folder
-    fs.rmdirSync(dir);
+    await fsPromises.rmdir(dir);
   };
 
   // Delete Database
@@ -162,16 +229,19 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     let dir = DIR_PREFIX + incoming.url[0];
 
     // Check Folder
-    if (fs.existsSync(dir)) {
-      // If we have this db open we need to close it
-      if (dbCache[incoming.url[0]]) {
-        await dbCache[incoming.url[0]].close();
-        delete dbCache[incoming.url[0]];
-      }
-
-      // Delete Database
-      deleteDb(dir);
+    try {
+      await fsPromises.access(dir);
+    } catch {
+      // Directory doesn't exist, so we're good.
+      return { ok: true };
     }
+    // If we have this db open we need to close it
+    if (dbCache[incoming.url[0]]) {
+      await dbCache[incoming.url[0]].close();
+      delete dbCache[incoming.url[0]];
+    }
+    // Delete Database
+    await deleteDb(dir);
     return { ok: true };
   });
 
@@ -223,7 +293,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
     }
     const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
-    for (let i = txs.rows.length; i--; ) {
+    for (let i = txs.rows.length; i--;) {
       const [timestamp, umid] = txs.rows[i]._id.split(",");
       txs.rows[i] = {
         umid,
@@ -277,7 +347,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // Get Database
       const db = getDB(dbLoc);
       // Filter
-      db.get(filterPrefix(decodeURIComponent(path)))
+      db.get(filterPrefix(decodeURIComponent(path), dbLoc))
         .then((doc: unknown) => resolve(doc))
         .catch((e: unknown) => {
           reject(e);
@@ -298,7 +368,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // Get Database
       const db = getDB(dbLoc);
       try {
-        await db.del(filterPrefix(docName));
+        await db.del(filterPrefix(docName, dbLoc));
         return resolve({ success: "ok" });
       } catch (e) {
         return reject(e);
@@ -518,22 +588,28 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   };
 
   // Filters any prefix (so they're virtual) (: reserved character) to real stream id
-  const filterPrefix = (stream: string): string => {
-    // Remove any suffix like :volatile :stream :umid
-    let [streamId, suffix] = stream.split(":");
+  const filterPrefix = (stream: string, db?: string): string => {
 
-    // If id length more than 64 trim the start
-    if (streamId.length > 64 && !streamId.startsWith("0x")) {
-      streamId = streamId.slice(-64);
+    // Only need to filter activeledger, making optional just in case not passed
+    if (db && db !== 'activeledger') {
+      return stream;
+    } else {
+      // Remove any suffix like :volatile :stream :umid
+      let [streamId, suffix] = stream.split(":");
+
+      // If id length more than 64 trim the start
+      if (streamId.length > 64 && !streamId.startsWith("0x")) {
+        streamId = streamId.slice(-64);
+      }
+
+      // If suffix add it back to return
+      if (suffix) {
+        return streamId + ":" + suffix;
+      }
+
+      // Return just the id
+      return streamId;
     }
-
-    // If suffix add it back to return
-    if (suffix) {
-      return streamId + ":" + suffix;
-    }
-
-    // Return just the id
-    return streamId;
   };
 
   // Add new / updated document to the database with auto id
@@ -590,7 +666,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         if (change.id.startsWith("event:")) {
           delete change.doc._id;
           delete change.doc._rev;
-          if(!sse.write(change.id.replace("event:", ""), change.doc)){
+          if (!sse.write(change.id.replace("event:", ""), change.doc)) {
             cancelChanges();
           }
         }
@@ -760,19 +836,16 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
   // Find API
   http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
-    // Get Database
-    let db = getDB(incoming.url[0]);
-    return await db.find(incoming.body);
+    return { error: "find is deprecated" };
   });
 
   // Explain
   http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
-    let db = getDB(incoming.url[0]);
-    return await db.explain(incoming.body);
+    return { error: "explain is deprecated" };
   });
 
   // Fauxton
-  const fauxton = (
+  const fauxton = async (
     incoming: IActiveHttpIncoming,
     req: {
       headers: {
@@ -803,22 +876,25 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
     }
 
-    if (fs.existsSync(file)) {
-      // res.setHeader(
-      //   "Content-type",
-      //   ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-      // );
-      // Convert To Stream
-      return {
-        mime: `Content-type: ${
-          ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"
-        }`,
-        data: fs.readFileSync(file),
-      };
+    if (fauxtonCache[file]) {
+      return fauxtonCache[file];
+    }
+
+    try {
+      await fsPromises.access(file);
+      const data = await fsPromises.readFile(file);
+      const response = {
+        mime: `${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"}`,
+        data: data as Buffer,
+      }
+      fauxtonCache[file] = response;
+      return response;
+    } catch {
+      // Not found, will result in a 404 from httpd
     }
   };
   http.use("_utils", "GET", fauxton);
-  http.use("_utils/**", "ALL", fauxton);
+  http.use("_utils/**", "GET", fauxton);
 
   // Start Server
   http.listen(parseInt(PORT));

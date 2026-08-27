@@ -56,6 +56,16 @@ export class ActiveLogger {
   public static WinstonLogger: any;
 
   /**
+   * Cached process string for performance
+   *
+   * @private
+   * @static
+   */
+  private static processString: string = ` ${ActiveLogger.colour(
+    `(Activeledger/${process.pid.toString().padStart(5, "0")})`,
+    90
+  )} `;
+  /**
    * Creates a trace log entry
    *
    * @static
@@ -68,20 +78,7 @@ export class ActiveLogger {
   public static trace(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
       // Get Output String
-      let out =
-        ActiveLogger.timestamp() +
-        ActiveLogger.colour("TRACE", 42) +
-        ActiveLogger.process() +
-        ActiveLogger.colour(p2 || p1, this.isVM());
-
-      // Is there an object?
-      if (p2) {
-        out += ActiveLogger.object(p1);
-      }
-
-      // Output
-      console.trace();
-      console.debug(out);
+      this.log("TRACE", 42, console.debug, p1, p2, true);
     }
   }
 
@@ -111,22 +108,10 @@ export class ActiveLogger {
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
       if (ActiveLogger.WinstonLogger) {
-        ActiveLogger.WinstonLogger.info(p1, p2);
+        ActiveLogger.WinstonLogger.debug(p1, p2);
       }
       // Get Output String
-      let out =
-        ActiveLogger.timestamp() +
-        ActiveLogger.colour("DEBUG", 46) +
-        ActiveLogger.process() +
-        ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
-
-      // Is there an object?
-      if (p2) {
-        out += ActiveLogger.object(p1);
-      }
-
-      // Output
-      console.debug(out);
+      this.log("DEBUG", 46, console.debug, p1, p2);
     }
   }
 
@@ -157,20 +142,7 @@ export class ActiveLogger {
     if (ActiveLogger.WinstonLogger) {
       ActiveLogger.WinstonLogger.info(p1, p2);
     }
-    // Get Output String
-    let out =
-      ActiveLogger.timestamp() +
-      ActiveLogger.colour("INFO ", 92) +
-      ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
-
-    // Is there an object?
-    if (p2) {
-      out += ActiveLogger.object(p1);
-    }
-
-    // Output
-    console.info(out);
+    this.log("INFO ", 92, console.info, p1, p2);
   }
 
   /**
@@ -200,20 +172,7 @@ export class ActiveLogger {
     if (ActiveLogger.WinstonLogger) {
       ActiveLogger.WinstonLogger.warn(p1, p2);
     }
-    // Get Output String
-    let out =
-      ActiveLogger.timestamp() +
-      ActiveLogger.colour("WARN ", 93) +
-      ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
-
-    // Is there an object?
-    if (p2) {
-      out += ActiveLogger.object(p1);
-    }
-
-    // Output
-    console.warn(out);
+    this.log("WARN ", 93, console.warn, p1, p2);
   }
 
   /**
@@ -243,21 +202,7 @@ export class ActiveLogger {
     if (ActiveLogger.WinstonLogger) {
       ActiveLogger.WinstonLogger.error(p1, p2);
     }
-
-    // Get Output String
-    let out =
-      ActiveLogger.timestamp() +
-      ActiveLogger.colour("ERROR", 91) +
-      ActiveLogger.process() +
-      ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
-
-    // Is there an object?
-    if (p2) {
-      out += ActiveLogger.object(p1);
-    }
-
-    // Output
-    console.error(out);
+    this.log("ERROR", 91, console.error, p1, p2);
   }
 
   /**
@@ -288,10 +233,36 @@ export class ActiveLogger {
     if (ActiveLogger.WinstonLogger) {
       ActiveLogger.WinstonLogger.error(p1, p2);
     }
+    this.log("FATAL", 41, console.error, p1, p2);
+
+    // Return Error Object
+    return new Error(p2 || p1);
+  }
+
+  /**
+   * Internal log handler to reduce duplication
+   *
+   * @private
+   * @static
+   * @param {string} level - The log level string (e.g., "INFO ")
+   * @param {number} levelColour - The ANSI color code for the level
+   * @param {(message?: any, ...optionalParams: any[]) => void} logFn - The console function to call (e.g., console.info)
+   * @param {*} p1 - First parameter, can be an object or a message string
+   * @param {*} [p2] - Second parameter, the message string if p1 is an object
+   * @param {boolean} [trace=false] - Whether to output a stack trace
+   */
+  private static log(
+    level: string,
+    levelColour: number,
+    logFn: (message?: any, ...optionalParams: any[]) => void,
+    p1: any,
+    p2?: any,
+    trace: boolean = false
+  ): void {
     // Get Output String
     let out =
       ActiveLogger.timestamp() +
-      ActiveLogger.colour("FATAL", 41) +
+      ActiveLogger.colour(level, levelColour) +
       ActiveLogger.process() +
       ActiveLogger.colour(p2 || p1, ActiveLogger.isVM());
 
@@ -300,11 +271,12 @@ export class ActiveLogger {
       out += ActiveLogger.object(p1);
     }
 
-    // Output
-    console.error(out);
+    if (trace) {
+      console.trace();
+    }
 
-    // Return Error Object
-    return new Error(p2 || p1);
+    // Output
+    logFn(out);
   }
 
   /**
@@ -358,7 +330,7 @@ export class ActiveLogger {
    * @returns {string}
    */
   private static timestamp(): string {
-    return `${ActiveLogger.colour(`[${new Date().getTime()}]`, 90)} `;
+    return `${ActiveLogger.colour(`[${Date.now()}]`, 90)} `;
   }
 
   /**
@@ -369,10 +341,7 @@ export class ActiveLogger {
    * @returns {string}
    */
   private static process(): string {
-    return ` ${ActiveLogger.colour(
-      `(Activeledger/${process.pid.toString().padStart(5, "0")})`,
-      90
-    )} `;
+    return ActiveLogger.processString;
   }
 
   /**
@@ -384,37 +353,27 @@ export class ActiveLogger {
    * @returns {string}
    */
   private static object(obj: any): string {
-    // Convert to string
-    let objectStr = JSON.stringify(obj, null, 2)?.slice(1, -1);
+    try {
+      // Convert to string
+      const objectStr = JSON.stringify(obj, null, 2);
 
-    // Get Output String
-    let out = "";
-
-    // Is the object not empty?
-    if (objectStr) {
-      out += `\r\n-------------${ActiveLogger.colour(
-        "[ OBJECT ]",
-        32
-      )}-------------`;
-      out += objectStr;
-      out += `-------------${ActiveLogger.colour(
-        "[ OBJECT ]",
-        31
-      )}-------------`;
-    } else {
+      // Don't log empty objects "{}"
+      if (objectStr && objectStr !== "{}") {
+        const border = `\r\n-------------`;
+        const headerOpen = ActiveLogger.colour("[ OBJECT ]", 32);
+        const headerClose = ActiveLogger.colour("[ OBJECT ]", 31);
+        return `${border}${headerOpen}-------------${objectStr}${border}${headerClose}-------------`;
+      }
+    } catch (e) {
+      // Fallback for circular references or other stringify errors
       if (obj?.toString) {
-        out += `\r\n-------------${ActiveLogger.colour(
-          "[ toString() ]",
-          32
-        )}-------------\r\n`;
-        out += obj.toString();
-        out += `\r\n-------------${ActiveLogger.colour(
-          "[ toString() ]",
-          31
-        )}-------------`;
+        const border = `\r\n-------------`;
+        const headerOpen = ActiveLogger.colour("[ toString() ]", 32);
+        const headerClose = ActiveLogger.colour("[ toString() ]", 31);
+        return `${border}${headerOpen}-------------\r\n${obj.toString()}${border}${headerClose}-------------`;
       }
     }
-    return out;
+    return "";
   }
 
   /**
