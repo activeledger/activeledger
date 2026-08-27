@@ -31,7 +31,7 @@ The repository is an npm/lerna monorepo. Three of these are things you actually 
 
 ## Installing and running a node
 
-You need Node.js. **Use 20.x** — the native HTTP server binding (`uWebSockets.js`) only supports Node 18/20/22/23, and this monorepo has been built and tested against `20.11.0` specifically.
+You need Node.js. **Use the current LTS (24.x)** — the native HTTP server binding (`uWebSockets.js`) constrains which majors work at all; see [httpd.md](httpd.md#why-a-native-binding-and-the-version-constraint-that-comes-with-it) for the specific ABI versions supported and a stale-`node_modules` trap to know about if you ever see a "supports only Node.js versions ..." error despite running a supported version.
 
 ```bash
 npm i -g @activeledger/activeledger @activeledger/activerestore
