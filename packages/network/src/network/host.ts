@@ -1456,8 +1456,12 @@ export class Host extends Home {
         reason: "Failed to rebroadcast while in memory",
       };
 
-      // Return
-      this.dbErrorConnection.post(doc);
+      // Fire and forget, but post() can now reject on a real write failure
+      // (see levelme.ts) - this call site has nothing awaiting it, so an
+      // unhandled rejection would otherwise result.
+      this.dbErrorConnection.post(doc).catch((error) => {
+        ActiveLogger.error(error, "Failed to write rebroadcast-failure error document");
+      });
     }
   }
 
