@@ -23,7 +23,11 @@
 
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveDSConnect } from "@activeledger/activeoptions";
+import {
+  ActiveDSConnect,
+  ActiveCache,
+  ActiveCacheManager,
+} from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Process } from "./process";
@@ -67,6 +71,24 @@ export class Shared {
     reason: "",
     priority: 0,
   };
+
+  /**
+   * Cross-transaction cache of parsed KeyPair instances used for signature
+   * verification, keyed by the raw key material itself (type + public key)
+   * - never by streamId/identity, since one identity stream can hold
+   * multiple distinct authority keys. Reusing the same KeyPair instance
+   * across calls is what lets its own internal parsed-KeyObject cache
+   * (see crypto/keypair.ts) actually engage - signatureCheck() used to
+   * construct a fresh KeyPair on every single call, so that cache never
+   * had a chance to be hit. Same TTL/sliding-extend tuning as LevelMe's
+   * document cache (30s base, extended 30s per hit) - same idea: a key
+   * that's actively signing stays warm indefinitely, a quiet one ages out
+   * rather than growing this cache unbounded over a node's lifetime.
+   *
+   * @private
+   */
+  private readonly verifyKeyCache: ActiveCache<ActiveCrypto.KeyPair> =
+    ActiveCacheManager.fetch<ActiveCrypto.KeyPair>("verifyKeys", 30000);
 
   constructor(
     private _storeSingleError: boolean,
@@ -345,8 +367,15 @@ export class Shared {
     type: string = "rsa"
   ): boolean {
     try {
-      // Get Key Object
-      let key: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair(type, publicKey);
+      // Reuse a cached KeyPair for this exact key material if we've seen
+      // it recently, instead of constructing (and re-parsing) a fresh one
+      // on every single signature check.
+      const cacheKey = `${type}\0${publicKey}`;
+      let key = this.verifyKeyCache.get(cacheKey, 30000);
+      if (!key) {
+        key = new ActiveCrypto.KeyPair(type, publicKey);
+        this.verifyKeyCache.set(cacheKey, key);
+      }
 
       // Return Valid or not
       return key.verify(this.entry.$tx, signature);
