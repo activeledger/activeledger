@@ -350,6 +350,17 @@ export class VirtualMachine
   }
 
   /**
+   * Every event this transaction's contract raised, in emission order -
+   * for streamUpdater.ts to attach to the transaction's umid document so
+   * a node restoring this transaction later can replay them.
+   *
+   * @returns {any[]}
+   */
+  public getEvents(umid: string): any[] {
+    return this.events[umid] ? this.events[umid].getEvents() : [];
+  }
+
+  /**
    * Get current working inputs of the contract (External to VM)
    *
    * @returns {ActiveDefinitions.LedgerStream[]}

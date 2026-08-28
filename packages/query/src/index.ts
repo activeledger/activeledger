@@ -44,6 +44,18 @@ export class EventEngine {
   private counter = 0;
 
   /**
+   * Every event raised during this transaction, in emission order. Read by
+   * streamUpdater.ts (via VirtualMachine.getEvents()) to attach to the
+   * transaction's umid document, so a node that later needs to restore
+   * this transaction (having missed it the first time - see
+   * restore/interagent.ts's insertUmid() and quick-restore.ts) can replay
+   * them into its own events database instead of silently losing them.
+   *
+   * @private
+   */
+  private emitted: any[] = [];
+
+  /**
    * Creates an instance of EventEngine.
    * @param {ActiveDefinitions.IActiveDSConnect} db
    * @param {string} contract
@@ -59,7 +71,7 @@ export class EventEngine {
    * @returns {Promise<any>}
    */
   public emit(name: string, data: any): void {
-    // Event object to store 
+    // Event object to store
     let event: any = {
       _id: `event:${Date.now()}-${++this.counter},${this.umid}`,
       name: name,
@@ -68,12 +80,23 @@ export class EventEngine {
       contract: this.contract,
     };
 
+    this.emitted.push(event);
+
     // TODO: Instruct to write to the database instead of just doing it?
     // ie vote gets sent on commit, commit gets sent when confirmed etc.
     this.db
       .post(event)
       .then(() => {})
       .catch(() => {});
+  }
+
+  /**
+   * Every event raised so far in this transaction, in emission order.
+   *
+   * @returns {any[]}
+   */
+  public getEvents(): any[] {
+    return this.emitted;
   }
 
   /**

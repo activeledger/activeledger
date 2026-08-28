@@ -22,6 +22,7 @@
  */
 
 import { Provider } from "../provider/provider";
+import { Helper } from "../helper/helper";
 import {
   IChangeDocument,
   IResponse,
@@ -267,6 +268,13 @@ export class Interagent {
             _id,
           }),
             ActiveLogger.info(`UMID Added ${_id}`);
+
+          // This node never ran this transaction's own commit() itself
+          // (that's why it needed restoring), so its own events database
+          // would otherwise never see whatever this transaction's
+          // contract raised - replay them now they're here.
+          await Helper.replayEvents(umidDoc);
+
           resolve();
         } catch (error) {
           ActiveLogger.info(

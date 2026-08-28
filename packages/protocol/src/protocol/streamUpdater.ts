@@ -196,11 +196,18 @@ export class StreamUpdater {
     // Now we need to append transaction to the inputs of the transaction
     //if (this.inputs && this.inputs.length) this.handleInputs();
 
-    // Create umid document containing the transaction details
+    // Create umid document containing the transaction details. Includes
+    // every event this transaction's contract raised (sibling to umid/
+    // streams, not nested inside compactTxEntry() - matches the shape
+    // Endpoints.umid() serves back as-is via db.get(umid + ":umid"), which
+    // is what restore/interagent.ts's insertUmid() and quick-restore.ts
+    // read to replay them on a node that's restoring this transaction
+    // having missed it the first time).
     this.docs.push({
       _id: this.entry.$umid + ":umid",
       umid: this.compactTxEntry(),
       streams: this.refStreams,
+      events: this.virtualMachine.getEvents(this.entry.$umid),
     });
 
     this.detectCollisions();
@@ -210,7 +217,8 @@ export class StreamUpdater {
    * Creates a smaller trasnaction entry for ledger walking. This will also
    * keep the value deterministic (not including nodes)
    *
-   * TODO Add Events (So we can replay them on insertion)
+   * (Events are attached as a sibling field in processStreams()'s
+   * docs.push(), not here - see getEvents() above.)
    *
    * @private
    * @returns

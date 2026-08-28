@@ -30,7 +30,7 @@
     "link:core": "cd ./packages/restore/ && npm link",
     "link:restore": "cd ./packages/core/ && npm link",
     "link:hybrid": "cd ./packages/hybrid/ && npm link",
-    "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts -- --no-warnings"
+    "test": "mocha -r ts-node/register/transpile-only tests/**/*.ts --exit -- --no-warnings"
   },
   "devDependencies": {
     "@types/chai": "4.3.1",
