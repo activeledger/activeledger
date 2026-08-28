@@ -104,10 +104,10 @@ export class ActiveHttpd {
   private compiled: any = {};
 
   /**
-   * Creates an instance of ActiveHttpd.
-   * @param {boolean} [enableCORS=false]
+   * Creates an instance of ActiveHttpd. CORS is always allowed - see
+   * writeResponse() - there is no per-instance opt-out.
    */
-  constructor(private enableCORS: boolean = false) { }
+  constructor() { }
 
   /**
    * Define Route
@@ -171,7 +171,10 @@ export class ActiveHttpd {
       };
 
       const method = req.getMethod().toUpperCase();
-      const query = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
+      const rawQuery = req.getQuery();
+      const query = rawQuery
+        ? Object.fromEntries(new URLSearchParams(rawQuery).entries())
+        : {};
       const url2 = req.getUrl();
       const path = url2.split("?")[0];
 
@@ -325,13 +328,6 @@ export class ActiveHttpd {
     );
     if (handler) {
       try {
-        // Default Allow CORS
-        // if (this.enableCORS && req.headers["origin"]) {
-        //   res.setHeader(
-        //     "Access-Control-Allow-Origin",
-        //     req.headers["origin"] as string
-        //   );
-        // }
         // Run the call handler
         const data = await handler(incoming, req, res);
         // If the headers have been sent handler took control

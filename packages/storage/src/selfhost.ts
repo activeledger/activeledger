@@ -677,8 +677,11 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         changes.off("change", listener);
       };
 
-      // Run on close connection
-      //res.on("close", cancelChanges);
+      // Run on disconnect immediately, rather than only being discovered
+      // reactively the next time a change event fires and listener() sees
+      // sse.write() return false - on a quiet database that could be a long
+      // time (or never) after the client actually disconnects.
+      sse.onDisconnect(cancelChanges);
 
       // Listening for changes
       let changes = db.changes().on("change", listener);

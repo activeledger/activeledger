@@ -454,8 +454,16 @@ export class LevelMe {
         if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
         } else {
-          //cached.push({ doc: this.cache.get(keys[i], 30000) });
-          cached.push({ ...this.cache.get(keys[i], 30000) });
+          // No copy here, same as the cache-miss branch below (cached.push(data)
+          // shares the object with cache.set() unconditionally) - this was an
+          // inconsistent, incomplete defensive copy: a stream that's already
+          // warm skipped mutation exposure, one that wasn't didn't. Contract
+          // code itself never touches either one directly regardless -
+          // Activity.getState() (contracts/stream.ts) always deep-clones
+          // before handing state to a contract - so this copy wasn't
+          // load-bearing for correctness, just an extra allocation on every
+          // cache hit.
+          cached.push(this.cache.get(keys[i], 30000));
         }
       }
 
@@ -543,11 +551,29 @@ export class LevelMe {
         // the stale entry so the next non-raw get() recomputes it.
         this.cache.delete(writer.changes.id);
       }
-      this.changeEmitter.emit("change", writer.changes);
     } catch (e) {
-      // May contain multiple documents, Easier & safer to clear the cache
+      // Real write failure - every caller up the stack (streamUpdater.ts,
+      // shared.ts's storeError(), selfhost.ts's own POST handler) already
+      // has a try/catch written expecting post() to reject on failure; it
+      // was just unreachable dead code because this used to always resolve
+      // { ok: true } regardless. May contain multiple documents, Easier &
+      // safer to clear the cache.
       this.cache.clear();
+      throw e;
     }
+
+    // Emit outside the try/catch, same reasoning as bulkDocs() - a
+    // listener's own bug should never be able to masquerade as this write
+    // having failed. EventEmitter doesn't isolate a listener's own thrown
+    // exception by default though, so this is its own try/catch too -
+    // otherwise a listener throwing would propagate straight out and
+    // reject this call, the same class of bug being fixed here.
+    try {
+      this.changeEmitter.emit("change", writer.changes);
+    } catch (listenerError) {
+      ActiveLogger.error(listenerError, "change listener threw");
+    }
+
     return {
       ok: true,
       id: doc._id,
@@ -656,10 +682,38 @@ export class LevelMe {
           this.cache.delete(changes[i].id);
         }
       }
-      // Emit Changed Docs
-      this.changeEmitter.emit("change", changes);
     } catch (e) {
       return false;
+    }
+
+    // Emit Changed Docs - one event per document, matching post()'s shape
+    // (a flat object, not an array), so a "change" listener never has to
+    // handle two different shapes depending on which write path triggered
+    // it. This used to emit a single event carrying the whole array, which
+    // crashed any listener written for post()'s single-object shape -
+    // selfhost.ts's /events SSE handler is exactly one such listener
+    // (change.id.startsWith(...) threw on an array, since arrays don't
+    // have an .id). Emitting outside the try/catch above (rather than
+    // inside it, as before) means a listener's own bug can no longer be
+    // misattributed as this write having failed - that's what let a
+    // thrown listener exception get silently caught here and turn into
+    // bulkDocs() returning false even though batch.write() had already
+    // succeeded, which streamUpdater.ts's commit path took as a genuine
+    // disk failure (error 1510) on every transaction, for as long as any
+    // /events client stayed connected.
+    //
+    // EventEmitter doesn't isolate a listener's own exception by default -
+    // a synchronous throw inside emit() propagates straight out to us, so
+    // being outside the write's try/catch above isn't enough on its own to
+    // fully protect the return value. Each emit is individually try/caught
+    // here too, so one listener throwing can't stop the rest from being
+    // notified, and can never turn into bulkDocs() itself rejecting.
+    for (let i = changes.length; i--;) {
+      try {
+        this.changeEmitter.emit("change", changes[i]);
+      } catch (listenerError) {
+        ActiveLogger.error(listenerError, "change listener threw");
+      }
     }
     return true;
   }
