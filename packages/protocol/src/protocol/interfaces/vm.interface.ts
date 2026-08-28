@@ -109,6 +109,8 @@ export interface IVirtualMachine {
 
   getThrowsFromVM(umid: string): string[];
 
+  getEvents(umid: string): any[];
+
   destroy(umid: string): void;
 
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
