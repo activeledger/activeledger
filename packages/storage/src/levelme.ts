@@ -454,8 +454,16 @@ export class LevelMe {
         if (!this.cache.has(keys[i])) {
           tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
         } else {
-          //cached.push({ doc: this.cache.get(keys[i], 30000) });
-          cached.push({ ...this.cache.get(keys[i], 30000) });
+          // No copy here, same as the cache-miss branch below (cached.push(data)
+          // shares the object with cache.set() unconditionally) - this was an
+          // inconsistent, incomplete defensive copy: a stream that's already
+          // warm skipped mutation exposure, one that wasn't didn't. Contract
+          // code itself never touches either one directly regardless -
+          // Activity.getState() (contracts/stream.ts) always deep-clones
+          // before handing state to a contract - so this copy wasn't
+          // load-bearing for correctness, just an extra allocation on every
+          // cache hit.
+          cached.push(this.cache.get(keys[i], 30000));
         }
       }
 
