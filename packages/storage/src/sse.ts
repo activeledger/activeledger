@@ -31,6 +31,20 @@ import { HeartBeat } from "./heartbeat";
  */
 export class SSE {
   private heartBeat: NodeJS.Timeout;
+
+  /**
+   * Extra caller-supplied cleanup to run on disconnect, in addition to this
+   * class's own (writable=false, stop heartbeat). uWS's res.onAborted()
+   * replaces any previously registered callback rather than stacking them -
+   * this exists so a caller (e.g. selfhost.ts's /events handler, to
+   * deregister its own db.changes() listener) doesn't have to call
+   * res.onAborted() a second time and silently clobber this class's own
+   * handler.
+   *
+   * @private
+   */
+  private disconnectCallback?: () => void;
+
   constructor(private res: IActiveHttpResponse) {
     // Make sure we have an array
     //res.statusCode = 200;
@@ -77,7 +91,23 @@ export class SSE {
     res.onAborted(() => {
       res.writable = false;
       HeartBeat.Stop(this.heartBeat);
+      if (this.disconnectCallback) {
+        this.disconnectCallback();
+      }
     });
+  }
+
+  /**
+   * Register extra cleanup to run immediately on disconnect (in the same
+   * onAborted callback this class already owns), instead of only being
+   * discovered reactively the next time write() is called and notices
+   * res.writable is false. On a quiet stream that could otherwise be a long
+   * time - or never - after the client actually disconnects.
+   *
+   * @param {() => void} callback
+   */
+  public onDisconnect(callback: () => void): void {
+    this.disconnectCallback = callback;
   }
 
   /**

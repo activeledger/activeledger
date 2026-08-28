@@ -78,13 +78,30 @@ export class ActiveClone {
     options: SerializationOptions = DEFAULT_SERIALIZATION_OPTIONS
   ): Promise<Buffer> {
     const binary = packr.pack(obj);
-    
+
     if (options.enableCompression && binary.length > COMPRESSION_THRESHOLD) {
       const compressed = await ActiveGZip.gzip(binary);
-      return Buffer.concat([Buffer.from([SerializationType.Gzip]), compressed]);
+      return this.prefixFlag(SerializationType.Gzip, compressed);
     }
-    
-    return Buffer.concat([Buffer.from([SerializationType.Uncompressed]), binary]);
+
+    return this.prefixFlag(SerializationType.Uncompressed, binary);
+  }
+
+  /**
+   * Prepend a one-byte flag to a buffer without the extra throwaway
+   * allocation Buffer.from([flag]) + Buffer.concat costs on every write.
+   *
+   * @private
+   * @static
+   * @param {SerializationType} flag
+   * @param {Buffer} data
+   * @returns {Buffer}
+   */
+  private static prefixFlag(flag: SerializationType, data: Buffer): Buffer {
+    const result = Buffer.allocUnsafe(data.length + 1);
+    result[0] = flag;
+    data.copy(result, 1);
+    return result;
   }
 
   /**

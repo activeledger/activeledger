@@ -215,6 +215,13 @@ export class VirtualMachine
       exported.push(contractData as unknown as ActiveDefinitions.LedgerStream);
     }
 
+    // If we are performing a staged rollout, hide the new auditing features
+    // until the 'build' flag is configured to 40000 or higher. This allows
+    // legacy nodes to process transactions without data schema conflicts.
+    // Invariant across every stream in this call, so read it once rather
+    // than on every updatedMeta stream in the loop below.
+    const build = ActiveOptions.get<number>("build", 0);
+
     // Loop each stream and find the marked ones
     while (i--) {
       if (activities[streams[i]].updated) {
@@ -223,15 +230,11 @@ export class VirtualMachine
           //@ts-ignore
           state: activities[streams[i]].state
         }
-        
+
         if (activities[streams[i]].updatedMeta) {
           //@ts-ignore
           stream.meta = activities[streams[i]].meta;
 
-          // If we are performing a staged rollout, hide the new auditing features
-          // until the 'build' flag is configured to 40000 or higher. This allows
-          // legacy nodes to process transactions without data schema conflicts.
-          const build = ActiveOptions.get<number>("build", 0);
           if (build < 40000) {
             if (stream.meta) {
               if (stream.meta.removedAuthorities) {
