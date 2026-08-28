@@ -97,7 +97,7 @@ export class HybridNode {
     this.dbEventConnection.info();
 
     // Create Server
-    this.httpServer = new ActiveHttpd(true);
+    this.httpServer = new ActiveHttpd();
 
     // Listen for root requests
     this.httpServer.use(
