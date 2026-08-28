@@ -6,7 +6,11 @@
 
 <img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 
-Activeledger is a powerful distributed ledger technology. Consider it as a single ledger updated simultaneously in multiple locations. As the data is written to a ledger, it is approved and confirmed by all other locations.
+Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus — each node reaching its own conclusion by watching the same traffic, rather than waiting on a single leader. Application logic lives in smart contracts (TypeScript, sandboxed), and consensus is tracked per-stream rather than globally, so unrelated transactions can be voted on and committed concurrently.
+
+## Requirements
+
+**Node.js 24.x** (the current LTS line) is the recommended and actively-tested version. The native HTTP/consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors at any given time — 22.x also works today, but if you hit an error like `This version of uWS.js (...) supports only Node.js versions ...` on a Node version you'd expect to work, check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming the version genuinely isn't supported.
 
 ## Installation
 
@@ -20,10 +24,10 @@ Please see our documentation for detailed instructions. We currently have 2 lang
 
 ## Quickstart Guide
 
-Use NPM to install the 3 main applications for running activeledger.
+Use NPM to install Activeledger. `@activeledger/activerestore` is recommended alongside it (heals a node that falls behind or comes up empty); `@activeledger/activecore`'s REST API is optional and off by default (`autostart.core: false`) — install it too only if you specifically want it, see the documentation above.
 
 ```bash
-npm i -g @activeledger/activeledger @activeledger/activerestore @activeledger/activecore
+npm i -g @activeledger/activeledger @activeledger/activerestore
 ```
 
 ##### Creating a local Activeledger testnet
@@ -62,7 +66,7 @@ Then set `NODE_AUTH_TOKEN` to a GitHub personal access token with `read:packages
 
 ```bash
 export NODE_AUTH_TOKEN=<your github token>
-npm i -g @activeledger/activeledger @activeledger/activerestore @activeledger/activecore
+npm i -g @activeledger/activeledger @activeledger/activerestore
 ```
 
 For a Docker build, pass the token in as a build secret (e.g. `--secret id=npmrc,src=.npmrc` with a `RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm i -g ...` step) rather than baking it into an image layer.
@@ -95,8 +99,23 @@ npm install --global lerna
 
 ```bash
 npm i
-npm run setup
+npm run build
 ```
+
+`npm run setup` is also available for a full clean rebuild (`lerna clean` + bootstrap + build) if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
+
+## Testing
+
+Two separate test suites, deliberately decoupled so the fast one stays fast:
+
+```bash
+npm test              # fast unit tests (tests/*.ts, Mocha) - in-process, no real nodes
+npm run test:network  # live 4-node network integration test - boots real nodes on the local machine
+```
+
+`npm test` runs in well under a second and is safe to run constantly during development.
+
+`npm run test:network` (`tests/network/`) boots a real 4-node bare-host network, runs 100+ real transactions spread across every node as origin, deploys custom contracts and verifies `returnToRemote()`, verifies live event delivery over SSE, and verifies the network's Stream-Position-Incorrect self-healing by directly desyncing one node's local copy of a stream and confirming a transaction still succeeds whether that node is the transaction's origin or not. It prints live progress and a pass/fail summary, and takes well under a minute. Deliberately bare-host rather than Docker, so it doesn't add any requirements beyond what building the repo already needs.
 
 ## License
 
