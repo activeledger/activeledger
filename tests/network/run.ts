@@ -238,33 +238,60 @@ async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId
     // document - it doesn't exist yet straight after onboarding.
     await runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "establish" });
 
-    const meta = await storageGet(nodes[1].storageUrl, `${lockIdentity.streamId}:stream`);
-    await storagePut(nodes[1].storageUrl, `${lockIdentity.streamId}:stream`, {
-      ...meta,
-      // A lock naming some other contract - not returnerId - so any
-      // transaction naming returnerId should be rejected.
-      contractlock: ["some-other-contract-id-not-returner"],
-    });
+    // Mutate the meta doc on every node, not just the origin - a real
+    // contractlock, set via normal consensus, would be visible identically
+    // everywhere. Mutating only one node (the technique the SPI tests
+    // deliberately use, since asymmetry is the whole point there) instead
+    // creates a mixed-consensus scenario here: 3 nodes still see the
+    // unlocked doc and vote to allow it, so with consensus.reached's
+    // default 60% threshold the network can commit anyway despite the
+    // mutated node's own correct rejection - found via a real, reproduced
+    // commit:1-alongside-the-error result before this fix.
+    for (const node of nodes) {
+      const meta = await storageGet(node.storageUrl, `${lockIdentity.streamId}:stream`);
+      await storagePut(node.storageUrl, `${lockIdentity.streamId}:stream`, {
+        ...meta,
+        // A lock naming some other contract - not returnerId - so any
+        // transaction naming returnerId should be rejected.
+        contractlock: ["some-other-contract-id-not-returner"],
+      });
+    }
 
-    const { result, ms } = await timed(() =>
+    // permissionsChecker.ts's buildPromises() used to mask this as a
+    // generic 950 "Stream(s) not found" regardless of what actually
+    // tripped - found while first writing this test, now fixed (protocol
+    // package) so the real, specific "Stream contract locked" reason
+    // actually reaches the client.
+    //
+    // One retry on a specific, separate, pre-existing transient: under
+    // load, a transaction's contract-file resolution (setupLocation() in
+    // process.ts - runs before permission checking even starts) can
+    // itself intermittently fail with an unrelated "Contract not found",
+    // most likely a worker-process-pool contract-path-cache race. This
+    // isn't caused by the fix above and isn't specific to locked
+    // streams - it was always possible, just previously indistinguishable
+    // from every other failure once everything got masked to the same
+    // generic 950. Found while building this test; flagged, not chased
+    // further - touches worker-pool/contract-caching internals well
+    // outside what was asked for here. Retrying once keeps this test
+    // meaningful (still fails loudly if the lock genuinely isn't
+    // enforced) without being flaky on an unrelated, pre-existing race.
+    let { result, ms } = await timed(() =>
       runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "should-be-blocked" })
     );
-    const rejected = result.$summary?.commit === 0 && (result.$summary?.errors || []).length > 0;
+    if ((result.$summary?.errors || []).some((e: string) => e.includes("Contract not found"))) {
+      ({ result, ms } = await timed(() =>
+        runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "should-be-blocked-retry" })
+      ));
+    }
+    const rejected =
+      result.$summary?.commit === 0 &&
+      (result.$summary?.errors || []).some((e: string) => e.includes("Stream contract locked"));
     report.record("negative-locked-contract", rejected, ms);
     if (rejected) {
-      // Real, confirmed bug found while writing this test (not the test's
-      // own fault): permissionsChecker.ts's buildPromises() throws
-      // { code: 1700, reason: "Stream contract locked" } for exactly this
-      // case, but the surrounding try/catch unconditionally overwrites
-      // error.code/error.reason to 950 "Stream(s) not found" before
-      // rethrowing - so the specific, documented 1700 never actually
-      // reaches a client, regardless of what tripped the lock check. This
-      // asserts the transaction is rejected at all (the actual guarantee
-      // that currently holds), not that it's rejected with 1700 (which it
-      // never is, even though the lock genuinely works).
-      report.ok(`Locked contract correctly rejected (as 950 "Stream(s) not found", not the documented 1700 - see comment) (${ms}ms)`);
+      report.ok(`Locked contract correctly rejected with "Stream contract locked" (${ms}ms)`);
     } else {
-      report.fail(`Expected a rejected result, got: ${JSON.stringify(result.$summary)}`);
+      report.fail(`Expected a rejected result with "Stream contract locked", got: ${JSON.stringify(result.$summary)}`);
     }
   }
 }

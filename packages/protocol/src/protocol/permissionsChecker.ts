@@ -251,9 +251,19 @@ export class PermissionsChecker {
       }
     } catch (error) {
       ActiveLogger.error(error, "Error fetching streams for permissions check - " + this.entry.$umid);
-      // Add Info
-      error.code = 950;
-      error.reason = "Stream(s) not found";
+      // Preserve a deliberately-thrown, specific error (1700/1710 from the
+      // lock checks above, or this function's own 950 "not found") -
+      // only default to the generic "Stream(s) not found" for a genuinely
+      // unexpected failure (e.g. the allDocs() call itself throwing) that
+      // doesn't already carry a real error code. Previously this
+      // overwrote unconditionally, so a contractlock/namespaceLock
+      // rejection always surfaced to the client as a misleading 950
+      // "Stream(s) not found" instead of the documented 1700/1710 -
+      // found while adding network-test coverage for locked streams.
+      if (!error.code) {
+        error.code = 950;
+        error.reason = "Stream(s) not found";
+      }
       // Rethrow
       throw error;
     }
