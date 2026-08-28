@@ -58,7 +58,7 @@ if (ActiveOptions.get("db", false)) {
   // Extend Config
   ActiveOptions.extendConfig();
   // Create Light Server
-  let http = new ActiveHttpd(true);
+  let http = new ActiveHttpd();
 
   // Welcome
   http.use("/", "GET", welcome);
