@@ -664,10 +664,27 @@ export class LevelMe {
           this.cache.delete(changes[i].id);
         }
       }
-      // Emit Changed Docs
-      this.changeEmitter.emit("change", changes);
     } catch (e) {
       return false;
+    }
+
+    // Emit Changed Docs - one event per document, matching post()'s shape
+    // (a flat object, not an array), so a "change" listener never has to
+    // handle two different shapes depending on which write path triggered
+    // it. This used to emit a single event carrying the whole array, which
+    // crashed any listener written for post()'s single-object shape -
+    // selfhost.ts's /events SSE handler is exactly one such listener
+    // (change.id.startsWith(...) threw on an array, since arrays don't
+    // have an .id). Emitting outside the try/catch above (rather than
+    // inside it, as before) means a listener's own bug can no longer be
+    // misattributed as this write having failed - that's what let a
+    // thrown listener exception get silently caught here and turn into
+    // bulkDocs() returning false even though batch.write() had already
+    // succeeded, which streamUpdater.ts's commit path took as a genuine
+    // disk failure (error 1510) on every transaction, for as long as any
+    // /events client stayed connected.
+    for (let i = changes.length; i--;) {
+      this.changeEmitter.emit("change", changes[i]);
     }
     return true;
   }
