@@ -188,6 +188,8 @@ async function main(): Promise<boolean> {
       report.fail(`Event only observed on ${seenOn.size}/${nodes.length} nodes: [${[...seenOn].join(", ")}]`);
     }
 
+    await runNegativeTests(report, nodes, returnerId);
+
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
 
     return report.summary();
@@ -196,6 +198,74 @@ async function main(): Promise<boolean> {
     await harness.stop();
     harness.cleanup();
     report.ok("Stopped and cleaned up");
+  }
+}
+
+/**
+ * Negative-path coverage: a transaction that's genuinely supposed to be
+ * rejected. Everything else in this suite asserts success - these assert
+ * the opposite, and check the actual error surfaced, not just that
+ * something failed.
+ */
+async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId: string): Promise<void> {
+  report.phase("Negative path: deliberately bad signature");
+  {
+    const badIdentity = await onboard(nodes[0].baseUrl);
+    const namespace = "negtest-badsig";
+    await registerNamespace(nodes[0].baseUrl, badIdentity, namespace);
+    const txBody = {
+      $namespace: "default",
+      $contract: "namespace",
+      $i: { [badIdentity.streamId]: { namespace: namespace + "-again" } },
+    };
+    const badTx = { $tx: txBody, $sigs: { [badIdentity.streamId]: "not-a-real-signature" } };
+    const { result, ms } = await timed(() => submit(nodes[0].baseUrl, badTx));
+    const rejected = result.$summary?.commit === 0 && (result.$summary?.errors || []).some((e: string) => e.includes("Signature Incorrect"));
+    report.record("negative-bad-signature", rejected, ms);
+    rejected
+      ? report.ok(`Bad signature correctly rejected (${ms}ms)`)
+      : report.fail(`Expected a rejected "Signature Incorrect" result, got: ${JSON.stringify(result.$summary)}`);
+  }
+
+  report.phase("Negative path: locked contract stream");
+  {
+    // Own fresh identity/namespace, same reasoning as every other phase in
+    // this suite - avoids any cross-phase stream contention.
+    const lockIdentity = await onboard(nodes[1].baseUrl);
+    const namespace = "negtest-lock";
+    await registerNamespace(nodes[1].baseUrl, lockIdentity, namespace);
+    // One normal run first, to establish the stream's :stream meta
+    // document - it doesn't exist yet straight after onboarding.
+    await runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "establish" });
+
+    const meta = await storageGet(nodes[1].storageUrl, `${lockIdentity.streamId}:stream`);
+    await storagePut(nodes[1].storageUrl, `${lockIdentity.streamId}:stream`, {
+      ...meta,
+      // A lock naming some other contract - not returnerId - so any
+      // transaction naming returnerId should be rejected.
+      contractlock: ["some-other-contract-id-not-returner"],
+    });
+
+    const { result, ms } = await timed(() =>
+      runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "should-be-blocked" })
+    );
+    const rejected = result.$summary?.commit === 0 && (result.$summary?.errors || []).length > 0;
+    report.record("negative-locked-contract", rejected, ms);
+    if (rejected) {
+      // Real, confirmed bug found while writing this test (not the test's
+      // own fault): permissionsChecker.ts's buildPromises() throws
+      // { code: 1700, reason: "Stream contract locked" } for exactly this
+      // case, but the surrounding try/catch unconditionally overwrites
+      // error.code/error.reason to 950 "Stream(s) not found" before
+      // rethrowing - so the specific, documented 1700 never actually
+      // reaches a client, regardless of what tripped the lock check. This
+      // asserts the transaction is rejected at all (the actual guarantee
+      // that currently holds), not that it's rejected with 1700 (which it
+      // never is, even though the lock genuinely works).
+      report.ok(`Locked contract correctly rejected (as 950 "Stream(s) not found", not the documented 1700 - see comment) (${ms}ms)`);
+    } else {
+      report.fail(`Expected a rejected result, got: ${JSON.stringify(result.$summary)}`);
+    }
   }
 }
 
