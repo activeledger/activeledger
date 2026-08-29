@@ -50,6 +50,20 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.version != ''
         run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --yes
 
+      # `lerna version --no-git-tag-version` deliberately leaves the bump as
+      # uncommitted file changes (so it doesn't fight with the tag that
+      # already exists at a different commit) - but `lerna publish` refuses
+      # to run against a dirty tree with no way to opt out (checkWorkingTree()
+      # in lerna's own source has no bypass flag). Commit it locally so the
+      # tree is clean for the publish step below; this commit is never
+      # pushed anywhere and only exists in this runner's throwaway checkout.
+      - name: Commit version bump locally (not pushed)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: set version for publish (not pushed)"
+
       - name: Build all packages
         run: npm run build
 
