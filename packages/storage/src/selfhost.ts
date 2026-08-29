@@ -22,7 +22,7 @@
  */
 import * as http from "http";
 import * as path from "path";
-import { promises as fsPromises, readFileSync, writeFileSync, unlinkSync } from "fs";
+import { promises as fsPromises } from "fs";
 import { randomUUID } from "crypto";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
@@ -71,7 +71,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
           ActiveLogger.error(`Error closing database ${name}:`, err);
         }
       }
-      unlinkSync(lockFile);
       process.exit(0);
     }
   }
@@ -133,30 +132,28 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   });
 
 
-  // Index
-  const lockFile = "./.activeledger-db-lock.pid";
-
-  // Check for lock file
-  try {
-    const pid = readFileSync(lockFile, "utf8");
-    process.kill(parseInt(pid), 0);
-    ActiveLogger.fatal("Instance already running");
-    process.exit(1);
-  } catch (err) {
-    // No lock file or process not running
-  }
-
-  // Write lock file
-  writeFileSync(lockFile, process.pid.toString());
-
-  // Ensure lock file removed on exit
-  // process.on("exit", () => {
-  //   try {
-  //     unlinkSync(lockFile);
-  //   } catch (err) {
-  //     // Ignore
-  //   }
-  // });
+  // A hand-rolled PID-file "already running" check used to live here:
+  // record our PID on start, and on the next start, if a previous PID file
+  // exists and `process.kill(pid, 0)` finds *any* live process with that
+  // PID, refuse to start. That's unreliable the moment PIDs get reused,
+  // which happens on every container restart (each gets a fresh, small PID
+  // namespace) and eventually on bare metal too - a stale recorded PID
+  // just needs to coincide with some unrelated process for this to produce
+  // a false "Instance already running" that no amount of restarting fixes,
+  // since the file was also never cleaned up except on a graceful
+  // SIGINT/SIGTERM/SIGQUIT (see terminate() above) - a SIGKILL or crash
+  // left it behind for good. Reproduced live: two nodes' storage refused
+  // to restart after being recreated mid-session, in full isolation, with
+  // no other process touching the same data - deleting the stale PID file
+  // was the only fix.
+  //
+  // Removed rather than patched to clean up more reliably: LevelDB (via
+  // LevelMe below) already takes a real OS-level advisory lock on its own
+  // LOCK file per database when opened, which the kernel releases
+  // automatically no matter how the holding process dies - no cleanup
+  // logic needed, and it actually enforces single-writer correctness
+  // instead of approximating it by PID. This custom check was redundant
+  // with that at best, actively wrong at worst.
 
   http.use("/", "GET", () => {
     return {
