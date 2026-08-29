@@ -285,8 +285,10 @@ export class Host extends Home {
           if (
             !this.processPending[entry.$umid]?.finished &&
             this.processPending[entry.$umid]?.pid &&
-            // If a lead/er we don't need to let sub processor know
-            // TODO sometimes this.reference is nullin $nodes related to the #
+            // If a lead/er we don't need to let sub processor know. This node's
+            // own key may not exist in $nodes yet (we haven't voted/committed
+            // in this entry), which optional-chains to undefined here and
+            // correctly falls through to "let the sub processor know".
             !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
               ?.leader
           ) {
@@ -1163,7 +1165,6 @@ export class Host extends Home {
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on
           if (this.hybridHosts.length) {
-            // TODO : TypeError: Cannot read property '$streams' of undefined
             this.processHybridNodes(pending.entry, m.data.entry?.$streams);
           }
           break;
