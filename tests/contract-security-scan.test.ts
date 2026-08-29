@@ -167,6 +167,31 @@ describe("Contract.securityScan() - import-equals / export-from module bypass", 
     expect(scan('export * from "@activeledger/activetoolkits";')).to.be.null;
   });
 
+  // Found doing a further sweep after the fixes above: none of the three
+  // module-specifier checks (plain import, import-equals, export-from)
+  // had a fallback rejection for a specifier shape they didn't recognise
+  // - each only ever tested ts.isStringLiteral, so a backtick (a
+  // no-substitution template literal, `fs` with no ${}) silently passed
+  // every one of them uncaught, including the original, pre-existing
+  // plain `import ... from` check that predates all of today's work.
+  it("blocks a plain import using a backtick instead of quotes", () => {
+    const result = scan('import x from `fs`; export default class Foo { vote() { return 1; } }');
+    expect(result).to.not.be.null;
+    expect(result).to.include("fs");
+  });
+
+  it("blocks 'import x = require(...)' using a backtick instead of quotes", () => {
+    const result = scan('import x = require(`fs`); export default class Foo { vote() { return 1; } }');
+    expect(result).to.not.be.null;
+    expect(result).to.include("fs");
+  });
+
+  it("blocks 'export ... from' using a backtick instead of quotes", () => {
+    const result = scan("export * from `fs`;");
+    expect(result).to.not.be.null;
+    expect(result).to.include("fs");
+  });
+
   it("blocks readFileSync as a defense-in-depth property check, independent of module gating", () => {
     // Simulates a hypothetical future path where something allow-listed
     // still exposes a real fs-like object - readFileSync itself must stay

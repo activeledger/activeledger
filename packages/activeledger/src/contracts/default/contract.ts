@@ -484,6 +484,21 @@ export default class Contract extends Standard {
       (policy.allowLocalLibs && isLocalLibSpecifier(spec));
 
     /**
+     * A module specifier is only ever legitimately a string literal or a
+     * no-substitution template literal (`fs` with no ${}) - both resolve
+     * to a fixed, known-at-scan-time value. Anything else (an identifier,
+     * a real template expression, a call, etc.) can't be resolved
+     * statically and must be rejected outright by the caller, not
+     * silently ignored - a backtick literal in place of quotes was a real
+     * bypass of every module-loading check below before this existed,
+     * since each only ever tested ts.isStringLiteral.
+     */
+    const resolveModuleSpecifierText = (expr: ts.Expression): string | null =>
+      ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)
+        ? expr.text
+        : null;
+
+    /**
      * Helper to unwrap parenthesized or cast expressions
      */
     const unwrap = (node: ts.Expression): ts.Expression => {
@@ -723,17 +738,26 @@ export default class Contract extends Standard {
       // 6. Block Module Loading
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
         const arg = node.arguments[0];
-        if (arg && ts.isStringLiteral(arg)) {
-          if (!isModuleAllowed(arg.text)) {
-            report(node, `Module '${arg.text}' is not on the allow-list`);
-          }
-        } else {
+        const spec = arg ? resolveModuleSpecifierText(arg) : null;
+        if (spec === null) {
           report(node, `Dynamic require is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Module '${spec}' is not on the allow-list`);
         }
       }
-      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-        if (!isModuleAllowed(node.moduleSpecifier.text)) {
-          report(node, `Import of module '${node.moduleSpecifier.text}' is forbidden`);
+      // Every one of these four module-loading shapes must resolve to a
+      // real literal (string or no-substitution template) or be rejected
+      // outright - no silent "didn't recognise this node shape, so do
+      // nothing" fallthrough. That fallthrough is exactly how a backtick
+      // instead of quotes (`import x = require(\`fs\`)`, even plain
+      // `import x from \`fs\`;`) bypassed every one of these checks before
+      // this fix - each only ever tested ts.isStringLiteral.
+      if (ts.isImportDeclaration(node)) {
+        const spec = resolveModuleSpecifierText(node.moduleSpecifier);
+        if (spec === null) {
+          report(node, `Dynamic import specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Import of module '${spec}' is forbidden`);
         }
       }
       // TypeScript's `import x = require("y")` legacy syntax is a distinct
@@ -742,13 +766,11 @@ export default class Contract extends Standard {
       // above ever saw it, so it was a complete, silent bypass of the
       // module allow-list (confirmed live: `import fs = require("fs")`
       // passed the scan and could then read real files at runtime).
-      if (
-        ts.isImportEqualsDeclaration(node) &&
-        ts.isExternalModuleReference(node.moduleReference) &&
-        ts.isStringLiteral(node.moduleReference.expression)
-      ) {
-        const spec = node.moduleReference.expression.text;
-        if (!isModuleAllowed(spec)) {
+      if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+        const spec = resolveModuleSpecifierText(node.moduleReference.expression);
+        if (spec === null) {
+          report(node, `Dynamic import specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
           report(node, `Module '${spec}' is not on the allow-list`);
         }
       }
@@ -757,13 +779,11 @@ export default class Contract extends Standard {
       // unchecked - lower severity since a re-export alone doesn't bind a
       // usable local name in the same file, but still real module loading
       // that should be gated the same way.
-      if (
-        ts.isExportDeclaration(node) &&
-        node.moduleSpecifier &&
-        ts.isStringLiteral(node.moduleSpecifier)
-      ) {
-        const spec = node.moduleSpecifier.text;
-        if (!isModuleAllowed(spec)) {
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        const spec = resolveModuleSpecifierText(node.moduleSpecifier);
+        if (spec === null) {
+          report(node, `Dynamic re-export specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
           report(node, `Re-export of module '${spec}' is forbidden`);
         }
       }
