@@ -389,7 +389,8 @@ export default class Contract extends Standard {
         allowRequire: false,
         allowEval: false,
         allowComputedProperties: false,
-        allowProcessNextTick: false
+        allowProcessNextTick: false,
+        allowLocalLibs: false
     };
 
     // Fetch dynamic security configuration
@@ -425,6 +426,18 @@ export default class Contract extends Standard {
         `Security Violation [${line + 1}:${character + 1}]: ${message}`
       );
     };
+
+    /**
+     * A same-namespace sibling file reference (e.g. "./mylib@1.0.0"), never
+     * one that climbs out of the namespace's own directory. require()/import
+     * resolve relative paths lexically against wherever this contract file
+     * ends up living on disk - always its own namespace's directory - so
+     * rejecting any ".." path segment is sufficient to keep this contained
+     * to that one directory, however deep the traversal attempt nests it
+     * (e.g. "./a/../../escape" still contains a literal ".." segment).
+     */
+    const isLocalLibSpecifier = (spec: string): boolean =>
+      spec.startsWith("./") && !spec.split("/").includes("..");
 
     /**
      * Helper to unwrap parenthesized or cast expressions
@@ -636,7 +649,10 @@ export default class Contract extends Standard {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
         const arg = node.arguments[0];
         if (arg && ts.isStringLiteral(arg)) {
-          if (allowedModules.indexOf(arg.text) === -1) {
+          if (
+            allowedModules.indexOf(arg.text) === -1 &&
+            !(policy.allowLocalLibs && isLocalLibSpecifier(arg.text))
+          ) {
             report(node, `Module '${arg.text}' is not on the allow-list`);
           }
         } else {
@@ -644,7 +660,10 @@ export default class Contract extends Standard {
         }
       }
       if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-        if (allowedModules.indexOf(node.moduleSpecifier.text) === -1) {
+        if (
+          allowedModules.indexOf(node.moduleSpecifier.text) === -1 &&
+          !(policy.allowLocalLibs && isLocalLibSpecifier(node.moduleSpecifier.text))
+        ) {
           report(node, `Import of module '${node.moduleSpecifier.text}' is forbidden`);
         }
       }

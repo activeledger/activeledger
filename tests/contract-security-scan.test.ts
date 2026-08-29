@@ -1,4 +1,5 @@
 import Contract from "../packages/activeledger/src/contracts/default/contract";
+import { ActiveOptions } from "../packages/options/lib";
 import { expect } from "chai";
 import "mocha";
 
@@ -56,5 +57,62 @@ describe("Contract.securityScan() - hpe-14 regression (aa365df)", () => {
     // return still runs before the (now module-scope) denylists are ever
     // consulted.
     expect(scan("process.exit();", "default")).to.be.null;
+  });
+});
+
+describe("Contract.securityScan() - allowLocalLibs policy flag", () => {
+  afterEach(() => {
+    // ActiveOptions is a process-wide static singleton - reset it so this
+    // suite's config doesn't leak into any other test file's scan() calls.
+    ActiveOptions.set("security", undefined);
+  });
+
+  const withPolicy = (namespace: string, policy: any) =>
+    ActiveOptions.set("security", { namespace: { [namespace]: { policy } } });
+
+  it("blocks a same-namespace sibling require() by default (flag off)", () => {
+    const result = scan('const lib = require("./mylib@1.0.0");', "libtest");
+    expect(result).to.not.be.null;
+    expect(result).to.include("not on the allow-list");
+  });
+
+  it("allows a same-namespace sibling require() once allowLocalLibs is set for that namespace", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    expect(scan('const lib = require("./mylib@1.0.0");', "libtest")).to.be.null;
+  });
+
+  it("allows a same-namespace sibling import once allowLocalLibs is set for that namespace", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    expect(
+      scan('import { helper } from "./mylib@1.0.0"; export default class Foo { vote() { return helper; } }', "libtest")
+    ).to.be.null;
+  });
+
+  it("still blocks a single-level '../' traversal even with allowLocalLibs on", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    const result = scan('const lib = require("../othernamespace/mylib@1.0.0");', "libtest");
+    expect(result).to.not.be.null;
+    expect(result).to.include("not on the allow-list");
+  });
+
+  it("still blocks a nested '../../' traversal even with allowLocalLibs on", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    const result = scan('const lib = require("./a/../../escape");', "libtest");
+    expect(result).to.not.be.null;
+    expect(result).to.include("not on the allow-list");
+  });
+
+  it("does not loosen the allow-list for bare (non-relative) module names", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    const result = scan('const fs = require("fs");', "libtest");
+    expect(result).to.not.be.null;
+    expect(result).to.include("fs");
+  });
+
+  it("is scoped per-namespace - a different namespace without the flag is unaffected", () => {
+    withPolicy("libtest", { allowLocalLibs: true });
+    const result = scan('const lib = require("./mylib@1.0.0");', "someothernamespace");
+    expect(result).to.not.be.null;
+    expect(result).to.include("not on the allow-list");
   });
 });
