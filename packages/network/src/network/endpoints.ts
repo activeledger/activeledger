@@ -545,7 +545,6 @@ export class Endpoints {
                       // I imagine its because commit is called early now so less filter chance
                       //output.$responses = [responses[0]];
                       output.$responses = responses;
-                      // TODO fix (it wasn't broken just happened to be an array returned)
                     }
 
                     // Append Debug View
@@ -612,7 +611,14 @@ export class Endpoints {
                     ActiveLogger.error(error, "Sent 500 Response (1000)");
                     return reject({
                       statusCode: 500,
-                      content: error, // TODO this isn't passing correctly onto Failed to send back
+                      // A raw Error instance JSON.stringifies to "{}" (message/stack
+                      // aren't own enumerable properties), so the client would get an
+                      // empty body on genuine exceptions even though it's logged fine
+                      // above - normalise it to a plain object first.
+                      content:
+                        error instanceof Error
+                          ? { error: error.message }
+                          : error,
                     });
                   }
                 });
@@ -882,7 +888,9 @@ export class Endpoints {
                   ];
 
                   if (streams.length) {
-                    // TODO - Improve, bnreak isn't breaking? same umid multiple times
+                    // The dedup attempt below (rewrote/break) was disabled in favour
+                    // of the plain unconditional push further down - the "break isn't
+                    // breaking" bug only applied to that disabled approach.
                     //const rewrote: any = {};
                     // const rewrote = CacheManager.fetch("rewrote", 10000);
 
