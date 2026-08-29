@@ -141,6 +141,38 @@ const BANNED_PROPERTIES = [
   "readdir",
   "stat",
   "lstat",
+  // Sync counterparts of the fs methods above - originally missing
+  // entirely, which meant a module reachable only through the also-fixed
+  // ImportEqualsDeclaration/ExportDeclaration gaps (see checkNode()'s
+  // module-loading checks) could still call e.g. readFileSync freely even
+  // once module-loading itself was locked down. Kept as defense-in-depth
+  // for any future path that lets a real fs-like object reach here.
+  "readFileSync",
+  "writeFileSync",
+  "unlinkSync",
+  "rmdirSync",
+  "rmSync",
+  "mkdirSync",
+  "appendFileSync",
+  "readdirSync",
+  "statSync",
+  "lstatSync",
+  "existsSync",
+  "realpathSync",
+  "copyFileSync",
+  "renameSync",
+  "cpSync",
+  "chmodSync",
+  "chownSync",
+  "symlinkSync",
+  "linkSync",
+  "truncateSync",
+  "opendirSync",
+  "watchFile",
+  "unwatchFile",
+  "execSync",
+  "execFileSync",
+  "spawnSync",
   "constructor",
   "__proto__",
   "prototype",
@@ -440,6 +472,18 @@ export default class Contract extends Standard {
       spec.startsWith("./") && !spec.split("/").includes("..");
 
     /**
+     * Single source of truth for "is this module specifier permitted",
+     * shared by every AST shape that can load a module (plain require(),
+     * import ... from, TypeScript's import x = require(...), and
+     * export ... from re-exports) - see checkNode()'s module-loading
+     * checks below for why all four need this, not just the two that
+     * were originally covered.
+     */
+    const isModuleAllowed = (spec: string): boolean =>
+      allowedModules.indexOf(spec) !== -1 ||
+      (policy.allowLocalLibs && isLocalLibSpecifier(spec));
+
+    /**
      * Helper to unwrap parenthesized or cast expressions
      */
     const unwrap = (node: ts.Expression): ts.Expression => {
@@ -649,10 +693,7 @@ export default class Contract extends Standard {
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
         const arg = node.arguments[0];
         if (arg && ts.isStringLiteral(arg)) {
-          if (
-            allowedModules.indexOf(arg.text) === -1 &&
-            !(policy.allowLocalLibs && isLocalLibSpecifier(arg.text))
-          ) {
+          if (!isModuleAllowed(arg.text)) {
             report(node, `Module '${arg.text}' is not on the allow-list`);
           }
         } else {
@@ -660,11 +701,39 @@ export default class Contract extends Standard {
         }
       }
       if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-        if (
-          allowedModules.indexOf(node.moduleSpecifier.text) === -1 &&
-          !(policy.allowLocalLibs && isLocalLibSpecifier(node.moduleSpecifier.text))
-        ) {
+        if (!isModuleAllowed(node.moduleSpecifier.text)) {
           report(node, `Import of module '${node.moduleSpecifier.text}' is forbidden`);
+        }
+      }
+      // TypeScript's `import x = require("y")` legacy syntax is a distinct
+      // ImportEqualsDeclaration/ExternalModuleReference node, not a
+      // CallExpression or ImportDeclaration - neither of the two checks
+      // above ever saw it, so it was a complete, silent bypass of the
+      // module allow-list (confirmed live: `import fs = require("fs")`
+      // passed the scan and could then read real files at runtime).
+      if (
+        ts.isImportEqualsDeclaration(node) &&
+        ts.isExternalModuleReference(node.moduleReference) &&
+        ts.isStringLiteral(node.moduleReference.expression)
+      ) {
+        const spec = node.moduleReference.expression.text;
+        if (!isModuleAllowed(spec)) {
+          report(node, `Module '${spec}' is not on the allow-list`);
+        }
+      }
+      // `export ... from "y"` (ExportDeclaration with a moduleSpecifier) is
+      // also a distinct node from ImportDeclaration and was equally
+      // unchecked - lower severity since a re-export alone doesn't bind a
+      // usable local name in the same file, but still real module loading
+      // that should be gated the same way.
+      if (
+        ts.isExportDeclaration(node) &&
+        node.moduleSpecifier &&
+        ts.isStringLiteral(node.moduleSpecifier)
+      ) {
+        const spec = node.moduleSpecifier.text;
+        if (!isModuleAllowed(spec)) {
+          report(node, `Re-export of module '${spec}' is forbidden`);
         }
       }
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
