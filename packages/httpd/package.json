@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/httpd",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Lightweight portable HTTP server used by Activeledger",
   "publishConfig": {
     "access": "public"
@@ -42,8 +42,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "4.1.0",
-    "@activeledger/activeutilities": "4.1.0",
+    "@activeledger/activelogger": "^4.2.0",
+    "@activeledger/activeutilities": "^4.2.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "This package is Activeledger's built-in data storage engine",
   "publishConfig": {
     "access": "public"
@@ -42,10 +42,10 @@
     "typescript": "4.7.3"
   },
   "dependencies": {
-    "@activeledger/activelogger": "4.1.0",
-    "@activeledger/activeoptions": "4.1.0",
-    "@activeledger/activeutilities": "4.1.0",
-    "@activeledger/httpd": "4.1.0",
+    "@activeledger/activelogger": "^4.2.0",
+    "@activeledger/activeoptions": "^4.2.0",
+    "@activeledger/activeutilities": "^4.2.0",
+    "@activeledger/httpd": "^4.2.0",
     "classic-level": "^3.0.0"
   }
 }
