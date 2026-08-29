@@ -59,7 +59,16 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   // Merge Configs (Helps Build local net)
   CLIHandler.merge();
 } else if (ActiveOptions.get<boolean>("stop", false)) {
-  CLIHandler.stop();
+  // The unconditional SIGTERM listener below holds the event loop open
+  // (a registered process signal handler is a real libuv handle), so
+  // this must exit explicitly once done - same reason backup/restore do.
+  CLIHandler.stop()
+    .then(() => {
+      process.exit();
+    })
+    .catch(() => {
+      process.exit();
+    });
 } else if (ActiveOptions.get<boolean>("restart", false)) {
   if (ActiveOptions.get<boolean>("auto", false)) {
     CLIHandler.restart(true);

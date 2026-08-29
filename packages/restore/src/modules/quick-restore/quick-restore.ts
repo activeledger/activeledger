@@ -151,6 +151,17 @@ export class QuickRestore {
         await Provider.database.bulkDocs(networkData.documents, {
           new_edits: false
         });
+
+        // Every :umid document just restored belongs to a transaction this
+        // node never ran itself (that's the whole point of a bulk
+        // catch-up), so replay whatever events it raised - same reasoning
+        // as interagent.ts's per-error insertUmid().
+        for (let i = networkData.documents.length; i--;) {
+          const doc = networkData.documents[i] as IBaseData;
+          if (doc._id && doc._id.indexOf(":umid") !== -1) {
+            await Helper.replayEvents(doc);
+          }
+        }
       } catch (error) {
         ActiveLogger.error(
           "Error occurred in processNetworkData: Uploading documents to database"
