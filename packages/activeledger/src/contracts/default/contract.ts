@@ -141,6 +141,38 @@ const BANNED_PROPERTIES = [
   "readdir",
   "stat",
   "lstat",
+  // Sync counterparts of the fs methods above - originally missing
+  // entirely, which meant a module reachable only through the also-fixed
+  // ImportEqualsDeclaration/ExportDeclaration gaps (see checkNode()'s
+  // module-loading checks) could still call e.g. readFileSync freely even
+  // once module-loading itself was locked down. Kept as defense-in-depth
+  // for any future path that lets a real fs-like object reach here.
+  "readFileSync",
+  "writeFileSync",
+  "unlinkSync",
+  "rmdirSync",
+  "rmSync",
+  "mkdirSync",
+  "appendFileSync",
+  "readdirSync",
+  "statSync",
+  "lstatSync",
+  "existsSync",
+  "realpathSync",
+  "copyFileSync",
+  "renameSync",
+  "cpSync",
+  "chmodSync",
+  "chownSync",
+  "symlinkSync",
+  "linkSync",
+  "truncateSync",
+  "opendirSync",
+  "watchFile",
+  "unwatchFile",
+  "execSync",
+  "execFileSync",
+  "spawnSync",
   "constructor",
   "__proto__",
   "prototype",
@@ -389,7 +421,8 @@ export default class Contract extends Standard {
         allowRequire: false,
         allowEval: false,
         allowComputedProperties: false,
-        allowProcessNextTick: false
+        allowProcessNextTick: false,
+        allowLocalLibs: false
     };
 
     // Fetch dynamic security configuration
@@ -425,6 +458,45 @@ export default class Contract extends Standard {
         `Security Violation [${line + 1}:${character + 1}]: ${message}`
       );
     };
+
+    /**
+     * A same-namespace sibling file reference (e.g. "./mylib@1.0.0"), never
+     * one that climbs out of the namespace's own directory. require()/import
+     * resolve relative paths lexically against wherever this contract file
+     * ends up living on disk - always its own namespace's directory - so
+     * rejecting any ".." path segment is sufficient to keep this contained
+     * to that one directory, however deep the traversal attempt nests it
+     * (e.g. "./a/../../escape" still contains a literal ".." segment).
+     */
+    const isLocalLibSpecifier = (spec: string): boolean =>
+      spec.startsWith("./") && !spec.split("/").includes("..");
+
+    /**
+     * Single source of truth for "is this module specifier permitted",
+     * shared by every AST shape that can load a module (plain require(),
+     * import ... from, TypeScript's import x = require(...), and
+     * export ... from re-exports) - see checkNode()'s module-loading
+     * checks below for why all four need this, not just the two that
+     * were originally covered.
+     */
+    const isModuleAllowed = (spec: string): boolean =>
+      allowedModules.indexOf(spec) !== -1 ||
+      (policy.allowLocalLibs && isLocalLibSpecifier(spec));
+
+    /**
+     * A module specifier is only ever legitimately a string literal or a
+     * no-substitution template literal (`fs` with no ${}) - both resolve
+     * to a fixed, known-at-scan-time value. Anything else (an identifier,
+     * a real template expression, a call, etc.) can't be resolved
+     * statically and must be rejected outright by the caller, not
+     * silently ignored - a backtick literal in place of quotes was a real
+     * bypass of every module-loading check below before this existed,
+     * since each only ever tested ts.isStringLiteral.
+     */
+    const resolveModuleSpecifierText = (expr: ts.Expression): string | null =>
+      ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)
+        ? expr.text
+        : null;
 
     /**
      * Helper to unwrap parenthesized or cast expressions
@@ -570,25 +642,40 @@ export default class Contract extends Standard {
           dynamicAccess = true;
         }
 
+        // A resolved literal key (obj["constructor"]) is semantically the
+        // same as dot notation (obj.constructor) and must be checked the
+        // same way, unconditionally - NOT nested inside the dynamicAccess
+        // branch below. It never was: dynamicAccess is only ever true for
+        // an *unresolvable* key, so a literal-string banned key silently
+        // skipped this whole check entirely, on any object, this or not.
+        // Confirmed live: ({})["constructor"]["constructor"]("return
+        // process")() passed this scan with zero violations - a complete,
+        // classic Function-constructor sandbox escape needing no module
+        // access at all. Uses the same narrow direct-`this` exemption rule
+        // 2 (dot notation) uses (`this.constructor` allowed, but not a
+        // chain through it) - not the broader recursive isThisAccess()
+        // below, which trusts an entire this.a.b.c chain and would still
+        // let a second hop like this.constructor["constructor"] through.
+        if (!dynamicAccess && key && BANNED_PROPERTIES.indexOf(key) !== -1) {
+          if (node.expression.kind !== ts.SyntaxKind.ThisKeyword) {
+            report(node.argumentExpression, `Unauthorized element access '${key}'`);
+          }
+        }
+
         // Always allow dynamic access on 'this' properties
         if (isThisAccess(node.expression)) {
             // Continue
         } else {
             // Check for trusted objects defined in configuration
             //const objectName = ts.isIdentifier(unwrappedExpr) ? unwrappedExpr.text : "";
-            
+
             if (policy.allowDynamicAccess) {
                 // Allow, it's a known safe object and dynamic access is enabled for it
             } else {
                 // Block all other dynamic accesses unless they are demonstrably safe
                 if (dynamicAccess) {
-                    // If the key is known and banned, block it
-                    if (key && BANNED_PROPERTIES.indexOf(key) !== -1) {
-                        report(node.argumentExpression, `Unauthorized element access '${key}'`);
-                    } else if (!key) {
-                        // If the key is entirely dynamic, block it for non-this
-                        report(node, `Dynamic element access is forbidden`);
-                    }
+                    // If the key is entirely dynamic (unresolvable), block it for non-this
+                    report(node, `Dynamic element access is forbidden`);
                 }
             }
         }
@@ -607,7 +694,23 @@ export default class Contract extends Standard {
 
       // 4. Block Banned Properties in Destructuring (const { exit } = obj)
       if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
-        const propertyName = node.propertyName ? (ts.isIdentifier(node.propertyName) ? node.propertyName.text : "") : node.name.text;
+        // A computed key (const { ["constructor"]: c } = obj) previously
+        // fell through to "" here (not a plain Identifier) and was also
+        // explicitly allowed by rule 5 below since it's a string literal -
+        // resolve it the same way a plain `propertyName` identifier would
+        // be, closing that gap.
+        let propertyName = "";
+        if (!node.propertyName) {
+          propertyName = node.name.text;
+        } else if (ts.isIdentifier(node.propertyName)) {
+          propertyName = node.propertyName.text;
+        } else if (
+          ts.isComputedPropertyName(node.propertyName) &&
+          (ts.isStringLiteral(node.propertyName.expression) ||
+            ts.isNoSubstitutionTemplateLiteral(node.propertyName.expression))
+        ) {
+          propertyName = node.propertyName.expression.text;
+        }
         if (propertyName && BANNED_PROPERTIES.indexOf(propertyName) !== -1) {
           report(node, `Unauthorized destructuring of property '${propertyName}'`);
         }
@@ -635,17 +738,53 @@ export default class Contract extends Standard {
       // 6. Block Module Loading
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
         const arg = node.arguments[0];
-        if (arg && ts.isStringLiteral(arg)) {
-          if (allowedModules.indexOf(arg.text) === -1) {
-            report(node, `Module '${arg.text}' is not on the allow-list`);
-          }
-        } else {
+        const spec = arg ? resolveModuleSpecifierText(arg) : null;
+        if (spec === null) {
           report(node, `Dynamic require is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Module '${spec}' is not on the allow-list`);
         }
       }
-      if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-        if (allowedModules.indexOf(node.moduleSpecifier.text) === -1) {
-          report(node, `Import of module '${node.moduleSpecifier.text}' is forbidden`);
+      // Every one of these four module-loading shapes must resolve to a
+      // real literal (string or no-substitution template) or be rejected
+      // outright - no silent "didn't recognise this node shape, so do
+      // nothing" fallthrough. That fallthrough is exactly how a backtick
+      // instead of quotes (`import x = require(\`fs\`)`, even plain
+      // `import x from \`fs\`;`) bypassed every one of these checks before
+      // this fix - each only ever tested ts.isStringLiteral.
+      if (ts.isImportDeclaration(node)) {
+        const spec = resolveModuleSpecifierText(node.moduleSpecifier);
+        if (spec === null) {
+          report(node, `Dynamic import specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Import of module '${spec}' is forbidden`);
+        }
+      }
+      // TypeScript's `import x = require("y")` legacy syntax is a distinct
+      // ImportEqualsDeclaration/ExternalModuleReference node, not a
+      // CallExpression or ImportDeclaration - neither of the two checks
+      // above ever saw it, so it was a complete, silent bypass of the
+      // module allow-list (confirmed live: `import fs = require("fs")`
+      // passed the scan and could then read real files at runtime).
+      if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+        const spec = resolveModuleSpecifierText(node.moduleReference.expression);
+        if (spec === null) {
+          report(node, `Dynamic import specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Module '${spec}' is not on the allow-list`);
+        }
+      }
+      // `export ... from "y"` (ExportDeclaration with a moduleSpecifier) is
+      // also a distinct node from ImportDeclaration and was equally
+      // unchecked - lower severity since a re-export alone doesn't bind a
+      // usable local name in the same file, but still real module loading
+      // that should be gated the same way.
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        const spec = resolveModuleSpecifierText(node.moduleSpecifier);
+        if (spec === null) {
+          report(node, `Dynamic re-export specifier is forbidden`);
+        } else if (!isModuleAllowed(spec)) {
+          report(node, `Re-export of module '${spec}' is forbidden`);
         }
       }
       if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
