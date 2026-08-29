@@ -627,25 +627,40 @@ export default class Contract extends Standard {
           dynamicAccess = true;
         }
 
+        // A resolved literal key (obj["constructor"]) is semantically the
+        // same as dot notation (obj.constructor) and must be checked the
+        // same way, unconditionally - NOT nested inside the dynamicAccess
+        // branch below. It never was: dynamicAccess is only ever true for
+        // an *unresolvable* key, so a literal-string banned key silently
+        // skipped this whole check entirely, on any object, this or not.
+        // Confirmed live: ({})["constructor"]["constructor"]("return
+        // process")() passed this scan with zero violations - a complete,
+        // classic Function-constructor sandbox escape needing no module
+        // access at all. Uses the same narrow direct-`this` exemption rule
+        // 2 (dot notation) uses (`this.constructor` allowed, but not a
+        // chain through it) - not the broader recursive isThisAccess()
+        // below, which trusts an entire this.a.b.c chain and would still
+        // let a second hop like this.constructor["constructor"] through.
+        if (!dynamicAccess && key && BANNED_PROPERTIES.indexOf(key) !== -1) {
+          if (node.expression.kind !== ts.SyntaxKind.ThisKeyword) {
+            report(node.argumentExpression, `Unauthorized element access '${key}'`);
+          }
+        }
+
         // Always allow dynamic access on 'this' properties
         if (isThisAccess(node.expression)) {
             // Continue
         } else {
             // Check for trusted objects defined in configuration
             //const objectName = ts.isIdentifier(unwrappedExpr) ? unwrappedExpr.text : "";
-            
+
             if (policy.allowDynamicAccess) {
                 // Allow, it's a known safe object and dynamic access is enabled for it
             } else {
                 // Block all other dynamic accesses unless they are demonstrably safe
                 if (dynamicAccess) {
-                    // If the key is known and banned, block it
-                    if (key && BANNED_PROPERTIES.indexOf(key) !== -1) {
-                        report(node.argumentExpression, `Unauthorized element access '${key}'`);
-                    } else if (!key) {
-                        // If the key is entirely dynamic, block it for non-this
-                        report(node, `Dynamic element access is forbidden`);
-                    }
+                    // If the key is entirely dynamic (unresolvable), block it for non-this
+                    report(node, `Dynamic element access is forbidden`);
                 }
             }
         }
@@ -664,7 +679,23 @@ export default class Contract extends Standard {
 
       // 4. Block Banned Properties in Destructuring (const { exit } = obj)
       if (ts.isBindingElement(node) && ts.isIdentifier(node.name)) {
-        const propertyName = node.propertyName ? (ts.isIdentifier(node.propertyName) ? node.propertyName.text : "") : node.name.text;
+        // A computed key (const { ["constructor"]: c } = obj) previously
+        // fell through to "" here (not a plain Identifier) and was also
+        // explicitly allowed by rule 5 below since it's a string literal -
+        // resolve it the same way a plain `propertyName` identifier would
+        // be, closing that gap.
+        let propertyName = "";
+        if (!node.propertyName) {
+          propertyName = node.name.text;
+        } else if (ts.isIdentifier(node.propertyName)) {
+          propertyName = node.propertyName.text;
+        } else if (
+          ts.isComputedPropertyName(node.propertyName) &&
+          (ts.isStringLiteral(node.propertyName.expression) ||
+            ts.isNoSubstitutionTemplateLiteral(node.propertyName.expression))
+        ) {
+          propertyName = node.propertyName.expression.text;
+        }
         if (propertyName && BANNED_PROPERTIES.indexOf(propertyName) !== -1) {
           report(node, `Unauthorized destructuring of property '${propertyName}'`);
         }
