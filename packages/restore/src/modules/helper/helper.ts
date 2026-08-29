@@ -67,4 +67,40 @@ export class Helper {
   ) =>
     (votes / Helper.getNeighbourCount(dontIncludeSelf)) * 100 >=
     Provider.consensusReachedAmount;
+
+  /**
+   * Replays every event a restored transaction's contract raised, into
+   * this node's own events database - shared by both restore paths
+   * (interagent.ts's per-error insertUmid(), and quick-restore.ts's bulk
+   * catch-up), since a node restoring a umid it never ran itself would
+   * otherwise never see events its own commit() never actually executed.
+   *
+   * Reuses each event's original _id (embeds the umid + a per-transaction
+   * counter, see EventEngine.emit()) rather than minting a new one - the
+   * write is then naturally idempotent if this ever runs twice for the
+   * same umid, and any subscriber tracking Last-Event-ID sees the same
+   * event identity a node that ran the transaction itself would have
+   * produced.
+   *
+   * @static
+   * @param {*} umidDoc
+   * @returns {Promise<void>}
+   */
+  public static async replayEvents(umidDoc: any): Promise<void> {
+    const events = umidDoc?.events;
+    if (!Array.isArray(events) || !events.length) {
+      return;
+    }
+
+    for (let i = events.length; i--;) {
+      try {
+        await Provider.eventDatabase.post(events[i]);
+      } catch (error) {
+        ActiveLogger.error(
+          error,
+          `Failed to replay event ${events[i]?._id} for restored UMID ${umidDoc?.umid?.$umid || umidDoc?._id}`
+        );
+      }
+    }
+  }
 }
