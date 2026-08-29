@@ -11,10 +11,12 @@ describe("Process (Activeprotocol)", () => {
 
   it("should create process", () => {
 
-    // Make temporay vmscript.js
-    fs.writeFileSync("./packages/protocol/src/protocol/vmscript.js","{}");
+    // Make temporary vmscript.js - guaranteed cleanup even if construction throws
+    const vmscriptPath = "./packages/protocol/src/protocol/vmscript.js";
+    fs.writeFileSync(vmscriptPath, "{}");
 
-    process = new Process(
+    try {
+      process = new Process(
       {
         $nodes: {
           self: {}
@@ -53,10 +55,11 @@ describe("Process (Activeprotocol)", () => {
       {} as any,
       {} as any,
       new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any // Fix private type
-    );
-
-    // Remove temporay vmscript.js
-    fs.unlinkSync("./packages/protocol/src/protocol/vmscript.js");
+      );
+    } finally {
+      // Remove temporary vmscript.js - runs even if the constructor above threw
+      fs.unlinkSync(vmscriptPath);
+    }
 
     expect(process).to.be.an("object");
   });
