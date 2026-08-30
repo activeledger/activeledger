@@ -190,6 +190,8 @@ async function main(): Promise<boolean> {
 
     await runNegativeTests(report, nodes, returnerId);
 
+    await runDeterministicStreamTests(report, nodes);
+
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
 
     return report.summary();
@@ -293,6 +295,66 @@ async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId
     } else {
       report.fail(`Expected a rejected result with "Stream contract locked", got: ${JSON.stringify(result.$summary)}`);
     }
+  }
+}
+
+/**
+ * Deterministic stream ids (this.newActivityStream(name, deterministic)):
+ * a genuinely fresh seed must commit cleanly, and a repeated seed must be
+ * rejected with a real "Deterministic Stream Name Exists" (1530). Covers
+ * the false-positive bug where every deterministic stream, fresh or not,
+ * was rejected as an "existing" collision - root-caused to
+ * ActiveDSConnect.get() always resolving (ActiveRequest.send() never
+ * rejects on a non-2xx status), so detectCollisions()'s
+ * get().then(() => true).catch(() => false) always evaluated to true
+ * regardless of whether the stream actually existed. Fixed by using
+ * ActiveDSConnect.exists() (which checks the resolved body for a real
+ * _id) instead, in packages/protocol/src/protocol/streamUpdater.ts.
+ *
+ * Uses a different origin node for each call (nodes[0] then nodes[1]) so
+ * this also confirms the write from the first call is visible
+ * network-wide by the time the second call's collision check runs, not
+ * just self-consistent on a single node.
+ */
+async function runDeterministicStreamTests(report: Report, nodes: NetworkNode[]): Promise<void> {
+  report.phase("Deterministic streams: fresh seed commits, repeated seed correctly collides");
+
+  const detIdentity = await onboard(nodes[0].baseUrl);
+  const namespace = "dettest";
+  await registerNamespace(nodes[0].baseUrl, detIdentity, namespace);
+  const detContractId = await deployContract(
+    nodes[0].baseUrl,
+    detIdentity,
+    namespace,
+    "deterministic",
+    path.join(__dirname, "contracts/deterministic-contract.ts")
+  );
+
+  const seed = `det-seed-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const streamName = "notabox.identity";
+
+  const { result: first, ms: firstMs } = await timed(() =>
+    runContract(nodes[0].baseUrl, detIdentity, namespace, detContractId, { seed, name: streamName })
+  );
+  const firstOk = !first.$summary?.errors && first.$summary?.commit >= 1;
+  report.record("deterministic-fresh-seed", firstOk, firstMs);
+  if (firstOk) {
+    report.ok(`Fresh deterministic seed committed cleanly via node ${nodes[0].port} (${firstMs}ms)`);
+  } else {
+    report.fail(`Fresh seed unexpectedly rejected: ${JSON.stringify(first.$summary)}`);
+  }
+
+  const { result: second, ms: secondMs } = await timed(() =>
+    runContract(nodes[1].baseUrl, detIdentity, namespace, detContractId, { seed, name: streamName })
+  );
+  const collided =
+    second.$summary?.commit === 0 &&
+    (second.$summary?.errors || []).some((e: string) => e.includes("Deterministic Stream Name Exists"));
+  report.record("deterministic-real-collision", collided, secondMs);
+  if (collided) {
+    report.ok(`Repeated seed correctly rejected with "Deterministic Stream Name Exists" via node ${nodes[1].port} (${secondMs}ms)`);
+  } else {
+    report.fail(`Expected a real collision rejection, got: ${JSON.stringify(second.$summary)}`);
   }
 }
 
