@@ -128,7 +128,6 @@ export class StreamUpdater {
     // this.inputs = this.virtualMachine.getInputs(this.entry.$umid);
   }
 
-  // TODO - manage async if it is really needed
   public async updateStreams(earlyCommit?: Function): Promise<void> {
     if (earlyCommit) this.earlyCommit = earlyCommit;
 
@@ -186,7 +185,6 @@ export class StreamUpdater {
     }
   }
 
-  // TODO - manage async if it is really needed
   private async processStreams() {
     this.docs = [];
 
@@ -210,7 +208,12 @@ export class StreamUpdater {
       events: this.virtualMachine.getEvents(this.entry.$umid),
     });
 
-    this.detectCollisions();
+    // Was previously fire-and-forget (unawaited). Since detectCollisions()
+    // is what actually decides commit/reject and calls append() (the real
+    // stream write), not awaiting it let updateStreams() resolve before
+    // that decision existed yet - the caller (Process.commit()) would move
+    // on believing the streams step was done while it was still in flight.
+    await this.detectCollisions();
   }
 
   /**
@@ -410,16 +413,22 @@ export class StreamUpdater {
       ActiveLogger.info("Deterministic streams to be checked");
 
       // Store the promises to wait on.
-      const existenceChecks: Promise<boolean>[] = [];
+      const existenceChecks: Promise<Boolean>[] = [];
 
       let i = this.collisions.length;
       while (i--) {
         const streamId: string = this.collisions[i];
 
-        // Query datastore for streams, resolve true if found, false if not
-        existenceChecks.push(
-          this.db.get(streamId).then(() => true).catch(() => false)
-        );
+        // Query datastore for streams. ActiveRequest.send() (the transport
+        // underneath ActiveDSConnect.get()) never rejects on a non-2xx
+        // status - it resolves { data: <body> } for a 404 the same as a
+        // 200, by design (see its own "deposit wants to treat 404 as 200"
+        // comment). get().then(() => true).catch(() => false) therefore
+        // always resolved true here, even for a genuinely missing stream -
+        // exists() is the version of this check that's actually correct,
+        // since it inspects the resolved body for a real _id instead of
+        // relying on rejection to mean "not found".
+        existenceChecks.push(this.db.exists(streamId));
       }
 
       // Wait for all the checks
@@ -441,16 +450,16 @@ export class StreamUpdater {
           );
         } else {
           // No collisions found
-          this.append();
+          await this.append();
         }
       } catch (error) {
         // This block should ideally not be reached if errors are caught in the map
         // But as a fallback, assume no collision and proceed.
-        this.append();
+        await this.append();
       }
     } else {
       // Continue
-      this.append();
+      await this.append();
     }
   }
 }
