@@ -240,16 +240,10 @@ export class Endpoints {
                           `SPI Checking - Origin Node, Is it wrong? umid: ${tx.$umid}`
                         );
                         if (
-                          // Other nodes telling me I am wrong (as I am origin)
-                          // so more than 50% should say that otherwise only 1 of them could be wrong
-                          (summary.errors?.filter(
-                            (e) => e.indexOf("Stream Position Incorrect") !== -1
-                          ).length || 0) >=
-                          Math.floor((summary.errors?.length || 0) / 3) || // the majority disagreed
-                          // However what about I am the only one that is wrong (As they may send via me)
-                          tx.$nodes[Home.reference].error?.indexOf(
-                            "Stream Position Incorrect"
-                          ) !== -1
+                          Endpoints.shouldTriggerSpiLookup(
+                            summary.errors,
+                            tx.$nodes[Home.reference].error
+                          )
                         ) {
                           ActiveLogger.warn(
                             `SPI Checked - Origin Node, Wrong. Starting lookup umid: ${tx.$umid}`
@@ -675,6 +669,51 @@ export class Endpoints {
   // Method is copied around a lot need to normalise this.
   // Just updated to filter out labled selfsign which should fix the SPI
   // process instead of getting "unknown" errors
+  /**
+   * Decides whether the origin node should run the expensive SPI recovery
+   * lookup, given the errors the network returned for a transaction it
+   * originated. Only genuine "Stream Position Incorrect" disagreement is a
+   * signal this node might be desynced - any other error (e.g. a real
+   * "Deterministic Stream Name Exists" collision) is an outcome we already
+   * know and gains nothing from a lookup.
+   *
+   * requiring spiErrorCount > 0 matters: with a small errors.length (1 or
+   * 2, common when not every node's response has come back yet)
+   * Math.floor(length / 3) is 0, so "0 >= 0" used to be trivially true for
+   * ANY error type - sending totally unrelated terminal errors through the
+   * lookup for nothing, every time.
+   *
+   * A second, previously-hidden bug lived in the "am I the only one
+   * that's wrong" check: `selfError?.indexOf(...) !== -1` evaluates to
+   * `true` whenever selfError is undefined (optional chaining short-
+   * circuits to undefined, and undefined !== -1) - so the lookup used to
+   * trigger essentially every time the origin node itself had no error at
+   * all, i.e. whenever it voted/committed fine while other nodes
+   * disagreed - the single most common shape of a consensus failure. Only
+   * ever treat a real "Stream Position Incorrect" match on selfError as a
+   * trigger.
+   *
+   * @private
+   * @static
+   */
+  public static shouldTriggerSpiLookup(
+    errors: string[] | undefined,
+    selfError?: string
+  ): boolean {
+    const spiErrorCount =
+      errors?.filter((e) => e.indexOf("Stream Position Incorrect") !== -1)
+        .length || 0;
+    return (
+      // Other nodes telling me I am wrong (as I am origin) - the majority
+      // disagreed
+      (spiErrorCount > 0 &&
+        spiErrorCount >= Math.floor((errors?.length || 0) / 3)) ||
+      // However what about I am the only one that is wrong (As they may send via me)
+      (selfError !== undefined &&
+        selfError.indexOf("Stream Position Incorrect") !== -1)
+    );
+  }
+
   public static labelOrKey(txIO: any): string[] {
     // Get reference for input or output
     const keys = Object.keys(txIO || {});
