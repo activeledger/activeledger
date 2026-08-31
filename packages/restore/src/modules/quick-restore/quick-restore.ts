@@ -375,7 +375,11 @@ export class QuickRestore {
         do {
           const start = streams.length ? streams[streams.length - 1].id : "";
           knockResults = await node.knock("all/" + start);
-          streams = [...streams, ...knockResults.data];
+          // push (not [...streams, ...knockResults.data]) - the spread
+          // re-copied every already-fetched stream on every page of this
+          // loop, an O(n^2) cost across the whole ledger on a full
+          // bootstrap restore.
+          streams.push(...knockResults.data);
           ActiveLogger.info(
             "[" + node.reference + "]Running Total: " + streams.length
           );

@@ -284,6 +284,12 @@ export class PermissionsChecker {
       while (i--) {
         // Quick Reference
         let streamId: string = stream[i].state._id as string;
+        // filterPrefix() only memoizes ids >64 chars (prefixed ids) - a
+        // bare 64-char id (the common case) redoes its split() every call.
+        // streamId doesn't change within this iteration, so compute it
+        // once and thread it through instead of re-deriving it up to
+        // three times below.
+        const filteredStreamId = this.shared.filterPrefix(streamId);
 
         // Get revision type
         const revType = this.inputs ? this.entry.$revs.$i : this.entry.$revs.$o;
@@ -295,7 +301,7 @@ export class PermissionsChecker {
         if (revType && revType[streamId]) {
           // Don't really need to compare stream data if sigOnly signature itself verifies it (maybe throw warning)
           // reason sig verifies if I mod 1 node to different pubkey the others don't mind they will false it as sig wont match
-          if ((revType[streamId] !== currentRevision) && !this.shared.sigOnly[this.shared.filterPrefix(streamId)]) { //prefix maybe here?
+          if ((revType[streamId] !== currentRevision) && !this.shared.sigOnly[filteredStreamId]) { //prefix maybe here?
             // Normal and meta
             // this.db.clearCache(streamId);
             // this.db.clearCache(`${streamId}:stream`);
@@ -350,6 +356,7 @@ export class PermissionsChecker {
 
             this.signatureCheck(
               streamId,
+              filteredStreamId,
               stream[i],
               nhpkCheck,
               nhpkCheckIO,
@@ -360,7 +367,7 @@ export class PermissionsChecker {
             const type = stream[i].meta.type ? stream[i].meta.type : "rsa";
             const sigCheck = this.shared.signatureCheck(
               stream[i].meta.public as string,
-              this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+              this.entry.$sigs[filteredStreamId] as string,
               type
             );
 
@@ -399,20 +406,20 @@ export class PermissionsChecker {
    * @param {(value?: any) => void} reject
    * @returns {void}
    */
-  private signatureCheck(streamId: string, stream: ActiveDefinitions.LedgerStream, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
+  private signatureCheck(streamId: string, filteredStreamId: string, stream: ActiveDefinitions.LedgerStream, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
     const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
       this.shared.signatureCheck(
         authority.public,
-        this.entry.$sigs[this.shared.filterPrefix(streamId)] as string,
+        this.entry.$sigs[filteredStreamId] as string,
         authority.type
       );
 
-    const signatureContainer = this.entry.$sigs[this.shared.filterPrefix(streamId)];
+    const signatureContainer = this.entry.$sigs[filteredStreamId];
 
     if (ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(signatureContainer)) {
       this.checkMultiSignature(streamId, stream, signatureContainer, nhpkCheck, reject);
     } else {
-      this.checkSingleSignature(streamId, stream, signatureContainer, nhpkCheck, nhpkCheckIO, reject);
+      this.checkSingleSignature(streamId, filteredStreamId, stream, signatureContainer, nhpkCheck, nhpkCheckIO, reject);
     }
   }
 
@@ -447,7 +454,7 @@ export class PermissionsChecker {
     }
   }
 
-  private checkSingleSignature(streamId: string, stream: ActiveDefinitions.LedgerStream, signature: string, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
+  private checkSingleSignature(streamId: string, filteredStreamId: string, stream: ActiveDefinitions.LedgerStream, signature: string, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
     const authorityCheck = stream.meta.authorities.some(
       (authority: ActiveDefinitions.ILedgerAuthority) => {
         if (nhpkCheck) {
@@ -464,7 +471,7 @@ export class PermissionsChecker {
         if (this.shared.signatureCheck(authority.public, signature, authority.type)) {
           // Remap $sigs for later consumption if it was a simple signature
           if (authority.hash) {
-            this.entry.$sigs[this.shared.filterPrefix(streamId)] = {
+            this.entry.$sigs[filteredStreamId] = {
               [authority.hash]: signature,
             };
           }

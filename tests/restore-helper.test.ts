@@ -28,9 +28,14 @@ describe("Restore Helper - replayEvents (Activerestore)", () => {
 
     await Helper.replayEvents(umidDoc);
 
+    // Events replay concurrently (each has its own unique _id and no
+    // ordering dependency on the others) - assert both were posted, not
+    // a specific arrival order.
     expect(posted).to.have.length(2);
-    expect(posted[0]._id).to.equal("event:2,abc123");
-    expect(posted[1]._id).to.equal("event:1,abc123");
+    expect(posted.map((p) => p._id).sort()).to.deep.equal([
+      "event:1,abc123",
+      "event:2,abc123",
+    ]);
   });
 
   it("should do nothing when the umid document has no events", async () => {
