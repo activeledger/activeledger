@@ -185,6 +185,10 @@ export async function multipleActivityStreams(
 
     // Body or multiple GETS
     let multiples: string[] = incoming.body || incoming.url.slice(3);
+    // Set instead of the plain array - multiples never changes after this
+    // point, but the handler below checks it on every DB change event for
+    // the entire lifetime of this SSE subscription.
+    const multiplesSet = new Set(multiples);
 
     // Change handler so we can dereference on socket close
     const handler = (change: any) => {
@@ -192,7 +196,7 @@ export async function multipleActivityStreams(
       // Skip any with a : (umid, volatile, stream)
       if (dontSkip(change)) {
         // Is this change for our documents?
-        if (multiples.indexOf(change.doc._id) !== -1) {
+        if (multiplesSet.has(change.doc._id)) {
           // Prepare data
           let prepare = {
             event: "update",
