@@ -48,6 +48,53 @@ export function requestJson(
   });
 }
 
+/**
+ * Same as requestJson(), but also surfaces the HTTP status code - needed
+ * for tests that assert a request was *rejected* (e.g. the storage
+ * engine's /_backup and /_restore path-validation), where the error
+ * response body alone (often just "{}") doesn't distinguish success from
+ * failure the way requestJson()'s plain body-only resolution does.
+ */
+export function requestJsonWithStatus(
+  url: string,
+  method: string,
+  body?: unknown,
+  timeoutMs = 20000
+): Promise<{ statusCode: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const target = new URL(url);
+    const data = body !== undefined ? Buffer.from(JSON.stringify(body)) : undefined;
+    const req = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: target.pathname + target.search,
+        method,
+        timeout: timeoutMs,
+        headers: data
+          ? { "Content-Type": "application/json", "Content-Length": data.length }
+          : undefined,
+      },
+      (res) => {
+        let responseBody = "";
+        res.on("data", (chunk) => (responseBody += chunk));
+        res.on("end", () => {
+          try {
+            const parsed = responseBody ? JSON.parse(responseBody) : {};
+            resolve({ statusCode: res.statusCode || 0, data: parsed });
+          } catch (e) {
+            reject(new Error(`Non-JSON response from ${url}: ${responseBody.slice(0, 200)}`));
+          }
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error(`Request timed out after ${timeoutMs}ms: ${method} ${url}`)));
+    req.on("error", reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
+
 /** Submits a transaction to a node's root endpoint. */
 export function submit(baseUrl: string, tx: unknown): Promise<any> {
   return requestJson(baseUrl + "/", "POST", tx);

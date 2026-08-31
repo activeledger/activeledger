@@ -9,7 +9,7 @@
 
 import * as path from "path";
 import { NetworkHarness, NetworkNode } from "./harness";
-import { submit, storageGet, storagePut } from "./http";
+import { submit, storageGet, storagePut, requestJsonWithStatus } from "./http";
 import { SSEClient } from "./sse";
 import { Report } from "./report";
 import {
@@ -192,6 +192,8 @@ async function main(): Promise<boolean> {
 
     await runDeterministicStreamTests(report, nodes);
 
+    await runStoragePathValidationTests(report, nodes);
+
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
 
     return report.summary();
@@ -355,6 +357,107 @@ async function runDeterministicStreamTests(report: Report, nodes: NetworkNode[])
     report.ok(`Repeated seed correctly rejected with "Deterministic Stream Name Exists" via node ${nodes[1].port} (${secondMs}ms)`);
   } else {
     report.fail(`Expected a real collision rejection, got: ${JSON.stringify(second.$summary)}`);
+  }
+}
+
+/**
+ * Storage engine HTTP layer, hit directly (not through consensus) - the
+ * same layer storageGet()/storagePut() above already use.
+ *
+ * Covers two next-perf fixes with no prior test coverage:
+ * - /_backup and /_restore's filename path-validation (the branch's most
+ *   security-sensitive change - blocks writing/reading arbitrary files
+ *   via a traversal or absolute-path filename in the request body).
+ * - /_all_dbs and the db-info data_size computation, whose file-stat
+ *   loops were parallelized (Promise.all(files.map(...))) - sanity-checks
+ *   the parallelized versions still return correct, sensible results.
+ */
+async function runStoragePathValidationTests(
+  report: Report,
+  nodes: NetworkNode[]
+): Promise<void> {
+  const storageUrl = nodes[0].storageUrl;
+
+  report.phase("Storage: /_backup and /_restore reject path-traversal filenames");
+  {
+    const attempts: { label: string; filename: string }[] = [
+      { label: "relative traversal", filename: "../../../tmp/pwned-backup" },
+      { label: "absolute path", filename: "/tmp/pwned-backup" },
+    ];
+    let allRejected = true;
+    let details = "";
+    for (const { label, filename } of attempts) {
+      const { statusCode } = await requestJsonWithStatus(
+        `${storageUrl}/activeledger/_backup`,
+        "POST",
+        { filename }
+      );
+      if (statusCode < 400) {
+        allRejected = false;
+        details += `${label} backup got ${statusCode} (expected >=400); `;
+      }
+      const restoreResult = await requestJsonWithStatus(
+        `${storageUrl}/activeledger/_restore`,
+        "POST",
+        { filename }
+      );
+      if (restoreResult.statusCode < 400) {
+        allRejected = false;
+        details += `${label} restore got ${restoreResult.statusCode} (expected >=400); `;
+      }
+    }
+    report.record("storage-path-traversal-rejected", allRejected, 0);
+    if (allRejected) {
+      report.ok("Both /_backup and /_restore rejected every traversal/absolute-path filename");
+    } else {
+      report.fail(`Expected every attempt to be rejected: ${details}`);
+    }
+  }
+
+  report.phase("Storage: /_backup still succeeds with a safe filename");
+  {
+    const { statusCode, data } = await requestJsonWithStatus(
+      `${storageUrl}/activeledger/_backup`,
+      "POST",
+      { filename: `test-backup-${Date.now()}.alb` }
+    );
+    const ok = statusCode === 200 && data?.status === "started";
+    report.record("storage-legit-backup-succeeds", ok, 0);
+    if (ok) {
+      report.ok(`Legitimate backup filename accepted (${statusCode})`);
+    } else {
+      report.fail(`Expected 200 { status: "started" }, got ${statusCode} ${JSON.stringify(data)}`);
+    }
+  }
+
+  report.phase("Storage: /_all_dbs and db-info data_size still return sane results after parallelizing their file-stat loops");
+  {
+    const { statusCode: dbsStatus, data: dbs } = await requestJsonWithStatus(
+      `${storageUrl}/_all_dbs`,
+      "GET"
+    );
+    const dbsOk = dbsStatus === 200 && Array.isArray(dbs) && dbs.includes("activeledger");
+    report.record("storage-all-dbs-sane", dbsOk, 0);
+    if (dbsOk) {
+      report.ok(`/_all_dbs includes "activeledger" (${JSON.stringify(dbs)})`);
+    } else {
+      report.fail(`Expected an array including "activeledger", got ${dbsStatus} ${JSON.stringify(dbs)}`);
+    }
+
+    const { statusCode: infoStatus, data: info } = await requestJsonWithStatus(
+      `${storageUrl}/activeledger`,
+      "GET"
+    );
+    const infoOk =
+      infoStatus === 200 &&
+      typeof info?.data_size === "number" &&
+      info.data_size >= 0;
+    report.record("storage-data-size-sane", infoOk, 0);
+    if (infoOk) {
+      report.ok(`db-info data_size is a sane non-negative number (${info.data_size})`);
+    } else {
+      report.fail(`Expected a non-negative numeric data_size, got ${infoStatus} ${JSON.stringify(info)}`);
+    }
   }
 }
 
