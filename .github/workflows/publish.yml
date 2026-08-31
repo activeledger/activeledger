@@ -71,3 +71,38 @@ jobs:
         run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://npm.pkg.github.com/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-runs setup-node pointed at npmjs.org - it (re)writes the auth
+      # line in ~/.npmrc for whichever registry-url you give it, so this
+      # has to happen as its own step, after the GitHub Packages publish
+      # above has already finished with it, not before (the second call
+      # would otherwise clobber the GitHub Packages auth line first).
+      #
+      # Guarded on the NPM_TOKEN secret actually being set: this repo's
+      # npmjs.org account access is being restored separately, so the
+      # secret won't exist yet on the first few tags after this is wired
+      # in. Skipping cleanly here (rather than failing) means GitHub
+      # Packages keeps publishing normally in the meantime - add
+      # secrets.NPM_TOKEN in the repo's Settings -> Secrets and Actions
+      # once the npmjs token exists to turn this on.
+      - name: Setup Node (npmjs.org)
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://registry.npmjs.org
+          scope: "@activeledger"
+
+      # --access public: these packages are already public on npmjs.org
+      # from the 2.x era (last published there was 2.15.7 - every 3.x/4.x
+      # release has only gone to GitHub Packages until now), so npm
+      # already treats them as public and this shouldn't be load-bearing
+      # in practice. Passed anyway to remove any ambiguity, since a scoped
+      # package npm has never seen before defaults to restricted (paid-org
+      # only) without it - cheap insurance against a partial-publish
+      # surprise on whichever package happens to need it first.
+      - name: Publish to npmjs.org
+        if: ${{ secrets.NPM_TOKEN != '' }}
+        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/ --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
