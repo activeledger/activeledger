@@ -1281,11 +1281,11 @@ export class Process extends EventEmitter {
    * @returns {boolean}
    */
   private hasOutstandingVotes(/*nodes?: number*/): boolean {
-    const neighbours = ActiveOptions.get<Array<any>>(
-      "neighbourhood",
-      []
-    ).length;
-    return !!(neighbours - this.countOutstandingVotes());
+    // Process.networkNodeLength is already this exact same
+    // ActiveOptions.get("neighbourhood", []).length, set once in the
+    // constructor and reused elsewhere in this class (canCommit(), the
+    // consensus-timeout branch) - no need to re-read config here.
+    return !!(Process.networkNodeLength - this.countOutstandingVotes());
   }
 
   /**

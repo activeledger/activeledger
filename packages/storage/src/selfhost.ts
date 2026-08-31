@@ -172,13 +172,19 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   http.use("_all_dbs", "GET", async () => {
     // Check to see if it is a directory and not a special directory
     const files = await fsPromises.readdir(DIR_PREFIX);
-    const dbs = [];
-    for (const file of files) {
-      const stat = await fsPromises.lstat(DIR_PREFIX + file);
-      if (stat.isDirectory() && file !== process.argv[2] && file !== "pouch__all_dbs__" && file !== "_replicator" && !file.includes("-mrview-")) {
-        dbs.push(file);
-      }
-    }
+    // Same pattern deleteDb() below already uses - stat every entry
+    // concurrently instead of one at a time.
+    const stats = await Promise.all(
+      files.map((file) => fsPromises.lstat(DIR_PREFIX + file))
+    );
+    const dbs = files.filter(
+      (file, i) =>
+        stats[i].isDirectory() &&
+        file !== process.argv[2] &&
+        file !== "pouch__all_dbs__" &&
+        file !== "_replicator" &&
+        !file.includes("-mrview-")
+    );
 
     // Return directories
     return dbs;
@@ -191,12 +197,13 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     let info = await db.info();
 
     // Now add data_size
-    info.data_size = 0;
     const files = await fsPromises.readdir(DIR_PREFIX + incoming.url[0]);
-    for (const source of files) {
-      const stat = await fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source);
-      info.data_size += stat.size;
-    }
+    const stats = await Promise.all(
+      files.map((source) =>
+        fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source)
+      )
+    );
+    info.data_size = stats.reduce((total, stat) => total + stat.size, 0);
     return info;
   });
 
@@ -404,13 +411,36 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
   });
 
+  // filename comes straight from the request body here - without this
+  // check it's an arbitrary file write/read primitive (LevelMe.backup()/
+  // restore() pass it directly to createWriteStream()/createReadStream()
+  // with no validation of their own, since they're also called from the
+  // CLI's --backup/--restore flags where an operator-chosen path outside
+  // the current directory is legitimate - the restriction belongs here,
+  // at the boundary where the value is actually untrusted remote input,
+  // not inside LevelMe itself). Restricting to a bare filename (no path
+  // separators, no ".." components) blocks traversal and absolute paths
+  // while still allowing any normal filename.
+  const isSafeFilename = (filename: unknown): filename is string =>
+    typeof filename === "string" &&
+    filename.length > 0 &&
+    path.basename(filename) === filename;
+
   http.use("*/_backup", "POST", async (incoming: IActiveHttpIncoming) => {
-    getDB(incoming.url[0]).backup(incoming.body?.filename ?? "");
+    const filename = incoming.body?.filename;
+    if (filename !== undefined && !isSafeFilename(filename)) {
+      throw new Error("Invalid backup filename");
+    }
+    getDB(incoming.url[0]).backup(filename);
     return { status: "started" };
   });
 
   http.use("*/_restore", "POST", async (incoming: IActiveHttpIncoming) => {
-    getDB(incoming.url[0]).restore(incoming.body.filename);
+    const filename = incoming.body?.filename;
+    if (!isSafeFilename(filename)) {
+      throw new Error("Invalid restore filename");
+    }
+    getDB(incoming.url[0]).restore(filename);
     return { status: "started" };
   });
 

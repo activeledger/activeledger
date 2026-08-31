@@ -92,15 +92,21 @@ export class Helper {
       return;
     }
 
-    for (let i = events.length; i--;) {
-      try {
-        await Provider.eventDatabase.post(events[i]);
-      } catch (error) {
-        ActiveLogger.error(
-          error,
-          `Failed to replay event ${events[i]?._id} for restored UMID ${umidDoc?.umid?.$umid || umidDoc?._id}`
-        );
-      }
-    }
+    // Each event has its own unique _id and no ordering dependency on the
+    // others, so these can run concurrently instead of serially - same
+    // catch-and-continue-on-failure behavior per event, just not one at a
+    // time.
+    await Promise.all(
+      events.map(async (event) => {
+        try {
+          await Provider.eventDatabase.post(event);
+        } catch (error) {
+          ActiveLogger.error(
+            error,
+            `Failed to replay event ${event?._id} for restored UMID ${umidDoc?.umid?.$umid || umidDoc?._id}`
+          );
+        }
+      })
+    );
   }
 }
