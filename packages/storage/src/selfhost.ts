@@ -172,13 +172,19 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   http.use("_all_dbs", "GET", async () => {
     // Check to see if it is a directory and not a special directory
     const files = await fsPromises.readdir(DIR_PREFIX);
-    const dbs = [];
-    for (const file of files) {
-      const stat = await fsPromises.lstat(DIR_PREFIX + file);
-      if (stat.isDirectory() && file !== process.argv[2] && file !== "pouch__all_dbs__" && file !== "_replicator" && !file.includes("-mrview-")) {
-        dbs.push(file);
-      }
-    }
+    // Same pattern deleteDb() below already uses - stat every entry
+    // concurrently instead of one at a time.
+    const stats = await Promise.all(
+      files.map((file) => fsPromises.lstat(DIR_PREFIX + file))
+    );
+    const dbs = files.filter(
+      (file, i) =>
+        stats[i].isDirectory() &&
+        file !== process.argv[2] &&
+        file !== "pouch__all_dbs__" &&
+        file !== "_replicator" &&
+        !file.includes("-mrview-")
+    );
 
     // Return directories
     return dbs;
@@ -191,12 +197,13 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     let info = await db.info();
 
     // Now add data_size
-    info.data_size = 0;
     const files = await fsPromises.readdir(DIR_PREFIX + incoming.url[0]);
-    for (const source of files) {
-      const stat = await fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source);
-      info.data_size += stat.size;
-    }
+    const stats = await Promise.all(
+      files.map((source) =>
+        fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source)
+      )
+    );
+    info.data_size = stats.reduce((total, stat) => total + stat.size, 0);
     return info;
   });
 
