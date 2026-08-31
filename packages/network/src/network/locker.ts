@@ -48,12 +48,13 @@ export class Locker {
    *     time: number
    *   } }}
    */
-  private static cell: {
-    [stream: string]: {
+  private static cell: Map<
+    string,
+    {
       umid: string;
       time: number;
-    };
-  } = {};
+    }
+  > = new Map();
 
   /**
    * Holds the current timer job
@@ -72,7 +73,7 @@ export class Locker {
    * @return {*}  {boolean}
    */
   public static has(stream: string): boolean {
-    return !!this.cell[stream];
+    return this.cell.has(stream);
   }
 
   /**
@@ -85,7 +86,7 @@ export class Locker {
    */
   public static is(stream: string, umid: string): boolean {
     if (this.has(stream)) {
-      return this.cell[stream].umid === umid;
+      return this.cell.get(stream)!.umid === umid;
     }
     return false;
   }
@@ -116,13 +117,13 @@ export class Locker {
         // selfsign check
         // what about if it is locked on itself? Maybe we can just "update"
         if (stream[i].length > 60) {
-          if (!this.cell[stream[i]]) {
-            this.cell[stream[i]] = {
+          if (!this.cell.has(stream[i])) {
+            this.cell.set(stream[i], {
               umid,
               time,
-            };
+            });
           } else {
-             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell[stream[i]].umid}`);
+             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell.get(stream[i])!.umid}`);
             success = false;
             break;
           }
@@ -142,14 +143,14 @@ export class Locker {
       }
  
       // Is the single stream available?
-      if (!this.cell[stream]) {
-        this.cell[stream] = {
+      if (!this.cell.has(stream)) {
+        this.cell.set(stream, {
           umid,
           time: Date.now(),
-        };
+        });
         return true;
       }
-      ActiveLogger.info(`Lock busy for ${stream}. Held by ${this.cell[stream].umid}, requested by ${umid}.`);
+      ActiveLogger.info(`Lock busy for ${stream}. Held by ${this.cell.get(stream)!.umid}, requested by ${umid}.`);
       return false;
     }
   }
@@ -169,13 +170,13 @@ export class Locker {
       while (i--) {
         // This maybe the problem being pushed to the bottom of the stack
         //Locker.release(stream[i], umid);
-        if (this.cell[stream[i]] && this.cell[stream[i]].umid === umid) {
-          delete this.cell[stream[i]];
+        if (this.cell.get(stream[i])?.umid === umid) {
+          this.cell.delete(stream[i]);
         }
       }
     } else {
-      if (this.cell[stream] && this.cell[stream].umid === umid) {
-        delete this.cell[stream];
+      if (this.cell.get(stream)?.umid === umid) {
+        this.cell.delete(stream);
       }
     }
     // Can always return true even if wasn't released
@@ -214,7 +215,12 @@ export class Locker {
       time: number;
     };
   } {
-    return this.cell;
+    // Returned as a plain object still - the one consumer (host.ts's
+    // /a/locks status endpoint) JSON.stringify()s this, and Map doesn't
+    // serialize the same way. Called rarely (a debug/status endpoint,
+    // not the transaction hot path), so the conversion cost here is
+    // irrelevant.
+    return Object.fromEntries(this.cell);
   }
 
   /**
@@ -224,17 +230,18 @@ export class Locker {
    * @param {number} [releaseTime=AUTO_RELEASE_TIME]
    */
   public static checkLocks(releaseTime: number = AUTO_RELEASE_TIME) {
-    // Loop cell and release if 10 minutes has passed
-    const locks = Object.keys(this.cell);
+    // Loop cell and release if 10 minutes has passed. Snapshot to an
+    // array first (same as the original Object.keys() version) rather
+    // than iterating the live Map directly while release() deletes from
+    // it mid-loop.
+    const locks = Array.from(this.cell.entries());
     for (let i = locks.length; i--; ) {
-      if (
-        this.cell[locks[i]] &&
-        Date.now() - (this.cell[locks[i]].time as number) >= releaseTime
-      ) {
+      const [stream, entry] = locks[i];
+      if (this.cell.has(stream) && Date.now() - entry.time >= releaseTime) {
         ActiveLogger.warn(
-          `Auto-releasing stuck lock for stream ${locks[i]} held by ${this.cell[locks[i]].umid}`
+          `Auto-releasing stuck lock for stream ${stream} held by ${entry.umid}`
         );
-        Locker.release(locks[i], this.cell[locks[i]].umid);
+        Locker.release(stream, entry.umid);
       }
     }
   }
