@@ -103,16 +103,17 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: "@activeledger"
 
-      # --access public: these packages are already public on npmjs.org
-      # from the 2.x era (last published there was 2.15.7 - every 3.x/4.x
-      # release has only gone to GitHub Packages until now), so npm
-      # already treats them as public and this shouldn't be load-bearing
-      # in practice. Passed anyway to remove any ambiguity, since a scoped
-      # package npm has never seen before defaults to restricted (paid-org
-      # only) without it - cheap insurance against a partial-publish
-      # surprise on whichever package happens to need it first.
+      # Access is set via lerna.json's command.publish.access ("public") -
+      # lerna publish has no --access CLI flag at all (only
+      # --verify-access/--no-verify-access, a different thing entirely;
+      # confirmed via `npx lerna publish --help` after this exact flag
+      # broke the first real npmjs publish attempt with
+      # "ERR! lerna Unknown argument: access"). These packages are
+      # already public on npmjs.org from the 2.x era regardless (last
+      # published there was 2.15.7), so this is defense-in-depth, not
+      # load-bearing in practice.
       - name: Publish to npmjs.org
         if: ${{ env.NPM_TOKEN_SET == 'true' }}
-        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/ --access public
+        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
