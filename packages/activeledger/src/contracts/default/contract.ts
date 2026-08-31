@@ -224,6 +224,10 @@ const BANNED_PROPERTIES = [
   "module",
   "require",
 ];
+// Set for O(1) lookup instead of Array.indexOf()'s O(n) scan - this list
+// has grown to ~50 entries and is checked at several points per AST node
+// walked during securityScan().
+const BANNED_PROPERTIES_SET = new Set(BANNED_PROPERTIES);
 
 /**
  * Default Onboarding (New Account) contract
@@ -599,7 +603,7 @@ export default class Contract extends Standard {
       if (ts.isPropertyAccessExpression(node)) {
         if (
           ts.isIdentifier(node.name) &&
-          BANNED_PROPERTIES.indexOf(node.name.text) !== -1
+          BANNED_PROPERTIES_SET.has(node.name.text)
         ) {
           // Allow access if it is on 'this'
           if (node.expression.kind === ts.SyntaxKind.ThisKeyword) {
@@ -656,7 +660,7 @@ export default class Contract extends Standard {
         // chain through it) - not the broader recursive isThisAccess()
         // below, which trusts an entire this.a.b.c chain and would still
         // let a second hop like this.constructor["constructor"] through.
-        if (!dynamicAccess && key && BANNED_PROPERTIES.indexOf(key) !== -1) {
+        if (!dynamicAccess && key && BANNED_PROPERTIES_SET.has(key)) {
           if (node.expression.kind !== ts.SyntaxKind.ThisKeyword) {
             report(node.argumentExpression, `Unauthorized element access '${key}'`);
           }
@@ -711,7 +715,7 @@ export default class Contract extends Standard {
         ) {
           propertyName = node.propertyName.expression.text;
         }
-        if (propertyName && BANNED_PROPERTIES.indexOf(propertyName) !== -1) {
+        if (propertyName && BANNED_PROPERTIES_SET.has(propertyName)) {
           report(node, `Unauthorized destructuring of property '${propertyName}'`);
         }
       }
@@ -796,7 +800,7 @@ export default class Contract extends Standard {
         report(node, `debugger statements are forbidden`);
       }
       if (ts.isDeleteExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        if (BANNED_PROPERTIES.indexOf(node.expression.name.text) !== -1) {
+        if (BANNED_PROPERTIES_SET.has(node.expression.name.text)) {
            report(node.expression.name, `Unauthorized deletion of property '${node.expression.name.text}'`);
         }
       }
