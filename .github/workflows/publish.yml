@@ -17,6 +17,16 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # secrets can't be referenced directly in a step's `if:` - the
+    # "secrets" context isn't in the allowed-contexts list for
+    # expressions there (confirmed via actionlint; this exact mistake in
+    # the original PR broke workflow registration entirely - every push,
+    # tag or not, failed immediately with 0 jobs run, since GitHub
+    # refuses to even register a workflow file that fails schema
+    # validation). Routing it through env: first works around that -
+    # env: is an allowed context in `if:`.
+    env:
+      NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,7 +96,7 @@ jobs:
       # secrets.NPM_TOKEN in the repo's Settings -> Secrets and Actions
       # once the npmjs token exists to turn this on.
       - name: Setup Node (npmjs.org)
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        if: ${{ env.NPM_TOKEN_SET == 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -102,7 +112,7 @@ jobs:
       # only) without it - cheap insurance against a partial-publish
       # surprise on whichever package happens to need it first.
       - name: Publish to npmjs.org
-        if: ${{ secrets.NPM_TOKEN != '' }}
+        if: ${{ env.NPM_TOKEN_SET == 'true' }}
         run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/ --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
