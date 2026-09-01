@@ -46,6 +46,10 @@ GET  /api/tx/:umid            transaction lookup -> {transaction: {...} | null}
 
 `/api/stream` and `/api/tx/:umid` are **not** wire-compatible with Activecore's equivalents - both had real bugs discovered this session while building the nano client against Activecore's actual source (`getStream()` drops `_id` from its response via a comma-expression bug; `findUmid()` names its response field `umid` when the value is the whole transaction, not a umid string). New code doesn't inherit either. nano's own client (`@activenano/core`'s `MiniSpiClient`/`TransactionResolver`) is written against *this* package's contract.
 
+### Reconnect / resume
+
+Each pushed frame is numbered by the underlying DB change sequence it came from (`id:{seq}` on the SSE frame, same convention as Activecore's own SSE). A client reconnecting with a `Last-Event-ID` header resumes the changes feed from that point instead of missing whatever changed while it was disconnected - `Last-Event-ID` is one of the fixed headers `@activeledger/httpd` actually forwards to route handlers (confirmed by reading its source), unlike the custom auth headers this had to route through the body instead. No header (or a fresh subscribe with a new stream-id set) starts from `"now"`, same as before. `@activenano/core`'s `NanoLedgerEvents` client does this automatically - see its own doc comment.
+
 ## Deploying this alongside a running node
 
 1. `npm install -g @activeledger/nano-gateway` (once published) or build from source (`npm run build`, then `node lib/index.js`).
