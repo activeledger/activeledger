@@ -94,34 +94,94 @@ export class Maintain {
   /**
    * Maintain Network health
    *
+   * Poll fast (300ms) until this node is Stable (paired with a
+   * left/right), then at the normal ~10-25s cadence until every
+   * *configured* neighbour has actually been discovered - not just the
+   * two needed to pair. Stable only means "found 2" - on a network with
+   * 3+ neighbours, stopping as soon as that's true left a genuine, live
+   * neighbour that just hadn't answered yet permanently undiscovered
+   * (nothing left to ever knock it, since reactive tracking only kicks
+   * in for a neighbour that's already been marked home at least once).
+   * Once every neighbour is accounted for (home or gracefully stopping),
+   * this routine full-mesh poll stops entirely: health from then on is
+   * tracked reactively instead (see Neighbour's own knock() failure
+   * handling, which marks a specific neighbour down and self-polls just
+   * that one node until it recovers - and checkNeighbourhood()'s own
+   * failure path below, which does the equivalent for a neighbour this
+   * node has never yet reached at all).
+   *
    * @public
    * @param {boolean} [boot=false]
    */
   public static healthTimer(boot: boolean = false) {
+    if (Maintain.allNeighboursDiscovered()) {
+      return;
+    }
     setTimeout(() => {
       Maintain.healthTimer();
     }, Maintain.getInterval());
     if (!boot) {
-      if (Maintain.home && Maintain.home.getStatus() !== NeighbourStatus.Stable) {
-        ActiveLogger.debug("Checking Neighbourhood");
-      }
+      ActiveLogger.debug("Checking Neighbourhood");
       Maintain.checkNeighbourhood();
     }
   }
 
   /**
-   * Cold boot connection to network faster
+   * True once every configured neighbour is either home or intentionally
+   * leaving (graceStop) - the point past which the routine full-mesh
+   * poll has nothing left to discover.
+   *
+   * @private
+   * @static
+   * @returns {boolean}
+   */
+  private static allNeighboursDiscovered(): boolean {
+    return (
+      !!Maintain.neighbourOrder &&
+      Maintain.neighbourOrder.every(
+        (neighbour) => neighbour.isHome || neighbour.graceStop
+      )
+    );
+  }
+
+  /**
+   * Cold boot connection to network faster.
+   *
+   * Was gated on Stable (just 2 paired neighbours - enough for left/right,
+   * not enough to have found every configured neighbour on a 3+-node
+   * network), not on full discovery - so on a network where Stable is
+   * reached before every neighbour has actually responded once, this could
+   * jump straight from the fast 300ms boot cadence to the slow 10-25s
+   * cadence while neighbours were still genuinely undiscovered. Since
+   * healthTimer() already stops polling entirely once
+   * allNeighboursDiscovered() is true, there's no reason for an
+   * intermediate slow-but-still-polling phase at all - stay fast for the
+   * whole discovery phase, however long that takes, then stop.
    *
    * @private
    * @static
    * @returns {number}
    */
   private static getInterval(): number {
-    if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
+    if (!Maintain.allNeighboursDiscovered()) {
       return 300;
     } else {
       return Maintain.interval;
     }
+  }
+
+  /**
+   * Re-runs pairing with each neighbour's current isHome state, without
+   * a network re-knock. Called whenever a neighbour's own reactive health
+   * tracking flips its isHome flag (see Neighbour), so left/right update
+   * immediately instead of waiting on a routine recheck that no longer
+   * runs once Stable.
+   *
+   * @public
+   * @static
+   */
+  public static pairNow(): void {
+    Maintain.pairing();
   }
 
   /**
@@ -217,12 +277,12 @@ export class Maintain {
               resolve();
             })
             .catch(() => {
-              // Still the same network?
-              if (currentRef == Home.reference) {
-                // Node isn't home (Any error is a bad error)
-                // TODO redo all of this
-                //neighbour.isHome = false;
-              }
+              // Not home yet - nothing more to do here. allNeighboursDiscovered()
+              // (above) keeps this fast (300ms) periodic check running until
+              // every configured neighbour has been found, so a neighbour that
+              // simply hasn't started listening yet just gets retried on the
+              // next tick - no need for the separate, much slower (3s) per-
+              // neighbour recovery-poll loop to also chase it during boot.
               // This isn't a failure so resolve to move on.
               resolve();
             });
