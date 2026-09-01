@@ -82,8 +82,21 @@ describe("Cryptographic Test (Activecrypto)", () => {
       .that.is.an("object")
       .and.has.property("pkcs8pem")
       .that.is.a("string")
-      .to.have.length.lessThanOrEqual(66);
+      .to.have.length(66);
   }).timeout(5000);
+
+  it("generates a raw-hex private key that is always exactly 32 bytes (padding regression)", () => {
+    // node:crypto's ECDH.getPrivateKey() strips leading zero bytes instead
+    // of returning a fixed-width scalar - about 1 in 400 keys hit this
+    // without explicit left-padding in KeyPair.generate(). Run enough
+    // iterations to reliably catch it if the padding regresses. The
+    // previous version of the "compressed hex base" test above asserted
+    // length.lessThanOrEqual(66), which passed either way and masked this.
+    for (let i = 0; i < 500; i++) {
+      const key = new ActiveCrypto.KeyPair("secp256k1").generate();
+      expect(key.prv.pkcs8pem).to.match(/^0x[0-9a-f]{64}$/);
+    }
+  }).timeout(10000);
 
   it("Should encrypt with nested permissions", () => {
     // Get Secured Object & Encrypt
