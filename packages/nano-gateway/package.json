@@ -1,0 +1,58 @@
+{
+  "name": "@activeledger/nano-gateway",
+  "description": "Lightweight, permissioned SSE + read gateway for nano light-node clients - runs alongside a real Activeledger node, direct DB access like activehybrid, no Activecore dependency.",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "activeledger",
+    "network",
+    "nano"
+  ],
+  "homepage": "https://github.com/activeledger/activeledger",
+  "preferGlobal": true,
+  "bin": {
+    "nano-gateway": "./lib/index.js"
+  },
+  "scripts": {
+    "start": "node lib/index.js",
+    "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/default.config.json ./lib",
+    "build:es": "tsc --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
+    "build": "npm run build:commonjs && npm run build:es",
+    "test": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "18.0.0",
+    "copyfiles": "2.4.1"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activecrypto": "^4.4.0",
+    "@activeledger/activedefinitions": "^4.4.0",
+    "@activeledger/activelogger": "^4.4.0",
+    "@activeledger/activeoptions": "^4.4.0",
+    "@activeledger/httpd": "^4.4.0",
+    "typescript": "5.5.4"
+  }
+}
