@@ -29,6 +29,13 @@ import { ActiveClone } from "@activeledger/activeutilities";
 import { Home } from "./home";
 import { Neighbourhood } from "./neighbourhood";
 import { P2PClient } from "./p2pClient";
+import { Maintain } from "./maintain";
+
+// How often to re-check a neighbour that's been marked unavailable, once
+// it's known to be down. Deliberately much tighter than the old routine
+// full-mesh interval (~10-25s) since this only ever runs for a neighbour
+// already suspected down, not the whole neighbourhood on a schedule.
+const RECOVERY_CHECK_INTERVAL = 3 * 1000;
 
 /**
  * Manages Node Connection Information
@@ -58,6 +65,18 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @type {boolean}
    */
   public graceStop: boolean = false;
+
+  /**
+   * True while a recovery poll loop is actively re-checking this
+   * neighbour after being marked unavailable. Guards against
+   * markUnavailable() spawning a second concurrent poll loop if further
+   * knocks to this same down neighbour keep failing while one is already
+   * running.
+   *
+   * @private
+   * @type {boolean}
+   */
+  private recovering: boolean = false;
 
   /**
    * Creates an instance of NodeNeighbour.
@@ -171,7 +190,19 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
           false,
           60
         )
-          .then(resolve)
+          .then((response: any) => {
+            // Same reasoning as the bundled branch below - ActiveRequest.send()
+            // never rejects, even on a genuine connection failure, resolving
+            // { data: null } instead. Without this check, knock("status")
+            // against a genuinely down neighbour would resolve "successfully"
+            // with null data - which is exactly what checkNeighbourhood() and
+            // Neighbour's own recovery poll use to decide a node is home.
+            if (response?.data === null) {
+              reject(new Error("Request Failed"));
+            } else {
+              resolve(response);
+            }
+          })
           .catch(reject);
       });
     } else {
@@ -221,23 +252,42 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               60
             )
               .then((response: any) => {
-                if (!bundle) {
-                  if (response.data?.$enc && response.data.$packet) {
-                    response.data = JSON.parse(
-                      Buffer.from(
-                        Home.identity.decrypt(response.data.$packet),
-                        "base64"
-                      ).toString()
-                    );
+                if (bundle) {
+                  // ActiveRequest.send() never rejects, even on a genuine
+                  // connection failure (ECONNREFUSED, timeout, etc.) - it
+                  // resolves { data: null } instead (see
+                  // packages/utilities/src/request.ts). That's the only
+                  // failure signal available here. This branch previously
+                  // never called resolve()/reject() at all regardless of
+                  // outcome, so a bundled knock's returned promise just
+                  // hung forever - silently swallowing every bundled-
+                  // broadcast failure rather than surfacing it.
+                  if (response?.data === null) {
+                    this.markUnavailable();
+                    reject(new Error("Bundled Request Failed"));
+                  } else {
+                    resolve({ ok: 1 });
                   }
-                  resolve(response);
+                  return;
                 }
+                if (response.data?.$enc && response.data.$packet) {
+                  response.data = JSON.parse(
+                    Buffer.from(
+                      Home.identity.decrypt(response.data.$packet),
+                      "base64"
+                    ).toString()
+                  );
+                }
+                resolve(response);
               })
               .catch((error: any) => {
+                // In practice unreachable while ActiveRequest.send() never
+                // rejects (see above) - kept as a defensive fallback in
+                // case that ever changes, or for a genuinely synchronous
+                // throw elsewhere in this chain.
                 if (error && error.response && error.response.data) {
                   reject(error.response.data);
                 } else {
-                  // TODO : If connection failure rebase neighbourhood?
                   if (
                     resend &&
                     resend >= attempts &&
@@ -253,6 +303,14 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                       error,
                       `Network Error - ${this.host}:${this.port}/${endpoint}`
                     );
+                    // Retries (if any) are exhausted - a genuine,
+                    // unrecoverable-for-now connection failure to this
+                    // specific neighbour. This is the reactive signal
+                    // that replaces routine health polling: mark it down
+                    // and start re-checking just this one node until it
+                    // comes back, instead of blind-knocking the whole
+                    // neighbourhood on a timer.
+                    this.markUnavailable();
                     if (extraHeader !== "X-Bundle: 1") {
                       reject("Network Communication Error");
                     } else {
@@ -309,6 +367,74 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         return sender(Buffer.from(JSON.stringify(post)), "X-Null: 0");
       }
     }
+  }
+
+  /**
+   * Marks this neighbour as unavailable (it was previously home, a real
+   * knock to it just failed) and starts monitoring it for recovery. A
+   * no-op if it's already known down or is intentionally leaving the
+   * network (graceStop).
+   *
+   * @private
+   */
+  private markUnavailable(): void {
+    if (!this.isHome || this.graceStop) {
+      return;
+    }
+    this.isHome = false;
+    ActiveLogger.warn(
+      `Neighbour unavailable, starting recovery checks: ${this.host}:${this.port}`
+    );
+    // Left/right may need to route around this neighbour right away,
+    // rather than waiting on the next scheduled check (which no longer
+    // routinely runs once Stable - see Maintain.healthTimer()).
+    Maintain.pairNow();
+    this.ensureMonitored();
+  }
+
+  /**
+   * Starts recovery polling if this neighbour isn't home and isn't
+   * already being checked - a no-op otherwise.
+   *
+   * @private
+   */
+  private ensureMonitored(): void {
+    if (this.isHome || this.recovering || this.graceStop) {
+      return;
+    }
+    this.recovering = true;
+    this.recoveryCheck();
+  }
+
+  /**
+   * Recovery poll loop for a neighbour marked unavailable. Re-knocks just
+   * this node every RECOVERY_CHECK_INTERVAL until it responds, then marks
+   * it home again and stops. Bails out without resolving if the neighbour
+   * starts gracefully stopping while still down.
+   *
+   * @private
+   */
+  private recoveryCheck(): void {
+    setTimeout(() => {
+      if (this.graceStop) {
+        this.recovering = false;
+        return;
+      }
+      this.knock("status")
+        .then(() => {
+          this.isHome = true;
+          this.recovering = false;
+          ActiveLogger.info(
+            `Neighbour recovered: ${this.host}:${this.port}`
+          );
+          // Reconsider left/right now this neighbour is available again.
+          Maintain.pairNow();
+        })
+        .catch(() => {
+          // Still down - keep checking.
+          this.recoveryCheck();
+        });
+    }, RECOVERY_CHECK_INTERVAL);
   }
 
   /**
