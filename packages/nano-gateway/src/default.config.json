@@ -1,0 +1,18 @@
+{
+  "debug": true,
+  "host": "0.0.0.0:5270",
+  "db": {
+    "url": "http://[user]:[pass]@[host]:[port]",
+    "database": "activeledger",
+    "event": "activeledgerevents",
+    "error": "activeledgererrors"
+  },
+  "nanoGateway": {
+    "allowlist": "./nano-allowlist.json",
+    "authWindowSeconds": 60,
+    "heartbeatSeconds": 5
+  },
+  "CORS": [
+    "*"
+  ]
+}
