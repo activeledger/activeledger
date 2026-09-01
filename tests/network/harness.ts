@@ -359,6 +359,115 @@ export class NetworkHarness {
     }
   }
 
+  /**
+   * Stops a single node the same safe way stop() stops all of them
+   * (`activeledger --stop` plus explicit worker-pool cleanup - see stop()'s
+   * own comment for why a raw SIGTERM/kill isn't enough), leaving the rest
+   * of the network running. For simulating one neighbour becoming
+   * unreachable - restartNode() brings it back.
+   *
+   * @param {number} index
+   */
+  public async killNode(index: number): Promise<void> {
+    const node = this.nodes[index];
+    if (!node) {
+      throw new Error(`No node at index ${index}`);
+    }
+
+    const workerPids = node.child.pid ? collectDescendantPids(node.child.pid) : [];
+
+    if (node.child.exitCode === null && !node.child.killed) {
+      await runStop(node.dataDir);
+    }
+
+    await new Promise<void>((resolve) => {
+      if (node.child.exitCode !== null || node.child.killed) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        try {
+          node.child.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+      }, 5000);
+      node.child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+
+    try {
+      const pidPath = path.join(node.dataDir, ".PID");
+      const pidData = JSON.parse(fs.readFileSync(pidPath, "utf8"));
+      for (const key of ["activeledger", "activestorage", "activecore", "activerestore"]) {
+        const pid = pidData[key];
+        if (pid && pid !== 0 && isProcessAlive(pid)) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // already gone
+          }
+        }
+      }
+    } catch {
+      // No .PID file, or already cleaned up - nothing to do.
+    }
+
+    for (const pid of workerPids) {
+      if (isProcessAlive(pid)) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    }
+  }
+
+  /**
+   * Respawns a node previously stopped via killNode() at the same port,
+   * against the same on-disk data/config (never touched by killNode()),
+   * and waits for it to report status:4 again. Updates this.nodes[index]'s
+   * child handle in place so a later stop()/killNode() call tracks the new
+   * process, not the one killNode() already reaped.
+   *
+   * @param {number} index
+   */
+  public async restartNode(index: number): Promise<void> {
+    const node = this.nodes[index];
+    if (!node) {
+      throw new Error(`No node at index ${index}`);
+    }
+
+    const logFd = fs.openSync(node.logPath, "a");
+    const child = spawn(process.execPath, [LEDGER_ENTRY, "--port", String(node.port)], {
+      cwd: node.dataDir,
+      stdio: ["ignore", logFd, logFd],
+    });
+    this.nodes[index] = { ...node, child };
+
+    const deadline = Date.now() + this.opts.readyTimeoutMs;
+    while (true) {
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for node ${index} to become ready again`);
+      }
+      if (child.exitCode !== null) {
+        throw new Error(`Node ${index} exited early on restart (code ${child.exitCode}) - see ${node.logPath}`);
+      }
+      try {
+        const status = await httpGetJson(`${node.baseUrl}/a/status`);
+        if (status.status === 4) {
+          return;
+        }
+      } catch {
+        // Not up yet, try again next tick
+      }
+      await sleep(300);
+    }
+  }
+
   public cleanup(): void {
     fs.rmSync(this.rootDir, { recursive: true, force: true });
   }

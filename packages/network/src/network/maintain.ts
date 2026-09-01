@@ -60,6 +60,20 @@ export class Maintain {
   private static rebasing: boolean = false;
 
   /**
+   * The left/right candidates pairing() last actually acted on - compared
+   * against on each call to detect a genuine change, independent of
+   * Home.left/Home.right (which only update on a truthy candidate, so
+   * comparing directly against them can never represent "still nothing
+   * found yet" as a stable, no-change state - every call before a
+   * neighbour is first found would otherwise look like a change).
+   *
+   * @private
+   * @type {string | null}
+   */
+  private static lastPairedLeft: string | null = null;
+  private static lastPairedRight: string | null = null;
+
+  /**
    * How many seconds between service calls
    * There is a random assignment of +/- 10 seconds.
    *
@@ -74,6 +88,22 @@ export class Maintain {
     (20 + Math.floor(Math.random() * 15) + -10) * 1000;
 
   private static home: Home;
+
+  /**
+   * True while a healthTimer() polling chain is actively running (started,
+   * not yet stopped by full discovery). Guards against two independent
+   * chains running in parallel - Maintain.init() (called once from cli.ts
+   * at process boot) and Host's own listener-ready callback both call
+   * healthTimer(true) for the very same process, which otherwise starts a
+   * second, fully redundant chain of its own recursive setTimeout calls -
+   * doubling every discovery knock and log line for no benefit. Reset once
+   * a chain naturally stops (full discovery), so a later legitimate
+   * restart still works.
+   *
+   * @private
+   * @type {boolean}
+   */
+  private static timerActive: boolean = false;
 
   /**
    * Creates an instance of Maintain
@@ -94,34 +124,115 @@ export class Maintain {
   /**
    * Maintain Network health
    *
+   * Poll fast (300ms) until this node is Stable (paired with a
+   * left/right), then at the normal ~10-25s cadence until every
+   * *configured* neighbour has actually been discovered - not just the
+   * two needed to pair. Stable only means "found 2" - on a network with
+   * 3+ neighbours, stopping as soon as that's true left a genuine, live
+   * neighbour that just hadn't answered yet permanently undiscovered
+   * (nothing left to ever knock it, since reactive tracking only kicks
+   * in for a neighbour that's already been marked home at least once).
+   * Once every neighbour is accounted for (home or gracefully stopping),
+   * this routine full-mesh poll stops entirely: health from then on is
+   * tracked reactively instead (see Neighbour's own knock() failure
+   * handling, which marks a specific neighbour down and self-polls just
+   * that one node until it recovers - and checkNeighbourhood()'s own
+   * failure path below, which does the equivalent for a neighbour this
+   * node has never yet reached at all).
+   *
    * @public
    * @param {boolean} [boot=false]
    */
   public static healthTimer(boot: boolean = false) {
+    if (boot) {
+      if (Maintain.timerActive) {
+        // A chain is already running (see timerActive's own comment) -
+        // starting a second one would just double every discovery knock
+        // and log line for the rest of the discovery phase, for no
+        // benefit.
+        return;
+      }
+      Maintain.timerActive = true;
+    }
+    if (Maintain.allNeighboursDiscovered()) {
+      // First tick where every configured neighbour is accounted for -
+      // routine full-mesh polling stops here for good (health tracking
+      // continues reactively instead, see Neighbour's own knock()
+      // failure handling). Worth a real log line since it won't fire
+      // again until a fresh boot or network reset.
+      const home = Maintain.neighbourOrder.filter((n) => n.isHome).length;
+      const leaving = Maintain.neighbourOrder.filter((n) => n.graceStop).length;
+      ActiveLogger.info(
+        `Neighbourhood fully discovered (${home} home, ${leaving} leaving, ${Maintain.neighbourOrder.length} configured) - routine polling stopped, health now tracked reactively`
+      );
+      Maintain.timerActive = false;
+      return;
+    }
     setTimeout(() => {
       Maintain.healthTimer();
     }, Maintain.getInterval());
     if (!boot) {
-      if (Maintain.home && Maintain.home.getStatus() !== NeighbourStatus.Stable) {
-        ActiveLogger.debug("Checking Neighbourhood");
-      }
+      ActiveLogger.debug("Checking Neighbourhood");
       Maintain.checkNeighbourhood();
     }
   }
 
   /**
-   * Cold boot connection to network faster
+   * True once every configured neighbour is either home or intentionally
+   * leaving (graceStop) - the point past which the routine full-mesh
+   * poll has nothing left to discover.
+   *
+   * @private
+   * @static
+   * @returns {boolean}
+   */
+  private static allNeighboursDiscovered(): boolean {
+    return (
+      !!Maintain.neighbourOrder &&
+      Maintain.neighbourOrder.every(
+        (neighbour) => neighbour.isHome || neighbour.graceStop
+      )
+    );
+  }
+
+  /**
+   * Cold boot connection to network faster.
+   *
+   * Was gated on Stable (just 2 paired neighbours - enough for left/right,
+   * not enough to have found every configured neighbour on a 3+-node
+   * network), not on full discovery - so on a network where Stable is
+   * reached before every neighbour has actually responded once, this could
+   * jump straight from the fast 300ms boot cadence to the slow 10-25s
+   * cadence while neighbours were still genuinely undiscovered. Since
+   * healthTimer() already stops polling entirely once
+   * allNeighboursDiscovered() is true, there's no reason for an
+   * intermediate slow-but-still-polling phase at all - stay fast for the
+   * whole discovery phase, however long that takes, then stop.
    *
    * @private
    * @static
    * @returns {number}
    */
   private static getInterval(): number {
-    if (Maintain.home.getStatus() != NeighbourStatus.Stable) {
+    if (!Maintain.allNeighboursDiscovered()) {
       return 300;
     } else {
       return Maintain.interval;
     }
+  }
+
+  /**
+   * Re-runs pairing with each neighbour's current isHome state, without
+   * a network re-knock. Called whenever a neighbour's own reactive health
+   * tracking flips its isHome flag (see Neighbour), so left/right update
+   * immediately instead of waiting on a routine recheck that no longer
+   * runs once Stable.
+   *
+   * @public
+   * @static
+   */
+  public static pairNow(): void {
+    Maintain.pairing();
   }
 
   /**
@@ -217,12 +328,12 @@ export class Maintain {
               resolve();
             })
             .catch(() => {
-              // Still the same network?
-              if (currentRef == Home.reference) {
-                // Node isn't home (Any error is a bad error)
-                // TODO redo all of this
-                //neighbour.isHome = false;
-              }
+              // Not home yet - nothing more to do here. allNeighboursDiscovered()
+              // (above) keeps this fast (300ms) periodic check running until
+              // every configured neighbour has been found, so a neighbour that
+              // simply hasn't started listening yet just gets retried on the
+              // next tick - no need for the separate, much slower (3s) per-
+              // neighbour recovery-poll loop to also chase it during boot.
               // This isn't a failure so resolve to move on.
               resolve();
             });
@@ -292,17 +403,29 @@ export class Maintain {
       if (isRight && isLeft) break;
     }
 
-    if (
-      (isLeft && Home.left.reference != isLeft.reference) ||
-      Home.right.reference != isRight?.reference
-    ) {
-      // Set direct neighbours onto home
-      ActiveLogger.debug(
-        { left: isLeft?.reference, right: isRight?.reference },
-        "New Neighbour Update"
+    const leftRef = isLeft?.reference ?? null;
+    const rightRef = isRight?.reference ?? null;
+
+    if (leftRef !== Maintain.lastPairedLeft || rightRef !== Maintain.lastPairedRight) {
+      // Compared against lastPairedLeft/Right, not Home.left/Home.right -
+      // those only update on a truthy candidate (setNeighbours() is a
+      // no-op for null), so they can never represent "still nothing found
+      // yet" as a stable value. Comparing directly against them meant
+      // every single call before a neighbour was first found looked like
+      // a change, logging (and redundantly calling setNeighbours(), with
+      // its subprocess IPC update) on every tick instead of only on an
+      // actual topology change.
+      Maintain.lastPairedLeft = leftRef;
+      Maintain.lastPairedRight = rightRef;
+
+      // A real topology change (who this node routes consensus through),
+      // worth an INFO line with host:port rather than raw reference
+      // hashes, which aren't meaningful at a glance.
+      ActiveLogger.info(
+        `Left/right neighbour update - left=${isLeft ? `${isLeft.host}:${isLeft.port}` : "none"} right=${isRight ? `${isRight.host}:${isRight.port}` : "none"}`
       );
       try {
-        Maintain.home.setNeighbours(isLeft?.reference || null, isRight?.reference || null);
+        Maintain.home.setNeighbours(leftRef, rightRef);
       }catch{
         ActiveLogger.fatal("Problem setting Right, Try again next loop");
         //this.pairing();
