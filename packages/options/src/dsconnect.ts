@@ -544,7 +544,20 @@ export class ActiveDSChanges
         if (!this.stop) {
           // Map last_seq -> seq (Matches Pouch Connector)
           // and update since for next round of listening
-          this.opts.since = response.id;
+          //
+          // `response` here is the raw ActiveRequest/axios wrapper - it
+          // has no top-level `.id` at all (that was always undefined).
+          // The server writes `last_seq` inside the JSON body itself
+          // (selfhost.ts's longpoll handler: `res.write('],\n"last_seq":'
+          // + change.seq + "}\n")`), i.e. under `.data`, not `.id`. Every
+          // round after the first therefore requested `since=undefined`
+          // -> parseInt(undefined) = NaN server-side - live-confirmed as
+          // part of the same investigation that found the longpoll
+          // handler's response was never being finalised at all (see
+          // that fix in packages/storage/src/selfhost.ts) - fixing just
+          // that bug wasn't enough on its own, this one still silently
+          // broke every round after the first.
+          this.opts.since = response.data?.last_seq ?? this.opts.since;
 
           if (this.bulk) {
             // Emit all changed data
