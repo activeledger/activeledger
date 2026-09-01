@@ -12,7 +12,7 @@
     "network",
     "node"
   ],
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/activeledger",
   "preferGlobal": true,
   "bin": {
     "activerestore": "./lib/index.js"

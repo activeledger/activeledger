@@ -1,0 +1,7 @@
+{
+  "auto_compact": true,
+  "compact_token_threshold": 60000,
+  "max_tool_output_lines": 50,
+  "auto_commit_on_pass": true,
+  "subagent_context_isolation": true
+}
