@@ -784,8 +784,21 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
                   res.write(JSON.stringify(change));
                   res.write('],\n"last_seq":' + change.seq + "}\n");
                 }
-                //res.end();
-                //cleanUp();
+                // A CouchDB longpoll round is exactly one change, then the
+                // client reconnects for the next - this response was never
+                // actually finalised (both lines below were commented out),
+                // so a client whose HTTP layer waits for the response to
+                // complete before resolving (ActiveRequest/axios does, by
+                // default) hangs forever the moment a real change occurs,
+                // even though the bytes above were already written to the
+                // socket. Live-confirmed: this is why a nano-gateway
+                // subscriber connects fine (heartbeats keep flowing) but
+                // never actually receives a push for a real, committed
+                // change - ActiveDSChanges.listen() (packages/options/src/dsconnect.ts)
+                // never gets a resolved response to react to.
+                res.end();
+                cleanUp();
+                cancelChanges();
               };
 
               // Stop listening for changes

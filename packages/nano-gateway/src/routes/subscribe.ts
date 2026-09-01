@@ -36,7 +36,9 @@ import { IWritableHttpResponse, NanoSSE } from "../sse";
  * by reading its published lib/httpd.js), so custom x-nano-* headers
  * would never arrive. The body is already freely JSON and already how
  * nano sends its stream-id list, so this just extends that shape rather
- * than fighting the framework.
+ * than fighting the framework. Last-Event-ID *is* one of the forwarded
+ * headers though (Activecore's own SSE feature already relied on it),
+ * so resume uses the real header, not another body field.
  */
 export interface ISubscribeRequestBody {
   identity: string;
@@ -52,9 +54,14 @@ export interface ISubscribeOptions {
   heartbeatSeconds: number;
 }
 
+/** Loose shape of what @activeledger/httpd's listen() actually builds for the "req" handler param - see the header-forwarding note above. */
+export interface IHttpdRequest {
+  headers?: Record<string, string | undefined>;
+}
+
 export async function subscribe(
   incoming: IActiveHttpIncoming,
-  _req: unknown,
+  req: IHttpdRequest,
   res: IWritableHttpResponse,
   options: ISubscribeOptions
 ): Promise<"handled"> {
@@ -88,11 +95,16 @@ export async function subscribe(
     return "handled";
   }
 
-  const watcher = new ChangesWatcher(options.db, new Set(streamIds));
+  // Reconnecting after a drop resumes from exactly where the client left
+  // off instead of missing whatever changed in the gap - a fresh
+  // subscription (no header) just starts from "now", same as before.
+  const resumeFrom = req.headers?.["Last-Event-ID"] || "now";
+
+  const watcher = new ChangesWatcher(options.db, new Set(streamIds), resumeFrom);
   const sse = new NanoSSE(res, options.heartbeatSeconds, () => watcher.stop());
 
   watcher.start(
-    (doc) => sse.write({ event: "update", stream: doc, time: Date.now() }),
+    (doc, seq) => sse.write({ event: "update", stream: doc, time: Date.now() }, seq),
     (error) => {
       sse.write({ event: "error", message: String(error), time: Date.now() });
     }
