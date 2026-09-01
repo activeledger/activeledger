@@ -15,7 +15,7 @@
     "network",
     "hybrid"
   ],
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/activeledger",
   "preferGlobal": true,
   "bin": {
     "activehybrid": "./lib/index.js"

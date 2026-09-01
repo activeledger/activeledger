@@ -12,7 +12,7 @@
     "dlt",
     "distributed ledger technology"
   ],
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/activeledger",
   "main": "./lib/index.js",
   "scripts": {
     "start": "node lib/index.js",
