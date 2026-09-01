@@ -196,6 +196,8 @@ async function main(): Promise<boolean> {
 
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
 
+    await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId);
+
     return report.summary();
   } finally {
     report.phase("Tearing down network");
@@ -540,6 +542,87 @@ async function runSpiTests(
     report.record("spi-non-origin", ok, ms);
     ok
       ? report.ok(`Transaction succeeded via node ${originNode.port} as origin, desynced peer included (${ms}ms)`)
+      : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
+  }
+}
+
+/**
+ * Exercises the reactive neighbourhood health-check end to end - the one
+ * scenario that was, until now, only ever verified manually (kill a node
+ * by hand, read the logs). Everything else in this suite tests the happy
+ * path; this is the actual point of the redesign, so it gets its own
+ * automated regression guard against both halves of the failure mode this
+ * session's work fixed:
+ *
+ * - A transaction submitted while a neighbour is down must still complete
+ *   promptly via the remaining nodes, not silently hang waiting on a
+ *   neighbour nothing is going to mark unavailable (the original
+ *   ActiveRequest.send()-never-rejects bug) or on stale/incomplete
+ *   discovery racing the harness's own readiness check (the
+ *   getInterval()/Stable bug) - both fixed earlier in this same PR.
+ * - The network must actually recover once the neighbour comes back, not
+ *   just correctly notice it went away.
+ */
+async function runNodeRecoveryTests(
+  report: Report,
+  harness: NetworkHarness,
+  nodes: NetworkNode[],
+  identity: Identity,
+  namespace: string,
+  returnerId: string
+): Promise<void> {
+  const downNode = nodes[1];
+  const originNode = nodes[0];
+
+  report.phase(`Node recovery: killing node ${downNode.port} mid-operation`);
+  await harness.killNode(downNode.index);
+  report.ok(`Node ${downNode.port} stopped`);
+
+  report.phase(`Node recovery: transaction via node ${originNode.port} with node ${downNode.port} down`);
+  {
+    // Generous relative to the ~1-2s typical transaction time seen
+    // elsewhere in this suite, but a small, deliberate fraction of the
+    // harness's own 20s HTTP timeout - the exact symptom being guarded
+    // against here is a transaction silently riding that timeout out
+    // instead of completing promptly via the 3 remaining nodes.
+    const REGRESSION_THRESHOLD_MS = 12000;
+    try {
+      const { result, ms } = await timed(() =>
+        runContract(originNode.baseUrl, identity, namespace, returnerId, { message: "node-down-recovery" })
+      );
+      const ok = !result.$summary?.errors && ms < REGRESSION_THRESHOLD_MS;
+      report.record("node-down-transaction", ok, ms);
+      if (!result.$summary?.errors && ms < REGRESSION_THRESHOLD_MS) {
+        report.ok(`Transaction completed in ${ms}ms with node ${downNode.port} down (well under the ${REGRESSION_THRESHOLD_MS}ms regression threshold)`);
+      } else if (result.$summary?.errors) {
+        report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
+      } else {
+        report.fail(`Completed in ${ms}ms - at or over the ${REGRESSION_THRESHOLD_MS}ms regression threshold, the network isn't routing around the down node promptly`);
+      }
+    } catch (error) {
+      report.record("node-down-transaction", false, 0);
+      report.fail(`Transaction threw instead of completing - likely hung until the harness's own HTTP timeout: ${error}`);
+    }
+  }
+
+  report.phase(`Node recovery: restarting node ${downNode.port}`);
+  await harness.restartNode(downNode.index);
+  report.ok(`Node ${downNode.port} back up and reporting Stable`);
+
+  // Give the reactive recovery-poll loop (RECOVERY_CHECK_INTERVAL, 3s) a
+  // beat to actually notice and re-mark the node home on the other
+  // nodes' side, not just confirm the restarted node's own status.
+  await new Promise((r) => setTimeout(r, 4000));
+
+  report.phase(`Node recovery: transaction via node ${originNode.port} after node ${downNode.port} recovered`);
+  {
+    const { result, ms } = await timed(() =>
+      runContract(originNode.baseUrl, identity, namespace, returnerId, { message: "node-recovered" })
+    );
+    const ok = !result.$summary?.errors;
+    report.record("node-recovered-transaction", ok, ms);
+    ok
+      ? report.ok(`Transaction succeeded after node ${downNode.port} recovered (${ms}ms)`)
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
   }
 }
