@@ -97,10 +97,20 @@ export class NanoSSE {
     }, heartbeatSeconds * 1000);
   }
 
-  public write(event: unknown): boolean {
+  /**
+   * @param id The DB changes-feed sequence this event came from, when
+   * known - written as an `id:` line so a client's Last-Event-ID header
+   * on reconnect can resume from exactly this point (@activeledger/httpd
+   * forwards Last-Event-ID to route handlers - confirmed by reading its
+   * source, unlike the fixed set of headers it does NOT forward, which is
+   * why auth travels in the subscribe body instead). Matches Activecore's
+   * own frame shape (packages/core/src/controllers/sse.ts, main repo).
+   */
+  public write(event: unknown, id?: string | number): boolean {
     if (this.closed || !this.res.writable) return false;
     this.res.cork(() => {
-      this.res.write(`data:${JSON.stringify(event)}\n\n`);
+      const idLine = id !== undefined ? `id:${id}\n` : "";
+      this.res.write(`${idLine}data:${JSON.stringify(event)}\n\n`);
     });
     return true;
   }

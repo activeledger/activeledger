@@ -23,6 +23,7 @@
 
 import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
+import { looksLikeDoc } from "./stream";
 
 /**
  * Transaction-by-umid lookup, off the `{umid}:umid` doc streamUpdater.ts
@@ -35,7 +36,7 @@ import { IActiveHttpIncoming } from "@activeledger/httpd";
 export async function getTransaction(incoming: IActiveHttpIncoming, db: ActiveDSConnect): Promise<unknown> {
   try {
     const doc = await db.get(`${incoming.url[2]}:umid`);
-    return { transaction: doc.umid ?? null };
+    return { transaction: looksLikeDoc(doc) ? doc.umid ?? null : null };
   } catch {
     return { transaction: null };
   }

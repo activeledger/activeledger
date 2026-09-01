@@ -25,6 +25,22 @@ import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { IActiveHttpIncoming } from "@activeledger/httpd";
 
 /**
+ * True only for something that actually looks like a stored document.
+ * Load-bearing, not defensive-for-its-own-sake: live-confirmed against
+ * the real devnet that ActiveDSConnect.get() on a missing key does NOT
+ * reject here. ActiveRequest.send() (this session's own earlier finding,
+ * see project_hpe18_deterministic_stream_bug memory) never rejects on a
+ * non-2xx HTTP status - only on a genuine network failure - so the
+ * self-hosted LevelDB backend's not-found response (HTTP 500 with a
+ * `{notFound: true, code: "LEVEL_NOT_FOUND"}` body) resolves successfully
+ * instead of throwing. A plain try/catch around db.get() silently returns
+ * that error object as if it were the document.
+ */
+export function looksLikeDoc(value: unknown): value is { _id: string; [key: string]: unknown } {
+  return typeof value === "object" && value !== null && typeof (value as { _id?: unknown })._id === "string";
+}
+
+/**
  * Single stream read. Deliberately NOT a port of Activecore's getStream()
  * (packages/core/src/controllers/streams.ts) - that has a real bug
  * (`delete results._id, results._rev;` is a comma expression, only the
@@ -35,7 +51,7 @@ import { IActiveHttpIncoming } from "@activeledger/httpd";
 export async function getStream(incoming: IActiveHttpIncoming, db: ActiveDSConnect): Promise<unknown> {
   try {
     const doc = await db.get(incoming.url[2]);
-    return { stream: doc };
+    return { stream: looksLikeDoc(doc) ? doc : null };
   } catch {
     return { stream: null };
   }

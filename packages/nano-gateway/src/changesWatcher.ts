@@ -46,17 +46,26 @@ function isStateDocChange(change: { doc: { _id: string; $activeledger?: { delete
 export class ChangesWatcher {
   private feed: ActiveDefinitions.IActiveDSChanges | null = null;
 
-  constructor(private db: ActiveDSConnect, private streamIds: Set<string>) {}
+  /**
+   * @param since Where to resume the changes feed from - a DB sequence
+   * (as previously handed back via onChange's seq param) to replay
+   * anything missed while disconnected, or "now" for a fresh subscription
+   * with no history. Comes from the client's Last-Event-ID on reconnect.
+   */
+  constructor(private db: ActiveDSConnect, private streamIds: Set<string>, private since: string | number = "now") {}
 
-  public start(onChange: (doc: Record<string, unknown> & { _id: string; _rev: string }) => void, onError: (error: unknown) => void): void {
-    const result = this.db.changes({ live: true, since: "now", include_docs: true });
+  public start(
+    onChange: (doc: Record<string, unknown> & { _id: string; _rev: string }, seq: string | number) => void,
+    onError: (error: unknown) => void
+  ): void {
+    const result = this.db.changes({ live: true, since: this.since, include_docs: true });
     // The interface's return type is `Promise<any> | IActiveDSChanges` - live:true always takes the sync branch (dsconnect.ts's changes()).
     this.feed = result as ActiveDefinitions.IActiveDSChanges;
 
-    this.feed.on("change", (change: { doc: Record<string, unknown> & { _id: string; _rev: string } }) => {
+    this.feed.on("change", (change: { doc: Record<string, unknown> & { _id: string; _rev: string }; seq: string | number }) => {
       if (!isStateDocChange(change as any)) return;
       if (!this.streamIds.has(change.doc._id)) return;
-      onChange(change.doc);
+      onChange(change.doc, change.seq);
     });
 
     this.feed.on("error", onError);
