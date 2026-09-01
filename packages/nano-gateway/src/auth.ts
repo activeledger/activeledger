@@ -24,6 +24,7 @@
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { Allowlist } from "./allowlist";
+import { looksLikeDoc } from "./routes/stream";
 
 /** Matches the (loosely typed, not in @activeledger/activedefinitions) shape of meta.authorities - see packages/contracts/src/stream.ts's addAuthority()/ILedgerAuthority. */
 interface IMetaAuthority {
@@ -72,7 +73,15 @@ export async function verifyHandshake(
 
   let meta: { authorities?: IMetaAuthority[] };
   try {
-    meta = await db.get(`${identity}:stream`);
+    const doc = await db.get(`${identity}:stream`);
+    // ActiveRequest.send() never rejects on non-2xx (this session's own
+    // earlier finding) - a missing key on the self-hosted backend resolves
+    // with a LevelDB error object instead of throwing. See routes/stream.ts's
+    // looksLikeDoc() doc comment for the full explanation.
+    if (!looksLikeDoc(doc)) {
+      return { ok: false, reason: "identity has no on-ledger record" };
+    }
+    meta = doc as { authorities?: IMetaAuthority[] };
   } catch {
     return { ok: false, reason: "identity has no on-ledger record" };
   }

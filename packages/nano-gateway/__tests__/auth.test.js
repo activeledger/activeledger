@@ -22,7 +22,11 @@ function fakeDb(docsById) {
     async get(id) {
       const doc = docsById[id];
       if (!doc) throw new Error("not found");
-      return doc;
+      // Every real doc has _id - looksLikeDoc() (routes/stream.ts) checks
+      // for it to detect the self-hosted backend's live-confirmed quirk of
+      // resolving a missing key with a LevelDB error object instead of
+      // rejecting, so fixtures need to look like real docs too.
+      return { _id: id, ...doc };
     },
   };
 }
