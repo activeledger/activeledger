@@ -285,6 +285,25 @@ export class KeyPair {
   }
 
   /**
+   * Left-pad a big-endian scalar to a fixed byte length. node:crypto's
+   * ECDH.getPrivateKey() returns the minimal-length encoding (leading zero
+   * bytes stripped), not a fixed-width one.
+   *
+   * @private
+   * @param {Buffer} key
+   * @param {number} [length=32] secp256k1's field size in bytes
+   * @returns {Buffer}
+   */
+  private padPrivateKey(key: Buffer, length: number = 32): Buffer {
+    if (key.length === length) {
+      return key;
+    }
+    const padded = Buffer.alloc(length);
+    key.copy(padded, length - key.length);
+    return padded;
+  }
+
+  /**
    * Generate Key Pair
    *
    * @param {number} [bits=2048]
@@ -335,18 +354,23 @@ export class KeyPair {
         let curve: crypto.ECDH = crypto.createECDH("secp256k1");
         curve.generateKeys();
 
+        // ECDH.getPrivateKey() strips leading zero bytes instead of
+        // returning a fixed-width 32-byte scalar (about 1 in 400 keys hit
+        // this) - left-pad back to 32 bytes, or a short-by-chance key
+        // silently produces a non-standard-length SEC1 private key field
+        // that other, stricter parsers (other-language SDKs, etc.) may not
+        // accept.
+        const privateKey = this.padPrivateKey(curve.getPrivateKey());
+
         if (pem) {
           // Create Return Object
           this.createHandler(
-            AsnParser.encodeECPrivateKey(
-              curve.getPrivateKey(),
-              curve.getPublicKey()
-            ),
+            AsnParser.encodeECPrivateKey(privateKey, curve.getPublicKey()),
             AsnParser.encodeECPublicKey(curve.getPublicKey())
           );
         } else {
           this.createHandler(
-            "0x" + curve.getPrivateKey().toString("hex"),
+            "0x" + privateKey.toString("hex"),
             compressed
               ? "0x" + curve.getPublicKey("hex", "compressed")
               : "0x" + curve.getPublicKey("hex", "uncompressed")
