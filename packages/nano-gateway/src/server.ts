@@ -27,7 +27,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { Allowlist } from "./allowlist";
 import { getStream, getStreams } from "./routes/stream";
 import { getTransaction } from "./routes/tx";
-import { subscribe } from "./routes/subscribe";
+import { subscribe, IHttpdRequest } from "./routes/subscribe";
 import { IWritableHttpResponse } from "./sse";
 
 export class NanoGatewayServer {
@@ -58,7 +58,7 @@ export class NanoGatewayServer {
     this.httpServer.use(
       "/api/activity/subscribe",
       "POST",
-      (incoming: IActiveHttpIncoming, req: unknown, res: IWritableHttpResponse) =>
+      (incoming: IActiveHttpIncoming, req: IHttpdRequest, res: IWritableHttpResponse) =>
         subscribe(incoming, req, res, {
           db: this.db,
           allowlist: this.allowlist,
