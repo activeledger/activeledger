@@ -192,6 +192,8 @@ async function main(): Promise<boolean> {
 
     await runDeterministicStreamTests(report, nodes);
 
+    await runMetaGrowthTest(report, nodes, identity, NAMESPACE, returnerId);
+
     await runStoragePathValidationTests(report, nodes);
 
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
@@ -359,6 +361,63 @@ async function runDeterministicStreamTests(report: Report, nodes: NetworkNode[])
     report.ok(`Repeated seed correctly rejected with "Deterministic Stream Name Exists" via node ${nodes[1].port} (${secondMs}ms)`);
   } else {
     report.fail(`Expected a real collision rejection, got: ${JSON.stringify(second.$summary)}`);
+  }
+}
+
+/**
+ * Regression check for the streamUpdater.ts/stream.ts fix (v4.5.6):
+ * meta.umid used to be permanently frozen at whichever transaction first
+ * created a stream, never refreshed on later updates - and the
+ * previous attempt at tracking transaction history (meta.txs, allowed to
+ * grow unbounded) was reverted after it got too expensive to load. This
+ * checks both halves stay fixed: umid tracks the *latest* transaction on
+ * every round, and the meta doc's own size stays flat rather than
+ * creeping up as more transactions accumulate against the same stream.
+ */
+async function runMetaGrowthTest(
+  report: Report,
+  nodes: NetworkNode[],
+  identity: Identity,
+  namespace: string,
+  returnerId: string
+): Promise<void> {
+  report.phase("Meta doc growth: umid tracks the latest transaction, doc size stays flat");
+
+  const ROUNDS = 20;
+  const sizes: number[] = [];
+  let allMatch = true;
+
+  for (let i = 1; i <= ROUNDS; i++) {
+    const result = await runContract(nodes[0].baseUrl, identity, namespace, returnerId, { message: `growth-check-${i}` });
+    if (result.$summary?.errors) {
+      report.fail(`Round ${i} unexpectedly rejected: ${JSON.stringify(result.$summary)}`);
+      allMatch = false;
+      continue;
+    }
+
+    const metaDoc = await storageGet(nodes[0].storageUrl, `${identity.streamId}:stream`);
+    const matchesLatest = metaDoc.umid === result.$umid;
+    if (!matchesLatest) allMatch = false;
+    sizes.push(Buffer.byteLength(JSON.stringify(metaDoc), "utf8"));
+  }
+
+  report.record("meta-umid-tracks-latest", allMatch, 0);
+  if (allMatch) {
+    report.ok(`meta.umid correctly matched its own round's transaction across all ${ROUNDS} rounds`);
+  } else {
+    report.fail(`meta.umid did not match the latest transaction on at least one of ${ROUNDS} rounds`);
+  }
+
+  // A few bytes of wobble is expected (umid/_rev are hex/decimal strings
+  // of slightly varying length round to round) - anything beyond that
+  // means something is accumulating, which is exactly the failure mode
+  // this test exists to catch.
+  const flat = Math.max(...sizes) - Math.min(...sizes) <= 8;
+  report.record("meta-doc-size-flat", flat, 0);
+  if (flat) {
+    report.ok(`Meta doc size stayed flat across ${ROUNDS} rounds (${Math.min(...sizes)}-${Math.max(...sizes)} bytes)`);
+  } else {
+    report.fail(`Meta doc size grew beyond expected wobble: ${Math.min(...sizes)}-${Math.max(...sizes)} bytes across ${ROUNDS} rounds`);
   }
 }
 
