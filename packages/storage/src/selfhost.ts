@@ -724,7 +724,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     async (
       incoming: IActiveHttpIncoming,
       req: http.IncomingMessage,
-      res: http.ServerResponse
+      res: IActiveHttpResponse
     ) => {
       // Get Database
       let db = getDB(incoming.url[0]);
@@ -758,41 +758,73 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
             }
           };
 
-          // Set Header. A prior "fix" (425ccc6, "make sse work again!")
-          // replaced this with two res.write() calls below writing literal
-          // "HTTP/1.1 200 OK\r\n\r\n"/"Connection: close\r\n" text - but
-          // res.write() here appends to the response BODY, not headers (this
-          // isn't Node's raw http.ServerResponse), so every _changes longpoll
-          // response body has always started with that garbage text ahead of
-          // the real JSON. Never noticed because the response was also never
-          // finalised (see the listener's res.end()/cleanUp() fix above) -
-          // a client whose HTTP layer never got a resolved response never
-          // got as far as trying to parse the (corrupted) body. Now that it
-          // does: live-confirmed this is exactly why a real push arrived as
-          // `TypeError: Cannot read properties of null (reading 'results')`
-          // in ActiveDSChanges.listen() (packages/options/src/dsconnect.ts) -
-          // response.data was never valid JSON to begin with.
-          res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+          // `res` here is the RAW uWebSockets.js HttpResponse (see
+          // IActiveHttpResponse/@activeledger/httpd/src/httpd.ts -
+          // it constructs a Node-like synthetic object for `req`, but
+          // passes `res` straight through unwrapped). The `http`/
+          // `http.ServerResponse` types this file imports for `req`/`res`
+          // are Node's own - never real here, a holdover from before this
+          // framework's uWS.js migration. Two real, compounding bugs
+          // followed from believing them: res.setHeader() doesn't exist on
+          // a real uWS HttpResponse (a prior "fix", 425ccc6 "make sse work
+          // again!", replaced a setHeader() call with two res.write() calls
+          // writing literal "HTTP/1.1 200 OK\r\n\r\n" text into the BODY
+          // instead - also wrong, since write() there is real and does
+          // append to the body); and every write from here on happens in a
+          // LATER tick than the request handler's own synchronous top
+          // portion (a .then() callback, an EventEmitter listener firing
+          // whenever a future change occurs) - uWS requires those to be
+          // wrapped in res.cork(), same as the already-working /events SSE
+          // handler (sse.ts) already does, or the write silently corrupts/
+          // fails. None of this was ever caught because BOTH bugs (and two
+          // more besides - see levelme.ts's since="now" and seq fixes)
+          // left the response either hanging forever or throwing before
+          // any client ever got as far as trying to parse a body - so nothing
+          // ever actually exercised this branch successfully until all of
+          // them were fixed together.
+          res.cork(() => {
+            res.writeHeader("Content-type", ActiveHttpd.mimeType[".json"]);
+          });
 
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
 
           db.changesFromSeq(incoming.query).then((complete: any) => {
             if (complete.results.length) {
-              res.write(JSON.stringify(complete));
-              res.end();
+              if (res.writable) {
+                res.cork(() => {
+                  res.write(JSON.stringify(complete));
+                  res.end();
+                });
+              }
               cleanUp();
             } else {
               // do the longpolling
               // mimicking CouchDB, start sending the JSON immediately
-              res.write('{"results":[\n');
+              if (res.writable) {
+                res.cork(() => {
+                  res.write('{"results":[\n');
+                });
+              }
               incoming.query.live = incoming.query.continuous = true;
 
               // Listener Process event (to turn off)
               const listener = (change: any) => {
-                if (!req.connection.destroyed) {
-                  res.write(JSON.stringify(change));
-                  res.write('],\n"last_seq":' + change.seq + "}\n");
+                // res.writable - not req.connection.destroyed, which was
+                // always a harmless no-op here anyway (the httpd
+                // framework's synthetic `req` object only ever carries
+                // connection.remoteAddress, so .destroyed just silently
+                // read undefined - never actually gated anything, and
+                // never threw either, just dead logic). res.writable is
+                // the real, framework-maintained "is this connection still
+                // open" flag (sse.ts's SSE class already relies on the
+                // same one).
+                if (res.writable) {
+                  res.cork(() => {
+                    res.write(JSON.stringify(change));
+                    res.write('],\n"last_seq":' + change.seq + "}\n");
+                    res.end();
+                  });
                 }
                 // A CouchDB longpoll round is exactly one change, then the
                 // client reconnects for the next - this response was never
@@ -806,7 +838,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
                 // never actually receives a push for a real, committed
                 // change - ActiveDSChanges.listen() (packages/options/src/dsconnect.ts)
                 // never gets a resolved response to react to.
-                res.end();
                 cleanUp();
                 cancelChanges();
               };
@@ -814,11 +845,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
               // Stop listening for changes
               const cancelChanges = () => {
                 changes.off("change", listener);
-                //req.connection.off("close", cancelChanges);
               };
-
-              // Run on close connection
-              //req.connection.on("close", cancelChanges);
 
               // Listening for changes
               let changes = db.changes().on("change", listener);
@@ -830,11 +857,13 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
             // server-side, all the way up through whatever HTTP client hit
             // this route. Finalise the response with a real error instead
             // of leaving it hanging or silently swallowed.
-            if (!req.connection.destroyed) {
-              res.statusCode = 500;
-              res.write(JSON.stringify({ error: String(error) }));
+            if (res.writable) {
+              res.cork(() => {
+                res.writeStatus("500");
+                res.write(JSON.stringify({ error: String(error) }));
+                res.end();
+              });
             }
-            res.end();
             cleanUp();
           });
         }
