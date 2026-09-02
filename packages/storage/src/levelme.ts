@@ -825,6 +825,26 @@ export class LevelMe {
     last_seq: number;
   }> {
     return new Promise((resolve, reject) => {
+      // since="now" (nano-gateway's ChangesWatcher default for a fresh
+      // subscription with no Last-Event-ID to resume from -
+      // packages/nano-gateway/src/changesWatcher.ts) means "nothing is
+      // pending as of this instant" - resolve that directly rather than
+      // falling through to the numeric-seq path below, which used to do
+      // "now".padStart(16, "0") = "0000000000000now" as a LevelDB range
+      // key. That's not a valid padded-numeric sequence key, and the
+      // underlying driver's createReadStream() throws on it - which,
+      // since selfhost.ts's _changes handler has no .catch() on this
+      // promise, surfaced as an opaque 500 with an empty {} body all the
+      // way up through nano-gateway's own client (live-confirmed: this is
+      // exactly what broke nano-gateway's very first subscribe attempt
+      // once the two other _changes bugs - unfinalised response, and the
+      // separate garbage-header-bytes bug - were fixed and this code path
+      // was reached for the first time).
+      if (options.since === "now") {
+        resolve({ results: [], last_seq: 0 });
+        return;
+      }
+
       // get all sequenced documents with emitter, sequence "maybe up to date"
       // Cache rows to be returned
       const rows: any[] = [];

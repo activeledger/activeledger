@@ -823,6 +823,19 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
               // Listening for changes
               let changes = db.changes().on("change", listener);
             }
+          }).catch((error: unknown) => {
+            // Previously unhandled - a rejection here (e.g. a malformed
+            // `since`) surfaced only as an opaque 500 with an empty {}
+            // body and no indication anything had actually gone wrong
+            // server-side, all the way up through whatever HTTP client hit
+            // this route. Finalise the response with a real error instead
+            // of leaving it hanging or silently swallowed.
+            if (!req.connection.destroyed) {
+              res.statusCode = 500;
+              res.write(JSON.stringify({ error: String(error) }));
+            }
+            res.end();
+            cleanUp();
           });
         }
         return "handled";
