@@ -758,11 +758,21 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
             }
           };
 
-          // Set Header
-          //res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
-
-          res.write(`HTTP/1.1 200 OK\r\n\r\n`);
-          res.write(`Connection: close\r\n`);
+          // Set Header. A prior "fix" (425ccc6, "make sse work again!")
+          // replaced this with two res.write() calls below writing literal
+          // "HTTP/1.1 200 OK\r\n\r\n"/"Connection: close\r\n" text - but
+          // res.write() here appends to the response BODY, not headers (this
+          // isn't Node's raw http.ServerResponse), so every _changes longpoll
+          // response body has always started with that garbage text ahead of
+          // the real JSON. Never noticed because the response was also never
+          // finalised (see the listener's res.end()/cleanUp() fix above) -
+          // a client whose HTTP layer never got a resolved response never
+          // got as far as trying to parse the (corrupted) body. Now that it
+          // does: live-confirmed this is exactly why a real push arrived as
+          // `TypeError: Cannot read properties of null (reading 'results')`
+          // in ActiveDSChanges.listen() (packages/options/src/dsconnect.ts) -
+          // response.data was never valid JSON to begin with.
+          res.setHeader("Content-type", ActiveHttpd.mimeType[".json"]);
 
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
