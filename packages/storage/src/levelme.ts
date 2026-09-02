@@ -737,6 +737,7 @@ export class LevelMe {
       id: string;
       changes: { rev: string }[];
       doc: document;
+      seq: number;
     };
   }> {
     await this.open();
@@ -804,6 +805,22 @@ export class LevelMe {
         id: doc._id,
         changes: [{ rev: newRev }],
         doc,
+        // No real sequence counter exists anywhere in this class - nothing
+        // ever writes a LevelMe.SEQ_PREFIX-keyed entry, despite
+        // changesFromSeq()'s whole design (a few lines below) assuming
+        // that range actually has data in it. That's a separate, deeper
+        // gap this doesn't attempt to fix (changesFromSeq() will keep
+        // returning an empty backfill regardless of `since`, for every
+        // caller, until real sequence tracking is implemented). This
+        // field exists only so the *live* change event this object feeds
+        // (selfhost.ts's _changes longpoll listener, `change.seq`) has
+        // something real to put in its response's "last_seq" field -
+        // without it, that field was the literal string "undefined"
+        // (JS's string-coercion of the missing property), which isn't
+        // valid JSON and broke every client trying to parse the response.
+        // Date.now() is monotonic enough for that one purpose; it is NOT
+        // a substitute for real backfill/replay support.
+        seq: Date.now(),
       },
     };
   }
