@@ -52,11 +52,13 @@ export interface IFullState extends IState {
  * @interface IMeta
  * @extends {IFullState}
  */
-export interface IMeta extends IFullState {  
+export interface IMeta extends IFullState {
   $stream?: boolean;
   $constructor?: boolean;
   umid?: string;
-  name?: string;  
+  /** The transaction that originally created this stream - set once, never overwritten. `umid` itself now tracks the *latest* transaction that touched this stream instead (see stream.ts's setState()/streamUpdater.ts's buildReferenceStreams()). */
+  origin?: string;
+  name?: string;
   public?: string;
   hash?: string;
   contractlock?: Array<string>;
