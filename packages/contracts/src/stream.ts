@@ -623,8 +623,15 @@ export class Activity {
       // $ notation should be treated like a reservation for Activelegder
       //this.meta.$stream = true;
 
-      // Add name and umid to the meta (For Dev Reference)
+      // Add name and umid to the meta (For Dev Reference). origin is the
+      // permanent record of which transaction created this stream - set
+      // once, here, never touched again. umid itself no longer stays
+      // fixed at this value forever the way it originally did - setState()
+      // now refreshes it to the *latest* transaction on every real
+      // update, so origin is what preserves the field's original purpose
+      // (see that method's own comment).
       this.meta.umid = umid;
+      this.meta.origin = umid;
       this.meta.name = name;
 
       // Flag up everything
@@ -1018,8 +1025,16 @@ export class Activity {
         fState
       ) as ActiveDefinitions.IFullState;
 
-      // Set Update Flag
-      this.updated = true;
+      // Set Update Flag. updatedMeta is also set here (previously it
+      // wasn't - a plain setState() left it false) so this stream's own
+      // :stream meta doc's `umid` field gets refreshed to the current
+      // transaction on every real data update, not just on creation or an
+      // authority change - see streamUpdater.ts's buildReferenceStreams()
+      // for the write-side half of this fix, and its own comment for why
+      // this is a fixed-size cost (a single overwritten field), not the
+      // unbounded meta.txs array growth that was deliberately reverted
+      // previously.
+      this.updatedMeta = this.updated = true;
     }
   }
 

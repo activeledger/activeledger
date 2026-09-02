@@ -311,6 +311,30 @@ export class StreamUpdater {
         this.refStreams.updated.push({
           id: this.shared.filterPrefix(this.streams[i].state._id as string),
         });
+
+        // meta.umid was previously left untouched on every update after
+        // creation - permanently pointing at whichever transaction first
+        // created this stream, no matter how many times it's been updated
+        // since (live-confirmed: a stream updated a dozen+ times still had
+        // meta._rev "1-..." and meta.umid equal to its creating
+        // transaction). umid's original purpose - a durable record of the
+        // creating transaction - now lives in meta.origin instead (set
+        // once, at creation, in Activity's own constructor - never touched
+        // here or anywhere else), which is why overwriting umid on every
+        // update below is safe: nothing still depends on umid meaning
+        // "creation transaction" once origin exists. The one other reader
+        // of meta.umid in this codebase, the collision check a few lines
+        // up (`this.streams[i].meta.umid !== this.entry.$umid`), only ever
+        // runs in the mutually-exclusive *new*-stream branch above, before
+        // this class has ever had a chance to overwrite anything - so it's
+        // unaffected either way, but origin is the more honest field name
+        // for what it actually checks. Not touching meta.txs - nothing in
+        // this codebase reads it, so leaving it as a creation-time record
+        // avoids unbounded growth on a stream updated many times, for no
+        // current benefit.
+        if (this.streams[i].meta) {
+          this.streams[i].meta.umid = this.entry.$umid;
+        }
       }
 
       // Data State (Developers Control)
