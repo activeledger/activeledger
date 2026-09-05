@@ -746,15 +746,15 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         if (incoming.query.feed === "continuous") {
           // Currently we do not do continuous
         } else {
-          //Long polling heartbeat
-          let hBInterval = setInterval(() => {
-            //res.write("\n");
-          }, incoming.query.heartbeat || 60000);
+          // Long polling heartbeat - armed only once the body is actually
+          // open for writing, further down.
+          let hBInterval: ReturnType<typeof setInterval> | null = null;
 
           // Clean up
           let cleanUp = () => {
             if (hBInterval) {
               clearInterval(hBInterval);
+              hBInterval = null;
             }
           };
 
@@ -807,6 +807,47 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
                 });
               }
               incoming.query.live = incoming.query.continuous = true;
+
+              // Keep bytes flowing while nothing is changing.
+              //
+              // This write was commented out, and that is what made a quiet
+              // feed fatal rather than merely quiet. The response holds open
+              // with nothing on the wire, so the client's undici bodyTimeout
+              // (300s - ActiveRequest's default, packages/utilities) fires and
+              // the round comes back with no body. Downstream,
+              // ActiveDSChanges.listen() dereferenced response.data.results on
+              // that null and threw, and nothing re-armed the loop - so the
+              // changes feed died for the lifetime of the process. Every five
+              // idle minutes was enough. Live-confirmed: nano-gateway kept its
+              // SSE socket open and heartbeating to its own subscribers the
+              // whole time, so every health signal said the link was fine
+              // while no change could ever arrive again. Background push on a
+              // real device stopped and nothing anywhere reported a fault.
+              //
+              // A newline is insignificant whitespace between JSON array
+              // elements, so it cannot corrupt the body being streamed - this
+              // is exactly what CouchDB sends. It has to be corked: uWS
+              // requires it for any write from a later tick, and an uncorked
+              // one is silently dropped or corrupts the stream, which is the
+              // likeliest reason this was disabled rather than fixed.
+              //
+              // Default is well under the client's timeout so an ordinary
+              // quiet period never reaches it. The client-side guard in
+              // dsconnect.ts is still required: this reduces how often a bad
+              // round happens, it does not make one survivable.
+              hBInterval = setInterval(() => {
+                if (!res.writable) {
+                  // The client went away mid-longpoll. Without this the
+                  // interval and the change listener both leak for the
+                  // lifetime of the process, one per abandoned request.
+                  cleanUp();
+                  cancelChanges();
+                  return;
+                }
+                res.cork(() => {
+                  res.write("\n");
+                });
+              }, Number(incoming.query.heartbeat) || 30000);
 
               // Listener Process event (to turn off)
               const listener = (change: any) => {
