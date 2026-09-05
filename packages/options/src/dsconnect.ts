@@ -507,6 +507,24 @@ export class ActiveDSChanges
   private stop = false;
 
   /**
+   * Pending retry from a failed round, so cancel()/restart() can clear it
+   * and two listen() loops can never run at once.
+   *
+   * @private
+   */
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Delay before re-arming after a failed round. Long enough that a
+   * datastore which is down doesn't get hammered, short enough that a
+   * transient blip costs a consumer a second rather than every subsequent
+   * change.
+   *
+   * @private
+   */
+  private static readonly RETRY_DELAY_MS = 1000;
+
+  /**
    *Creates an instance of ActiveDSChanges.
    * @param {{ live?: boolean; [opt: string]: any }} opts
    * @param {string} location
@@ -559,12 +577,37 @@ export class ActiveDSChanges
           // broke every round after the first.
           this.opts.since = response.data?.last_seq ?? this.opts.since;
 
+          // `data` can legitimately be null/empty - a longpoll round that
+          // times out with nothing to report is an ordinary outcome, not an
+          // error. The `?.` on last_seq above already allowed for that, but
+          // the reads below did not: `response.data.results` threw
+          // "Cannot read properties of null (reading 'results')" from inside
+          // this .then(), which landed in the .catch() below, which never
+          // called listen() again - so one empty body permanently killed the
+          // changes feed. Live-confirmed downstream: a nano-gateway subscriber
+          // took that error at 21:11 and never received another change, while
+          // its SSE socket stayed open and heartbeating, so nothing anywhere
+          // reported a fault.
+          const data = response.data;
+
+          if (!data) {
+            // Nothing to process, and re-arming immediately would spin: a
+            // body-less response returns straight away rather than blocking
+            // like a healthy longpoll, so an immediate this.listen() here
+            // busy-loops the event loop and starves every timer in the
+            // process. Back off instead - this is the same "no useful round"
+            // case as an outright failure. (An ordinary longpoll timeout is
+            // NOT this case: it returns {results: [], last_seq}, so it still
+            // continues immediately below.)
+            this.scheduleRetry();
+            return;
+          }
+
           if (this.bulk) {
-            // Emit all changed data
-            this.emit("change", response.data);
+            this.emit("change", data);
           } else {
-            // Emit each change
-            response.data.results.forEach((elm: any) => {
+            const results = Array.isArray(data.results) ? data.results : [];
+            results.forEach((elm: any) => {
               this.emit("change", {
                 doc: elm.doc,
                 seq: elm.seq,
@@ -576,7 +619,30 @@ export class ActiveDSChanges
           this.listen();
         }
       })
-      .catch((error) => this.emit("error", error));
+      .catch((error) => {
+        this.emit("error", error);
+
+        // Keep the feed alive. Previously any rejection - a dropped
+        // connection, a restarting datastore, a transient 500 - ended the
+        // changes feed for the lifetime of the process, silently, because
+        // nothing here scheduled another round. Consumers had no way to tell
+        // that apart from "no changes are happening".
+        this.scheduleRetry();
+      });
+  }
+
+  /**
+   * Re-arms listen() after a failed round, without stacking timers or
+   * racing a concurrent restart()/cancel().
+   */
+  private scheduleRetry(): void {
+    if (this.stop || this.retryTimer) return;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (!this.stop) {
+        this.listen();
+      }
+    }, ActiveDSChanges.RETRY_DELAY_MS);
   }
 
   /**
@@ -585,10 +651,25 @@ export class ActiveDSChanges
    */
   public cancel(): void {
     this.stop = true;
+    this.clearRetry();
   }
 
   public restart(): void {
     this.stop = false;
+    // Without this a restart() landing while a retry is pending would leave
+    // two listen() loops running against the same feed, duplicating every
+    // change event from then on.
+    this.clearRetry();
     this.listen();
+  }
+
+  /**
+   * @private
+   */
+  private clearRetry(): void {
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
   }
 }
