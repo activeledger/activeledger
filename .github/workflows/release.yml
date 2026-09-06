@@ -63,7 +63,7 @@ jobs:
         # --force-publish so every package moves together even when git says it
         # is unchanged; these are released as a set and a partial bump is
         # exactly the drift this workflow exists to prevent.
-        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --yes
+        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --exact --yes
 
       - name: Commit, tag and push
         run: |

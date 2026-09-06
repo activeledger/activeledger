@@ -42,8 +42,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^4.5.7",
-    "@activeledger/activedefinitions": "^4.5.7",
-    "@activeledger/activelogger": "^4.5.7"
+    "@activeledger/activecrypto": "4.5.7",
+    "@activeledger/activedefinitions": "4.5.7",
+    "@activeledger/activelogger": "4.5.7"
   }
 }

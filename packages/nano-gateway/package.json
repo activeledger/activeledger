@@ -48,11 +48,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "^4.4.0",
-    "@activeledger/activedefinitions": "^4.4.0",
-    "@activeledger/activelogger": "^4.4.0",
-    "@activeledger/activeoptions": "^4.4.0",
-    "@activeledger/httpd": "^4.4.0",
+    "@activeledger/activecrypto": "4.5.7",
+    "@activeledger/activedefinitions": "4.5.7",
+    "@activeledger/activelogger": "4.5.7",
+    "@activeledger/activeoptions": "4.5.7",
+    "@activeledger/httpd": "4.5.7",
     "typescript": "5.5.4"
   }
 }
