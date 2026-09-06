@@ -6,6 +6,9 @@
   "command": {
     "publish": {
       "access": "public"
+    },
+    "version": {
+      "exact": true
     }
   }
 }
