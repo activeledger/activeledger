@@ -11,7 +11,10 @@ on:
         required: false
 
 permissions:
-  contents: read
+  # contents: write, not read - creating a GitHub Release writes to the repo.
+  # This was `read`, which is why adding a release step would have failed even
+  # if one had existed.
+  contents: write
   packages: write
 
 jobs:
@@ -117,3 +120,31 @@ jobs:
         run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Publishing to a registry and announcing a release are two different
+      # things, and only the first was ever automated here. No version of this
+      # workflow has ever created a GitHub Release - releases up to v4.4.0 were
+      # made by hand alongside the tag, and when tagging became frequent during
+      # the v4.5.x series that step simply stopped happening. The result was
+      # six versions (v4.5.0 through v4.5.6) published to npm and GitHub
+      # Packages with no release entry, so the releases page read as six
+      # versions behind reality while every CI run reported success.
+      #
+      # Last, deliberately: a release should announce something that actually
+      # shipped. If either publish above fails the job stops before here, so
+      # there is never a release pointing at a version nobody can install.
+      #
+      # Idempotent, because a re-run of a tag build is an ordinary thing (the
+      # npmjs step was skipped for the first few tags while its token was being
+      # restored, so re-running an old tag to backfill it is expected) and
+      # `gh release create` fails on an existing tag rather than no-op'ing.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists - nothing to do"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          fi
