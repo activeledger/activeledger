@@ -47,6 +47,16 @@ jobs:
       - name: Bootstrap workspace
         run: npx lerna bootstrap
 
+      # SAFETY NET, not the primary path. Since release.yml was added, a
+      # release bumps and commits the versions BEFORE tagging, so a tag
+      # normally already carries the right numbers and this step is a no-op
+      # that sets them to what they already are. It stays for a hand-cut tag,
+      # where it is the only thing standing between a manual `git tag` and a
+      # publish of the previous version's number.
+      #
+      # It cannot fix the source tree or the tag itself - both already exist by
+      # the time this runs, which is exactly why release.yml exists.
+      #
       # A pushed tag is the source of truth for what gets published - this
       # makes publishing correct regardless of whether package.json/lerna.json
       # were bumped before tagging (they've drifted from every tag since

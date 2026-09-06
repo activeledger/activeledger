@@ -1,0 +1,83 @@
+# Cuts a release: bump -> commit -> tag -> push. publish.yml then fires on the
+# tag and does the building and publishing.
+#
+# This exists because the order matters and could not be fixed inside
+# publish.yml. That workflow triggers ON a tag, so by the time it runs the tag
+# already points at a commit whose package.json files still hold the previous
+# version. It bumped them in the runner and committed locally without pushing,
+# so the published tarballs were correct while the tag and the source tree
+# were not - lerna.json and every package.json read 4.2.0 at the v4.5.7 tag,
+# while npm correctly served 4.5.7.
+#
+# That is not cosmetic. It cost a real rollout verification: checking
+# packages/storage/package.json inside a built v4.5.7 image reported 4.2.0,
+# which reads exactly like a failed build, and the only way to confirm the
+# right code was present was to grep compiled output for a symbol that existed
+# in one version and not the other. "Grep the build artefact" is not a rollout
+# check. It matters more from here, not less, now that images are moving to
+# plain npm installs where the package version is the only thing identifying
+# what is running.
+#
+# Bumping BEFORE the tag is what makes the source tree, the tag and the
+# published tarball all report the same number.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the leading v (e.g. 4.5.8)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          # Full history: lerna inspects it, and the tag has to be created on
+          # a real commit rather than a shallow stub.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Refuse a version that already exists
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "::error::tag v${{ inputs.version }} already exists - pick a new version"
+            exit 1
+          fi
+
+      - name: Bump every package and lerna.json
+        # --force-publish so every package moves together even when git says it
+        # is unchanged; these are released as a set and a partial bump is
+        # exactly the drift this workflow exists to prevent.
+        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --yes
+
+      - name: Commit, tag and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "v${{ inputs.version }}"
+          # master first: if branch protection rejects it, the tag is never
+          # pushed and no half-release is published. A tag pointing at a commit
+          # that is not on master is worse than no tag at all.
+          git push origin master
+          git push origin "v${{ inputs.version }}"
+
+      - name: Summary
+        run: |
+          echo "Released v${{ inputs.version }} - publish.yml now runs on the tag." >> "$GITHUB_STEP_SUMMARY"
+          echo "The commit, the tag and the published packages all report ${{ inputs.version }}." >> "$GITHUB_STEP_SUMMARY"
