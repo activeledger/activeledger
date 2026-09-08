@@ -545,16 +545,26 @@ function healedBy(node: NetworkNode, streamId: string): string[] {
   } catch {
     return ["log unreadable"];
   }
+  // Strip ANSI colour before matching. The logger writes escape codes
+  // around the message, and an earlier version of this check filtered
+  // lines by stream id first and found nothing - not because no repair
+  // happened, but because the filter was wrong. A log grep that reports a
+  // clean negative when the log plainly contains the opposite is worse
+  // than no check at all.
+  const plain = log.replace(/\u001b\[[0-9;]*m/g, "");
   const short = streamId.slice(0, 16);
   const found: string[] = [];
-  for (const line of log.split("\n")) {
+  for (const line of plain.split("\n")) {
     if (line.indexOf(short) === -1) continue;
-    if (line.indexOf("SPI REWRITING") !== -1) found.push("SPI rewrite");
+    if (line.indexOf("SPI REWRITE FAILED") !== -1) {
+      found.push("SPI write failed");
+    } else if (line.indexOf("SPI REWRITING") !== -1) {
+      found.push("SPI rewrite");
+    }
     if (line.indexOf("Stream resync") !== -1) found.push("restore reconciler");
     if (line.indexOf("SPI NOWINNER") !== -1) found.push("SPI abstained");
-    if (line.indexOf("SPI REWRITE FAILED") !== -1) found.push("SPI write failed");
   }
-  return [...new Set(found)];
+  return found.filter((v, i) => found.indexOf(v) === i);
 }
 
 /**
@@ -630,12 +640,17 @@ async function waitForConvergence(
  *   still open, and this script is a diagnostic run by hand, not part of
  *   `npm test`.
  *
- * - contract-desync-converged PASSES, but it also passes without the
- *   reconciler, because the update itself eventually applies on every node
- *   and overwrites the divergence. So it is a guard against a node being
- *   left behind, not proof that reconciliation happened. Proving that
- *   needs a case where the triggering transaction commits nowhere, which
- *   is what the production incident actually looked like.
+ * - contract-desync-converged PASSES, and the desynced node's own log
+ *   names SPI as what repaired it - "SPI REWRITING #2 <stream> @ <rev>"
+ *   carrying the exact revision the network converged on, for both the
+ *   state document and its :stream meta. So on a clean 3-1 split with an
+ *   answerable sample, the existing repair does work end to end.
+ *
+ *   That does not extend to the case this suite still cannot construct:
+ *   the production incident had the triggering transaction commit NOWHERE,
+ *   which leaves the divergence in place and is what the idle reconciler
+ *   is for. Here the update does commit, so this proves SPI, not the
+ *   reconciler.
  */
 async function runContractDivergenceTest(
   report: Report,
@@ -749,8 +764,23 @@ async function runContractDivergenceTest(
   mechanisms.length
     ? report.info(`Desynced node log shows: ${mechanisms.join(", ")}`)
     : report.warn(
-        "Desynced node log shows no repair activity - it converged because the update applied, not because anything reconciled"
+        `Desynced node log shows no repair activity for ${contractId.slice(0, 16)}`
       );
+
+  // A negative from a log grep is only worth anything if the log contains
+  // what you think it does. Report what SPI actually said, so an empty
+  // result above can be read as "it did not repair" rather than "the
+  // filter missed".
+  try {
+    const raw = fsSync.readFileSync(desyncTarget.logPath, "utf8");
+    const spiLines = raw.split("\n").filter((l) => l.indexOf("SPI") !== -1);
+    report.info(`Desynced node logged ${spiLines.length} SPI lines`);
+    for (const line of spiLines.slice(-6)) {
+      report.info(`  ${line.slice(0, 200)}`);
+    }
+  } catch {
+    report.warn("Could not read the desynced node's log");
+  }
 
   const metaConverged = await waitForConvergence(nodes, `${contractId}:stream`, 15000);
   report.record("contract-desync-meta-converged", metaConverged.converged, 0);
