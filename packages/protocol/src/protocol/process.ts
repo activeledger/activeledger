@@ -1145,14 +1145,28 @@ export class Process extends EventEmitter {
       this.entry.$instant = false;
     }
 
+    // Record this node's own error against its own response, whatever the
+    // peering mode. This used to live inside the $broadcast branch below,
+    // which meant a non-broadcast (territorial / round-robin) transaction
+    // never wrote $nodes[reference].error at all.
+    //
+    // That field is not just "for passing back to the client" - it is the
+    // sole gate on the SPI self-repair in network/endpoints.ts
+    // (InternalInitalise reads ledger.data.$nodes[Home.reference].error to
+    // decide whether this node is the one that is out of date and should
+    // pull the majority revision). With the assignment scoped to broadcast
+    // only, a node that fell behind on a non-broadcast transaction could
+    // never self-heal: it voted no with "Stream Position Incorrect"
+    // forever, and nothing recorded that it had.
+    if (error) {
+      this.entry.$nodes[this.reference].error = error.reason
+        ? error.reason
+        : error; //global ruined this?
+    }
+
     // Which Peering mode?
     if (this.entry.$broadcast) {
       if (error) {
-        // Add error to the broadcast for passing back to the client
-        this.entry.$nodes[this.reference].error = error.reason
-          ? error.reason
-          : error; //global ruined this?
-
         if (error.code === 950) {
           this.shared.raiseLedgerError(error.code, error.reason);
         }

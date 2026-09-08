@@ -137,6 +137,49 @@ export class QuickRestore {
   }
 
   /**
+   * Write one restored document, choosing the write mode from what this
+   * node currently holds.
+   *
+   * - absent locally: new_edits:false, which is the only mode that keeps
+   *   the network's revision on a create (new_edits:true would mint a
+   *   fresh "1-<md5>" and leave this node claiming position 1 for a
+   *   stream the rest of the network has at position 39).
+   * - present but on a different revision: new_edits:true + force_rev, the
+   *   only combination levelme allows to overwrite a divergent document.
+   * - already in agreement: nothing to do.
+   *
+   * @private
+   * @static
+   * @param {IBaseData} doc
+   * @returns {Promise<void>}
+   */
+  private static async adoptDocument(doc: IBaseData): Promise<void> {
+    let local: { _rev?: string } | null = null;
+
+    try {
+      local = await Provider.database.get(doc._id);
+    } catch {
+      // A missing document is a normal outcome here, not a failure
+      local = null;
+    }
+
+    if (!local || !local._rev) {
+      await Provider.database.bulkDocs([doc], { new_edits: false });
+      return;
+    }
+
+    if (local._rev !== doc._rev) {
+      ActiveLogger.warn(
+        `[Diverged] ${doc._id} local ${local._rev} -> network ${doc._rev}`
+      );
+      await Provider.database.bulkDocs([doc], {
+        new_edits: true,
+        force_rev: doc._rev
+      });
+    }
+  }
+
+  /**
    * Upload the data to the database
    *
    * @private
@@ -148,16 +191,28 @@ export class QuickRestore {
       Helper.output("Processing Network Data", networkData);
 
       try {
-        await Provider.database.bulkDocs(networkData.documents, {
-          new_edits: false
-        });
-
-        // Every :umid document just restored belongs to a transaction this
-        // node never ran itself (that's the whole point of a bulk
-        // catch-up), so replay whatever events it raised - same reasoning
-        // as interagent.ts's per-error insertUmid().
+        // Written one document at a time, and with the write mode chosen
+        // per document, because the two cases need different modes and
+        // force_rev applies to a whole batch rather than per document.
+        //
+        // A single bulkDocs(docs, { new_edits: false }) could only ever
+        // restore documents this node was MISSING. levelme's
+        // prepareForWrite() throws "Revision Mismatch" the moment a
+        // new_edits:false write meets a local document whose _rev differs,
+        // which aborts the batch - so a node holding a present-but-stale
+        // (divergent) copy of a stream was never repaired by a full
+        // restore, it just logged the failure and moved on. That is the
+        // state a node ends up in when it misses a single committed
+        // update, and nothing else in the codebase repairs it either
+        // (activerestore's interagent only backfills umid documents).
         for (let i = networkData.documents.length; i--;) {
           const doc = networkData.documents[i] as IBaseData;
+          await QuickRestore.adoptDocument(doc);
+
+          // Every :umid document just restored belongs to a transaction
+          // this node never ran itself (that's the whole point of a bulk
+          // catch-up), so replay whatever events it raised - same
+          // reasoning as interagent.ts's per-error insertUmid().
           if (doc._id && doc._id.indexOf(":umid") !== -1) {
             await Helper.replayEvents(doc);
           }
@@ -166,7 +221,7 @@ export class QuickRestore {
         ActiveLogger.error(
           "Error occurred in processNetworkData: Uploading documents to database"
         );
-        reject(error);
+        return reject(error);
       }
 
       try {
