@@ -515,6 +515,21 @@ export class ActiveDSChanges
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Bumped by cancel() and restart(). A round captures it when it starts and
+   * abandons itself if it no longer matches.
+   *
+   * cancel() cannot abort the in-flight request - ActiveRequest.send exposes
+   * no abort handle - so a cancelled round still resolves later. It then
+   * re-checked only `this.stop`, which restart() has since set back to false,
+   * and called listen() again. Result: two loops against one feed, forever,
+   * both advancing `since`, every change emitted twice. ActiveChanges.pause()
+   * followed by start() (packages/options/src/changes.ts) is exactly that
+   * sequence. retryTimer does not protect against it: that tracks pending
+   * TIMERS, and this is a pending REQUEST.
+   */
+  private generation = 0;
+
+  /**
    * Delay before re-arming after a failed round. Long enough that a
    * datastore which is down doesn't get hammered, short enough that a
    * transient blip costs a consumer a second rather than every subsequent
@@ -542,9 +557,21 @@ export class ActiveDSChanges
       opts.feed = "longpoll";
     }
 
-    // Give time before listening
-    setTimeout(() => {
-      this.listen();
+    // Give time before listening.
+    //
+    // Tracked in retryTimer rather than left as a bare setTimeout, so cancel()
+    // can clear it. Untracked, a cancel() during this opening 250ms window did
+    // not stop the feed starting: the timer fired regardless and armed a loop
+    // nobody had asked for. Paired with restart() - which starts its own - that
+    // left TWO loops running against one feed permanently, both advancing
+    // `since` and emitting every change twice. Caught by the regression test
+    // for the cancel()/restart() race, which kept failing after the in-flight
+    // round was correctly disowned; this timer was the other source.
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (!this.stop) {
+        this.listen();
+      }
     }, 250);
   }
 
@@ -554,12 +581,13 @@ export class ActiveDSChanges
    * @private
    */
   private listen(): void {
+    const generation = this.generation;
     ActiveRequest.send(
       `${this.location}?${querystring.stringify(this.opts)}`,
       "GET"
     )
       .then((response: any) => {
-        if (!this.stop) {
+        if (!this.stop && generation === this.generation) {
           // Map last_seq -> seq (Matches Pouch Connector)
           // and update since for next round of listening
           //
@@ -591,6 +619,30 @@ export class ActiveDSChanges
           const data = response.data;
 
           if (!data) {
+            // Report it, do not just retry it.
+            //
+            // ActiveRequest.send() NEVER rejects - packages/utilities/src/request.ts
+            // returns { data: null } for connection-refused, DNS failure,
+            // bodyTimeout, socket reset, non-2xx and unparseable body alike.
+            // So the .catch() below is unreachable for every fault its own
+            // comment used to name, and emit("error") never fired for any of
+            // them. With the datastore completely down this polled in silence
+            // forever: ChangesWatcher's onError never ran, nano-gateway never
+            // wrote an {event:"error"} frame, and ActiveChanges' whole restart
+            // machinery - which is driven exclusively by that event - was dead
+            // code. There was no path anywhere by which a consumer could learn
+            // the datastore was unreachable.
+            //
+            // Guarded on listenerCount because Node throws on an "error" event
+            // with no listener. This path is now genuinely reachable, so an
+            // unguarded emit would turn a datastore blip into a crash in every
+            // consumer that never needed an error handler before.
+            if (this.listenerCount("error") > 0) {
+              this.emit(
+                "error",
+                new Error(`changes feed round returned no body: ${this.location}`)
+              );
+            }
             // Nothing to process, and re-arming immediately would spin: a
             // body-less response returns straight away rather than blocking
             // like a healthy longpoll, so an immediate this.listen() here
@@ -599,6 +651,29 @@ export class ActiveDSChanges
             // case as an outright failure. (An ordinary longpoll timeout is
             // NOT this case: it returns {results: [], last_seq}, so it still
             // continues immediately below.)
+            this.scheduleRetry();
+            return;
+          }
+
+          // A body with no `results` array is a FAILED round, not an empty one.
+          //
+          // The immediate this.listen() at the bottom is safe only because a
+          // healthy longpoll blocks. A truthy body that returns instantly
+          // busy-loops it. httpd's error path is exactly that: it responds
+          // with JSON.stringify(new Error(...)), which is the literal string
+          // "{}" - truthy, parses fine, no results array - so a 500 from a
+          // deleted database or a rejected changesFromSeq pegs both ends at
+          // full request rate, with no error visible to the consumer.
+          //
+          // Guarding results against a throw (the previous fix) was necessary
+          // but not sufficient: it stopped the crash and left the spin.
+          if (!this.bulk && !Array.isArray(data.results)) {
+            if (this.listenerCount("error") > 0) {
+              this.emit(
+                "error",
+                new Error(`changes feed round had no results array: ${JSON.stringify(data).slice(0, 200)}`)
+              );
+            }
             this.scheduleRetry();
             return;
           }
@@ -622,11 +697,14 @@ export class ActiveDSChanges
       .catch((error) => {
         this.emit("error", error);
 
-        // Keep the feed alive. Previously any rejection - a dropped
-        // connection, a restarting datastore, a transient 500 - ended the
-        // changes feed for the lifetime of the process, silently, because
-        // nothing here scheduled another round. Consumers had no way to tell
-        // that apart from "no changes are happening".
+        // Kept as a backstop, but note what does NOT reach here:
+        // ActiveRequest.send() never rejects, so transport faults - dropped
+        // connection, restarting datastore, timeout, 500 - all arrive above as
+        // { data: null } and are handled there. What is left for this catch is
+        // a genuine bug in the handling code itself. An earlier version of
+        // this comment claimed the transport faults landed here; they never
+        // did, and acting on that would send someone looking in the wrong
+        // place.
         this.scheduleRetry();
       });
   }
@@ -651,11 +729,15 @@ export class ActiveDSChanges
    */
   public cancel(): void {
     this.stop = true;
+    // Invalidates any round already in flight - it cannot be aborted, only
+    // disowned when it eventually resolves.
+    this.generation++;
     this.clearRetry();
   }
 
   public restart(): void {
     this.stop = false;
+    this.generation++;
     // Without this a restart() landing while a retry is pending would leave
     // two listen() loops running against the same feed, duplicating every
     // change event from then on.
