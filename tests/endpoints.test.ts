@@ -330,3 +330,46 @@ describe("Endpoints.spiConsensus (Activenetwork)", () => {
     expect(winners["088067"].doc).to.deep.equal(full);
   });
 });
+
+// One node cannot carry a revision on its own by answering twice. A node
+// builds its response as a flat array from the requested id list, so a
+// duplicate in that list - from any caller, now or later - used to become
+// two votes from one node. Relevant because a stale node's own answer is
+// in the tally too: two self-votes reach a threshold of two.
+describe("Endpoints.spiConsensus - one vote per node (Activenetwork)", () => {
+  const stale = { _id: "088067", _rev: "38-c54a2e1c" };
+  const agreed = { _id: "088067", _rev: "39-246bc890" };
+
+  it("counts a node once even if it returns the same stream twice", () => {
+    const { winners, abstained } = Endpoints.spiConsensus([[stale, stale]], 2);
+
+    expect(winners["088067"]).to.equal(undefined);
+    expect(abstained["088067"]).to.equal("no revision reached consensus");
+  });
+
+  it("does not let a doubled answer outvote two genuine nodes", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [[stale, stale, stale], [agreed], [agreed]],
+      2
+    );
+
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+    expect(winners["088067"].votes).to.equal(2);
+  });
+
+  it("counts a doubled locked marker once", () => {
+    const { abstained } = Endpoints.spiConsensus(
+      [
+        [
+          { _id: "088067", locked: true },
+          { _id: "088067", locked: true },
+        ],
+        [stale],
+        [stale],
+      ],
+      2
+    );
+
+    expect(abstained["088067"]).to.contain("1 node(s) could not report");
+  });
+});

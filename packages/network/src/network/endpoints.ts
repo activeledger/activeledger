@@ -739,6 +739,13 @@ export class Endpoints {
         continue;
       }
 
+      // One vote per node per stream. A node answers with a flat array
+      // built from the requested id list, so anything that puts an id in
+      // that list twice - or any future caller that does - would have had
+      // a single node's answer counted twice and could carry a revision
+      // on its own.
+      const voted: { [id: string]: boolean } = {};
+
       for (let ii = nodeStreams.length; ii--; ) {
         const streamDoc = nodeStreams[ii];
         if (!streamDoc || !streamDoc._id) {
@@ -746,13 +753,17 @@ export class Endpoints {
         }
 
         if (streamDoc.locked) {
-          unreported[streamDoc._id] = (unreported[streamDoc._id] || 0) + 1;
+          if (!voted[streamDoc._id]) {
+            voted[streamDoc._id] = true;
+            unreported[streamDoc._id] = (unreported[streamDoc._id] || 0) + 1;
+          }
           continue;
         }
 
-        if (!streamDoc._rev) {
+        if (!streamDoc._rev || voted[streamDoc._id]) {
           continue;
         }
+        voted[streamDoc._id] = true;
 
         if (!tally[streamDoc._id]) {
           tally[streamDoc._id] = {};
