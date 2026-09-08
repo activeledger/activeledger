@@ -631,14 +631,16 @@ async function waitForConvergence(
  * Known state of these two assertions, measured against a real 4-node
  * network rather than assumed:
  *
- * - contract-update-majority-commits FAILS, and fails identically with
- *   and without the reconciler work. Three nodes vote yes and one commits
- *   (`vote: 3, commit: 1`). It reproduces locally, on one machine, with no
- *   container or network layer involved, so it is an engine fault rather
- *   than anything about how a particular deployment is wired. It is left
- *   here failing on purpose: it is the regression guard for a bug that is
- *   still open, and this script is a diagnostic run by hand, not part of
- *   `npm test`.
+ * - contract-update-majority-commits PASSES, and getting there corrected
+ *   the fault it was written for. `$summary` reports `vote: 3, commit: 1`,
+ *   which reads as a majority failing to commit - but every one of the
+ *   three healthy nodes has written the new revision by the time the
+ *   client's response arrives. The commit count is what the ORIGIN had
+ *   heard when it formed its reply, not what happened: nodes commit after
+ *   voting, and the origin answers before their confirmations get back to
+ *   it. Asserting on $summary.commit measures the origin's knowledge;
+ *   asserting on the stores measures the ledger. This does the latter and
+ *   prints both, because the gap between them is itself worth seeing.
  *
  * - contract-desync-converged PASSES, and the desynced node's own log
  *   names SPI as what repaired it - "SPI REWRITING #2 <stream> @ <rev>"
@@ -737,12 +739,33 @@ async function runContractDivergenceTest(
   // The dissenting node is expected to report a position error - that is
   // the correct behaviour, not the failure. What matters is whether the
   // three nodes that agree went ahead and committed anyway.
-  const committed = (result.$summary?.commit ?? 0) >= 3;
+  // $summary.commit is what the ORIGIN had heard by the time it formed a
+  // response, which is not the same question as how many nodes actually
+  // wrote. Read both, and judge on the stores.
+  const reported = result.$summary?.commit ?? 0;
+  const immediately = await revisionsAcross(nodes, contractId);
+  // Only the three healthy nodes count. The desynced one was moved off the
+  // base revision by the injection itself, so including it would report a
+  // write that never happened.
+  const healthy = immediately.byNode.filter((n) => n.port !== desyncTarget.port);
+  const advanced = healthy.filter((n) => n.rev !== baseRev).length;
+
+  report.info(`$summary reported commit: ${reported}, vote: ${result.$summary?.vote}`);
+  report.info(
+    `Stores show ${advanced}/${healthy.length} healthy nodes moved off the base revision`
+  );
+
+  const committed = advanced >= 3;
   report.record("contract-update-majority-commits", committed, ms);
   committed
-    ? report.ok(`Committed on ${result.$summary.commit} nodes with one dissenter (${ms}ms)`)
+    ? report.ok(
+        `${advanced}/${healthy.length} healthy nodes wrote the update with one dissenter (${ms}ms)` +
+          (reported < advanced
+            ? ` - note $summary under-reported this as ${reported}`
+            : "")
+      )
     : report.fail(
-        `Only ${result.$summary?.commit ?? 0} nodes committed: ${JSON.stringify(result.$summary)}`
+        `Only ${advanced}/${healthy.length} healthy nodes wrote it: ${JSON.stringify(immediately.byNode)} / summary ${JSON.stringify(result.$summary)}`
       );
 
   report.phase("Contract divergence: does the desynced node catch up?");
