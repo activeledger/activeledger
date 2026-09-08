@@ -8,6 +8,7 @@
  */
 
 import * as path from "path";
+import * as fsSync from "fs";
 import { NetworkHarness, NetworkNode } from "./harness";
 import { submit, storageGet, storagePut, requestJsonWithStatus } from "./http";
 import { SSEClient } from "./sse";
@@ -17,6 +18,7 @@ import {
   onboard,
   registerNamespace,
   deployContract,
+  updateContract,
   runContract,
 } from "./actions";
 import { ActiveCrypto } from "../../packages/crypto/src";
@@ -197,6 +199,8 @@ async function main(): Promise<boolean> {
     await runStoragePathValidationTests(report, nodes);
 
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
+
+    await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
     await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId);
 
@@ -520,6 +524,294 @@ async function runStoragePathValidationTests(
       report.fail(`Expected a non-negative numeric data_size, got ${infoStatus} ${JSON.stringify(info)}`);
     }
   }
+}
+
+
+
+/**
+ * Reads a node's own log and reports which repair mechanism, if any,
+ * touched a given stream.
+ *
+ * "Did it converge" is necessary but not sufficient - a stream can end up
+ * consistent because the transaction eventually applied everywhere, which
+ * says nothing about whether reconciliation works. Naming the mechanism is
+ * the difference between a test that guards an outcome and one that
+ * proves a cause.
+ */
+function healedBy(node: NetworkNode, streamId: string): string[] {
+  let log = "";
+  try {
+    log = fsSync.readFileSync(node.logPath, "utf8");
+  } catch {
+    return ["log unreadable"];
+  }
+  // Strip ANSI colour before matching. The logger writes escape codes
+  // around the message, and an earlier version of this check filtered
+  // lines by stream id first and found nothing - not because no repair
+  // happened, but because the filter was wrong. A log grep that reports a
+  // clean negative when the log plainly contains the opposite is worse
+  // than no check at all.
+  const plain = log.replace(/\u001b\[[0-9;]*m/g, "");
+  const short = streamId.slice(0, 16);
+  const found: string[] = [];
+  for (const line of plain.split("\n")) {
+    if (line.indexOf(short) === -1) continue;
+    if (line.indexOf("SPI REWRITE FAILED") !== -1) {
+      found.push("SPI write failed");
+    } else if (line.indexOf("SPI REWRITING") !== -1) {
+      found.push("SPI rewrite");
+    }
+    if (line.indexOf("Stream resync") !== -1) found.push("restore reconciler");
+    if (line.indexOf("SPI NOWINNER") !== -1) found.push("SPI abstained");
+  }
+  return found.filter((v, i) => found.indexOf(v) === i);
+}
+
+/**
+ * Reads one stream from every node and reports the distinct revisions.
+ *
+ * Every SPI assertion in this file used to be "did the client get a
+ * response without errors", which is a question about the transaction, not
+ * about the network. A round that commits on three nodes while the fourth
+ * stays behind answers that question with a cheerful yes - and being
+ * behind is precisely the fault worth catching, because that node now
+ * vetoes every future transaction touching the stream. Convergence has to
+ * be read off the nodes themselves.
+ */
+async function revisionsAcross(
+  nodes: NetworkNode[],
+  streamId: string
+): Promise<{ byNode: { port: number; rev: string }[]; converged: boolean }> {
+  const byNode: { port: number; rev: string }[] = [];
+  for (const node of nodes) {
+    try {
+      const doc = await storageGet(node.storageUrl, streamId);
+      byNode.push({ port: node.port, rev: doc?._rev || "missing" });
+    } catch {
+      byNode.push({ port: node.port, rev: "unreadable" });
+    }
+  }
+  const distinct = new Set(byNode.map((n) => n.rev));
+  return { byNode, converged: distinct.size === 1 };
+}
+
+/** Waits for every node to agree on a stream's revision, or gives up. */
+async function waitForConvergence(
+  nodes: NetworkNode[],
+  streamId: string,
+  timeoutMs: number
+): Promise<{ byNode: { port: number; rev: string }[]; converged: boolean }> {
+  const deadline = Date.now() + timeoutMs;
+  let last = await revisionsAcross(nodes, streamId);
+  while (!last.converged && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+    last = await revisionsAcross(nodes, streamId);
+  }
+  return last;
+}
+
+/**
+ * The scenario a live network hit that this suite did not: a node holding
+ * a CONTRACT's own stream at the wrong revision.
+ *
+ * The existing SPI tests desync an identity stream, which the transaction
+ * that follows names in $i/$o, so SPI is asked about it directly and the
+ * repair works. A contract's code stream is only ever named in $i/$o by a
+ * contract update - so it is only ever arbitrated during exactly the
+ * transaction that holds it locked on every node, which is the one moment
+ * SPI cannot get a clean sample.
+ *
+ * Asserts the two things that actually matter, separately:
+ *   1. does a majority that agrees still commit when one node dissents
+ *   2. does the dissenting node afterwards catch up
+ *
+ * They are separate because the first can pass while the second fails
+ * forever, which is what happened in production.
+ *
+ * Known state of these two assertions, measured against a real 4-node
+ * network rather than assumed:
+ *
+ * - contract-update-majority-commits PASSES, and getting there corrected
+ *   the fault it was written for. `$summary` reports `vote: 3, commit: 1`,
+ *   which reads as a majority failing to commit - but every one of the
+ *   three healthy nodes has written the new revision by the time the
+ *   client's response arrives. The commit count is what the ORIGIN had
+ *   heard when it formed its reply, not what happened: nodes commit after
+ *   voting, and the origin answers before their confirmations get back to
+ *   it. Asserting on $summary.commit measures the origin's knowledge;
+ *   asserting on the stores measures the ledger. This does the latter and
+ *   prints both, because the gap between them is itself worth seeing.
+ *
+ * - contract-desync-converged PASSES, and the desynced node's own log
+ *   names SPI as what repaired it - "SPI REWRITING #2 <stream> @ <rev>"
+ *   carrying the exact revision the network converged on, for both the
+ *   state document and its :stream meta. So on a clean 3-1 split with an
+ *   answerable sample, the existing repair does work end to end.
+ *
+ *   That does not extend to the case this suite still cannot construct:
+ *   the production incident had the triggering transaction commit NOWHERE,
+ *   which leaves the divergence in place and is what the idle reconciler
+ *   is for. Here the update does commit, so this proves SPI, not the
+ *   reconciler.
+ */
+async function runContractDivergenceTest(
+  report: Report,
+  nodes: NetworkNode[],
+  identity: Identity,
+  namespace: string
+): Promise<void> {
+  const contractSource = path.join(__dirname, "contracts/returner-contract.ts");
+  const desyncTarget = nodes[0];
+  const originNode = nodes[1];
+
+  report.phase("Contract divergence: deploying a contract to update");
+  const contractId = await deployContract(
+    nodes[0].baseUrl,
+    identity,
+    namespace,
+    "divergence",
+    contractSource
+  );
+  report.ok(`Deployed ${contractId}`);
+
+  // A first update, so the stream has a real history and the test is not
+  // measuring anything special about a freshly created stream.
+  const firstUpdate = await updateContract(
+    originNode.baseUrl,
+    identity,
+    namespace,
+    contractId,
+    "divergence",
+    contractSource,
+    "0.0.2"
+  );
+  if (firstUpdate.$summary?.errors) {
+    report.fail(`Baseline contract update failed: ${JSON.stringify(firstUpdate.$summary)}`);
+    report.record("contract-update-baseline", false, 0);
+    return;
+  }
+  report.record("contract-update-baseline", true, 0);
+
+  const settled = await waitForConvergence(nodes, contractId, 15000);
+  if (!settled.converged) {
+    report.fail(
+      `Nodes disagreed before the test even started: ${JSON.stringify(settled.byNode)}`
+    );
+    report.record("contract-update-baseline-converged", false, 0);
+    return;
+  }
+  const baseRev = settled.byNode[0].rev;
+  report.ok(`All nodes agree at ${baseRev}`);
+  report.record("contract-update-baseline-converged", true, 0);
+
+  report.phase(`Contract divergence: desyncing node ${desyncTarget.port}`);
+  // Both documents, because they diverge together in the real fault - the
+  // state document and its :stream meta are written by the same commit.
+  for (const id of [contractId, `${contractId}:stream`]) {
+    const current = await storageGet(desyncTarget.storageUrl, id);
+    await storagePut(desyncTarget.storageUrl, id, {
+      ...current,
+      contractDivergenceMarker: `desync-${Date.now()}`,
+    });
+  }
+  const desynced = await revisionsAcross(nodes, contractId);
+  if (desynced.converged) {
+    report.fail("Desync had no effect - the test cannot prove anything");
+    report.record("contract-desync-injected", false, 0);
+    return;
+  }
+  report.ok(`Injected: ${JSON.stringify(desynced.byNode)}`);
+  report.record("contract-desync-injected", true, 0);
+
+  report.phase("Contract divergence: does a 3/4 majority still commit?");
+  const { result, ms } = await timed(() =>
+    updateContract(
+      originNode.baseUrl,
+      identity,
+      namespace,
+      contractId,
+      "divergence",
+      contractSource,
+      "0.0.3"
+    )
+  );
+
+  // The dissenting node is expected to report a position error - that is
+  // the correct behaviour, not the failure. What matters is whether the
+  // three nodes that agree went ahead and committed anyway.
+  // $summary.commit is what the ORIGIN had heard by the time it formed a
+  // response, which is not the same question as how many nodes actually
+  // wrote. Read both, and judge on the stores.
+  const reported = result.$summary?.commit ?? 0;
+  const immediately = await revisionsAcross(nodes, contractId);
+  // Only the three healthy nodes count. The desynced one was moved off the
+  // base revision by the injection itself, so including it would report a
+  // write that never happened.
+  const healthy = immediately.byNode.filter((n) => n.port !== desyncTarget.port);
+  const advanced = healthy.filter((n) => n.rev !== baseRev).length;
+
+  report.info(`$summary reported commit: ${reported}, vote: ${result.$summary?.vote}`);
+  report.info(
+    `Stores show ${advanced}/${healthy.length} healthy nodes moved off the base revision`
+  );
+
+  const committed = advanced >= 3;
+  report.record("contract-update-majority-commits", committed, ms);
+  committed
+    ? report.ok(
+        `${advanced}/${healthy.length} healthy nodes wrote the update with one dissenter (${ms}ms)` +
+          (reported < advanced
+            ? ` - note $summary under-reported this as ${reported}`
+            : "")
+      )
+    : report.fail(
+        `Only ${advanced}/${healthy.length} healthy nodes wrote it: ${JSON.stringify(immediately.byNode)} / summary ${JSON.stringify(result.$summary)}`
+      );
+
+  report.phase("Contract divergence: does the desynced node catch up?");
+  // Generous, and deliberately so: reconciliation is asynchronous and runs
+  // off a periodic check, so the honest question is "does it ever", not
+  // "does it within one round trip".
+  const converged = await waitForConvergence(nodes, contractId, 60000);
+  report.record("contract-desync-converged", converged.converged, 0);
+  converged.converged
+    ? report.ok(`All four nodes converged at ${converged.byNode[0].rev}`)
+    : report.fail(
+        `Node did not catch up after 60s: ${JSON.stringify(converged.byNode)}`
+      );
+
+  // Name the mechanism. Convergence alone does not distinguish "something
+  // repaired the laggard" from "the update simply applied everywhere in
+  // the end", and only the first is what this suite is here to prove.
+  const mechanisms = healedBy(desyncTarget, contractId);
+  mechanisms.length
+    ? report.info(`Desynced node log shows: ${mechanisms.join(", ")}`)
+    : report.warn(
+        `Desynced node log shows no repair activity for ${contractId.slice(0, 16)}`
+      );
+
+  // A negative from a log grep is only worth anything if the log contains
+  // what you think it does. Report what SPI actually said, so an empty
+  // result above can be read as "it did not repair" rather than "the
+  // filter missed".
+  try {
+    const raw = fsSync.readFileSync(desyncTarget.logPath, "utf8");
+    const spiLines = raw.split("\n").filter((l) => l.indexOf("SPI") !== -1);
+    report.info(`Desynced node logged ${spiLines.length} SPI lines`);
+    for (const line of spiLines.slice(-6)) {
+      report.info(`  ${line.slice(0, 200)}`);
+    }
+  } catch {
+    report.warn("Could not read the desynced node's log");
+  }
+
+  const metaConverged = await waitForConvergence(nodes, `${contractId}:stream`, 15000);
+  report.record("contract-desync-meta-converged", metaConverged.converged, 0);
+  metaConverged.converged
+    ? report.ok(`Meta document converged at ${metaConverged.byNode[0].rev}`)
+    : report.fail(
+        `Meta document still split: ${JSON.stringify(metaConverged.byNode)}`
+      );
 }
 
 /**

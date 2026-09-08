@@ -418,3 +418,60 @@ describe("Endpoints.spiConsensus - abstains per stream (Activenetwork)", () => {
     expect(winners["088067:stream"].rev).to.equal("21-799d345c");
   });
 });
+
+// Two revisions at the same position with different content is a fork,
+// not a lag - each side committed something the other did not, at the same
+// point in the stream's history. Revisions here are content addressed
+// (position-md5), so there is nothing to choose between them on merit, and
+// adopting either silently destroys the other side's transaction.
+//
+// A lag looks different and is safe: the positions differ, so the higher
+// one is simply further along and the lower side has no history of its own
+// to lose. Seen live as a 2-2 split on the most-written stream of a four
+// node network.
+describe("Endpoints.spiConsensus - lag versus fork (Activenetwork)", () => {
+  const behind = { _id: "eb10c7", _rev: "103-b00a56b3" };
+  const ahead = { _id: "eb10c7", _rev: "104-2419c533" };
+  const forkA = { _id: "eb10c7", _rev: "104-aaaaaaaa" };
+  const forkB = { _id: "eb10c7", _rev: "104-bbbbbbbb" };
+
+  it("resolves an even split where one side is simply further along", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [[ahead], [ahead], [behind], [behind]],
+      2
+    );
+
+    expect(winners["eb10c7"].rev).to.equal("104-2419c533");
+  });
+
+  it("refuses an even split where both sides are at the same position", () => {
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [[forkA], [forkA], [forkB], [forkB]],
+      2
+    );
+
+    expect(winners["eb10c7"]).to.equal(undefined);
+    expect(abstained["eb10c7"]).to.contain("forked");
+  });
+
+  it("still refuses a fork when one side happens to be asked first", () => {
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [[forkB], [forkB], [forkA], [forkA]],
+      2
+    );
+
+    expect(winners["eb10c7"]).to.equal(undefined);
+    expect(abstained["eb10c7"]).to.contain("forked");
+  });
+
+  it("takes a clear majority even when a fork exists underneath it", () => {
+    // Three nodes agreeing is a majority, not a fork - the odd one out is
+    // outvoted rather than tied
+    const { winners } = Endpoints.spiConsensus(
+      [[forkA], [forkA], [forkA], [forkB]],
+      2
+    );
+
+    expect(winners["eb10c7"].rev).to.equal("104-aaaaaaaa");
+  });
+});
