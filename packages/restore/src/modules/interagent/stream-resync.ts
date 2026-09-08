@@ -159,6 +159,7 @@ export class StreamResync {
 
     for (let i = ids.length; i--; ) {
       let winner: { votes: number; doc: IResyncDocument } | null = null;
+      let forked = false;
 
       const revisions = Object.keys(tally[ids[i]]);
       for (let r = revisions.length; r--; ) {
@@ -176,10 +177,27 @@ export class StreamResync {
               StreamResync.position(winner.doc._rev))
         ) {
           winner = candidate;
+        } else if (
+          winner &&
+          candidate.votes === winner.votes &&
+          candidate.doc._rev !== winner.doc._rev &&
+          StreamResync.position(candidate.doc._rev) ===
+            StreamResync.position(winner.doc._rev)
+        ) {
+          // Two revisions with equal support at the same position is a
+          // fork, not a lag: each side committed something the other did
+          // not, at the same point in the stream's history. Adopting
+          // either silently destroys the other's transaction, and content
+          // addressed revisions give nothing to choose between them on.
+          forked = true;
         }
       }
 
-      if (winner) {
+      if (forked) {
+        ActiveLogger.error(
+          `Stream resync: ${ids[i]} has forked - two revisions at the same position. This needs a human, not a vote.`
+        );
+      } else if (winner) {
         winners[ids[i]] = winner.doc;
       }
     }

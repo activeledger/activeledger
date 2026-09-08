@@ -803,6 +803,7 @@ export class Endpoints {
       const revisions = tally[id] || {};
       let winner = "";
       let max = 0;
+      let forked = false;
 
       const candidates = Object.keys(revisions);
       for (let x = candidates.length; x--; ) {
@@ -815,14 +816,30 @@ export class Endpoints {
           max = revisions[rev].votes;
           winner = rev;
         } else if (revisions[rev].votes === max) {
-          // Same support, so take the later position
+          // Same support. A later position means the other side simply
+          // applied something this one has not yet - adopting it loses
+          // nothing, because the lagging copy has no history of its own.
           if (Endpoints.revPosition(rev) > Endpoints.revPosition(winner)) {
             winner = rev;
+          } else if (
+            Endpoints.revPosition(rev) === Endpoints.revPosition(winner) &&
+            rev !== winner
+          ) {
+            // Same position, different content: not a lag, a genuine fork.
+            // Each side committed something the other did not, at the same
+            // point in the stream's history, so whichever is picked
+            // silently destroys the other's transaction. Revisions are
+            // content addressed (position-md5), so there is nothing here
+            // to tell them apart on merit and no safe automatic answer.
+            forked = true;
           }
         }
       }
 
-      if (winner) {
+      if (forked) {
+        abstained[id] =
+          "forked - two revisions at the same position, needs a human";
+      } else if (winner) {
         winners[id] = { rev: winner, votes: max, doc: revisions[winner].doc };
       } else {
         abstained[id] = "no revision reached consensus";
