@@ -27,8 +27,17 @@ Please see our documentation for detailed instructions. We currently have 2 lang
 Use NPM to install Activeledger. `@activeledger/activerestore` is recommended alongside it (heals a node that falls behind or comes up empty); `@activeledger/activecore`'s REST API is optional and off by default (`autostart.core: false`) — install it too only if you specifically want it, see the documentation above.
 
 ```bash
-npm i -g @activeledger/activeledger @activeledger/activerestore
+npm i -g --allow-scripts=classic-level,msgpackr-extract @activeledger/activeledger @activeledger/activerestore
 ```
+
+> **The `--allow-scripts` flag is load-bearing on npm 11.19 and later**, which
+> no longer runs install scripts by default. Activeledger's datastore pulls
+> `classic-level` (node-gyp-build) and `msgpackr-extract`, both of which build a
+> native binding during install. Without the flag the install **succeeds** and
+> the native LevelDB binding is silently never built — the failure appears only
+> later, at runtime. If your npm predates that change the flag is harmless, so
+> it is safe to use either way. `npm config set allow-scripts ...` works too if
+> you would rather set it once.
 
 ##### Creating a local Activeledger testnet
 
@@ -66,7 +75,7 @@ Then set `NODE_AUTH_TOKEN` to a GitHub personal access token with `read:packages
 
 ```bash
 export NODE_AUTH_TOKEN=<your github token>
-npm i -g @activeledger/activeledger @activeledger/activerestore
+npm i -g --allow-scripts=classic-level,msgpackr-extract @activeledger/activeledger @activeledger/activerestore
 ```
 
 For a Docker build, pass the token in as a build secret (e.g. `--secret id=npmrc,src=.npmrc` with a `RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm i -g ...` step) rather than baking it into an image layer.
