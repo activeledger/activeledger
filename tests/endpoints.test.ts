@@ -186,3 +186,36 @@ describe("Endpoints.shouldSelfRepairPosition (Activenetwork)", () => {
   });
 });
 
+// The SPI repair used to take its write on trust. Every layer under it
+// reports failure by returning something rather than throwing, so a repair
+// that never landed looked exactly like one that did - and the node
+// carried on believing it had caught up.
+describe("Endpoints.bulkWriteFailed (Activenetwork)", () => {
+  it("treats LevelMe's false / self hosted { ok: false } as a failure", () => {
+    // LevelMe.bulkDocs() returns false when its batch write throws (a full
+    // disk, which is exactly how the node3 divergence started), and the
+    // self hosted HTTP layer answers 200 with { ok: false }
+    expect(Endpoints.bulkWriteFailed(false)).to.equal(true);
+    expect(Endpoints.bulkWriteFailed({ ok: false })).to.equal(true);
+  });
+
+  it("treats an unreachable node as a failure", () => {
+    // ActiveRequest.send() resolves { data: null } for every transport
+    // fault, so a call that never arrived must not read as success
+    expect(Endpoints.bulkWriteFailed(null)).to.equal(true);
+    expect(Endpoints.bulkWriteFailed(undefined)).to.equal(true);
+  });
+
+  it("treats a CouchDB per document error as a failure", () => {
+    expect(
+      Endpoints.bulkWriteFailed([{ id: "stream-a", error: "conflict" }])
+    ).to.equal(true);
+  });
+
+  it("accepts a successful write in either shape", () => {
+    expect(Endpoints.bulkWriteFailed({ ok: true })).to.equal(false);
+    expect(
+      Endpoints.bulkWriteFailed([{ ok: true, id: "stream-a", rev: "39-abc" }])
+    ).to.equal(false);
+  });
+});
