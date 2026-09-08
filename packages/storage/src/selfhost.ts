@@ -850,38 +850,79 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
               }, Number(incoming.query.heartbeat) || 30000);
 
               // Listener Process event (to turn off)
-              const listener = (change: any) => {
-                // res.writable - not req.connection.destroyed, which was
-                // always a harmless no-op here anyway (the httpd
-                // framework's synthetic `req` object only ever carries
-                // connection.remoteAddress, so .destroyed just silently
-                // read undefined - never actually gated anything, and
-                // never threw either, just dead logic). res.writable is
-                // the real, framework-maintained "is this connection still
-                // open" flag (sse.ts's SSE class already relies on the
-                // same one).
-                if (res.writable) {
+              // A longpoll round returns EVERY pending change, not one.
+              //
+              // bulkDocs emits one "change" per document in a synchronous
+              // loop (levelme.ts). The previous listener responded to the
+              // FIRST emit by writing it, ending the response and detaching
+              // itself - all synchronously - so every remaining document in
+              // the same commit found no listener at all. With no sequence
+              // backfill (changesFromSeq can never return rows, see its own
+              // comment) those changes were gone permanently: `since` moved
+              // past them and nothing could replay them.
+              //
+              // For a ledger that means an ordinary multi-stream transaction -
+              // a transfer touching sender and recipient - notified about one
+              // of them. Which one was arbitrary: levelme emits backwards, so
+              // it was the LAST document written. Downstream that reads as an
+              // intermittent push bug rather than as data loss.
+              //
+              // So changes are accumulated and flushed on the next tick. Every
+              // emit from one commit is synchronous, so a single setImmediate
+              // catches the whole batch without waiting for anything.
+              let pending: any[] = [];
+              let flushScheduled = false;
+
+              const flush = () => {
+                try {
+                  if (!res.writable || pending.length === 0) return;
+                  const batch = pending;
+                  pending = [];
+                  // The highest seq in the batch, not the last one written -
+                  // levelme emits in reverse order, so "last" is the oldest.
+                  const lastSeq = batch.reduce(
+                    (max: number, c: any) => (Number(c.seq) > max ? Number(c.seq) : max),
+                    0
+                  );
+                  // res.end() is load-bearing, not tidiness. Both the write
+                  // and the end used to be commented out, so a client whose
+                  // HTTP layer waits for the response to COMPLETE before
+                  // resolving - ActiveRequest/axios does - hung forever the
+                  // moment a real change occurred, even though the bytes were
+                  // already on the socket. Live-confirmed: it is why a
+                  // nano-gateway subscriber connected fine, kept heartbeating,
+                  // and never received a push for a committed change.
                   res.cork(() => {
-                    res.write(JSON.stringify(change));
-                    res.write('],\n"last_seq":' + change.seq + "}\n");
+                    res.write(batch.map((c: any) => JSON.stringify(c)).join(",\n"));
+                    res.write('],\n"last_seq":' + lastSeq + "}\n");
                     res.end();
                   });
+                } finally {
+                  // In a finally so a throw while writing - an unserialisable
+                  // doc, a discarded uWS response - cannot leak the heartbeat
+                  // interval and the change listener for the process lifetime.
+                  cleanUp();
+                  cancelChanges();
                 }
-                // A CouchDB longpoll round is exactly one change, then the
-                // client reconnects for the next - this response was never
-                // actually finalised (both lines below were commented out),
-                // so a client whose HTTP layer waits for the response to
-                // complete before resolving (ActiveRequest/axios does, by
-                // default) hangs forever the moment a real change occurs,
-                // even though the bytes above were already written to the
-                // socket. Live-confirmed: this is why a nano-gateway
-                // subscriber connects fine (heartbeats keep flowing) but
-                // never actually receives a push for a real, committed
-                // change - ActiveDSChanges.listen() (packages/options/src/dsconnect.ts)
-                // never gets a resolved response to react to.
-                cleanUp();
-                cancelChanges();
               };
+
+              const listener = (change: any) => {
+                // Deliberately does no writability check of its own - flush()
+                // does it once, for the whole batch, immediately before
+                // writing. (For the record on `res.writable`: it is the real,
+                // framework-maintained "is this connection still open" flag,
+                // unlike req.connection.destroyed, which this handler used to
+                // consult and which was always undefined - the httpd
+                // framework's synthetic `req` carries only
+                // connection.remoteAddress, so that check never gated anything
+                // and never threw. sse.ts relies on res.writable too.)
+                pending.push(change);
+                if (!flushScheduled) {
+                  flushScheduled = true;
+                  setImmediate(flush);
+                }
+              };
+
 
               // Stop listening for changes
               const cancelChanges = () => {
