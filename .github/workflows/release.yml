@@ -1,5 +1,17 @@
-# Cuts a release: bump -> commit -> tag -> push. publish.yml then fires on the
-# tag and does the building and publishing.
+# Cuts a release: bump -> commit -> tag -> push.
+#
+# KNOWN GAP: publish.yml does NOT fire on the tag this workflow pushes.
+# GitHub deliberately does not start new workflow runs from events created
+# with the default GITHUB_TOKEN, so the tag push here is invisible to
+# publish.yml's `on: push: tags` trigger. After this workflow succeeds,
+# publishing still has to be started by hand:
+#
+#   gh workflow run publish.yml --ref master -f version=<the version>
+#
+# Fixing it properly means either a PAT with workflow scope for the tag push,
+# or turning publish.yml into a reusable workflow this one calls directly
+# (workflow_call is part of the same run, so the restriction does not apply).
+# Left as a follow-up rather than changed mid-release.
 #
 # This exists because the order matters and could not be fixed inside
 # publish.yml. That workflow triggers ON a tag, so by the time it runs the tag
