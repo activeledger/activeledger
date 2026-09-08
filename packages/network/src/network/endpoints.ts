@@ -696,6 +696,66 @@ export class Endpoints {
    * @private
    * @static
    */
+  /**
+   * Should this node pull the network's revision over its own?
+   *
+   * Called on a node whose own vote failed with a position error or a
+   * missing stream, to decide whether to run the SPI lookup that adopts
+   * the majority revision. It says yes when some node did commit (so
+   * there is a newer agreed state to catch up to), or when this node is
+   * itself one of the nodes reporting a position error.
+   *
+   * The error test used to read `error?.indexOf(...) !== -1`, which is
+   * true for a node with NO error at all (undefined !== -1), so every
+   * healthy node was counted as disagreeing and a healthy local node set
+   * the "it's me that's wrong" flag. That made the decision independent
+   * of what the nodes actually reported.
+   *
+   * @static
+   * @param {*} nodes
+   * @param {string} homeReference
+   * @param {boolean} spiError
+   * @param {boolean} spi404Error
+   * @returns {boolean}
+   */
+  public static shouldSelfRepairPosition(
+    nodes: any,
+    homeReference: string,
+    spiError: boolean,
+    spi404Error: boolean
+  ): boolean {
+    // Means 404 most likely so check
+    if (!spiError) {
+      return spi404Error;
+    }
+
+    let posCount = 0;
+    let myPos = false;
+
+    const references = Object.keys(nodes || {});
+    for (let i = references.length; i--; ) {
+      const node = nodes[references[i]] || {};
+
+      // Did they commit at all? Someone has newer state to catch up to
+      if (node.commit) {
+        return true;
+      }
+
+      const nodeError = node.error;
+      if (
+        typeof nodeError === "string" &&
+        nodeError.indexOf("Stream Position Incorrect") !== -1
+      ) {
+        posCount++;
+        if (references[i] === homeReference) {
+          myPos = true;
+        }
+      }
+    }
+
+    return posCount >= 1 && myPos;
+  }
+
   public static shouldTriggerSpiLookup(
     errors: string[] | undefined,
     selfError?: string
@@ -883,38 +943,15 @@ export class Endpoints {
                   "SPI NON Origin - Position Incorrect or 404"
                 );
 
-                let check = false;
-                let posCount = 0;
-                let myPos = false;
-                // Did they commit at all?
-                if (spiError) {
-                  const nodes = Object.keys(ledger.data.$nodes);
-
-                  //let commited = false;
-                  for (let i = nodes.length; i--;) {
-                    if (ledger.data.$nodes[nodes[i]].commit) {
-                      check = true;
-                      break;
-                    }
-
-                    if (
-                      ledger.data.$nodes[nodes[i]].error?.indexOf(
-                        "Stream Position Incorrect"
-                      ) !== -1
-                    ) {
-                      posCount++;
-                      if (nodes[i] === Home.reference) {
-                        myPos = true;
-                      }
-                    }
-                  }
-                } else {
-                  // Means 404 most likely so check
-                  check = spi404Error;
-                }
-
                 // They may not have commited I maybe the only one!
-                if (check || (posCount >= 1 && myPos)) {
+                if (
+                  Endpoints.shouldSelfRepairPosition(
+                    ledger.data.$nodes,
+                    Home.reference,
+                    spiError,
+                    spi404Error
+                  )
+                ) {
                   ActiveLogger.warn(tx.$umid, "SPI NON Origin - Must Check");
 
                   // TODO - Resolve this copy paste
