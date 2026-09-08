@@ -1,0 +1,58 @@
+# Runs the test suite. Nothing did before this: publish.yml was the only
+# workflow, so `npm test` only ever ran when someone remembered to run it
+# locally - on code that decides consensus and repairs divergent ledger
+# state.
+#
+# The bootstrap and build steps are not optional. The tests import from
+# packages/*/src directly, but those sources import each other through the
+# published @activeledger/* names, which only resolve once lerna has
+# symlinked the workspace and each package has a lib/ to resolve types
+# against. Without them every single test fails on "Cannot find module
+# '@activeledger/activelogger'", which reads like a broken test suite
+# rather than a missing setup step.
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 24 (current LTS), not the 18 publish.yml used. uWebSockets.js v20.67.0 ships
+      # prebuilt binaries only for Node 22, 24 and 26 (ABI 127/137/147), so
+      # anything older dies at require() with "Cannot find module
+      # './uws_linux_x64_108.node'" the moment a test touches httpd.
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Bootstrap workspace
+        run: npx lerna bootstrap
+
+      # Deliberately not `npm run build` - that script ends in `npm run link`,
+      # which npm-links the CLI packages globally. That is for a developer
+      # machine and is pointless on a throwaway runner.
+      - name: Build packages
+        run: |
+          for target in definitions logger utilities httpd options storage \
+                        crypto query contracts protocol network toolkits \
+                        ledger restore; do
+            echo "::group::build:$target"
+            npm run "build:$target"
+            echo "::endgroup::"
+          done
+
+      - name: Run tests
+        run: npm test
