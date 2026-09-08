@@ -386,14 +386,30 @@ export class Endpoints {
                                         ActiveLogger.error(
                                           `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
                                         );
-                                        await host.dbConnection.bulkDocs(
-                                          [winningDoc],
-                                          {
-                                            new_edits: true,
-                                            force_rev: winningDoc._rev,
-                                          }
-                                        );
-                                        rewroteSomething = true;
+                                        // bulkDocs resolves false (it does
+                                        // not throw) when the underlying
+                                        // batch write fails - a full disk
+                                        // being the obvious way. Taking the
+                                        // repair on trust meant the node
+                                        // carried on believing it had caught
+                                        // up while still holding the old
+                                        // revision, and said nothing.
+                                        const written =
+                                          await host.dbConnection.bulkDocs(
+                                            [winningDoc],
+                                            {
+                                              new_edits: true,
+                                              force_rev: winningDoc._rev,
+                                            }
+                                          );
+                                        if (Endpoints.bulkWriteFailed(written)) {
+                                          ActiveLogger.error(
+                                            `SPI REWRITE FAILED #1 ${winningDoc._id} @ ${winningDoc._rev} : ${tx.$umid} - this node is still out of date`
+                                          );
+                                          rewrote.delete(winningDoc._id);
+                                        } else {
+                                          rewroteSomething = true;
+                                        }
                                       }
                                     } else {
                                       if (!rewrote.has(docs[g])) {
@@ -697,6 +713,25 @@ export class Endpoints {
    * @static
    */
   /**
+   * Did a bulk write actually land?
+   *
+   * A repair that silently didn't happen is worse than one that fails
+   * loudly, and every layer here reports failure differently:
+   *
+   *  - LevelMe.bulkDocs() returns false when its batch write throws (a
+   *    full disk, for instance) rather than rejecting, and the self hosted
+   *    HTTP layer turns that into { ok: false } with a 200 status;
+   *  - ActiveRequest.send() resolves { data: null } for every transport
+   *    fault, so a node that could not be reached at all also looks like a
+   *    successful call;
+   *  - CouchDB answers _bulk_docs with an array of per document results,
+   *    where a rejected document carries an "error" property.
+   *
+   * @static
+   * @param {*} response
+   * @returns {boolean}
+   */
+  /**
    * Should this node pull the network's revision over its own?
    *
    * Called on a node whose own vote failed with a position error or a
@@ -754,6 +789,18 @@ export class Endpoints {
     }
 
     return posCount >= 1 && myPos;
+  }
+
+  public static bulkWriteFailed(response: any): boolean {
+    if (response === false || response === null || response === undefined) {
+      return true;
+    }
+
+    if (Array.isArray(response)) {
+      return response.some((result) => result && result.error);
+    }
+
+    return response.ok === false;
   }
 
   public static shouldTriggerSpiLookup(
@@ -1117,11 +1164,23 @@ export class Endpoints {
                                     }
                               }
 
-                              await host.dbConnection.bulkDocs([winningDoc], {
-                                new_edits: true,
-                                force_rev: winningDoc._rev,
-                              });
-                              canRetry = true;
+                              // See SPI #1 above - a false return is a
+                              // failed write, not a completed repair.
+                              const written = await host.dbConnection.bulkDocs(
+                                [winningDoc],
+                                {
+                                  new_edits: true,
+                                  force_rev: winningDoc._rev,
+                                }
+                              );
+                              if (Endpoints.bulkWriteFailed(written)) {
+                                ActiveLogger.error(
+                                  `SPI REWRITE FAILED #2 ${winningDoc._id} @ ${winningDoc._rev} : ${tx.$umid} - this node is still out of date`
+                                );
+                                rewrote.delete(winningDoc._id);
+                              } else {
+                                canRetry = true;
+                              }
                             }
                           } else {
                             if (!rewrote.has(docs[g])) {
