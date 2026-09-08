@@ -17,6 +17,7 @@ import {
   onboard,
   registerNamespace,
   deployContract,
+  updateContract,
   runContract,
 } from "./actions";
 import { ActiveCrypto } from "../../packages/crypto/src";
@@ -197,6 +198,8 @@ async function main(): Promise<boolean> {
     await runStoragePathValidationTests(report, nodes);
 
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
+
+    await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
     await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId);
 
@@ -520,6 +523,201 @@ async function runStoragePathValidationTests(
       report.fail(`Expected a non-negative numeric data_size, got ${infoStatus} ${JSON.stringify(info)}`);
     }
   }
+}
+
+
+/**
+ * Reads one stream from every node and reports the distinct revisions.
+ *
+ * Every SPI assertion in this file used to be "did the client get a
+ * response without errors", which is a question about the transaction, not
+ * about the network. A round that commits on three nodes while the fourth
+ * stays behind answers that question with a cheerful yes - and being
+ * behind is precisely the fault worth catching, because that node now
+ * vetoes every future transaction touching the stream. Convergence has to
+ * be read off the nodes themselves.
+ */
+async function revisionsAcross(
+  nodes: NetworkNode[],
+  streamId: string
+): Promise<{ byNode: { port: number; rev: string }[]; converged: boolean }> {
+  const byNode: { port: number; rev: string }[] = [];
+  for (const node of nodes) {
+    try {
+      const doc = await storageGet(node.storageUrl, streamId);
+      byNode.push({ port: node.port, rev: doc?._rev || "missing" });
+    } catch {
+      byNode.push({ port: node.port, rev: "unreadable" });
+    }
+  }
+  const distinct = new Set(byNode.map((n) => n.rev));
+  return { byNode, converged: distinct.size === 1 };
+}
+
+/** Waits for every node to agree on a stream's revision, or gives up. */
+async function waitForConvergence(
+  nodes: NetworkNode[],
+  streamId: string,
+  timeoutMs: number
+): Promise<{ byNode: { port: number; rev: string }[]; converged: boolean }> {
+  const deadline = Date.now() + timeoutMs;
+  let last = await revisionsAcross(nodes, streamId);
+  while (!last.converged && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 1000));
+    last = await revisionsAcross(nodes, streamId);
+  }
+  return last;
+}
+
+/**
+ * The scenario a live network hit that this suite did not: a node holding
+ * a CONTRACT's own stream at the wrong revision.
+ *
+ * The existing SPI tests desync an identity stream, which the transaction
+ * that follows names in $i/$o, so SPI is asked about it directly and the
+ * repair works. A contract's code stream is only ever named in $i/$o by a
+ * contract update - so it is only ever arbitrated during exactly the
+ * transaction that holds it locked on every node, which is the one moment
+ * SPI cannot get a clean sample.
+ *
+ * Asserts the two things that actually matter, separately:
+ *   1. does a majority that agrees still commit when one node dissents
+ *   2. does the dissenting node afterwards catch up
+ *
+ * They are separate because the first can pass while the second fails
+ * forever, which is what happened in production.
+ *
+ * Known state of these two assertions, measured against a real 4-node
+ * network rather than assumed:
+ *
+ * - contract-update-majority-commits FAILS, and fails identically with
+ *   and without the reconciler work. Three nodes vote yes and one commits
+ *   (`vote: 3, commit: 1`). It reproduces locally, on one machine, with no
+ *   container or network layer involved, so it is an engine fault rather
+ *   than anything about how a particular deployment is wired. It is left
+ *   here failing on purpose: it is the regression guard for a bug that is
+ *   still open, and this script is a diagnostic run by hand, not part of
+ *   `npm test`.
+ *
+ * - contract-desync-converged PASSES, but it also passes without the
+ *   reconciler, because the update itself eventually applies on every node
+ *   and overwrites the divergence. So it is a guard against a node being
+ *   left behind, not proof that reconciliation happened. Proving that
+ *   needs a case where the triggering transaction commits nowhere, which
+ *   is what the production incident actually looked like.
+ */
+async function runContractDivergenceTest(
+  report: Report,
+  nodes: NetworkNode[],
+  identity: Identity,
+  namespace: string
+): Promise<void> {
+  const contractSource = path.join(__dirname, "contracts/returner-contract.ts");
+  const desyncTarget = nodes[0];
+  const originNode = nodes[1];
+
+  report.phase("Contract divergence: deploying a contract to update");
+  const contractId = await deployContract(
+    nodes[0].baseUrl,
+    identity,
+    namespace,
+    "divergence",
+    contractSource
+  );
+  report.ok(`Deployed ${contractId}`);
+
+  // A first update, so the stream has a real history and the test is not
+  // measuring anything special about a freshly created stream.
+  const firstUpdate = await updateContract(
+    originNode.baseUrl,
+    identity,
+    namespace,
+    contractId,
+    "divergence",
+    contractSource,
+    "0.0.2"
+  );
+  if (firstUpdate.$summary?.errors) {
+    report.fail(`Baseline contract update failed: ${JSON.stringify(firstUpdate.$summary)}`);
+    report.record("contract-update-baseline", false, 0);
+    return;
+  }
+  report.record("contract-update-baseline", true, 0);
+
+  const settled = await waitForConvergence(nodes, contractId, 15000);
+  if (!settled.converged) {
+    report.fail(
+      `Nodes disagreed before the test even started: ${JSON.stringify(settled.byNode)}`
+    );
+    report.record("contract-update-baseline-converged", false, 0);
+    return;
+  }
+  const baseRev = settled.byNode[0].rev;
+  report.ok(`All nodes agree at ${baseRev}`);
+  report.record("contract-update-baseline-converged", true, 0);
+
+  report.phase(`Contract divergence: desyncing node ${desyncTarget.port}`);
+  // Both documents, because they diverge together in the real fault - the
+  // state document and its :stream meta are written by the same commit.
+  for (const id of [contractId, `${contractId}:stream`]) {
+    const current = await storageGet(desyncTarget.storageUrl, id);
+    await storagePut(desyncTarget.storageUrl, id, {
+      ...current,
+      contractDivergenceMarker: `desync-${Date.now()}`,
+    });
+  }
+  const desynced = await revisionsAcross(nodes, contractId);
+  if (desynced.converged) {
+    report.fail("Desync had no effect - the test cannot prove anything");
+    report.record("contract-desync-injected", false, 0);
+    return;
+  }
+  report.ok(`Injected: ${JSON.stringify(desynced.byNode)}`);
+  report.record("contract-desync-injected", true, 0);
+
+  report.phase("Contract divergence: does a 3/4 majority still commit?");
+  const { result, ms } = await timed(() =>
+    updateContract(
+      originNode.baseUrl,
+      identity,
+      namespace,
+      contractId,
+      "divergence",
+      contractSource,
+      "0.0.3"
+    )
+  );
+
+  // The dissenting node is expected to report a position error - that is
+  // the correct behaviour, not the failure. What matters is whether the
+  // three nodes that agree went ahead and committed anyway.
+  const committed = (result.$summary?.commit ?? 0) >= 3;
+  report.record("contract-update-majority-commits", committed, ms);
+  committed
+    ? report.ok(`Committed on ${result.$summary.commit} nodes with one dissenter (${ms}ms)`)
+    : report.fail(
+        `Only ${result.$summary?.commit ?? 0} nodes committed: ${JSON.stringify(result.$summary)}`
+      );
+
+  report.phase("Contract divergence: does the desynced node catch up?");
+  // Generous, and deliberately so: reconciliation is asynchronous and runs
+  // off a periodic check, so the honest question is "does it ever", not
+  // "does it within one round trip".
+  const converged = await waitForConvergence(nodes, contractId, 60000);
+  report.record("contract-desync-converged", converged.converged, 0);
+  converged.converged
+    ? report.ok(`All four nodes converged at ${converged.byNode[0].rev}`)
+    : report.fail(
+        `Node did not catch up after 60s: ${JSON.stringify(converged.byNode)}`
+      );
+
+  const metaConverged = await waitForConvergence(nodes, `${contractId}:stream`, 15000);
+  report.record("contract-desync-meta-converged", metaConverged.converged, 0);
+  metaConverged.converged
+    ? report.ok(`Meta document converged at ${metaConverged.byNode[0].rev}`)
+    : report.fail(
+        `Meta document still split: ${JSON.stringify(metaConverged.byNode)}`
+      );
 }
 
 /**
