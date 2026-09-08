@@ -80,9 +80,20 @@ jobs:
       # in lerna's own source has no bypass flag). Commit it locally so the
       # tree is clean for the publish step below; this commit is never
       # pushed anywhere and only exists in this runner's throwaway checkout.
+      #
+      # There may be nothing to commit, and that is the healthy case now.
+      # release.yml bumps the versions BEFORE creating the tag, so a tag cut
+      # that way already has the right numbers committed and lerna version
+      # above changes nothing. `git commit` with no staged changes exits 1,
+      # which failed the whole publish - the release plumbing working
+      # correctly was enough to break the step that assumed it did not.
       - name: Commit version bump locally (not pushed)
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
         run: |
+          if git diff --quiet; then
+            echo "Working tree already at the target version - nothing to commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -am "chore: set version for publish (not pushed)"
