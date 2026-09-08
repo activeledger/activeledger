@@ -184,7 +184,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
     // could never be repaired by any restore path
     local["stream-a"] = { _id: "stream-a", _rev: "38-c54a2e1c" };
 
-    const rewrote = await StreamResync.resync(transaction);
+    const { rewrote } = await StreamResync.resync(transaction);
 
     expect(rewrote).to.equal(1);
     expect(writes).to.have.length(1);
@@ -198,7 +198,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
   it("creates a missing document with new_edits:false to keep the network revision", async () => {
     // new_edits:true on a create mints a fresh "1-<md5>", which would
     // leave this node claiming position 1 for a stream at position 39
-    const rewrote = await StreamResync.resync(transaction);
+    const { rewrote } = await StreamResync.resync(transaction);
 
     expect(rewrote).to.equal(1);
     expect(writes[0].options).to.deep.equal({ new_edits: false });
@@ -207,7 +207,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
   it("writes nothing when this node already holds the agreed revision", async () => {
     local["stream-a"] = { _id: "stream-a", _rev: "39-246bc890" };
 
-    const rewrote = await StreamResync.resync(transaction);
+    const { rewrote } = await StreamResync.resync(transaction);
 
     expect(rewrote).to.equal(0);
     expect(writes).to.have.length(0);
@@ -218,7 +218,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
     // discarding local state would make it unrecoverable
     local["stream-a"] = { _id: "stream-a", _rev: "40-aaaaaaaa" };
 
-    const rewrote = await StreamResync.resync(transaction);
+    const { rewrote } = await StreamResync.resync(transaction);
 
     expect(rewrote).to.equal(0);
     expect(writes).to.have.length(0);
@@ -231,7 +231,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
     ];
     local["stream-a"] = { _id: "stream-a", _rev: "38-c54a2e1c" };
 
-    const rewrote = await StreamResync.resync(transaction);
+    const { rewrote } = await StreamResync.resync(transaction);
 
     expect(rewrote).to.equal(0);
     expect(writes).to.have.length(0);
@@ -244,7 +244,7 @@ describe("StreamResync - adopting the agreed revision (Activerestore)", () => {
       return [];
     };
 
-    const rewrote = await StreamResync.resync({ $tx: { $i: {}, $o: {} } });
+    const { rewrote } = await StreamResync.resync({ $tx: { $i: {}, $o: {} } });
 
     expect(rewrote).to.equal(0);
     expect(knocked).to.equal(false);
@@ -315,6 +315,7 @@ describe("Interagent - falling back to a stream resync (Activerestore)", () => {
     "088067b4445fe980865ae3c7fcf20564580abe0ca3f08bf123719c4a75611d1f";
 
   let processed: { archived: boolean }[];
+  let retried: any[];
   let writes: { docs: any[]; options: any }[];
   let local: { [id: string]: any };
   let knocked: string[];
@@ -340,10 +341,14 @@ describe("Interagent - falling back to a stream resync (Activerestore)", () => {
       processed.push({ archived: !!archive });
     },
     resyncStreams: (Interagent.prototype as any).resyncStreams,
+    retryLater: async (doc: any) => {
+      retried.push(doc);
+    },
   });
 
   beforeEach(() => {
     processed = [];
+    retried = [];
     writes = [];
     knocked = [];
     local = {
@@ -427,7 +432,7 @@ describe("Interagent - falling back to a stream resync (Activerestore)", () => {
     expect(processed).to.deep.equal([{ archived: false }]);
   });
 
-  it("does not leave the error document unprocessed when the resync throws", async () => {
+  it("keeps the error document for a retry when the resync throws", async () => {
     (Provider as any).network.neighbourhood.knockAll = async (
       endpoint: string
     ) => {
@@ -442,7 +447,151 @@ describe("Interagent - falling back to a stream resync (Activerestore)", () => {
       errorDocument
     );
 
+    // A network that was down for a moment is not a verdict either
     expect(writes).to.have.length(0);
-    expect(processed).to.deep.equal([{ archived: false }]);
+    expect(processed).to.have.length(0);
+    expect(retried).to.have.length(1);
+  });
+});
+
+// The self-heal gap that survived 4.5.8. SPI only runs on a failed vote,
+// a failed vote on a contract stream only happens during a contract
+// update, and that update holds a lock on the very streams SPI needs to
+// sample - on every node, for its whole lifetime. So SPI's sample was
+// always incomplete, it always abstained (correctly), and there was no
+// path that ever retried when the streams were idle and answerable.
+//
+// The retry is the interagent's existing 5 second checker: leave the
+// error document unprocessed and it comes back when nothing is holding
+// the lock.
+describe("Interagent - retrying an undecided resync (Activerestore)", () => {
+  const streamId =
+    "088067b4445fe980865ae3c7fcf20564580abe0ca3f08bf123719c4a75611d1f";
+
+  let processed: { archived: boolean }[];
+  let stored: any[];
+  let writes: any[];
+  let locked: boolean;
+
+  const positionError = () => ({
+    _id: "umid-xyz:1788897627000",
+    code: 1200,
+    umid: "umid-xyz",
+    processed: false,
+    reason: "Output Stream Position Incorrect (21:39 !== 20:38 - Local)",
+    transaction: { $tx: { $i: {}, $o: { [streamId]: {} } } },
+  });
+
+  const context = () => ({
+    hasErrorCode: () => true,
+    verifyUmidNotFound: async () => {
+      throw new Error("a position error must not chase a umid");
+    },
+    setProcessed: async (_doc: any, archive: boolean) => {
+      processed.push({ archived: !!archive });
+    },
+    resyncStreams: (Interagent.prototype as any).resyncStreams,
+    retryLater: (Interagent.prototype as any).retryLater,
+  });
+
+  beforeEach(() => {
+    processed = [];
+    stored = [];
+    writes = [];
+    locked = true;
+
+    (Provider as any).neighbourCount = 4;
+    (Provider as any).consensusReachedAmount = 60;
+    (Provider as any).errorDatabase = {
+      put: async (doc: any) => {
+        stored.push(JSON.parse(JSON.stringify(doc)));
+        return doc;
+      },
+    };
+    const local: { [id: string]: any } = {
+      [streamId]: { _id: streamId, _rev: "38-c54a2e1c" },
+      [`${streamId}:stream`]: {
+        _id: `${streamId}:stream`,
+        _rev: "20-d89395f3",
+      },
+    };
+    (Provider as any).database = {
+      get: async (id: string) => {
+        if (!local[id]) {
+          throw { notFound: true };
+        }
+        return local[id];
+      },
+      bulkDocs: async (docs: any[], options: any) => {
+        writes.push({ docs, options });
+        return { ok: true };
+      },
+    };
+    (Provider as any).network = {
+      neighbourhood: {
+        knockAll: async () => {
+          // While the update transaction is in flight every node holds the
+          // stream locked and can only answer with the marker
+          if (locked) {
+            return [
+              [{ _id: streamId, locked: true }],
+              [{ _id: streamId, locked: true }],
+              [{ _id: streamId, locked: true }],
+            ];
+          }
+          const agreed = [
+            { _id: streamId, _rev: "39-246bc890" },
+            { _id: `${streamId}:stream`, _rev: "21-799d345c" },
+          ];
+          return [agreed, agreed, agreed];
+        },
+      },
+    };
+  });
+
+  const run = (doc: any) =>
+    (Interagent.prototype as any).processDocument.call(context(), doc);
+
+  it("keeps the error document when every peer was locked", async () => {
+    await run(positionError());
+
+    // Not processed, not purged - it has to survive to be retried
+    expect(processed).to.have.length(0);
+    expect(writes).to.have.length(0);
+    expect(stored).to.have.length(1);
+    expect(stored[0].resyncAttempts).to.equal(1);
+  });
+
+  it("heals on a later attempt once the locks have cleared", async () => {
+    const doc = positionError();
+    await run(doc);
+
+    expect(writes).to.have.length(0);
+
+    // The transaction finishes, the locks release, the checker comes back
+    locked = false;
+    await run({ ...doc, resyncAttempts: 1 });
+
+    expect(writes).to.have.length(2);
+    const byId: { [id: string]: any } = {};
+    writes.forEach((w) => (byId[w.docs[0]._id] = w));
+    expect(byId[streamId].options).to.deep.equal({
+      new_edits: true,
+      force_rev: "39-246bc890",
+    });
+    expect(processed).to.deep.equal([{ archived: true }]);
+  });
+
+  it("gives up rather than retrying forever", async () => {
+    await run({ ...positionError(), resyncAttempts: 19 });
+
+    expect(stored).to.have.length(0);
+    expect(processed).to.deep.equal([{ archived: true }]);
+  });
+
+  it("counts attempts durably so a restart cannot reset them", async () => {
+    await run({ ...positionError(), resyncAttempts: 7 });
+
+    expect(stored[0].resyncAttempts).to.equal(8);
   });
 });
