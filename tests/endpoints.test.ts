@@ -373,3 +373,48 @@ describe("Endpoints.spiConsensus - one vote per node (Activenetwork)", () => {
     expect(abstained["088067"]).to.contain("1 node(s) could not report");
   });
 });
+
+// Abstaining has to be per stream, not per response. The streams SPI is
+// asked to arbitrate are the ones the failing transaction declared, and
+// those are exactly the ones under a transaction lock while it is in
+// flight - so a response carrying one locked entry is the common case,
+// not a rarity. If one locked entry stopped every stream in that response
+// from being decided, a node could abstain forever and never heal, which
+// would be a worse outcome than the bug being fixed.
+describe("Endpoints.spiConsensus - abstains per stream (Activenetwork)", () => {
+  const code = { _id: "088067", _rev: "39-246bc890" };
+  const meta = { _id: "088067:stream", _rev: "21-799d345c" };
+  const staleCode = { _id: "088067", _rev: "38-c54a2e1c" };
+  const staleMeta = { _id: "088067:stream", _rev: "20-d89395f3" };
+
+  it("still heals the code and meta streams when a sibling is locked", () => {
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [
+        [code, meta, { _id: "088067:data", locked: true }],
+        [code, meta, { _id: "088067:data", locked: true }],
+        [code, meta, { _id: "088067:data", locked: true }],
+        [staleCode, staleMeta, { _id: "088067:data", locked: true }],
+      ],
+      2
+    );
+
+    // The perpetually busy sibling abstains, and only it
+    expect(abstained["088067:data"]).to.contain("could not report");
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+    expect(winners["088067:stream"].rev).to.equal("21-799d345c");
+  });
+
+  it("heals the meta stream when only the state stream is locked", () => {
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [
+        [{ _id: "088067", locked: true }, meta],
+        [{ _id: "088067", locked: true }, meta],
+        [staleCode, staleMeta],
+      ],
+      2
+    );
+
+    expect(abstained["088067"]).to.contain("could not report");
+    expect(winners["088067:stream"].rev).to.equal("21-799d345c");
+  });
+});
