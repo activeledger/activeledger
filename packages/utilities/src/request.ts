@@ -36,18 +36,68 @@ interface IHTTPResponse {
 // Below this many bytes, gzip's CPU cost outweighs the bandwidth it saves.
 const GZIP_MIN_BYTES = 1024;
 
-setGlobalDispatcher(
-  new Agent({
-    connect: {
-      rejectUnauthorized: false,
-    },
-    // Nodes repeatedly talk to the same small, fixed set of neighbours.
-    // undici's 4s default tears the socket down between consensus rounds
-    // more often than needed, forcing a fresh TCP+TLS handshake. 30s keeps
-    // connections warm across typical gaps without holding them open forever.
-    keepAliveTimeout: 30_000,
-  })
-);
+/**
+ * How long the SERVER we talk to keeps an idle connection.
+ *
+ * The self hosted store is @activeledger/httpd, which calls uWebSockets'
+ * App() with no options - and uWS's AppOptions has no timeout field at
+ * all, only TLS settings. Its HTTP idle timeout is compiled in: 10s
+ * upstream, swept by a ~4s timer, so an idle socket is closed somewhere in
+ * the 10-14s band. Measured at 11.8s against a live node.
+ *
+ * Not configurable, so it is a ceiling to design under rather than a
+ * number to change.
+ */
+export const SERVER_IDLE_TIMEOUT_MS = 10_000;
+
+/**
+ * How long WE keep an idle connection. Must be comfortably below
+ * SERVER_IDLE_TIMEOUT_MS - see the invariant asserted in the tests.
+ *
+ * This is undici's own default. It was raised to 30s in 16d3a9f to avoid
+ * a fresh handshake between consensus rounds, without the server's idle
+ * timeout in view, and that opened a ~20 second window in which this
+ * client would hand a request to a socket the server had already closed.
+ *
+ * undici does not retry non-idempotent requests, and a stream write is a
+ * POST to _bulk_docs. So the failure landed exactly there:
+ *
+ *   idle connection -> server closes at ~10s -> we reuse it inside our 30s
+ *   window -> POST dies on a dead socket -> ActiveRequest.send() returns
+ *   { data: null } -> bulkDocs resolves null -> streamUpdater raises 1510
+ *   "Failed to save streams" -> that node drops out of the round.
+ *
+ * Which is intermittent, hits writes but not reads (GETs are idempotent
+ * and undici retries them silently), leaves nothing in the server's log
+ * because the close was deliberate, and gets WORSE on quiet nodes, whose
+ * connections sit idle long enough to cross the server's timeout more
+ * often. On a four node network, losing two nodes to this is enough to
+ * put a round below consensus and commit nothing anywhere.
+ *
+ * The handshake this was avoiding costs a millisecond or two on a LAN. A
+ * lost commit costs a transaction.
+ */
+const CLIENT_IDLE_TIMEOUT_MS = 4_000;
+
+export const DISPATCHER_OPTIONS = {
+  connect: {
+    rejectUnauthorized: false,
+  },
+  keepAliveTimeout: CLIENT_IDLE_TIMEOUT_MS,
+  // Pinned as well as the default above. Left at undici's 600s default, a
+  // server advertising a long "Keep-Alive: timeout=N" would be honoured
+  // for up to ten minutes, which is the same bug against a different peer.
+  keepAliveMaxTimeout: CLIENT_IDLE_TIMEOUT_MS,
+};
+
+// One dispatcher governs every undici copy in the process: it is stored on
+// globalThis under Symbol.for("undici.globalDispatcher.1"), a registered
+// symbol, so the three copies in this workspace (utilities, options,
+// nano-gateway - all 6.18.2, all the same symbol version) share it. This
+// is the only setGlobalDispatcher call in the codebase. Anything that
+// somehow bypasses it falls back to undici's own 4s default, which is
+// safe by the same margin.
+setGlobalDispatcher(new Agent(DISPATCHER_OPTIONS));
 
 /**
  * Simple HTTP Request Object
