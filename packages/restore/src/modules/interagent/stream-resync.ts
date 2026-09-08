@@ -159,6 +159,7 @@ export class StreamResync {
 
     for (let i = ids.length; i--; ) {
       let winner: { votes: number; doc: IResyncDocument } | null = null;
+      let forked = false;
 
       const revisions = Object.keys(tally[ids[i]]);
       for (let r = revisions.length; r--; ) {
@@ -176,10 +177,27 @@ export class StreamResync {
               StreamResync.position(winner.doc._rev))
         ) {
           winner = candidate;
+        } else if (
+          winner &&
+          candidate.votes === winner.votes &&
+          candidate.doc._rev !== winner.doc._rev &&
+          StreamResync.position(candidate.doc._rev) ===
+            StreamResync.position(winner.doc._rev)
+        ) {
+          // Two revisions with equal support at the same position is a
+          // fork, not a lag: each side committed something the other did
+          // not, at the same point in the stream's history. Adopting
+          // either silently destroys the other's transaction, and content
+          // addressed revisions give nothing to choose between them on.
+          forked = true;
         }
       }
 
-      if (winner) {
+      if (forked) {
+        ActiveLogger.error(
+          `Stream resync: ${ids[i]} has forked - two revisions at the same position. This needs a human, not a vote.`
+        );
+      } else if (winner) {
         winners[ids[i]] = winner.doc;
       }
     }
@@ -203,16 +221,24 @@ export class StreamResync {
    * Fetch the network's view of every stream a failed transaction touched
    * and adopt any revision this node is behind on.
    *
+   * `incomplete` is the caller's signal to try again later rather than to
+   * give up: it means some node could not report on a stream, so no
+   * decision was safe to make this time. That is the normal state while
+   * the transaction that caused the divergence is still in flight, since
+   * it holds a lock on the very streams being arbitrated.
+   *
    * @static
    * @param {*} transaction
-   * @returns {Promise<number>} how many documents were rewritten
+   * @returns {Promise<{ rewrote: number; incomplete: boolean }>}
    */
-  public static async resync(transaction: any): Promise<number> {
+  public static async resync(
+    transaction: any
+  ): Promise<{ rewrote: number; incomplete: boolean }> {
     const streams = StreamResync.streamIdsFromTransaction(transaction);
 
     if (!streams.length) {
       Helper.output("Stream resync: transaction names no streams");
-      return 0;
+      return { rewrote: 0, incomplete: false };
     }
 
     const networkStreams = await Provider.network.neighbourhood.knockAll(
@@ -235,7 +261,20 @@ export class StreamResync {
       }
     }
 
-    return rewrote;
+    // Any stream we asked about but could not decide is worth coming back
+    // for. Silence from a node is not a verdict.
+    let incomplete = false;
+    for (let i = streams.length; i--; ) {
+      if (!winners[streams[i]]) {
+        incomplete = true;
+        ActiveLogger.warn(
+          `Stream resync: no decision for ${streams[i]} yet, will retry`
+        );
+        break;
+      }
+    }
+
+    return { rewrote, incomplete };
   }
 
   /**

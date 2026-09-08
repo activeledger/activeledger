@@ -1169,6 +1169,19 @@ export class Process extends EventEmitter {
       if (error) {
         if (error.code === 950) {
           this.shared.raiseLedgerError(error.code, error.reason);
+        } else if (error.code === 1200) {
+          // A position error means this node holds a stream at a revision
+          // the rest of the network does not agree with, and it will vote
+          // the same way against every future transaction touching that
+          // stream. Recording it gives activerestore something durable to
+          // reconcile against later, when the streams are no longer locked
+          // by the transaction that exposed the disagreement.
+          //
+          // stop: true - store the error document only. The broadcast path
+          // below already handles telling the network and the client that
+          // this node voted no; emitting a second failure from here would
+          // report the same vote twice.
+          this.shared.raiseLedgerError(error.code, error.reason, true);
         }
       }
       // Let all other nodes know about this transaction and our opinion

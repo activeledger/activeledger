@@ -41,8 +41,21 @@ const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
  * @class Interagent
  */
 export class Interagent {
+  // How many times an error document may fail to reach a decision before it
+  // is given up on. The checker runs every 5 seconds, so this is a couple of
+  // minutes of retrying - long enough to outlast the transaction whose lock
+  // was blocking the sample, short enough not to poll forever over a stream
+  // the network genuinely disagrees about.
+  private static readonly MAX_RESYNC_ATTEMPTS = 20;
+
   private errorCodes = [
     ErrorCodes.StreamNotFound,
+    // A node that votes "Stream Position Incorrect" is telling us it holds a
+    // stream at a revision the rest of the network does not agree with, and
+    // it will keep voting that way against every future transaction on that
+    // stream. It was commented out here as "never came" - correctly, because
+    // nothing wrote an error document for it. protocol/process.ts now does.
+    ErrorCodes.StreamPositionIncorrect,
     //ErrorCodes.StateNotFound,
     //ErrorCodes.VoteFailedNetworkOk,
     //ErrorCodes.InternalBusyLocked,
@@ -155,6 +168,14 @@ export class Interagent {
    * @private
    */
   private async processDocument(changeDoc: any): Promise<void> {
+    // A position error has nothing to replay - the transaction this node
+    // voted against never committed here, and may never have committed
+    // anywhere. What is wrong is the stream's revision, so go straight to
+    // reconciling it rather than hunting a umid that would not help.
+    if (changeDoc.code === ErrorCodes.StreamPositionIncorrect) {
+      return await this.resyncStreams(changeDoc);
+    }
+
     // Check the error codes
     if (
       this.hasErrorCode(changeDoc) // &&
@@ -243,7 +264,9 @@ export class Interagent {
    */
   private async resyncStreams(changeDoc: any): Promise<void> {
     try {
-      const rewrote = await StreamResync.resync(changeDoc.transaction);
+      const { rewrote, incomplete } = await StreamResync.resync(
+        changeDoc.transaction
+      );
 
       if (rewrote) {
         ActiveLogger.info(
@@ -253,14 +276,63 @@ export class Interagent {
         // keeping a record of, the same as a successful umid insert.
         return await this.setProcessed(changeDoc, true);
       }
+
+      // Nothing decided yet. Leaving the document in place is the whole
+      // point: the checker comes back every few seconds, and by then the
+      // transaction that was holding a lock on these streams - very often
+      // the same one that caused this error - has finished and every node
+      // can answer. Marking it processed here would throw away the only
+      // record that this node knows it disagrees with the network, which
+      // is how a node stayed one revision behind indefinitely.
+      if (incomplete) {
+        return await this.retryLater(changeDoc);
+      }
     } catch (error) {
       ActiveLogger.error(
         error,
         `Stream resync failed for umid ${changeDoc.umid}`
       );
+      return await this.retryLater(changeDoc);
     }
 
     return await this.setProcessed(changeDoc, false);
+  }
+
+  /**
+   * Leave an error document unprocessed so the next check picks it up,
+   * unless it has had enough attempts to call it a genuine disagreement
+   * rather than a busy moment.
+   *
+   * @private
+   * @param {*} changeDoc
+   * @returns {Promise<void>}
+   */
+  private async retryLater(changeDoc: any): Promise<void> {
+    const attempts = (changeDoc.resyncAttempts || 0) + 1;
+
+    if (attempts >= Interagent.MAX_RESYNC_ATTEMPTS) {
+      ActiveLogger.error(
+        `Stream resync gave up on umid ${changeDoc.umid} after ${attempts} attempts - this node may still be out of date`
+      );
+      return await this.setProcessed(changeDoc, true);
+    }
+
+    changeDoc.resyncAttempts = attempts;
+
+    try {
+      // Written back rather than held in memory so the count survives a
+      // restart - a node restarting into a retry loop that starts from zero
+      // every time would never reach the give-up point.
+      await Provider.errorDatabase.put(changeDoc);
+      ActiveLogger.info(
+        `Stream resync will retry umid ${changeDoc.umid} (attempt ${attempts})`
+      );
+    } catch (error) {
+      ActiveLogger.error(
+        error,
+        `Could not record resync attempt ${attempts} for umid ${changeDoc.umid}`
+      );
+    }
   }
 
   /**

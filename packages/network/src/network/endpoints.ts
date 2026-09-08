@@ -803,6 +803,7 @@ export class Endpoints {
       const revisions = tally[id] || {};
       let winner = "";
       let max = 0;
+      let forked = false;
 
       const candidates = Object.keys(revisions);
       for (let x = candidates.length; x--; ) {
@@ -815,14 +816,30 @@ export class Endpoints {
           max = revisions[rev].votes;
           winner = rev;
         } else if (revisions[rev].votes === max) {
-          // Same support, so take the later position
+          // Same support. A later position means the other side simply
+          // applied something this one has not yet - adopting it loses
+          // nothing, because the lagging copy has no history of its own.
           if (Endpoints.revPosition(rev) > Endpoints.revPosition(winner)) {
             winner = rev;
+          } else if (
+            Endpoints.revPosition(rev) === Endpoints.revPosition(winner) &&
+            rev !== winner
+          ) {
+            // Same position, different content: not a lag, a genuine fork.
+            // Each side committed something the other did not, at the same
+            // point in the stream's history, so whichever is picked
+            // silently destroys the other's transaction. Revisions are
+            // content addressed (position-md5), so there is nothing here
+            // to tell them apart on merit and no safe automatic answer.
+            forked = true;
           }
         }
       }
 
-      if (winner) {
+      if (forked) {
+        abstained[id] =
+          "forked - two revisions at the same position, needs a human";
+      } else if (winner) {
         winners[id] = { rev: winner, votes: max, doc: revisions[winner].doc };
       } else {
         abstained[id] = "no revision reached consensus";
@@ -1515,50 +1532,40 @@ export class Endpoints {
 
           const holdValue = body.$streams[i].replace(":stream", "");
 
-          // If it doesn't have it and can hold return
-          if (
-            Locker.hold(holdValue, "SPI") /*|| Locker.is(holdValue, "SPI")*/
-          ) {
-            // We should probably have a release timer, and also release call from calling node
-            // but as multiple nodes will call  will need counter ontop of it. Using a timer now will
-            // at least show this method works. The call counter will just make it release faster
-            //ActiveLogger.info(`SPI EPS FETCH HOLD ${holdValue}`);
-            setTimeout(() => {
-              Locker.release(holdValue, "SPI");
-              //ActiveLogger.info(`SPI EPS FETCH RELEASE ${holdValue}`);
-            }, 1000);
-
-            // Maybe increase the 1000 here, More so if we have an "unlock" somehow request (as many nodes me ask!)
-            // Or we can cache the results here given that we can assume more nodes will ask 
-
-            // Fetch Request (Catch error here and forward on as an object to process in .all)
-            fetchStream.push(db.get(body.$streams[i]));
-            //}
+          // Read only - this endpoint takes no lock of its own.
+          //
+          // It used to Locker.hold(holdValue, "SPI") for a second per
+          // request. host.ts's hold() refuses a transaction if ANY of its
+          // streams is already held, by anything, including "SPI" - so a
+          // stream that several peers were asking about had a read lock on
+          // it more or less continuously, and the transaction that wanted
+          // to write it was pushed into the busy-locks queue over and over.
+          // Observed on a live network as a contract update running for 30
+          // seconds to its TTL, against a background of
+          // "Lock busy ... requested by SPI", while SPI was only ever
+          // trying to read.
+          //
+          // Nothing needed the lock. Two nodes reconciling the same stream
+          // at once each rewrite their OWN copy to the revision the
+          // majority voted for, so the writes are idempotent and cannot
+          // race each other.
+          if (Locker.has(holdValue)) {
+            // Held by a transaction, so this node cannot report the stream
+            // right now. Saying nothing is indistinguishable from "I do not
+            // have it", and the caller votes on whatever comes back - so
+            // the stream is under-reported and a minority revision can
+            // carry the vote. Answer with a marker instead. It has no
+            // _rev, so an older node's tally ignores it exactly as it
+            // ignored the silence.
+            //
+            // Note this is reachable precisely when it hurts most. Only
+            // streams named in $i/$o are locked, so the streams SPI is
+            // asked to arbitrate are exactly the ones the triggering
+            // transaction declared, and that transaction is still in
+            // flight on every node when SPI runs.
+            unavailable.push({ _id: body.$streams[i], locked: true });
           } else {
-            // Now it may exist we need to check it is SPI for other nodes
-            if (Locker.is(holdValue, "SPI")) {
-              fetchStream.push(db.get(body.$streams[i]));
-            } else {
-              // Held by a transaction, so this node cannot report the
-              // stream right now. Saying nothing is indistinguishable from
-              // "I do not have it", and the caller votes on whatever comes
-              // back - so the stream is under-reported and a minority
-              // revision can carry the vote. Answer with a marker instead.
-              // It has no _rev, so an older node's tally ignores it
-              // exactly as it ignored the silence.
-              //
-              // Note this is reachable precisely when it hurts most. Only
-              // streams named in $i/$o are locked (host.ts hold()), so the
-              // streams SPI is asked to arbitrate are exactly the ones the
-              // triggering transaction declared - and that transaction is
-              // still in flight on every node when SPI runs 100-500ms
-              // after the vote. Locker.hold() over an array is also
-              // all-or-nothing: failing on one stream releases the ones it
-              // did take, so overlapping retries (each resend mints a new
-              // umid) leave part of a transaction's set locked under an
-              // older umid while the rest is free.
-              unavailable.push({ _id: body.$streams[i], locked: true });
-            }
+            fetchStream.push(db.get(body.$streams[i]));
           }
         }
 

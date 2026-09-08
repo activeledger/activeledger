@@ -354,7 +354,20 @@ export class StreamUpdater {
   private async append() {
     try {
       const bulkWriteResult = await this.db.bulkDocs(this.docs);
-      if (!bulkWriteResult) {
+      // A write that failed does not come back falsy. The self hosted store
+      // answers HTTP 200 with { ok: false } when its batch write fails, and
+      // that object is truthy, so it sailed through this check and the
+      // transaction was recorded as committed with nothing on disk. Only a
+      // transport fault - which ActiveRequest.send() reports as a null body -
+      // was ever caught here.
+      if (
+        !bulkWriteResult ||
+        bulkWriteResult.ok === false ||
+        // CouchDB answers with one result per document instead, where a
+        // rejected document carries an "error" property
+        (Array.isArray(bulkWriteResult) &&
+          bulkWriteResult.some((result: any) => result && result.error))
+      ) {
         throw new Error("Bulk Doc Insert Failed");
       }
 
