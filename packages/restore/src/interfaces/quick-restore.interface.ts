@@ -57,6 +57,7 @@ export interface IConsensusData {
 
 export interface IBaseData {
   _id: string;
+  _rev?: string;
   error?: string | {};
   namespace?: string;
   contract?: [];

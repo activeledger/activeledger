@@ -307,102 +307,59 @@ export class Endpoints {
                                 if (networkStreams.length >= consensusReached) {
 
 
-                                  // Build a map to count votes for each revision of each stream
-                                  // and store the first seen document for that revision.
-                                  const consensus: {
-                                    [index: string]: {
-                                      [revision: string]: {
-                                        votes: number;
-                                        doc: any;
-                                      };
-                                    };
-                                  } = {};
-                                  for (let i = networkStreams.length; i--;) {
-                                    const nodeStreams = networkStreams[i];
-                                    if (nodeStreams?.length) {
-                                      for (let ii = nodeStreams.length; ii--;) {
-                                        const streamDoc = nodeStreams[ii];
-                                        if (streamDoc && streamDoc._id && streamDoc._rev) {
-                                          if (!consensus[streamDoc._id]) {
-                                            consensus[streamDoc._id] = {};
-                                          }
-                                          if (consensus[streamDoc._id][streamDoc._rev]) {
-                                            consensus[streamDoc._id][streamDoc._rev].votes++;
-                                          } else {
-                                            consensus[streamDoc._id][streamDoc._rev] = {
-                                              votes: 1,
-                                              doc: streamDoc,
-                                            };
-                                          }
-                                        }
-                                      }
+                                  // One shared, tested tally - see Endpoints.spiConsensus(). It
+                                  // abstains on any stream some node could not report, rather than
+                                  // deciding it from a partial sample.
+                                  const agreed = Endpoints.spiConsensus(
+                                    networkStreams,
+                                    consensusReached
+                                  );
+
+                                  const undecided = Object.keys(agreed.abstained);
+                                  for (let a = undecided.length; a--;) {
+                                    if (!rewrote.has(undecided[a])) {
+                                      ActiveLogger.warn(
+                                        `SPI NOWINNER #1 - ${undecided[a]} (${agreed.abstained[undecided[a]]})`
+                                      );
                                     }
                                   }
 
-                                  // Now, for each stream, find the revision with the most votes.
-                                  const docs = Object.keys(consensus);
+                                  const docs = Object.keys(agreed.winners);
                                   for (let g = docs.length; g--;) {
-                                    const doc = consensus[docs[g]];
                                     if (rewrote.has(docs[g])) {
                                       continue;
                                     }
-                                    let max = 0;
-                                    let winner = "";
-                                    for (let x in doc) {
-                                      if (doc[x].votes >= consensusReached) {
-                                        ActiveLogger.warn(
-                                          `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
-                                        );
-                                        if (doc[x].votes > max) {
-                                          // Just beats it
-                                          max = doc[x].votes;
-                                          winner = x;
-                                        } else if (doc[x].votes === max) {
-                                          // if it is need to split x on - and compare the position at [0] if larger that one wins
 
-                                          const [xPos] = x.split("-");
-                                          const [wPos] = winner.split("-");
+                                    const winningDoc = agreed.winners[docs[g]].doc;
+                                    ActiveLogger.warn(
+                                      `SPI ${agreed.winners[docs[g]].votes} >= ${consensusReached} for ${docs[g]}@${agreed.winners[docs[g]].rev}`
+                                    );
 
-                                          if (+xPos > +wPos) {
-                                            ActiveLogger.warn(
-                                              `SPI matching max (${max}) but has higher position`
-                                            );
-                                            winner = x;
-                                          }
-                                          // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
-                                          // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
-                                        }
-                                      }
-                                    }
-
-                                    // If a winner was found, write it to the local database.
-                                    if (winner && !rewrote.has(docs[g])) {
-                                      const winningDoc = doc[winner].doc;
-                                      rewrote.set(winningDoc._id, winningDoc._rev);
-                                      const dblCheck = await host.dbConnection.get(
-                                        winningDoc._id
+                                    rewrote.set(winningDoc._id, winningDoc._rev);
+                                    const dblCheck = await host.dbConnection.get(winningDoc._id);
+                                    if (dblCheck._rev !== winningDoc._rev) {
+                                      ActiveLogger.error(
+                                        `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
                                       );
-                                      if (dblCheck._rev !== winningDoc._rev) {
+                                      // bulkDocs resolves false (it does not throw) when the
+                                      // underlying batch write fails - a full disk being the obvious
+                                      // way. Taking the repair on trust meant the node carried on
+                                      // believing it had caught up while still holding the old
+                                      // revision, and said nothing.
+                                      const written = await host.dbConnection.bulkDocs([winningDoc], {
+                                        new_edits: true,
+                                        force_rev: winningDoc._rev,
+                                      });
+                                      if (Endpoints.bulkWriteFailed(written)) {
                                         ActiveLogger.error(
-                                          `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
+                                          `SPI REWRITE FAILED #1 ${winningDoc._id} @ ${winningDoc._rev} : ${tx.$umid} - this node is still out of date`
                                         );
-                                        await host.dbConnection.bulkDocs(
-                                          [winningDoc],
-                                          {
-                                            new_edits: true,
-                                            force_rev: winningDoc._rev,
-                                          }
-                                        );
+                                        rewrote.delete(winningDoc._id);
+                                      } else {
                                         rewroteSomething = true;
                                       }
-                                    } else {
-                                      if (!rewrote.has(docs[g])) {
-                                        ActiveLogger.warn(
-                                          `SPI NOWINNER #1 - ${docs[g]}`
-                                        );
                                     }
                                   }
-                                }
 
                                   // Shouldn't need to check umid not found 950 error here, As this was the origin node
                                   // and its position indexes were incorrect.
@@ -696,6 +653,247 @@ export class Endpoints {
    * @private
    * @static
    */
+  /**
+   * Did a bulk write actually land?
+   *
+   * A repair that silently didn't happen is worse than one that fails
+   * loudly, and every layer here reports failure differently:
+   *
+   *  - LevelMe.bulkDocs() returns false when its batch write throws (a
+   *    full disk, for instance) rather than rejecting, and the self hosted
+   *    HTTP layer turns that into { ok: false } with a 200 status;
+   *  - ActiveRequest.send() resolves { data: null } for every transport
+   *    fault, so a node that could not be reached at all also looks like a
+   *    successful call;
+   *  - CouchDB answers _bulk_docs with an array of per document results,
+   *    where a rejected document carries an "error" property.
+   *
+   * @static
+   * @param {*} response
+   * @returns {boolean}
+   */
+  /**
+   * Should this node pull the network's revision over its own?
+   *
+   * Called on a node whose own vote failed with a position error or a
+   * missing stream, to decide whether to run the SPI lookup that adopts
+   * the majority revision. It says yes when some node did commit (so
+   * there is a newer agreed state to catch up to), or when this node is
+   * itself one of the nodes reporting a position error.
+   *
+   * The error test used to read `error?.indexOf(...) !== -1`, which is
+   * true for a node with NO error at all (undefined !== -1), so every
+   * healthy node was counted as disagreeing and a healthy local node set
+   * the "it's me that's wrong" flag. That made the decision independent
+   * of what the nodes actually reported.
+   *
+   * @static
+   * @param {*} nodes
+   * @param {string} homeReference
+   * @param {boolean} spiError
+   * @param {boolean} spi404Error
+   * @returns {boolean}
+   */
+  /**
+   * Decide, per stream, which revision the network agrees on.
+   *
+   * Shared by both SPI paths, which carried two copies of this tally.
+   *
+   * The threshold is a count of votes, but the sample it is measured
+   * against is whatever came back - so a stream that some nodes could not
+   * report on is judged on the few responses that did arrive. A node
+   * answers with silence for any stream it holds under a transaction
+   * lock, and the streams SPI arbitrates are exactly the ones the
+   * triggering transaction declared, so a short sample here is ordinary
+   * rather than exotic. When it happens, a minority revision - including
+   * the asking node's own stale one - can carry the vote. The winner then
+   * equals what this node already holds, so nothing is rewritten, nothing
+   * is logged, and the node stays behind while SPI reports success.
+   *
+   * So a stream is only decided when the sample for it is complete.
+   * Abstaining leaves the node out of date for now and it will try again
+   * on the next transaction, which is recoverable; acting on a partial
+   * sample is not.
+   *
+   * @static
+   * @param {any[]} networkStreams one entry per node, as knockAll returns
+   * @param {number} consensusReached votes needed to carry a revision
+   * @returns {{ winners: ..., abstained: ... }}
+   */
+  public static spiConsensus(
+    networkStreams: any[],
+    consensusReached: number
+  ): {
+    winners: { [id: string]: { rev: string; votes: number; doc: any } };
+    abstained: { [id: string]: string };
+  } {
+    const tally: {
+      [id: string]: { [rev: string]: { votes: number; doc: any } };
+    } = {};
+    // Nodes that hold the stream but could not report it this round
+    const unreported: { [id: string]: number } = {};
+
+    for (let i = networkStreams.length; i--; ) {
+      const nodeStreams = networkStreams[i];
+      // A node that failed to answer at all resolves to { error: true }
+      if (!nodeStreams || !nodeStreams.length) {
+        continue;
+      }
+
+      // One vote per node per stream. A node answers with a flat array
+      // built from the requested id list, so anything that puts an id in
+      // that list twice - or any future caller that does - would have had
+      // a single node's answer counted twice and could carry a revision
+      // on its own.
+      const voted: { [id: string]: boolean } = {};
+
+      for (let ii = nodeStreams.length; ii--; ) {
+        const streamDoc = nodeStreams[ii];
+        if (!streamDoc || !streamDoc._id) {
+          continue;
+        }
+
+        if (streamDoc.locked) {
+          if (!voted[streamDoc._id]) {
+            voted[streamDoc._id] = true;
+            unreported[streamDoc._id] = (unreported[streamDoc._id] || 0) + 1;
+          }
+          continue;
+        }
+
+        if (!streamDoc._rev || voted[streamDoc._id]) {
+          continue;
+        }
+        voted[streamDoc._id] = true;
+
+        if (!tally[streamDoc._id]) {
+          tally[streamDoc._id] = {};
+        }
+        tally[streamDoc._id][streamDoc._rev]
+          ? tally[streamDoc._id][streamDoc._rev].votes++
+          : (tally[streamDoc._id][streamDoc._rev] = {
+              votes: 1,
+              doc: streamDoc,
+            });
+      }
+    }
+
+    const winners: {
+      [id: string]: { rev: string; votes: number; doc: any };
+    } = {};
+    const abstained: { [id: string]: string } = {};
+
+    // Every id anyone mentioned, reported or not
+    const ids = Object.keys(tally);
+    const lockedIds = Object.keys(unreported);
+    for (let i = lockedIds.length; i--; ) {
+      if (ids.indexOf(lockedIds[i]) === -1) {
+        ids.push(lockedIds[i]);
+      }
+    }
+
+    for (let g = ids.length; g--; ) {
+      const id = ids[g];
+
+      if (unreported[id]) {
+        abstained[id] = `sample incomplete, ${unreported[id]} node(s) could not report`;
+        continue;
+      }
+
+      const revisions = tally[id] || {};
+      let winner = "";
+      let max = 0;
+
+      const candidates = Object.keys(revisions);
+      for (let x = candidates.length; x--; ) {
+        const rev = candidates[x];
+        if (revisions[rev].votes < consensusReached) {
+          continue;
+        }
+
+        if (revisions[rev].votes > max) {
+          max = revisions[rev].votes;
+          winner = rev;
+        } else if (revisions[rev].votes === max) {
+          // Same support, so take the later position
+          if (Endpoints.revPosition(rev) > Endpoints.revPosition(winner)) {
+            winner = rev;
+          }
+        }
+      }
+
+      if (winner) {
+        winners[id] = { rev: winner, votes: max, doc: revisions[winner].doc };
+      } else {
+        abstained[id] = "no revision reached consensus";
+      }
+    }
+
+    return { winners, abstained };
+  }
+
+  /**
+   * Ledger position from a revision string ("39-<md5>" -> 39)
+   *
+   * @static
+   * @param {string} rev
+   * @returns {number}
+   */
+  public static revPosition(rev: string): number {
+    const position = parseInt((rev || "").split("-")[0], 10);
+    return isNaN(position) ? 0 : position;
+  }
+
+  public static shouldSelfRepairPosition(
+    nodes: any,
+    homeReference: string,
+    spiError: boolean,
+    spi404Error: boolean
+  ): boolean {
+    // Means 404 most likely so check
+    if (!spiError) {
+      return spi404Error;
+    }
+
+    let posCount = 0;
+    let myPos = false;
+
+    const references = Object.keys(nodes || {});
+    for (let i = references.length; i--; ) {
+      const node = nodes[references[i]] || {};
+
+      // Did they commit at all? Someone has newer state to catch up to
+      if (node.commit) {
+        return true;
+      }
+
+      const nodeError = node.error;
+      if (
+        typeof nodeError === "string" &&
+        nodeError.indexOf("Stream Position Incorrect") !== -1
+      ) {
+        posCount++;
+        if (references[i] === homeReference) {
+          myPos = true;
+        }
+      }
+    }
+
+    return posCount >= 1 && myPos;
+  }
+
+  public static bulkWriteFailed(response: any): boolean {
+    if (response === false || response === null || response === undefined) {
+      return true;
+    }
+
+    if (Array.isArray(response)) {
+      return response.some((result) => result && result.error);
+    }
+
+    return response.ok === false;
+  }
+
   public static shouldTriggerSpiLookup(
     errors: string[] | undefined,
     selfError?: string
@@ -883,38 +1081,15 @@ export class Endpoints {
                   "SPI NON Origin - Position Incorrect or 404"
                 );
 
-                let check = false;
-                let posCount = 0;
-                let myPos = false;
-                // Did they commit at all?
-                if (spiError) {
-                  const nodes = Object.keys(ledger.data.$nodes);
-
-                  //let commited = false;
-                  for (let i = nodes.length; i--;) {
-                    if (ledger.data.$nodes[nodes[i]].commit) {
-                      check = true;
-                      break;
-                    }
-
-                    if (
-                      ledger.data.$nodes[nodes[i]].error?.indexOf(
-                        "Stream Position Incorrect"
-                      ) !== -1
-                    ) {
-                      posCount++;
-                      if (nodes[i] === Home.reference) {
-                        myPos = true;
-                      }
-                    }
-                  }
-                } else {
-                  // Means 404 most likely so check
-                  check = spi404Error;
-                }
-
                 // They may not have commited I maybe the only one!
-                if (check || (posCount >= 1 && myPos)) {
+                if (
+                  Endpoints.shouldSelfRepairPosition(
+                    ledger.data.$nodes,
+                    Home.reference,
+                    spiError,
+                    spi404Error
+                  )
+                ) {
                   ActiveLogger.warn(tx.$umid, "SPI NON Origin - Must Check");
 
                   // TODO - Resolve this copy paste
@@ -984,113 +1159,66 @@ export class Endpoints {
                         }
 
                         // now find the ones that match
-                        // Build a map to count votes for each revision of each stream
-                        // and store the first seen document for that revision.
-                        const consensus: {
-                          [index: string]: {
-                            [revision: string]: {
-                              votes: number;
-                              doc: any;
-                            };
-                          };
-                        } = {};
-                        for (let i = networkStreams.length; i--;) {
-                          const nodeStreams = networkStreams[i];
-                          if (nodeStreams?.length) {
-                            for (let ii = nodeStreams.length; ii--;) {
-                              const streamDoc = nodeStreams[ii];
-                              if (streamDoc && streamDoc._id && streamDoc._rev) {
-                                if (!consensus[streamDoc._id]) {
-                                  consensus[streamDoc._id] = {};
-                                }
-                                if (consensus[streamDoc._id][streamDoc._rev]) {
-                                  consensus[streamDoc._id][streamDoc._rev].votes++;
-                                } else {
-                                  consensus[streamDoc._id][streamDoc._rev] = {
-                                    votes: 1,
-                                    doc: streamDoc,
-                                  };
-                                }
-                              }
-                            }
+                        // One shared, tested tally - see Endpoints.spiConsensus(). It
+                        // abstains on any stream some node could not report, rather than
+                        // deciding it from a partial sample.
+                        const agreed = Endpoints.spiConsensus(
+                          networkStreams,
+                          consensusReached
+                        );
+
+                        const undecided = Object.keys(agreed.abstained);
+                        for (let a = undecided.length; a--;) {
+                          if (!rewrote.has(undecided[a])) {
+                            ActiveLogger.warn(
+                              `SPI NOWINNER #2 - ${undecided[a]} (${agreed.abstained[undecided[a]]})`
+                            );
                           }
                         }
 
-                        // Now, for each stream, find the revision with the most votes.
-                        const docs = Object.keys(consensus);
+                        const docs = Object.keys(agreed.winners);
                         for (let g = docs.length; g--;) {
-                          const doc = consensus[docs[g]];
                           if (rewrote.has(docs[g])) {
                             continue;
                           }
-                          let max = 0;
-                          let winner = "";
-                          for (let x in doc) {
-                            if (doc[x].votes >= consensusReached) {
-                              ActiveLogger.warn(
-                                `SPI ${doc[x].votes} >= ${consensusReached} for ${docs[g]}@${x}`
-                              );
-                              if (doc[x].votes > max) {
-                                // Just beats it
-                                max = doc[x].votes;
-                                winner = x;
-                              } else if (doc[x].votes === max) {
-                                // if it is need to split x on - and compare the position at [0] if larger that one wins
 
-                                const [xPos] = x.split("-");
-                                const [wPos] = winner.split("-");
+                          const winningDoc = agreed.winners[docs[g]].doc;
+                          ActiveLogger.warn(
+                            `SPI ${agreed.winners[docs[g]].votes} >= ${consensusReached} for ${docs[g]}@${agreed.winners[docs[g]].rev}`
+                          );
 
-                                if (+xPos > +wPos) {
-                                  ActiveLogger.warn(
-                                    `SPI matching max (${max}) but has higher position`
-                                  );
-                                  winner = x;
-                                }
-                                // problem happens if they are the same? Maybe announce no winner? because maybe 1 did download properly?
-                                // we don't have access to the date as oldest could be the winner possible should add some date data into rev?
-                              }
-                            }
-                          }
-
-                          // If a winner was found, write it to the local database.
-                          if (winner && !rewrote.has(docs[g])) {
-                            const winningDoc = doc[winner].doc;
-                            // Set umid so we can know to push a 950 error to check
-                            rewrote.set(tx.$umid, true);
-                            rewrote.set(winningDoc._id, winningDoc._rev);
-                            const dblCheck = await host.dbConnection.get(
-                              winningDoc._id
+                          // Set umid so we can know to push a 950 error to check
+                          rewrote.set(tx.$umid, true);
+                          rewrote.set(winningDoc._id, winningDoc._rev);
+                          const dblCheck = await host.dbConnection.get(winningDoc._id);
+                          if (dblCheck._rev !== winningDoc._rev) {
+                            ActiveLogger.error(
+                              `SPI REWRITING #2 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
                             );
-                            if (dblCheck._rev !== winningDoc._rev) {
-                              ActiveLogger.error(
-                                `SPI REWRITING #2 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
-                              );
 
-                              // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
-                              if (!dblCheck._rev) {
-                                try {
-                                  await host.dbConnection.put(winningDoc);
-                                  ActiveLogger.warn(
-                                    `SPI 404 - Create Base for ${winningDoc._id}`
-                                  );
-                                } catch {
-                                  ActiveLogger.error(
-                                    `SPI 404 - Failed to create ${winningDoc._id}`
-                                  );
-                                    }
+                            // if spi404Error, bulkdocs doesn't set the rev, create it first and allow it to fail
+                            if (!dblCheck._rev) {
+                              try {
+                                await host.dbConnection.put(winningDoc);
+                                ActiveLogger.warn(`SPI 404 - Create Base for ${winningDoc._id}`);
+                              } catch {
+                                ActiveLogger.error(`SPI 404 - Failed to create ${winningDoc._id}`);
                               }
-
-                              await host.dbConnection.bulkDocs([winningDoc], {
-                                new_edits: true,
-                                force_rev: winningDoc._rev,
-                              });
-                              canRetry = true;
                             }
-                          } else {
-                            if (!rewrote.has(docs[g])) {
-                              ActiveLogger.warn(
-                                `SPI NOWINNER #2 - ${docs[g]}`
+
+                            // See SPI #1 above - a false return is a failed write, not a
+                            // completed repair.
+                            const written = await host.dbConnection.bulkDocs([winningDoc], {
+                              new_edits: true,
+                              force_rev: winningDoc._rev,
+                            });
+                            if (Endpoints.bulkWriteFailed(written)) {
+                              ActiveLogger.error(
+                                `SPI REWRITE FAILED #2 ${winningDoc._id} @ ${winningDoc._rev} : ${tx.$umid} - this node is still out of date`
                               );
+                              rewrote.delete(winningDoc._id);
+                            } else {
+                              canRetry = true;
                             }
                           }
                         }
@@ -1372,6 +1500,9 @@ export class Endpoints {
         // Restrict Access to any volatile requests
         const fetchStream = [];
 
+        // Streams this node holds but cannot report on right now
+        const unavailable: { _id: string; locked: boolean }[] = [];
+
         for (let i = body.$streams.length; i--;) {
           // Check that :volatile doesn't exist
           if (body.$streams[i].indexOf(":volatile") !== -1) {
@@ -1407,6 +1538,26 @@ export class Endpoints {
             // Now it may exist we need to check it is SPI for other nodes
             if (Locker.is(holdValue, "SPI")) {
               fetchStream.push(db.get(body.$streams[i]));
+            } else {
+              // Held by a transaction, so this node cannot report the
+              // stream right now. Saying nothing is indistinguishable from
+              // "I do not have it", and the caller votes on whatever comes
+              // back - so the stream is under-reported and a minority
+              // revision can carry the vote. Answer with a marker instead.
+              // It has no _rev, so an older node's tally ignores it
+              // exactly as it ignored the silence.
+              //
+              // Note this is reachable precisely when it hurts most. Only
+              // streams named in $i/$o are locked (host.ts hold()), so the
+              // streams SPI is asked to arbitrate are exactly the ones the
+              // triggering transaction declared - and that transaction is
+              // still in flight on every node when SPI runs 100-500ms
+              // after the vote. Locker.hold() over an array is also
+              // all-or-nothing: failing on one stream releases the ones it
+              // did take, so overlapping retries (each resend mints a new
+              // umid) leave part of a transaction's set locked under an
+              // older umid while the rest is free.
+              unavailable.push({ _id: body.$streams[i], locked: true });
             }
           }
         }
@@ -1434,20 +1585,20 @@ export class Endpoints {
               }
               return resolve({
                 statusCode: 200,
-                content: streams,
+                content: streams.concat(unavailable as any),
               });
             })
             .catch(() => {
               // Don't mind an error so lets say everyting is ok
               return resolve({
                 statusCode: 200,
-                content: [],
+                content: unavailable,
               });
             });
         } else {
           return resolve({
             statusCode: 200,
-            content: [],
+            content: unavailable,
           });
         }
       } else {

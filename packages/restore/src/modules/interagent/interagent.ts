@@ -29,6 +29,7 @@ import {
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ErrorCodes } from "./error-codes.enum";
+import { StreamResync } from "./stream-resync";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 
 const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
@@ -207,17 +208,58 @@ export class Interagent {
             return await this.setProcessed(changeDoc, true);
           } else {
             ActiveLogger.error(`UMID ${changeDoc.umid} not found`);
-            return await this.setProcessed(changeDoc, false);
+            return await this.resyncStreams(changeDoc);
           }
         } else {
           ActiveLogger.error(`UMID ${changeDoc.umid} not found #2`);
-          return await this.setProcessed(changeDoc, false);
+          return await this.resyncStreams(changeDoc);
         }
         //}
       } else {
         ActiveLogger.info(`UMID ${changeDoc.umid} already exists`);
       }
     }
+    return await this.setProcessed(changeDoc, false);
+  }
+
+  /**
+   * Last resort when the transaction itself cannot be recovered.
+   *
+   * Replaying by umid is the only repair this class has, and it can only
+   * work while some node still holds that umid. When no node does, the
+   * error document used to be marked processed and purged - which quietly
+   * abandoned whatever stream the transaction was about. If this node had
+   * missed a committed update to that stream it stayed one revision
+   * behind it permanently, and voted "Stream Position Incorrect" against
+   * every later transaction touching it.
+   *
+   * The stream's committed state does not depend on the umid being
+   * fetchable, so ask the network for the stream directly instead and
+   * adopt the revision it agrees on.
+   *
+   * @private
+   * @param {*} changeDoc
+   * @returns {Promise<void>}
+   */
+  private async resyncStreams(changeDoc: any): Promise<void> {
+    try {
+      const rewrote = await StreamResync.resync(changeDoc.transaction);
+
+      if (rewrote) {
+        ActiveLogger.info(
+          `Stream resync recovered ${rewrote} document(s) for umid ${changeDoc.umid}`
+        );
+        // Archive it - this one changed local state, so it is worth
+        // keeping a record of, the same as a successful umid insert.
+        return await this.setProcessed(changeDoc, true);
+      }
+    } catch (error) {
+      ActiveLogger.error(
+        error,
+        `Stream resync failed for umid ${changeDoc.umid}`
+      );
+    }
+
     return await this.setProcessed(changeDoc, false);
   }
 
