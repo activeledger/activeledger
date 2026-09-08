@@ -219,3 +219,114 @@ describe("Endpoints.bulkWriteFailed (Activenetwork)", () => {
     ).to.equal(false);
   });
 });
+
+// The tally SPI votes with. Observed live on a four node network: node3
+// held the CryptoTransfer stream at 38-c54a2e1c while nodes 1/2/4 held
+// 39-246bc890, and node3's own SPI logged
+//
+//   SPI 3 >= 2 for <deployer identity>@2-5559ccf9    <- 3 votes, idle stream
+//   SPI 2 >= 2 for <CryptoTransfer>@38-c54a2e1c      <- picked its OWN stale rev
+//
+// The peers' 39s never reached the tally: Endpoints.streams() silently
+// omitted the stream on any node holding a write lock for a live
+// transfer, and a busy contract stream is locked most of the time. The
+// winner then equalled what node3 already held, so nothing was rewritten,
+// nothing was logged, and SPI reported success - permanently.
+describe("Endpoints.spiConsensus (Activenetwork)", () => {
+  const stale = { _id: "088067", _rev: "38-c54a2e1c" };
+  const agreed = { _id: "088067", _rev: "39-246bc890" };
+  const identity = { _id: "8e55d6", _rev: "2-5559ccf9" };
+
+  it("picks the revision the majority reported", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [[agreed], [agreed], [agreed], [stale]],
+      2
+    );
+
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+    expect(winners["088067"].votes).to.equal(3);
+  });
+
+  it("abstains on a stream a node could not report, rather than voting on the rest", () => {
+    // The node3 case: peers busy, so only the stale local answer counts
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [
+        [{ _id: "088067", locked: true }, identity],
+        [{ _id: "088067", locked: true }, identity],
+        [stale, identity],
+      ],
+      2
+    );
+
+    expect(winners["088067"]).to.equal(undefined);
+    expect(abstained["088067"]).to.contain("sample incomplete");
+
+    // and the stream nobody was busy with is still decided
+    expect(winners["8e55d6"].rev).to.equal("2-5559ccf9");
+  });
+
+  it("never lets a stale minority carry a stream whose sample is short", () => {
+    // Two stale answers meeting a threshold of 2 must not beat three
+    // nodes that were unable to answer
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [
+        [stale],
+        [stale],
+        [{ _id: "088067", locked: true }],
+        [{ _id: "088067", locked: true }],
+      ],
+      2
+    );
+
+    expect(winners["088067"]).to.equal(undefined);
+    expect(abstained["088067"]).to.contain("2 node(s) could not report");
+  });
+
+  it("abstains when no revision reaches the threshold", () => {
+    const { winners, abstained } = Endpoints.spiConsensus(
+      [[agreed], [stale]],
+      2
+    );
+
+    expect(winners["088067"]).to.equal(undefined);
+    expect(abstained["088067"]).to.equal("no revision reached consensus");
+  });
+
+  it("prefers the later position when two revisions have equal support", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [[agreed], [agreed], [stale], [stale]],
+      2
+    );
+
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+  });
+
+  it("ignores nodes that failed to answer at all", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [[agreed], [agreed], { error: true, from: "node4" }, undefined],
+      2
+    );
+
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+  });
+
+  it("ignores a not found, which comes back with neither id nor revision", () => {
+    const { winners } = Endpoints.spiConsensus(
+      [
+        [agreed, {}],
+        [agreed, {}],
+      ],
+      2
+    );
+
+    expect(winners["088067"].rev).to.equal("39-246bc890");
+    expect(Object.keys(winners)).to.have.length(1);
+  });
+
+  it("carries the winning document, not just its revision", () => {
+    const full = { _id: "088067", _rev: "39-246bc890", state: { balance: 1 } };
+    const { winners } = Endpoints.spiConsensus([[full], [full]], 2);
+
+    expect(winners["088067"].doc).to.deep.equal(full);
+  });
+});
