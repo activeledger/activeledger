@@ -49,24 +49,106 @@ describe("ActiveDSChanges - the changes feed must survive a bad round", () => {
     activeutilities.ActiveRequest.send = realSend;
   });
 
-  it("a null body neither throws nor ends the feed", async () => {
+  it("a null body is REPORTED as a failure, and the feed backs off rather than spinning", async () => {
+    // The original version of this test asserted a null body emits no error,
+    // "because it is an ordinary empty round". That was wrong, and the mistake
+    // mattered: ActiveRequest.send() never rejects - it returns { data: null }
+    // for connection-refused, DNS failure, bodyTimeout, socket reset, non-2xx
+    // and unparseable body alike. So a null body is the ONLY way a transport
+    // fault can present, and treating it as routine meant a completely dead
+    // datastore was indistinguishable from a quiet one, forever, in silence.
     sendImpl = async () => ({ data: null });
     const changes = new ActiveDSChanges({ since: 0 }, "http://store/db/_changes");
     const errors: unknown[] = [];
     changes.on("error", (e: unknown) => errors.push(e));
     try {
       await settle(1600);
-      expect(errors.map(String).join(","), "a null body is an ordinary empty round").to.equal("");
+      expect(errors.length, "a consumer must be able to learn the feed is failing").to.be.greaterThan(0);
       expect(calls, "feed must keep polling").to.be.greaterThan(1);
-      // Backs off rather than re-arming instantly - an immediate retry here
-      // busy-loops, because a body-less response returns straight away
-      // instead of blocking like a healthy longpoll.
+      // Backs off rather than re-arming instantly - a body-less response
+      // returns straight away instead of blocking like a healthy longpoll.
       expect(calls, "feed must back off, not spin").to.be.lessThan(20);
     } finally {
       changes.cancel();
     }
   });
 
+  it("emitting an error with no listener attached does not crash the feed", async () => {
+    // Node throws on an "error" event with no listener. The null-body path is
+    // now genuinely reachable on every datastore blip, so an unguarded emit
+    // would turn a transient outage into a crash in every consumer that never
+    // needed an error handler.
+    sendImpl = async () => ({ data: null });
+    const changes = new ActiveDSChanges({ since: 0 }, "http://store/db/_changes");
+    try {
+      await settle(600);
+      expect(calls, "feed must still be polling").to.be.greaterThan(0);
+    } finally {
+      changes.cancel();
+    }
+  });
+
+  it("a body with no results array backs off instead of hot-looping", async () => {
+    // httpd's error path responds with JSON.stringify(new Error(...)), which
+    // is the literal string "{}" - truthy, parses fine, no results array. The
+    // continuation at the bottom of listen() re-arms IMMEDIATELY, which is
+    // safe only because a healthy longpoll blocks. A body like this returns
+    // instantly, so it pegged both ends at full request rate with nothing
+    // visible to the consumer. Guarding `results` against a throw stopped the
+    // crash and left the spin.
+    sendImpl = async () => ({ data: {} });
+    const changes = new ActiveDSChanges({ since: 0 }, "http://store/db/_changes");
+    const errors: unknown[] = [];
+    changes.on("error", (e: unknown) => errors.push(e));
+    try {
+      await settle(1600);
+      expect(errors.length, "a malformed round must be reported").to.be.greaterThan(0);
+      expect(calls, "must NOT hot-loop").to.be.lessThan(20);
+    } finally {
+      changes.cancel();
+    }
+  });
+
+  it("cancel() then restart() with a round in flight does not leave two loops running", async () => {
+    // cancel() cannot abort the in-flight request - ActiveRequest exposes no
+    // abort handle - so the cancelled round resolves later. It re-checked only
+    // `stop`, which restart() has since set back to false, and re-armed. Two
+    // loops against one feed, permanently, both advancing `since` and emitting
+    // every change twice. ActiveChanges.pause() then start() is exactly this.
+    let inFlight = 0;
+    let maxInFlight = 0;
+    sendImpl = async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await settle(200);
+      inFlight--;
+      return { data: { results: [], last_seq: 1 } };
+    };
+    const changes = new ActiveDSChanges({ since: 0 }, "http://store/db/_changes");
+    changes.on("error", () => undefined);
+    try {
+      await settle(100); // a round is now in flight
+      changes.cancel();
+      changes.restart();
+
+      // A BRIEF overlap of two requests is unavoidable and harmless: cancel()
+      // cannot abort the round already on the wire, so it stays in flight
+      // until it resolves and is then disowned. What must not happen is two
+      // loops PERSISTING. So let the orphan drain first, then measure.
+      await settle(400);
+      maxInFlight = inFlight;
+      await settle(900);
+
+      expect(maxInFlight, "after the orphaned round drains, only one loop may remain").to.equal(1);
+    } finally {
+      changes.cancel();
+    }
+  });
+
+  // Kept as backstop coverage, but note ActiveRequest.send() cannot actually
+  // produce this: it swallows every transport fault into { data: null } (see
+  // the first test). What this exercises is the catch path for a genuine bug
+  // in the handling code, not for a datastore being down.
   it("a rejected round is reported and then retried, not fatal", async () => {
     sendImpl = async () => {
       throw new Error("datastore restarting");
