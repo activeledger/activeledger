@@ -8,6 +8,7 @@
  */
 
 import * as path from "path";
+import * as fsSync from "fs";
 import { NetworkHarness, NetworkNode } from "./harness";
 import { submit, storageGet, storagePut, requestJsonWithStatus } from "./http";
 import { SSEClient } from "./sse";
@@ -526,6 +527,36 @@ async function runStoragePathValidationTests(
 }
 
 
+
+/**
+ * Reads a node's own log and reports which repair mechanism, if any,
+ * touched a given stream.
+ *
+ * "Did it converge" is necessary but not sufficient - a stream can end up
+ * consistent because the transaction eventually applied everywhere, which
+ * says nothing about whether reconciliation works. Naming the mechanism is
+ * the difference between a test that guards an outcome and one that
+ * proves a cause.
+ */
+function healedBy(node: NetworkNode, streamId: string): string[] {
+  let log = "";
+  try {
+    log = fsSync.readFileSync(node.logPath, "utf8");
+  } catch {
+    return ["log unreadable"];
+  }
+  const short = streamId.slice(0, 16);
+  const found: string[] = [];
+  for (const line of log.split("\n")) {
+    if (line.indexOf(short) === -1) continue;
+    if (line.indexOf("SPI REWRITING") !== -1) found.push("SPI rewrite");
+    if (line.indexOf("Stream resync") !== -1) found.push("restore reconciler");
+    if (line.indexOf("SPI NOWINNER") !== -1) found.push("SPI abstained");
+    if (line.indexOf("SPI REWRITE FAILED") !== -1) found.push("SPI write failed");
+  }
+  return [...new Set(found)];
+}
+
 /**
  * Reads one stream from every node and reports the distinct revisions.
  *
@@ -709,6 +740,16 @@ async function runContractDivergenceTest(
     ? report.ok(`All four nodes converged at ${converged.byNode[0].rev}`)
     : report.fail(
         `Node did not catch up after 60s: ${JSON.stringify(converged.byNode)}`
+      );
+
+  // Name the mechanism. Convergence alone does not distinguish "something
+  // repaired the laggard" from "the update simply applied everywhere in
+  // the end", and only the first is what this suite is here to prove.
+  const mechanisms = healedBy(desyncTarget, contractId);
+  mechanisms.length
+    ? report.info(`Desynced node log shows: ${mechanisms.join(", ")}`)
+    : report.warn(
+        "Desynced node log shows no repair activity - it converged because the update applied, not because anything reconciled"
       );
 
   const metaConverged = await waitForConvergence(nodes, `${contractId}:stream`, 15000);
