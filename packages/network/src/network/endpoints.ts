@@ -700,14 +700,15 @@ export class Endpoints {
    * Shared by both SPI paths, which carried two copies of this tally.
    *
    * The threshold is a count of votes, but the sample it is measured
-   * against is whatever came back - so a stream that most nodes could not
-   * report on is judged on the few responses that did arrive. On a busy
-   * contract stream that is the normal case, not an edge case: peers
-   * holding a write lock for a live transaction answered with silence,
-   * their revisions never entered the tally, and the stale node's own
-   * revision could carry the vote against itself. The winner then equals
-   * what this node already holds, so nothing is rewritten, nothing is
-   * logged, and the node stays behind forever while SPI reports success.
+   * against is whatever came back - so a stream that some nodes could not
+   * report on is judged on the few responses that did arrive. A node
+   * answers with silence for any stream it holds under a transaction
+   * lock, and the streams SPI arbitrates are exactly the ones the
+   * triggering transaction declared, so a short sample here is ordinary
+   * rather than exotic. When it happens, a minority revision - including
+   * the asking node's own stale one - can carry the vote. The winner then
+   * equals what this node already holds, so nothing is rewritten, nothing
+   * is logged, and the node stays behind while SPI reports success.
    *
    * So a stream is only decided when the sample for it is complete.
    * Abstaining leaves the node out of date for now and it will try again
@@ -1538,13 +1539,24 @@ export class Endpoints {
             if (Locker.is(holdValue, "SPI")) {
               fetchStream.push(db.get(body.$streams[i]));
             } else {
-              // Held by a live transaction, so this node cannot report the
+              // Held by a transaction, so this node cannot report the
               // stream right now. Saying nothing is indistinguishable from
               // "I do not have it", and the caller votes on whatever comes
-              // back - so a busy stream is systematically under-reported
-              // and a stale minority can carry the vote. Answer with a
-              // marker instead. It has no _rev, so an older node's tally
-              // ignores it exactly as it ignored the silence.
+              // back - so the stream is under-reported and a minority
+              // revision can carry the vote. Answer with a marker instead.
+              // It has no _rev, so an older node's tally ignores it
+              // exactly as it ignored the silence.
+              //
+              // Note this is reachable precisely when it hurts most. Only
+              // streams named in $i/$o are locked (host.ts hold()), so the
+              // streams SPI is asked to arbitrate are exactly the ones the
+              // triggering transaction declared - and that transaction is
+              // still in flight on every node when SPI runs 100-500ms
+              // after the vote. Locker.hold() over an array is also
+              // all-or-nothing: failing on one stream releases the ones it
+              // did take, so overlapping retries (each resend mints a new
+              // umid) leave part of a transaction's set locked under an
+              // older umid while the rest is free.
               unavailable.push({ _id: body.$streams[i], locked: true });
             }
           }
