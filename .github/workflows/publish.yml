@@ -9,6 +9,18 @@ on:
       version:
         description: "Version to publish (e.g. 4.2.0). Leave blank to publish whatever's currently committed in package.json."
         required: false
+  # release.yml calls this directly rather than relying on the tag it pushes
+  # to trigger the `push: tags` above. GitHub does not start new workflow runs
+  # from events created with the default GITHUB_TOKEN, so that tag push is
+  # invisible to this workflow - v4.5.8 was tagged successfully and published
+  # nothing until it was dispatched by hand. A workflow_call happens inside
+  # the caller's run, so the restriction does not apply.
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to publish, without the leading v"
+        required: false
+        type: string
 
 permissions:
   # contents: write, not read - creating a GitHub Release writes to the repo.
@@ -69,8 +81,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: npx lerna version "${GITHUB_REF_NAME#v}" --no-git-tag-version --no-push --force-publish --exact --yes
 
+      # Deliberately not gated on github.event_name: under workflow_call that
+      # reports the CALLER's event, so a check for 'workflow_dispatch' here is
+      # both wrong and accidentally right depending on how release.yml was
+      # started. inputs.version is empty on a tag push and set on either of
+      # the other two triggers, which is exactly the distinction that matters.
       - name: Set version from workflow input
-        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        if: inputs.version != ''
         run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --exact --yes
 
       # `lerna version --no-git-tag-version` deliberately leaves the bump as
@@ -88,7 +105,7 @@ jobs:
       # which failed the whole publish - the release plumbing working
       # correctly was enough to break the step that assumed it did not.
       - name: Commit version bump locally (not pushed)
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
         run: |
           if git diff --quiet; then
             echo "Working tree already at the target version - nothing to commit."
@@ -159,13 +176,38 @@ jobs:
       # npmjs step was skipped for the first few tags while its token was being
       # restored, so re-running an old tag to backfill it is expected) and
       # `gh release create` fails on an existing tag rather than no-op'ing.
+      # The tag to release is either the ref that triggered this, or the one
+      # release.yml just pushed for the version it handed over. Keying this on
+      # the ref alone meant a run started any way other than by a tag push
+      # skipped the release entirely and said nothing about it - v4.5.8's
+      # GitHub Release had to be created by hand afterwards.
+      - name: Resolve release tag
+        id: releasetag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.version }}" ]; then
+            echo "name=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.releasetag.outputs.name != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.releasetag.outputs.name }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "release $GITHUB_REF_NAME already exists - nothing to do"
+          # Asked of the remote, not the local clone. This job's checkout is
+          # shallow and, when called from release.yml, happened before that
+          # workflow pushed the tag - so `git rev-parse` here would miss a tag
+          # that exists perfectly well on the remote.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::tag $TAG does not exist on the remote - skipping GitHub Release"
+            exit 0
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists - nothing to do"
           else
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$TAG" --title "$TAG" --generate-notes
           fi

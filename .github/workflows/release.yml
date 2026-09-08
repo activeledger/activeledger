@@ -1,17 +1,11 @@
-# Cuts a release: bump -> commit -> tag -> push.
+# Cuts a release: bump -> commit -> tag -> push -> publish.
 #
-# KNOWN GAP: publish.yml does NOT fire on the tag this workflow pushes.
-# GitHub deliberately does not start new workflow runs from events created
-# with the default GITHUB_TOKEN, so the tag push here is invisible to
-# publish.yml's `on: push: tags` trigger. After this workflow succeeds,
-# publishing still has to be started by hand:
-#
-#   gh workflow run publish.yml --ref master -f version=<the version>
-#
-# Fixing it properly means either a PAT with workflow scope for the tag push,
-# or turning publish.yml into a reusable workflow this one calls directly
-# (workflow_call is part of the same run, so the restriction does not apply).
-# Left as a follow-up rather than changed mid-release.
+# The publish is CALLED from here rather than left to fire on the tag this
+# workflow pushes. GitHub does not start new workflow runs from events created
+# with the default GITHUB_TOKEN, so publish.yml's `on: push: tags` never sees
+# it - v4.5.8 was tagged correctly and published nothing at all until someone
+# noticed and dispatched it by hand. A workflow_call runs inside this run, so
+# the restriction does not apply and one dispatch does the whole release.
 #
 # This exists because the order matters and could not be fixed inside
 # publish.yml. That workflow triggers ON a tag, so by the time it runs the tag
@@ -42,7 +36,11 @@ on:
         required: true
 
 permissions:
+  # packages: write as well as contents: write - the called publish workflow
+  # inherits this job's permissions, not the ones declared in its own file,
+  # and it pushes to GitHub Packages.
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -91,5 +89,14 @@ jobs:
 
       - name: Summary
         run: |
-          echo "Released v${{ inputs.version }} - publish.yml now runs on the tag." >> "$GITHUB_STEP_SUMMARY"
+          echo "Tagged v${{ inputs.version }}. Publishing follows in this same run." >> "$GITHUB_STEP_SUMMARY"
           echo "The commit, the tag and the published packages all report ${{ inputs.version }}." >> "$GITHUB_STEP_SUMMARY"
+
+  # Same run, so no GITHUB_TOKEN trigger restriction to work around.
+  publish:
+    needs: release
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ inputs.version }}
+    # NPM_TOKEN, and whatever else publish.yml reaches for
+    secrets: inherit
