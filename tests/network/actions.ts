@@ -84,6 +84,48 @@ export async function deployContract(
   return contractStreamId;
 }
 
+/**
+ * Updates an already-deployed contract in place, the way a real redeploy
+ * does: $entry "update" against the default contract system contract, with
+ * the contract's own stream id as the OUTPUT.
+ *
+ * That output is what makes this different from every other transaction
+ * this suite runs. The contract stream is revision-checked and locked like
+ * any other output, so a node holding it at the wrong revision vetoes the
+ * update - which is the only situation in which that stream is ever
+ * arbitrated.
+ */
+export async function updateContract(
+  baseUrl: string,
+  identity: Identity,
+  namespace: string,
+  contractStreamId: string,
+  contractName: string,
+  sourcePath: string,
+  version: string
+): Promise<any> {
+  const contractSrc = fs.readFileSync(sourcePath, "utf8");
+  const txBody = {
+    $entry: "update",
+    $namespace: "default",
+    $contract: "contract",
+    $i: {
+      [identity.streamId]: {
+        version,
+        namespace,
+        name: contractName,
+        contract: Buffer.from(contractSrc).toString("base64"),
+      },
+    },
+    $o: { [contractStreamId]: {} },
+  };
+  const tx = {
+    $tx: txBody,
+    $sigs: { [identity.streamId]: identity.keyPair.sign(txBody) },
+  };
+  return submit(baseUrl, tx);
+}
+
 /** Runs a deployed contract, writing to (and reading permission from) the caller's own identity stream. */
 export async function runContract(
   baseUrl: string,
