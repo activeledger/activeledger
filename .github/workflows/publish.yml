@@ -127,24 +127,24 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # A publisher's word is not evidence. lerna printed "success
-      # published 17 packages" on three consecutive releases while the
-      # registry was missing six of them - the same six each time, so not
-      # random flakiness; it read the registry stale and reported success
-      # either way. v4.5.8, v4.5.9 and v4.5.10 all shipped incomplete and
-      # were only caught because someone queried npm by hand. v4.5.9 was
-      # briefly missing activeutilities (the keep-alive fix) and
-      # activenetwork (all the SPI work) - the two packages that release
-      # existed for.
+      # Confirm the packages are actually fetchable before announcing a
+      # release, because the publisher's own success line has not been
+      # reliable. Three releases reported every package published while npm
+      # was serving an older version for several of them.
       #
-      # lerna is gone now, but this check stays. The failure was npm's
-      # read-after-write behaviour as much as the tool's optimism, and
-      # `npm publish --workspaces` reports per package success the same
-      # way. Ask the registry, republish what is missing, and fail loudly
-      # if it still is not there. Republishing only the missing packages
-      # avoids the E403 that a blanket re-run hits on the ones that did
-      # land.
-      - name: Verify every package reached npmjs, and republish what did not
+      # Be patient about it, though. npm STAGES a version before it becomes
+      # visible, and a check run seconds after the publish reads as
+      # "missing" for something that is on its way. Republishing into that
+      # window earns `E409 Cannot publish over previously staged version`,
+      # which is npm confirming the version exists - so it is treated as
+      # success here rather than as a failure. v4.5.11 published correctly
+      # and this step failed it anyway, purely by asking too soon.
+      #
+      # So: poll with backoff first, republish only what is still absent
+      # after that, and fail only if it is still absent at the end.
+      # Republishing just the missing packages avoids the E403 that a
+      # blanket re-run hits on the ones that did land.
+      - name: Verify every package reached npmjs
         if: ${{ env.NPM_TOKEN_SET == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -184,51 +184,43 @@ jobs:
             ' "$target"
           }
 
-          for attempt in 1 2 3; do
+          # Give npm time to surface what it has already accepted. Six
+          # tries at 15s is a minute and a half of patience before
+          # concluding anything is wrong.
+          for attempt in 1 2 3 4 5 6; do
             missing="$(missing_dirs)"
             if [ -z "$missing" ]; then
               echo "All packages are on npmjs at $target"
               exit 0
             fi
-            echo "::warning::attempt $attempt - not on npmjs at $target: $missing"
-            for dir in $missing; do
-              # Individually, so one failure does not abort the rest, and
-              # so an already-published sibling cannot 403 the whole run
-              (cd "$dir" && npm publish --access public --registry https://registry.npmjs.org/) || true
-            done
-            # The registry needs a moment to agree with itself
-            sleep 20
+            echo "waiting for npmjs to surface: $missing"
+            sleep 15
           done
 
-          missing="$(missing_dirs)"
-          if [ -n "$missing" ]; then
-            echo "::error::still missing from npmjs at $target after 3 attempts: $missing"
-            exit 1
-          fi
-          echo "All packages are on npmjs at $target"
+          # Still not there. Now republish, treating "already staged" as the
+          # confirmation it is.
+          echo "::warning::not visible after 90s, republishing: $missing"
+          for dir in $missing; do
+            out="$( (cd "$dir" && npm publish --access public --registry https://registry.npmjs.org/) 2>&1 )" || true
+            echo "$out"
+            case "$out" in
+              *"previously staged version"*)
+                echo "$dir was already staged - npm has it" ;;
+            esac
+          done
 
-      # Publishing to a registry and announcing a release are two different
-      # things, and only the first was ever automated here. No version of this
-      # workflow has ever created a GitHub Release - releases up to v4.4.0 were
-      # made by hand alongside the tag, and when tagging became frequent during
-      # the v4.5.x series that step simply stopped happening. The result was
-      # six versions (v4.5.0 through v4.5.6) published to npm and GitHub
-      # Packages with no release entry, so the releases page read as six
-      # versions behind reality while every CI run reported success.
-      #
-      # Last, deliberately: a release should announce something that actually
-      # shipped. If either publish above fails the job stops before here, so
-      # there is never a release pointing at a version nobody can install.
-      #
-      # Idempotent, because a re-run of a tag build is an ordinary thing (the
-      # npmjs step was skipped for the first few tags while its token was being
-      # restored, so re-running an old tag to backfill it is expected) and
-      # `gh release create` fails on an existing tag rather than no-op'ing.
-      # The tag to release is either the ref that triggered this, or the one
-      # release.yml just pushed for the version it handed over. Keying this on
-      # the ref alone meant a run started any way other than by a tag push
-      # skipped the release entirely and said nothing about it - v4.5.8's
-      # GitHub Release had to be created by hand afterwards.
+          for attempt in 1 2 3 4; do
+            sleep 20
+            missing="$(missing_dirs)"
+            if [ -z "$missing" ]; then
+              echo "All packages are on npmjs at $target"
+              exit 0
+            fi
+          done
+
+          echo "::error::still missing from npmjs at $target: $missing"
+          exit 1
+
       - name: Resolve release tag
         id: releasetag
         run: |
