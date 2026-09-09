@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "4.5.10",
+  "version": "4.5.11",
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",
@@ -43,13 +43,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.5.10",
-    "@activeledger/activedefinitions": "4.5.10",
-    "@activeledger/activelogger": "4.5.10",
-    "@activeledger/activeoptions": "4.5.10",
-    "@activeledger/activeprotocol": "4.5.10",
-    "@activeledger/activequery": "4.5.10",
-    "@activeledger/activeutilities": "4.5.10",
+    "@activeledger/activecrypto": "4.5.11",
+    "@activeledger/activedefinitions": "4.5.11",
+    "@activeledger/activelogger": "4.5.11",
+    "@activeledger/activeoptions": "4.5.11",
+    "@activeledger/activeprotocol": "4.5.11",
+    "@activeledger/activequery": "4.5.11",
+    "@activeledger/activeutilities": "4.5.11",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
