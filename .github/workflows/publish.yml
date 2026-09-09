@@ -159,6 +159,84 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      # lerna's word is not evidence. It has printed "success published 17
+      # packages" on three consecutive releases while the registry was
+      # missing six of them - and the same six each time, so this is not
+      # random flakiness. It looks like read-after-write lag: lerna decides
+      # what to publish from a stale view of the registry, and reports
+      # success either way. v4.5.8, v4.5.9 and v4.5.10 all shipped
+      # incomplete and were only caught because someone queried npm by
+      # hand. v4.5.9 was briefly missing activeutilities (the keep-alive
+      # fix) and activenetwork (all the SPI work) - the two packages that
+      # release existed for.
+      #
+      # So: ask the registry, republish what is missing, and fail loudly if
+      # it still is not there. Republishing only the missing packages
+      # avoids the E403 that a blanket lerna re-run hits on the ones that
+      # did land.
+      - name: Verify every package reached npmjs, and republish what did not
+        if: ${{ env.NPM_TOKEN_SET == 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -u
+          target="$(node -p "require('./lerna.json').version")"
+          echo "Target version: $target"
+
+          missing_dirs() {
+            node -e '
+              const fs = require("fs");
+              const https = require("https");
+              const target = process.argv[1];
+              const dirs = fs.readdirSync("packages");
+              const check = (dir) => new Promise((resolve) => {
+                let pkg;
+                try {
+                  pkg = JSON.parse(fs.readFileSync(`packages/${dir}/package.json`, "utf8"));
+                } catch { return resolve(null); }
+                if (!pkg.name || pkg.private) return resolve(null);
+                const url = `https://registry.npmjs.org/${pkg.name.replace("/", "%2f")}`;
+                https.get(url, { headers: { "cache-control": "no-cache" } }, (res) => {
+                  let body = "";
+                  res.on("data", (c) => (body += c));
+                  res.on("end", () => {
+                    try {
+                      const meta = JSON.parse(body);
+                      resolve(meta.versions && meta.versions[target] ? null : `packages/${dir}`);
+                    } catch { resolve(`packages/${dir}`); }
+                  });
+                }).on("error", () => resolve(`packages/${dir}`));
+              });
+              Promise.all(dirs.map(check)).then((r) => {
+                const missing = r.filter(Boolean);
+                if (missing.length) console.log(missing.join(" "));
+              });
+            ' "$target"
+          }
+
+          for attempt in 1 2 3; do
+            missing="$(missing_dirs)"
+            if [ -z "$missing" ]; then
+              echo "All packages are on npmjs at $target"
+              exit 0
+            fi
+            echo "::warning::attempt $attempt - not on npmjs at $target: $missing"
+            for dir in $missing; do
+              # Individually, so one failure does not abort the rest, and
+              # so an already-published sibling cannot 403 the whole run
+              (cd "$dir" && npm publish --access public --registry https://registry.npmjs.org/) || true
+            done
+            # The registry needs a moment to agree with itself
+            sleep 20
+          done
+
+          missing="$(missing_dirs)"
+          if [ -n "$missing" ]; then
+            echo "::error::still missing from npmjs at $target after 3 attempts: $missing"
+            exit 1
+          fi
+          echo "All packages are on npmjs at $target"
+
       # Publishing to a registry and announcing a release are two different
       # things, and only the first was ever automated here. No version of this
       # workflow has ever created a GitHub Release - releases up to v4.4.0 were
