@@ -47,6 +47,6 @@
   "module": "./es/index.js",
   "dependencies": {
     "msgpackr": "^2.0.1",
-    "undici": "6.18.2"
+    "undici": "6.28.0"
   }
 }
