@@ -22,6 +22,7 @@
  */
 
 import * as child from "child_process";
+import * as path from "path";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -35,6 +36,43 @@ import {
 import { TestnetHandler } from "./testnet";
 import { PIDHandler, EPIDChild } from "./pid";
 import { StatsHandler } from "./stats";
+
+/**
+ * Finds the node_modules directory that a smart contract will resolve
+ * @activeledger/* through.
+ *
+ * This is symlinked into contracts/ and default_contracts/ so the contracts
+ * copied there - which require @activeledger/activecontracts and friends -
+ * can load them at runtime.
+ *
+ * It used to be hardcoded as `${__dirname}/../../node_modules`, the
+ * package's own folder. npm only creates that when a dependency cannot be
+ * hoisted, so the guess held for the layouts this had been run in and not
+ * for others; converting the repository to npm workspaces hoists
+ * everything to the workspace root and the path stops existing, at which
+ * point the CLI dies at startup with ENOENT.
+ *
+ * Rather than guess again, ask Node. require.resolve.paths() returns the
+ * exact ordered list of node_modules directories Node would search for
+ * that specifier, so the first one actually containing the package is by
+ * definition the one a contract will resolve through - in a package
+ * folder, a workspace root, or a global install alike.
+ */
+function resolveModulesDir(): string {
+  // Any dependency a contract needs would do; this is the one they all use
+  const needed = "@activeledger/activecontracts";
+  const searched = require.resolve.paths(needed) || [];
+
+  for (const dir of searched) {
+    if (fs.existsSync(path.join(dir, needed))) {
+      return fs.realpathSync(dir);
+    }
+  }
+
+  throw new Error(
+    `Could not find a node_modules containing ${needed} (searched ${searched.length} locations from ${__dirname}) - contracts would have nothing to require`
+  );
+}
 
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
@@ -333,7 +371,7 @@ export class CLIHandler {
 
       if (!fs.existsSync("default_contracts/node_modules"))
         fs.symlinkSync(
-          fs.realpathSync(`${__dirname}/../../node_modules`),
+          resolveModulesDir(),
           fs.realpathSync("default_contracts") + "/node_modules",
           "dir"
         );
@@ -342,7 +380,7 @@ export class CLIHandler {
     // Check for modules link for running contracts
     if (!fs.existsSync("contracts/node_modules"))
       fs.symlinkSync(
-        fs.realpathSync(`${__dirname}/../../node_modules`),
+        resolveModulesDir(),
         fs.realpathSync("contracts") + "/node_modules",
         "dir"
       );
