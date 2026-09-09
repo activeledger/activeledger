@@ -1,7 +1,7 @@
 {
   "name": "@activeledger/nano-gateway",
   "description": "Lightweight, permissioned SSE + read gateway for nano light-node clients - runs alongside a real Activeledger node, direct DB access like activehybrid, no Activecore dependency.",
-  "version": "4.5.11",
+  "version": "4.5.12",
   "publishConfig": {
     "access": "public"
   },
@@ -48,11 +48,11 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.5.11",
-    "@activeledger/activedefinitions": "4.5.11",
-    "@activeledger/activelogger": "4.5.11",
-    "@activeledger/activeoptions": "4.5.11",
-    "@activeledger/httpd": "4.5.11",
+    "@activeledger/activecrypto": "4.5.12",
+    "@activeledger/activedefinitions": "4.5.12",
+    "@activeledger/activelogger": "4.5.12",
+    "@activeledger/activeoptions": "4.5.12",
+    "@activeledger/httpd": "4.5.12",
     "typescript": "5.5.4"
   }
 }
