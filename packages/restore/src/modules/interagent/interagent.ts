@@ -29,7 +29,6 @@ import {
 } from "../../interfaces/document.interfaces";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ErrorCodes } from "./error-codes.enum";
-import { StreamResync } from "./stream-resync";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 
 const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
@@ -41,21 +40,8 @@ const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
  * @class Interagent
  */
 export class Interagent {
-  // How many times an error document may fail to reach a decision before it
-  // is given up on. The checker runs every 5 seconds, so this is a couple of
-  // minutes of retrying - long enough to outlast the transaction whose lock
-  // was blocking the sample, short enough not to poll forever over a stream
-  // the network genuinely disagrees about.
-  private static readonly MAX_RESYNC_ATTEMPTS = 20;
-
   private errorCodes = [
     ErrorCodes.StreamNotFound,
-    // A node that votes "Stream Position Incorrect" is telling us it holds a
-    // stream at a revision the rest of the network does not agree with, and
-    // it will keep voting that way against every future transaction on that
-    // stream. It was commented out here as "never came" - correctly, because
-    // nothing wrote an error document for it. protocol/process.ts now does.
-    ErrorCodes.StreamPositionIncorrect,
     //ErrorCodes.StateNotFound,
     //ErrorCodes.VoteFailedNetworkOk,
     //ErrorCodes.InternalBusyLocked,
@@ -168,12 +154,27 @@ export class Interagent {
    * @private
    */
   private async processDocument(changeDoc: any): Promise<void> {
-    // A position error has nothing to replay - the transaction this node
-    // voted against never committed here, and may never have committed
-    // anywhere. What is wrong is the stream's revision, so go straight to
-    // reconciling it rather than hunting a umid that would not help.
+    // A position error is recorded and kept, and that is ALL restore does
+    // with it.
+    //
+    // Repairing the stream from here is not restore's job and cannot safely
+    // be made so. This process writes to the store over HTTP and takes no
+    // part in the Locker protocol that serialises transactions against a
+    // stream, so any write it made could land on top of a transaction
+    // committing on this node at that moment - silently, because force_rev
+    // checks nothing. That is why restore only ever adds documents it does
+    // not have (missing umids) rather than overwriting ones it does.
+    //
+    // Correcting a divergent stream belongs to SPI, in the network layer,
+    // which runs inside the transaction's own lifecycle and abstains when
+    // any node reports the stream locked. Archiving the document here gives
+    // an operator a durable record that this node disagreed, without
+    // restore acting on it.
     if (changeDoc.code === ErrorCodes.StreamPositionIncorrect) {
-      return await this.resyncStreams(changeDoc);
+      ActiveLogger.warn(
+        `Node holds ${changeDoc.umid}'s streams at a revision the network rejected - left for SPI`
+      );
+      return await this.setProcessed(changeDoc, true);
     }
 
     // Check the error codes
@@ -229,11 +230,11 @@ export class Interagent {
             return await this.setProcessed(changeDoc, true);
           } else {
             ActiveLogger.error(`UMID ${changeDoc.umid} not found`);
-            return await this.resyncStreams(changeDoc);
+            return await this.setProcessed(changeDoc, false);
           }
         } else {
           ActiveLogger.error(`UMID ${changeDoc.umid} not found #2`);
-          return await this.resyncStreams(changeDoc);
+          return await this.setProcessed(changeDoc, false);
         }
         //}
       } else {
@@ -241,98 +242,6 @@ export class Interagent {
       }
     }
     return await this.setProcessed(changeDoc, false);
-  }
-
-  /**
-   * Last resort when the transaction itself cannot be recovered.
-   *
-   * Replaying by umid is the only repair this class has, and it can only
-   * work while some node still holds that umid. When no node does, the
-   * error document used to be marked processed and purged - which quietly
-   * abandoned whatever stream the transaction was about. If this node had
-   * missed a committed update to that stream it stayed one revision
-   * behind it permanently, and voted "Stream Position Incorrect" against
-   * every later transaction touching it.
-   *
-   * The stream's committed state does not depend on the umid being
-   * fetchable, so ask the network for the stream directly instead and
-   * adopt the revision it agrees on.
-   *
-   * @private
-   * @param {*} changeDoc
-   * @returns {Promise<void>}
-   */
-  private async resyncStreams(changeDoc: any): Promise<void> {
-    try {
-      const { rewrote, incomplete } = await StreamResync.resync(
-        changeDoc.transaction
-      );
-
-      if (rewrote) {
-        ActiveLogger.info(
-          `Stream resync recovered ${rewrote} document(s) for umid ${changeDoc.umid}`
-        );
-        // Archive it - this one changed local state, so it is worth
-        // keeping a record of, the same as a successful umid insert.
-        return await this.setProcessed(changeDoc, true);
-      }
-
-      // Nothing decided yet. Leaving the document in place is the whole
-      // point: the checker comes back every few seconds, and by then the
-      // transaction that was holding a lock on these streams - very often
-      // the same one that caused this error - has finished and every node
-      // can answer. Marking it processed here would throw away the only
-      // record that this node knows it disagrees with the network, which
-      // is how a node stayed one revision behind indefinitely.
-      if (incomplete) {
-        return await this.retryLater(changeDoc);
-      }
-    } catch (error) {
-      ActiveLogger.error(
-        error,
-        `Stream resync failed for umid ${changeDoc.umid}`
-      );
-      return await this.retryLater(changeDoc);
-    }
-
-    return await this.setProcessed(changeDoc, false);
-  }
-
-  /**
-   * Leave an error document unprocessed so the next check picks it up,
-   * unless it has had enough attempts to call it a genuine disagreement
-   * rather than a busy moment.
-   *
-   * @private
-   * @param {*} changeDoc
-   * @returns {Promise<void>}
-   */
-  private async retryLater(changeDoc: any): Promise<void> {
-    const attempts = (changeDoc.resyncAttempts || 0) + 1;
-
-    if (attempts >= Interagent.MAX_RESYNC_ATTEMPTS) {
-      ActiveLogger.error(
-        `Stream resync gave up on umid ${changeDoc.umid} after ${attempts} attempts - this node may still be out of date`
-      );
-      return await this.setProcessed(changeDoc, true);
-    }
-
-    changeDoc.resyncAttempts = attempts;
-
-    try {
-      // Written back rather than held in memory so the count survives a
-      // restart - a node restarting into a retry loop that starts from zero
-      // every time would never reach the give-up point.
-      await Provider.errorDatabase.put(changeDoc);
-      ActiveLogger.info(
-        `Stream resync will retry umid ${changeDoc.umid} (attempt ${attempts})`
-      );
-    } catch (error) {
-      ActiveLogger.error(
-        error,
-        `Could not record resync attempt ${attempts} for umid ${changeDoc.umid}`
-      );
-    }
   }
 
   /**
