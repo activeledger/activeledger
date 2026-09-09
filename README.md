@@ -1,6 +1,5 @@
 [![npm version](https://badge.fury.io/js/%40activeledger%2Factiveledger.svg)](https://badge.fury.io/js/%40activeledger%2Factiveledger) 
 [![npm](https://img.shields.io/npm/dt/@activeledger/activeledger.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
-[![lerna](https://img.shields.io/badge/maintained%20with-lerna-cc00ff.svg)](https://lernajs.io/)
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 
 
@@ -96,13 +95,9 @@ Visit [Release section](https://github.com/activeledger/ide/releases)
 
 ### Prerequisites
 
-We use [lerna](https://lernajs.io/) to manage this monorepo.
-Make sure you have lerna installed.
-If you use a package manager, install lerna with that. Otherwise:
-
-```bash
-npm install --global lerna
-```
+npm 7 or newer, which is where workspace support arrived. Nothing to
+install globally - `npm i` at the root links every package in `packages/`
+into the root `node_modules` for you.
 
 ### Building
 
@@ -111,7 +106,7 @@ npm i
 npm run build
 ```
 
-`npm run setup` is also available for a full clean rebuild (`lerna clean` + bootstrap + build) if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
+`npm run setup` (install + build) is also available if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
 
 ## Testing
 

@@ -12,7 +12,7 @@
 # already points at a commit whose package.json files still hold the previous
 # version. It bumped them in the runner and committed locally without pushing,
 # so the published tarballs were correct while the tag and the source tree
-# were not - lerna.json and every package.json read 4.2.0 at the v4.5.7 tag,
+# were not - every manifest read 4.2.0 at the v4.5.7 tag,
 # while npm correctly served 4.5.7.
 #
 # That is not cosmetic. It cost a real rollout verification: checking
@@ -50,8 +50,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: master
-          # Full history: lerna inspects it, and the tag has to be created on
-          # a real commit rather than a shallow stub.
+          # Full history: the tag has to be created on a real commit rather
+          # than a shallow stub.
           fetch-depth: 0
 
       - name: Setup Node
@@ -59,7 +59,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install root dependencies
+      - name: Install workspace
         run: npm ci
 
       - name: Refuse a version that already exists
@@ -69,11 +69,12 @@ jobs:
             exit 1
           fi
 
-      - name: Bump every package and lerna.json
-        # --force-publish so every package moves together even when git says it
-        # is unchanged; these are released as a set and a partial bump is
-        # exactly the drift this workflow exists to prevent.
-        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --exact --yes
+      # Every package moves together even when git says it is unchanged -
+      # these are released as a set, and a partial bump is exactly the drift
+      # this workflow exists to prevent. The script also rewrites each
+      # package's dependencies on its siblings to the same exact version.
+      - name: Bump every package
+        run: node scripts/set-version.mjs "${{ inputs.version }}"
 
       - name: Commit, tag and push
         run: |
