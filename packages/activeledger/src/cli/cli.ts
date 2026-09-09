@@ -38,32 +38,39 @@ import { PIDHandler, EPIDChild } from "./pid";
 import { StatsHandler } from "./stats";
 
 /**
- * Finds the node_modules directory that actually holds this package's
- * dependencies, by walking up from wherever this file ended up.
+ * Finds the node_modules directory that a smart contract will resolve
+ * @activeledger/* through.
  *
- * It used to assume `${__dirname}/../../node_modules` - the package's own
- * folder. npm only creates that when a dependency cannot be hoisted, so
- * the assumption held for the layouts this had been run in and not for
- * others. Converting the repository to npm workspaces hoists everything to
- * the workspace root, at which point the path does not exist and the CLI
- * dies at startup with ENOENT before doing anything at all.
+ * This is symlinked into contracts/ and default_contracts/ so the contracts
+ * copied there - which require @activeledger/activecontracts and friends -
+ * can load them at runtime.
  *
- * Walking up is what Node's own resolution does, and it is correct for a
- * package folder, a workspace root, and a global install alike.
+ * It used to be hardcoded as `${__dirname}/../../node_modules`, the
+ * package's own folder. npm only creates that when a dependency cannot be
+ * hoisted, so the guess held for the layouts this had been run in and not
+ * for others; converting the repository to npm workspaces hoists
+ * everything to the workspace root and the path stops existing, at which
+ * point the CLI dies at startup with ENOENT.
+ *
+ * Rather than guess again, ask Node. require.resolve.paths() returns the
+ * exact ordered list of node_modules directories Node would search for
+ * that specifier, so the first one actually containing the package is by
+ * definition the one a contract will resolve through - in a package
+ * folder, a workspace root, or a global install alike.
  */
 function resolveModulesDir(): string {
-  let dir = __dirname;
-  for (let up = 0; up < 8; up++) {
-    const candidate = path.join(dir, "node_modules");
-    if (fs.existsSync(candidate)) {
-      return fs.realpathSync(candidate);
+  // Any dependency a contract needs would do; this is the one they all use
+  const needed = "@activeledger/activecontracts";
+  const searched = require.resolve.paths(needed) || [];
+
+  for (const dir of searched) {
+    if (fs.existsSync(path.join(dir, needed))) {
+      return fs.realpathSync(dir);
     }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
   }
+
   throw new Error(
-    `Could not find a node_modules directory above ${__dirname} - contracts would have nothing to require`
+    `Could not find a node_modules containing ${needed} (searched ${searched.length} locations from ${__dirname}) - contracts would have nothing to require`
   );
 }
 
