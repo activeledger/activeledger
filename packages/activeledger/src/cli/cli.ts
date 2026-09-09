@@ -22,6 +22,7 @@
  */
 
 import * as child from "child_process";
+import * as path from "path";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -35,6 +36,36 @@ import {
 import { TestnetHandler } from "./testnet";
 import { PIDHandler, EPIDChild } from "./pid";
 import { StatsHandler } from "./stats";
+
+/**
+ * Finds the node_modules directory that actually holds this package's
+ * dependencies, by walking up from wherever this file ended up.
+ *
+ * It used to assume `${__dirname}/../../node_modules` - the package's own
+ * folder. npm only creates that when a dependency cannot be hoisted, so
+ * the assumption held for the layouts this had been run in and not for
+ * others. Converting the repository to npm workspaces hoists everything to
+ * the workspace root, at which point the path does not exist and the CLI
+ * dies at startup with ENOENT before doing anything at all.
+ *
+ * Walking up is what Node's own resolution does, and it is correct for a
+ * package folder, a workspace root, and a global install alike.
+ */
+function resolveModulesDir(): string {
+  let dir = __dirname;
+  for (let up = 0; up < 8; up++) {
+    const candidate = path.join(dir, "node_modules");
+    if (fs.existsSync(candidate)) {
+      return fs.realpathSync(candidate);
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(
+    `Could not find a node_modules directory above ${__dirname} - contracts would have nothing to require`
+  );
+}
 
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
@@ -333,7 +364,7 @@ export class CLIHandler {
 
       if (!fs.existsSync("default_contracts/node_modules"))
         fs.symlinkSync(
-          fs.realpathSync(`${__dirname}/../../node_modules`),
+          resolveModulesDir(),
           fs.realpathSync("default_contracts") + "/node_modules",
           "dir"
         );
@@ -342,7 +373,7 @@ export class CLIHandler {
     // Check for modules link for running contracts
     if (!fs.existsSync("contracts/node_modules"))
       fs.symlinkSync(
-        fs.realpathSync(`${__dirname}/../../node_modules`),
+        resolveModulesDir(),
         fs.realpathSync("contracts") + "/node_modules",
         "dir"
       );
