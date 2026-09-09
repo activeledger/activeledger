@@ -293,6 +293,10 @@ export class Endpoints {
                                 const networkStreams =
                                   await host.neighbourhood.knockAll("stream", {
                                     $streams: streams,
+                                    // So a peer holding these under THIS
+                                    // transaction can answer properly if it
+                                    // has already voted against it
+                                    $umid: tx.$umid,
                                   });
 
                                 // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
@@ -1157,6 +1161,7 @@ export class Endpoints {
                         const networkStreams =
                           await host.neighbourhood.knockAll("stream", {
                             $streams: streams,
+                            $umid: tx.$umid,
                           });
 
                         // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
@@ -1511,7 +1516,11 @@ export class Endpoints {
    * @param {*} body
    * @returns {Promise<any>}
    */
-  public static streams(db: ActiveDSConnect, body: any): Promise<any> {
+  public static streams(
+    db: ActiveDSConnect,
+    body: any,
+    host?: Host
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       if (body.$streams) {
         // Restrict Access to any volatile requests
@@ -1549,7 +1558,33 @@ export class Endpoints {
           // at once each rewrite their OWN copy to the revision the
           // majority voted for, so the writes are idempotent and cannot
           // race each other.
-          if (Locker.has(holdValue)) {
+          // A stream this node is writing cannot be sampled safely, with
+          // one exception: the transaction holding it is the SAME one the
+          // asking node is running SPI for, AND this node has already voted
+          // against it. A node that voted no never reaches commit(), so its
+          // copy is not going to move and reading it is safe.
+          //
+          // That exception is the whole point. A broadcast contract update
+          // locks its output stream on every node, so when the origin's own
+          // vote fails and it runs SPI, every peer is holding the very
+          // stream it needs to ask about - and answers "locked". The origin
+          // abstains on a sample its own transaction spoiled, and a node
+          // that is the origin of the transaction it is behind on can never
+          // heal. With this, the three peers that rejected it answer with
+          // their real revision, the origin gets a clean majority, and it
+          // corrects itself inside the same failed round.
+          //
+          // The vote check is not optional. Without it this reads a stream
+          // a peer may be committing, and a commit writes the state
+          // document and its :stream meta in one batch while SPI fetches
+          // them as two requests - so a mid-commit sample can pair
+          // state@43 with meta@21. Writing that pair locally makes
+          // meta._rev:state._rev permanently wrong, which is a worse fault
+          // than the one being fixed and is not repairable by SPI.
+          const heldByAsker =
+            body.$umid && Locker.is(holdValue, body.$umid);
+
+          if (Locker.has(holdValue) && !(heldByAsker && host?.willNotCommit(body.$umid))) {
             // Held by a transaction, so this node cannot report the stream
             // right now. Saying nothing is indistinguishable from "I do not
             // have it", and the caller votes on whatever comes back - so

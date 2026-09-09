@@ -187,6 +187,56 @@ export class Host extends Home {
   private dbEventConnection: ActiveDSConnect;
 
   /**
+   * Has this node already decided it will NOT commit a transaction?
+   *
+   * Used to answer a peer asking about a stream this node currently holds
+   * locked. Normally that is refused - a stream being written cannot be
+   * sampled safely - but a node that has voted NO will never write it, so
+   * its documents are stable and the read is safe by construction.
+   *
+   * The three states are deliberately distinct:
+   *
+   *   early     - voting has not concluded. postVote() deletes this flag
+   *               when the node's opinion becomes real, so while it is set
+   *               nothing is known and the answer must be no.
+   *   vote true - it may still commit, and a commit writes the state and
+   *               meta documents together. Reading between those two is
+   *               how a node ends up with a mismatched
+   *               meta._rev:state._rev pair, which produces position
+   *               errors on that stream forever.
+   *   vote false- voting concluded against. commit() gates on
+   *               nodeResponse.vote, so this node cannot write for this
+   *               transaction. Safe.
+   *
+   * @static
+   * @param {ActiveDefinitions.LedgerEntry} [entry]
+   * @param {string} reference this node's own reference
+   * @returns {boolean}
+   */
+  public static hasVotedAgainst(
+    entry: ActiveDefinitions.LedgerEntry | undefined,
+    reference: string
+  ): boolean {
+    const response = entry?.$nodes?.[reference];
+    if (!response || response.early) {
+      return false;
+    }
+    return response.vote === false;
+  }
+
+  /**
+   * Whether this node has voted against the transaction holding a lock,
+   * and so cannot be part-way through writing its streams.
+   *
+   * @param {string} umid
+   * @returns {boolean}
+   */
+  public willNotCommit(umid: string): boolean {
+    const pending = this.processPending[umid];
+    return Host.hasVotedAgainst(pending?.entry, Home.reference);
+  }
+
+  /**
    * Holds the processPending requests before processing
    *
    * @private
@@ -2193,7 +2243,7 @@ export class Host extends Home {
             }
             break;
           case "/a/stream": // Stream Data Management (Activerestore)
-            response = Endpoints.streams(this.dbConnection, body);
+            response = Endpoints.streams(this.dbConnection, body, this);
             break;
           default:
             return this.writeResponse(res, 404, "Not Found", gzipAccepted);
