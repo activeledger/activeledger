@@ -1,16 +1,16 @@
 # Contributing
 
 ## Installation
-We use [lerna](https://lernajs.io/) to manage this monorepo.
-Make sure you have lerna installed.
-If you use a package manager, install lerna with that. Otherwise:
+This is an npm workspace. One install at the root covers every package and
+links them to each other:
 
 ```shell
 npm install
 ```
 
-There are interdependencies between the packages.
-In workspace mode, Lerna can manage type imports between development versions of each, but you need to build first, to generate the `d.ts` files:
+There are interdependencies between the packages, and they import each
+other by their published `@activeledger/*` names, so you have to build once
+to generate the `d.ts` files before type resolution works:
 ```shell
-npm run setup
+npm run build
 ```
