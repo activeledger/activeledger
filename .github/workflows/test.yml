@@ -3,11 +3,11 @@
 # locally - on code that decides consensus and repairs divergent ledger
 # state.
 #
-# The bootstrap and build steps are not optional. The tests import from
+# The install and build steps are not optional. The tests import from
 # packages/*/src directly, but those sources import each other through the
-# published @activeledger/* names, which only resolve once lerna has
-# symlinked the workspace and each package has a lib/ to resolve types
-# against. Without them every single test fails on "Cannot find module
+# published @activeledger/* names, which only resolve once npm has linked
+# the workspace and each package has a lib/ to resolve types against.
+# Without them every single test fails on "Cannot find module
 # '@activeledger/activelogger'", which reads like a broken test suite
 # rather than a missing setup step.
 name: Tests
@@ -35,11 +35,10 @@ jobs:
         with:
           node-version: 24
 
-      - name: Install root dependencies
+      # One install for the whole workspace - npm links packages/* into the
+      # root node_modules itself.
+      - name: Install workspace
         run: npm ci
-
-      - name: Bootstrap workspace
-        run: npx lerna bootstrap
 
       # Deliberately not `npm run build` - that script ends in `npm run link`,
       # which npm-links the CLI packages globally. That is for a developer

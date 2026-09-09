@@ -1,9 +1,13 @@
 {
   "name": "activeledger-monorepo",
+  "version": "4.5.10",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "setup": "lerna clean --yes && npm run unlink && lerna bootstrap && npm run build && lerna bootstrap",
-    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:core && npm run build:hybrid && npm run link",
+    "setup": "npm install && npm run build",
+    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:core && npm run build:hybrid",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
     "build:logger": "cd ./packages/logger/ && npm run build",
@@ -20,25 +24,15 @@
     "build:ledger": "cd ./packages/activeledger/ && npm run build",
     "build:restore": "cd ./packages/restore/ && npm run build",
     "build:core": "cd ./packages/core/ && npm run build",
-    "link": "npm run link:ledger && npm run link:core && npm run link:restore && npm run link:hybrid",
-    "unlink": "npm run unlink:ledger && npm run unlink:restore && npm run unlink:core && npm run unlink:hybrid",
-    "unlink:ledger": "npm unlink @activeledger/activeledger -g",
-    "unlink:core": "npm unlink @activeledger/activecore -g",
-    "unlink:restore": "npm unlink @activeledger/activerestore -g",
-    "unlink:hybrid": "npm unlink @activeledger/activehybrid -g",
-    "link:ledger": "cd ./packages/activeledger/ && npm link",
-    "link:core": "cd ./packages/restore/ && npm link",
-    "link:restore": "cd ./packages/core/ && npm link",
-    "link:hybrid": "cd ./packages/hybrid/ && npm link",
     "test": "mocha -r ts-node/register/transpile-only tests/*.ts --exit -- --no-warnings",
-    "test:network": "ts-node --transpile-only tests/network/run.ts"
+    "test:network": "ts-node --transpile-only tests/network/run.ts",
+    "version:set": "node scripts/set-version.mjs"
   },
   "devDependencies": {
     "@types/chai": "4.3.1",
     "@types/mocha": "9.1.1",
     "@types/node": "18.0.0",
     "chai": "4.3.6",
-    "lerna": "^6.0.0",
     "mocha": "10.0.0",
     "nyc": "15.1.0",
     "ts-node": "10.8.1",
