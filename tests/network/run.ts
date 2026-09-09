@@ -538,6 +538,19 @@ async function runStoragePathValidationTests(
  * the difference between a test that guards an outcome and one that
  * proves a cause.
  */
+/** Every SPI line a node has logged, ANSI stripped. */
+function spiActivity(node: NetworkNode): string[] {
+  try {
+    return fsSync
+      .readFileSync(node.logPath, "utf8")
+      .replace(/\u001b\[[0-9;]*m/g, "")
+      .split("\n")
+      .filter((l) => l.indexOf("SPI") !== -1);
+  } catch {
+    return [];
+  }
+}
+
 function healedBy(node: NetworkNode, streamId: string): string[] {
   let log = "";
   try {
@@ -803,6 +816,75 @@ async function runContractDivergenceTest(
     }
   } catch {
     report.warn("Could not read the desynced node's log");
+  }
+
+  // The case the fix in 4.5.11 actually targets, and the one a live
+  // network stopped offering the moment it healed: the laggard is the
+  // node the transaction is submitted THROUGH.
+  //
+  // It is the hard one because it fails twice over. $revs is stamped by
+  // the first node to see the stream, so a laggard origin puts its own
+  // stale position into the broadcast and every other node votes against
+  // it - the round dies far short of quorum, with no committed state for
+  // anyone to converge on. And its own SPI then samples a stream its own
+  // transaction is holding locked on every node, so it abstains on a
+  // sample it spoiled itself.
+  //
+  // A peer-laggard cannot exercise this. There the up-to-date nodes PASS
+  // the position check, vote yes, and are about to commit - so they
+  // correctly refuse to be sampled, and no lock bypass can reach them.
+  // The bypass only helps when the peers voted NO, which happens exactly
+  // when the origin is the one that is behind.
+  report.phase(`Contract divergence: laggard as ORIGIN (${desyncTarget.port})`);
+  const beforeOriginTest = await revisionsAcross(nodes, contractId);
+  const agreedRev = beforeOriginTest.byNode.filter(
+    (n) => n.port !== desyncTarget.port
+  )[0].rev;
+
+  for (const id of [contractId, `${contractId}:stream`]) {
+    const current = await storageGet(desyncTarget.storageUrl, id);
+    await storagePut(desyncTarget.storageUrl, id, {
+      ...current,
+      originDivergenceMarker: `desync-${Date.now()}`,
+    });
+  }
+
+  const spiLinesBefore = spiActivity(desyncTarget).length;
+
+  const originResult = await timed(() =>
+    updateContract(
+      desyncTarget.baseUrl,
+      identity,
+      namespace,
+      contractId,
+      "divergence",
+      contractSource,
+      "0.0.4"
+    )
+  );
+
+  const originConverged = await waitForConvergence(nodes, contractId, 60000);
+  report.record("contract-origin-laggard-converged", originConverged.converged, originResult.ms);
+  originConverged.converged
+    ? report.ok(`Converged at ${originConverged.byNode[0].rev} (was ${agreedRev} on the majority)`)
+    : report.fail(
+        `Did not converge: ${JSON.stringify(originConverged.byNode)}`
+      );
+
+  // The claim under test is not "it converged" - it is "SPI repaired the
+  // origin". Nothing else in this suite distinguishes those, and on a live
+  // network they were confused for each other.
+  const originMechanisms = healedBy(desyncTarget, contractId);
+  const repaired = originMechanisms.indexOf("SPI rewrite") !== -1;
+  report.record("contract-origin-laggard-spi-rewrote", repaired, 0);
+  repaired
+    ? report.ok(`Origin repaired itself: ${originMechanisms.join(", ")}`)
+    : report.fail(
+        `No SPI rewrite on the origin. Log says: ${originMechanisms.join(", ") || "nothing"}`
+      );
+
+  for (const line of spiActivity(desyncTarget).slice(spiLinesBefore).slice(-8)) {
+    report.info(`  ${line.slice(0, 200)}`);
   }
 
   const metaConverged = await waitForConvergence(nodes, `${contractId}:stream`, 15000);
