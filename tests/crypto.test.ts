@@ -25,8 +25,25 @@ describe("Cryptographic Test (Activecrypto)", () => {
       .and.property("prv")
       .that.is.an("object")
       .and.has.property("pkcs8pem")
-      .that.is.a("string")
-      .to.have.length.above(1700);
+      .that.is.a("string");
+
+    // Structure, not size. This asserted length.above(1700) on a freshly
+    // generated key, and a 2048 bit PKCS#8 PEM is about 1700 characters
+    // give or take a few - DER drops or keeps leading zero bytes depending
+    // on the numbers that come out of the generator. So the assertion sat
+    // exactly on its own boundary and failed whenever an unlucky key came
+    // back at 1700 rather than 1701. Seen failing in CI with
+    // "expected ... to have a length above 1700 but got 1700".
+    //
+    // What the length was standing in for is "a real key came back", which
+    // the envelope checks below establish directly, and which the sign and
+    // verify test immediately after this proves properly. The lower bound
+    // is kept only to catch a truncated or empty result, with enough room
+    // that generator luck cannot reach it.
+    const pem: string = rsa.prv.pkcs8pem;
+    expect(pem).to.match(/^-----BEGIN PRIVATE KEY-----/);
+    expect(pem.trim()).to.match(/-----END PRIVATE KEY-----$/);
+    expect(pem).to.have.length.above(1500);
   }).timeout(10000);
 
   it("RSA should sign and verify", () => {
