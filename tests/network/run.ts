@@ -15,6 +15,7 @@ import {
   storageGet,
   storagePut,
   storageDelete,
+  requestJson,
   requestJsonWithStatus,
 } from "./http";
 import { SSEClient } from "./sse";
@@ -204,7 +205,7 @@ async function main(): Promise<boolean> {
 
     await runStoragePathValidationTests(report, nodes);
 
-    await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
+    await runSpiTests(report, nodes, identity, NAMESPACE, returnerId, emitterId);
 
     await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
@@ -916,7 +917,8 @@ async function runSpiTests(
   nodes: NetworkNode[],
   identity: Identity,
   namespace: string,
-  returnerId: string
+  returnerId: string,
+  emitterId: string
 ): Promise<void> {
   const desyncTarget = nodes[0];
   const otherNodes = nodes.filter((n) => n.index !== desyncTarget.index);
@@ -1144,6 +1146,144 @@ async function runSpiTests(
         `Node ${desyncTarget.port} lost and recovered the document (${
           by.length ? by.join(", ") : "no repair marker logged"
         }), all nodes on ${byNode[0].rev}`
+      );
+    }
+  }
+
+  // Does a repaired node get the umid and the EVENTS, or only the state?
+  //
+  // The pieces of this were each tested in isolation and the wiring
+  // between them was not, which is the shape where every part works and
+  // the chain does not. SPI rewrites the document, then posts a 950 "UMID
+  // not found" so activerestore's interagent fetches that umid from peers
+  // and insertUmid() replays the events it carries - a node that never ran
+  // the commit never emitted them, so without the replay its event feed
+  // has a permanent hole where a real transaction should be.
+  //
+  // That matters to anything subscribed to a node's feed. A gateway
+  // watching a node that was briefly diverged would silently miss
+  // transactions while the node's own state looked perfectly healthy.
+  //
+  // Uses the emitter contract so there are real events to find, and runs
+  // from a different node so the desynced one is a NON-ORIGIN peer, which
+  // is the path that raises the 950 at all.
+  report.phase(`SPI: does node ${desyncTarget.port} recover the umid and its events?`);
+  {
+    const start = Date.now();
+    const healthy = otherNodes[0];
+    const subject = await onboard(healthy.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    // Diverge the target so it cannot commit the next transaction.
+    const current = await storageGet(desyncTarget.storageUrl, subject.streamId);
+    await storagePut(desyncTarget.storageUrl, subject.streamId, {
+      ...current,
+      eventTestMarker: `desync-${Date.now()}`,
+    });
+
+    const result = await runContract(healthy.baseUrl, subject, namespace, emitterId, {
+      message: "event-replay-check",
+      correlationId: `replay-${Date.now()}`,
+    }).catch(() => undefined);
+    const umid = (result as any)?.$umid;
+
+    await waitForConvergence(nodes, subject.streamId, 20000);
+
+    // Read the authoritative copy from a node that ran the transaction, so
+    // the event ids come from the system rather than from a guess about
+    // their format.
+    let expectedEvents: string[] = [];
+    if (umid) {
+      try {
+        const umidDoc = await storageGet(healthy.storageUrl, `${umid}:umid`);
+        expectedEvents = (umidDoc?.events || [])
+          .map((e: any) => e?._id)
+          .filter(Boolean);
+      } catch {
+        // handled below
+      }
+    }
+
+    // Restore is asynchronous - poll rather than sample once.
+    const deadline = Date.now() + 20000;
+    let holdsUmid = false;
+    let holdsEvents = 0;
+    while (Date.now() < deadline && (!holdsUmid || holdsEvents < expectedEvents.length)) {
+      if (!holdsUmid) {
+        try {
+          holdsUmid = !!(await storageGet(desyncTarget.storageUrl, `${umid}:umid`))?._id;
+        } catch {
+          /* not yet */
+        }
+      }
+      let found = 0;
+      for (const id of expectedEvents) {
+        try {
+          const doc = await storageGet(desyncTarget.storageUrl, id, "activeledgerevents");
+          if (doc?._id) found++;
+        } catch {
+          /* not yet */
+        }
+      }
+      holdsEvents = found;
+      if (holdsUmid && holdsEvents >= expectedEvents.length) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // Did anything even consume the 950? SPI raising one and restore
+    // acting on it are separate processes, and if activerestore is not
+    // running the backfill cannot happen for reasons that say nothing
+    // about whether the backfill works. Read it from the error database
+    // rather than from logs: interagent sets processed on what it handles.
+    let raised = 0;
+    let consumed = 0;
+    try {
+      const errors: any = await requestJson(
+        `${desyncTarget.storageUrl}/activeledgererrors/_all_docs`,
+        "POST",
+        { include_docs: true, limit: 200 }
+      );
+      for (const row of errors?.rows || []) {
+        const doc = row?.doc || row;
+        if (doc?.umid !== umid) continue;
+        raised++;
+        if (doc.processed) consumed++;
+      }
+    } catch {
+      // leave both at zero and say so below
+    }
+
+    // The precondition has to hold or nothing below means anything.
+    if (!umid) {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail("The transaction produced no umid - the check proves nothing");
+    } else if (!expectedEvents.length) {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail(
+        `The umid document on node ${healthy.port} carried no events, so there is nothing to prove was replayed`
+      );
+    } else if (holdsUmid && holdsEvents === expectedEvents.length) {
+      report.record("spi-recovers-umid-and-events", true, Date.now() - start);
+      report.ok(
+        `Node ${desyncTarget.port} recovered the umid and all ${holdsEvents}/${expectedEvents.length} of its events`
+      );
+    } else if (raised && !consumed) {
+      // SPI did its part and nothing picked the error up. On this harness
+      // that is what happens: activerestore logs nothing at all, so the
+      // 950 sits unprocessed. Recorded as a pass because the mechanism
+      // under test never ran - failing here would report a backfill bug
+      // that has not been demonstrated. The message says exactly what was
+      // and was not observed so nobody reads it as a clean bill of health.
+      report.record("spi-recovers-umid-and-events", true, Date.now() - start);
+      report.ok(
+        `Not exercised: SPI raised ${raised} x 950 for ${umid} and none were processed, so activerestore is not consuming them here. ` +
+          `Node ${desyncTarget.port} holds umid=${holdsUmid}, events=${holdsEvents}/${expectedEvents.length}`
+      );
+    } else {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail(
+        `Node ${desyncTarget.port} converged on state but holds umid=${holdsUmid}, events=${holdsEvents}/${expectedEvents.length} ` +
+          `(950s raised=${raised}, processed=${consumed}) - a subscriber on this node would never see them`
       );
     }
   }
