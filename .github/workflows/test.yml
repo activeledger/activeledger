@@ -31,7 +31,7 @@ jobs:
       # anything older dies at require() with "Cannot find module
       # './uws_linux_x64_108.node'" the moment a test touches httpd.
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
