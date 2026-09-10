@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/activeledger/activeledger/master/docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
+
 # @activeledger/nano-gateway
 
 A lightweight, permissioned SSE + read gateway for [nano](https://github.com/activeledger/nano) light-node clients.
