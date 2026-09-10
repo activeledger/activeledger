@@ -35,7 +35,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@types/node": "18.0.0"
+    "@types/node": "24.10.1"
   },
   "files": [
     "es",
