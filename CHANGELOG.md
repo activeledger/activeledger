@@ -1,6 +1,18 @@
 # Activeledger Changelog
 
+## [4.5.14]
+
+### Fix
+* **Storage** : `@activeledger/activestorage` had been publishing without its compiled `lib/` and `es/` since 4.5.11 - 38 files, none of them built - while its manifest still declared `main` as `./lib/index.js`. It installed cleanly, resolved, reported the right version and threw `MODULE_NOT_FOUND` on require, which blocked a node deploy. `packages/.gitignore` ignores `lib` and `es`, and npm falls back to `.gitignore` when a package has no `files` field and no `.npmignore`. All sixteen other packages declare `files: ["es", "lib"]`, which overrides that ignore; activestorage was the only one that never had it. Under lerna this never showed, because lerna packed by its own rules - dropping lerna in 4.5.11 handed packing to npm and made a long-latent bug live. Nothing in the package itself had changed. The tarball goes from 38 files to 113.
+* **CI** : Nothing caught the above for three releases. The release workflow verifies every package is *fetchable* from the registry, which they all were, and no test imports a published artefact - so being on npm was mistaken for being usable. `scripts/check-package-contents.mjs` now asserts that whatever `main`, `types` and `module` point at is actually inside the tarball. It runs on every push and again in publish before anything leaves the runner, because a broken tarball cannot be unpublished. It fails only when the file exists on disk and npm leaves it out, which is the real failure mode; `nano-gateway` builds itself from `prepublishOnly` and is legitimately unbuilt at check time, and failing on that would have made the check noise.
+
+### Changed
+* **Build** : `nyc` removed. It was a devDependency that no script, workflow or config referenced, and it had just been bumped three majors purely to clear advisories against a tool nothing invoked. Drops 1574 lines from `package-lock.json`. If coverage is wanted later it should return with a script attached.
+
 ## [4.5.13]
+
+### Known Issue
+* **Storage** : `@activeledger/activestorage` was published without its compiled `lib/` and `es/`, so `require("@activeledger/activestorage")` throws `MODULE_NOT_FOUND` on a clean install. The package installs, resolves and reports the right version - it is simply unusable. Affects 4.5.11, 4.5.12 and 4.5.13; a published tarball cannot be repaired in place, so **use 4.5.14 or later**.
 
 ### Security Fix
 * **Protocol** : A contract could reach the `Function` constructor through `this`. `securityScan()` is the only barrier in front of contract code - there is no runtime sandbox behind it - and its dynamic-element-access rule exempted any chain that started at `this`. Once a hop lands on a banned name the object is no longer the contract, so `const k = "constructor"; (this.constructor)[k](...)` passed the scan and was a full escape. A chain is now tainted by a demonstrably banned hop; dynamic access directly on `this` and computed reads of transaction data still pass.
@@ -15,11 +27,17 @@
 
 ## [4.5.12]
 
+### Known Issue
+* **Storage** : `@activeledger/activestorage` was published without its compiled `lib/` and `es/`, so `require("@activeledger/activestorage")` throws `MODULE_NOT_FOUND` on a clean install. The package installs, resolves and reports the right version - it is simply unusable. Affects 4.5.11, 4.5.12 and 4.5.13; a published tarball cannot be repaired in place, so **use 4.5.14 or later**.
+
 ### Fix
 * **Activeledger CLI** : The CLI symlinks `node_modules` into `contracts/` and `default_contracts/` so contracts can require dependencies at runtime, and resolved it as the package's own folder. npm only creates that folder when a dependency cannot be hoisted, and converting the repository to workspaces hoists everything to the root - at which point the CLI died with `ENOENT ... packages/activeledger/node_modules` before doing anything at all. It now asks Node where the modules are (`require.resolve.paths()`), which is correct in a package folder, a workspace root and a global install alike.
 * **CI** : The post-publish registry check asked npm too soon and failed a release that had published correctly.
 
 ## [4.5.11]
+
+### Known Issue
+* **Storage** : `@activeledger/activestorage` was published without its compiled `lib/` and `es/`, so `require("@activeledger/activestorage")` throws `MODULE_NOT_FOUND` on a clean install. The package installs, resolves and reports the right version - it is simply unusable. Affects 4.5.11, 4.5.12 and 4.5.13; a published tarball cannot be repaired in place, so **use 4.5.14 or later**.
 
 ### Fix
 * **Network** : A node that originates a transaction on a stream it lags could never heal. SPI only runs on a failed vote, and a broadcast contract update holds a lock on its output stream on every node for the life of the round - so every peer answered "locked" to the origin's own SPI sample and it abstained on a sample its own transaction had spoiled. It is doubly stuck, because `$revs` is stamped by the first node to see the stream: a lagging origin stamps its stale position into the broadcast and the round dies with one yes vote. A peer now answers with its real revision instead of the locked marker, but only when the lock is held by the same transaction the asker is running SPI for (matched on umid) and that peer has already voted against it - a node that voted no cannot commit, so its copy is stable by construction. Everything else stays refused. In the failing case all three peers reject on the position gate, the origin gets a clean majority and corrects itself inside the same round. Re-submitting the transaction after an in-round heal is deliberately not included.
