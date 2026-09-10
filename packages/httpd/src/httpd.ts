@@ -146,7 +146,13 @@ export class ActiveHttpd {
    * @param {number} port
    * @param {boolean} [log=false]
    */
-  public listen(port: number, log: boolean = false) {
+  /**
+   * @param host optional interface to bind to. Omitted, uWebSockets binds
+   *             every interface, which is the right default for a node's
+   *             public transaction port and the wrong one for anything
+   *             that expects to be local.
+   */
+  public listen(port: number, log: boolean = false, host?: string) {
     this.compile();
     // Get Local Reference
     let httpd: ActiveHttpd = this;
@@ -251,9 +257,13 @@ export class ActiveHttpd {
 
     // Note: uWebSockets.js uses SO_REUSEPORT by default, which allows multiple instances
     // to bind to the same port. Instance locking is handled externally.
-    this.server.listen(port, (token: us_listen_socket) => {
+    const bound = (token: us_listen_socket) => {
       this.listenSocket = token;
-    });
+    };
+
+    host
+      ? this.server.listen(host, port, bound)
+      : this.server.listen(port, bound);
 
   }
 

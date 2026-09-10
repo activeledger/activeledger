@@ -303,3 +303,64 @@ describe("Contract.securityScan() - destructuring via computed literal key bypas
     expect(result).to.include("constructor");
   });
 });
+
+// The scanner is the only barrier in front of contract code - there is no
+// runtime sandbox behind it - so a chain that walks off `this` and keeps
+// its exemption is a full escape, not a hardening gap.
+//
+// `this.constructor` is the Function constructor. Reaching it with a
+// literal key or with dot notation was already refused; reaching it with
+// an identifier key was not, because the literal-key check only fires for
+// a resolvable key and the dynamic-access exemption trusted the whole
+// this-chain. The file's own comment described this second hop as still
+// open. It is not now.
+describe("Contract.securityScan() - a this-chain that walks off this", () => {
+  // The one case that was actually open. Reverting the fix fails this test
+  // and only this test - the other spellings below were already refused.
+  it("blocks a dynamic key on a chain that passed through a banned property", () => {
+    const result = scan(
+      'export default class F { vote(){ const k = "constructor"; return (this.constructor as any)[k]; } }'
+    );
+    expect(result).to.not.be.null;
+  });
+
+  it("blocks it however the key is spelled", () => {
+    // Already covered before the fix - a no-substitution template resolves
+    // to a literal key, so the literal-key rule catches it. Here to pin
+    // that the resolvable spellings stay closed, not as a guard for the
+    // fix itself.
+    const result = scan(
+      'export default class F { vote(){ return (this.constructor as any)[`constructor`]; } }'
+    );
+    expect(result).to.not.be.null;
+  });
+
+  it("blocks the chain even when the banned hop is further back", () => {
+    // Also already covered: the dot-notation rule refuses `.prototype` once
+    // its object is `this.constructor` rather than bare `this`. Pinned
+    // because the fix touches the same chain-walking logic.
+    const result = scan(
+      'export default class F { vote(){ const k = "x"; return (this.constructor as any).prototype[k]; } }'
+    );
+    expect(result).to.not.be.null;
+  });
+
+  it("still blocks the literal-key and dot-notation forms", () => {
+    expect(scan('export default class F { vote(){ return (this.constructor as any)["constructor"]; } }')).to.not.be.null;
+    expect(scan('export default class F { vote(){ return (this.constructor as any).constructor; } }')).to.not.be.null;
+  });
+
+  it("still allows a contract to walk its own data by key", () => {
+    // The pattern this must not break: reading transaction inputs by a
+    // label the contract computed
+    expect(
+      scan('export default class F { vote(){ const l = "a"; return (this as any).transactions.$i[l]; } }')
+    ).to.be.null;
+  });
+
+  it("still allows dynamic access directly on this", () => {
+    expect(
+      scan('export default class F { vote(){ const k = "state"; return (this as any)[k]; } }')
+    ).to.be.null;
+  });
+});

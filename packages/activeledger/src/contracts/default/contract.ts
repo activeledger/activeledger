@@ -564,6 +564,51 @@ export default class Contract extends Standard {
           return false;
       };
 
+      // Does a this-chain pass THROUGH a banned property on its way?
+      //
+      // isThisAccess() answers "does this chain start at this", which is not
+      // the same question as "is this chain still the contract". Once a hop
+      // lands on a banned name the object stops being the contract and
+      // becomes whatever that property is - this.constructor is the Function
+      // constructor, and anything reached from there is outside the scan's
+      // remit entirely.
+      //
+      // Only a demonstrably banned hop taints the chain: a dot name, or an
+      // element access with a literal key. A dynamic hop is deliberately
+      // left alone, because this.a[k].b is an ordinary way to walk
+      // transaction data and blocking it would reject working contracts.
+      // That is safe here because isThisAccess() does not recurse through
+      // element access at all, so this[k1][k2] is already refused by the
+      // dynamic rule below.
+      const chainTouchesBanned = (expr: ts.Expression): boolean => {
+        let current: ts.Node = unwrap(expr);
+        while (true) {
+          if (ts.isPropertyAccessExpression(current)) {
+            if (
+              ts.isIdentifier(current.name) &&
+              BANNED_PROPERTIES_SET.has(current.name.text)
+            ) {
+              return true;
+            }
+            current = unwrap(current.expression);
+            continue;
+          }
+          if (ts.isElementAccessExpression(current)) {
+            const arg = current.argumentExpression;
+            if (
+              (ts.isStringLiteral(arg) ||
+                ts.isNoSubstitutionTemplateLiteral(arg)) &&
+              BANNED_PROPERTIES_SET.has(arg.text)
+            ) {
+              return true;
+            }
+            current = unwrap(current.expression);
+            continue;
+          }
+          return false;
+        }
+      };
+
       // 1. Block Banned Identifiers or Protected Shadows
       if (ts.isIdentifier(node)) {
         if (node.text === "require") {
@@ -666,8 +711,15 @@ export default class Contract extends Standard {
           }
         }
 
-        // Always allow dynamic access on 'this' properties
-        if (isThisAccess(node.expression)) {
+        // Dynamic access on 'this' is allowed - a contract walking its own
+        // transaction data by key is the normal case - but NOT when the
+        // chain has already passed through a banned property. The comment
+        // above describes the second hop this closes: with an identifier
+        // key rather than a literal one, `this.constructor[k]` reached the
+        // Function constructor with the whole check skipped, because the
+        // literal-key branch above only fires for a resolvable key and this
+        // exemption trusted the entire chain.
+        if (isThisAccess(node.expression) && !chainTouchesBanned(node.expression)) {
             // Continue
         } else {
             // Check for trusted objects defined in configuration
