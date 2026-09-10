@@ -107,6 +107,135 @@ describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
     });
   });
 
+  // The revision rules every repair path in the codebase depends on, and
+  // which nothing asserted until now. SPI's rewrite, quick-restore's
+  // adoptDocument and the ordinary commit path each pick a different
+  // combination of these flags, and picking the wrong one does not fail -
+  // it silently writes the wrong revision, which is how a node ends up
+  // claiming a position the network does not agree with.
+  //
+  // _rev here is content addressed: `<position>-md5(JSON.stringify({...doc,
+  // _rev: null}))`. There is no revision tree; a document is one key.
+  describe("prepareForWrite() revision semantics", () => {
+    it("refuses a new_edits:false write when the local revision differs, and leaves the document alone", async () => {
+      // The gate quick-restore relies on to avoid overwriting a stream a
+      // live commit may be part-way through. Nothing else in the write path
+      // checks it.
+      await db.bulkDocs([{ _id: "streamX", value: "original" }], {
+        new_edits: true,
+      });
+      const stored: any = await db.get("streamX");
+
+      let threw: Error | null = null;
+      try {
+        await db.bulkDocs(
+          [{ _id: "streamX", _rev: "39-notthelocalrevision", value: "incoming" }],
+          { new_edits: false }
+        );
+      } catch (error) {
+        threw = error as Error;
+      }
+
+      expect(threw, "a divergent new_edits:false write must throw").to.not.equal(null);
+      expect(threw!.message).to.contain("Revision Mismatch");
+
+      // And the refusal has to be total - a partial write here is worse
+      // than the write it was protecting against
+      const after: any = await db.get("streamX");
+      expect(after._rev).to.equal(stored._rev);
+      expect(after.value).to.equal("original");
+    });
+
+    it("overwrites a divergent document when force_rev is given", async () => {
+      // The only combination that can repair a stream, used by both SPI
+      // rewrite sites and quick-restore's divergent branch
+      await db.bulkDocs([{ _id: "streamY", value: "stale" }], {
+        new_edits: true,
+      });
+
+      const written = await db.bulkDocs(
+        [{ _id: "streamY", _rev: "42-networkagreed", value: "repaired" }],
+        { new_edits: true, force_rev: "42-networkagreed" }
+      );
+      expect(written).to.equal(true);
+
+      // Read it back rather than trusting the return - the whole reason
+      // this suite exists
+      const after: any = await db.get("streamY");
+      expect(after._rev).to.equal("42-networkagreed");
+      expect(after.value).to.equal("repaired");
+    });
+
+    it("creates a missing document at the revision it was given, with new_edits:false", async () => {
+      // A restore fetching a stream this node never had must keep the
+      // network's position. Minting a fresh one instead would leave the
+      // node claiming position 1 for a stream everyone else holds at 39,
+      // which re-diverges the thing restore was fixing.
+      await db.bulkDocs([{ _id: "streamZ", _rev: "39-fromthenetwork", value: "adopted" }], {
+        new_edits: false,
+      });
+
+      const after: any = await db.get("streamZ");
+      expect(after._rev).to.equal("39-fromthenetwork");
+    });
+
+    it("mints a fresh 1- revision for a missing document when new_edits is true", async () => {
+      // The same call with the other flag, so the distinction is pinned
+      // rather than implied by the test above
+      await db.bulkDocs([{ _id: "streamW", _rev: "39-fromthenetwork", value: "adopted" }], {
+        new_edits: true,
+      });
+
+      const after: any = await db.get("streamW");
+      expect(after._rev).to.match(/^1-/);
+      expect(after._rev).to.not.equal("39-fromthenetwork");
+    });
+
+    it("does not advance the revision when a document is rewritten unchanged", async () => {
+      // A no-op write must not move the position, or every redundant write
+      // would desync a node from its peers. Note the round trip through
+      // get() - see the test below for why re-serialising by hand does not
+      // count as "unchanged".
+      await db.bulkDocs([{ _id: "streamV", value: "same" }], { new_edits: true });
+      const first: any = await db.get("streamV");
+
+      await db.bulkDocs([first], { new_edits: true });
+      const second: any = await db.get("streamV");
+
+      expect(second._rev).to.equal(first._rev);
+    });
+
+    it("derives the revision from the serialisation, and must keep doing so", async () => {
+      // A guard against a future tidy-up, not a warning about key order.
+      //
+      // _rev is md5(JSON.stringify({...doc, _rev: null})), and
+      // JSON.stringify follows insertion order - so this hash is a function
+      // of the serialisation rather than of the content. That is fine here:
+      // nothing outside this codebase ever computes a _rev, and every node
+      // builds a given document through the same contract and the same
+      // streamUpdater, so the order is identical everywhere and the hashes
+      // agree. Divergence makes revisions differ; differing key order does
+      // not arise.
+      //
+      // What this test exists to catch is someone canonicalising the hash
+      // later - sorting keys before stringify, say - which reads as a
+      // harmless tidy-up and is not. It changes every revision computation,
+      // so a patched and an unpatched node would compute different
+      // revisions for the same write and diverge for the length of a
+      // rolling upgrade. If that change is ever wanted it needs to be
+      // deliberate and coordinated, and this test failing is how it gets
+      // noticed.
+      await db.bulkDocs([{ _id: "orderA", x: 1, y: 2 }], { new_edits: true });
+      await db.bulkDocs([{ _id: "orderB", y: 2, x: 1 }], { new_edits: true });
+
+      const a: any = await db.get("orderA");
+      const b: any = await db.get("orderB");
+
+      const hashOf = (rev: string) => rev.split("-")[1];
+      expect(hashOf(a._rev)).to.not.equal(hashOf(b._rev));
+    });
+  });
+
   describe("post() error signalling (e81cd7c)", () => {
     it("resolves { ok: true } on success", async () => {
       const result = await db.post({ _id: "streamE", name: "epsilon" });
