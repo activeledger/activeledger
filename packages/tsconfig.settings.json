@@ -4,13 +4,28 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "lib": ["es2022"],
-    "target":"es2022",
+    "lib": [
+      "es2022"
+    ],
+    // Do not type check third party .d.ts files. "lib" is es2022 with no
+    // "dom" on purpose - this is server code - but undici's published types
+    // reference DOM globals (Event, EventTarget) for its EventSource,
+    // FileReader and WebSocket surfaces, which we never touch. Without this
+    // the build fails with a dozen TS2304 "Cannot find name 'Event'"
+    // errors originating entirely inside node_modules.
+    //
+    // Adding "dom" to lib would fix the symptom by letting browser globals
+    // leak into every file in the repository, which is worse.
+    "skipLibCheck": true,
+    "target": "es2022",
     "alwaysStrict": true,
     "strictNullChecks": true,
     "noImplicitAny": true,
     "moduleResolution": "node",
     "removeComments": true
   },
-  "exclude": ["**/lib/", "**/es/"]
+  "exclude": [
+    "**/lib/",
+    "**/es/"
+  ]
 }
