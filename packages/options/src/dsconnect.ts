@@ -36,6 +36,21 @@ const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
  * @class ActiveDSConnect
  * @implements {ActiveDefinitions.IActiveDSConnect}
  */
+/**
+ * Document ids reach these methods from callers that do not own them -
+ * Endpoints.streams() passes whatever a peer asked about straight through -
+ * so they are encoded before becoming a URL path segment.
+ *
+ * Unencoded, a "../" inside an id stops being part of the document name the
+ * moment a URL parser sees it: it walks up out of the database path, and a
+ * request for one database becomes a request for another. The store's
+ * getDB() then throws for the unrecognised name from inside a Promise
+ * executor, which surfaces as an unhandled rejection rather than a 500.
+ *
+ * Safe for the ids this ledger actually uses: the ":" in "<id>:stream",
+ * "<id>:data" and "umid:..." becomes %3A on the wire, and the store decodes
+ * the path again before looking it up.
+ */
 export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   /**
    * Creates an instance of DBConnector.
@@ -204,13 +219,13 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public get(id: string, options: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+      ActiveRequest.send(`${this.location}/${encodeURIComponent(id)}`, "GET", undefined, options)
         .then((response: any) => resolve(response.data))
         .catch(reject);
     });
 
     // if (!this.secondaryCache[id]) {
-    //   const response = await ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options);
+    //   const response = await ActiveRequest.send(`${this.location}/${encodeURIComponent(id)}`, "GET", undefined, options);
     //   return response.data
     //   // DISABLED
     //   // this.secondaryCache[id] = {
@@ -230,7 +245,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public createget(id: string, options: any = {}): Promise<any> {
     return new Promise((resolve) => {
-      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, options)
+      ActiveRequest.send(`${this.location}/${encodeURIComponent(id)}`, "GET", undefined, options)
         .then((response: any) => resolve(response.data))
         .catch(() => {
           resolve({ _id: id });
@@ -246,7 +261,7 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    */
   public exists(id: string): Promise<Boolean> {
     return new Promise<Boolean>((resolve) => {
-      ActiveRequest.send(`${this.location}/${id}`, "GET", undefined, {})
+      ActiveRequest.send(`${this.location}/${encodeURIComponent(id)}`, "GET", undefined, {})
         .then((response: any) => resolve(response.data?._id ? true : false))
         .catch(() => {
           resolve(false);
