@@ -17,7 +17,7 @@ Run the following command to create a 3 node local testnet.
 activeledger --testnet
 ```
 
-![Activeledger Create Testnet](https://www.activeledger.io/wp-content/uploads/2018/10/testnet-create.png)
+![Activeledger Create Testnet](https://raw.githubusercontent.com/activeledger/activeledger/master/docs/assets/testnet-create.png)
 
 When the testnet has been created you can run all of them at once but running
 
@@ -30,5 +30,5 @@ Alternatively you can run each instance of Activeledger independantly by navigat
 ```bash
 activeledger
 ```
-![Activeledger Launch Testnet](https://www.activeledger.io/wp-content/uploads/2018/10/testnet-run.png)
+![Activeledger Launch Testnet](https://raw.githubusercontent.com/activeledger/activeledger/master/docs/assets/testnet-run.png)
 
