@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "4.5.14",
+  "version": "4.5.15",
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",
@@ -37,14 +37,14 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
-    "@activeledger/activecrypto": "4.5.14",
-    "@activeledger/activelogger": "4.5.14",
-    "@activeledger/activenetwork": "4.5.14",
-    "@activeledger/activeoptions": "4.5.14",
-    "@activeledger/activequery": "4.5.14",
-    "@activeledger/activestorage": "4.5.14",
-    "@activeledger/activeutilities": "4.5.14",
-    "@activeledger/httpd": "4.5.14"
+    "@activeledger/activecrypto": "4.5.15",
+    "@activeledger/activelogger": "4.5.15",
+    "@activeledger/activenetwork": "4.5.15",
+    "@activeledger/activeoptions": "4.5.15",
+    "@activeledger/activequery": "4.5.15",
+    "@activeledger/activestorage": "4.5.15",
+    "@activeledger/activeutilities": "4.5.15",
+    "@activeledger/httpd": "4.5.15"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
