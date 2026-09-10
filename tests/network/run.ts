@@ -977,6 +977,52 @@ async function runSpiTests(
       ? report.ok(`Transaction succeeded via node ${originNode.port} as origin, desynced peer included (${ms}ms)`)
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
   }
+
+  // A stream every node agrees on must not be abstained about.
+  //
+  // This is the production symptom that had no coverage. SPI NOWINNER was
+  // logged over and over for streams all four nodes held byte-identically
+  // - 218 times in two hours on one live stream - because a single node
+  // being mid-transaction vetoed the whole decision. Nothing disagreed;
+  // the sample was simply never complete, and on a busy stream it never
+  // would be.
+  //
+  // Convergence alone would not have caught this, because the stream WAS
+  // converged the whole time. The fault lived only in the logs, which is
+  // exactly where nobody was looking.
+  await new Promise((r) => setTimeout(r, 1500));
+  report.phase("SPI: no abstention on a stream nothing disagrees about");
+  {
+    const start = Date.now();
+    // Give the last repair cycle time to settle before reading - SPI
+    // convergence is eventual, so sampling immediately can catch nodes
+    // mid-transition and fail on the test's own pacing.
+    const { byNode, converged } = await waitForConvergence(nodes, returnerId, 10000);
+    const revs = Array.from(new Set(byNode.map((n) => n.rev)));
+
+    // Only meaningful if the network really did agree - against a genuinely
+    // split stream a clean log would prove nothing, so say so rather than
+    // reporting a pass.
+    const abstained = nodes
+      .filter((node) => healedBy(node, returnerId).indexOf("SPI abstained") !== -1)
+      .map((node) => node.port);
+
+    const ok = converged && abstained.length === 0;
+    report.record("spi-no-abstain-when-agreed", ok, Date.now() - start);
+    if (!converged) {
+      report.fail(
+        `Precondition failed - nodes disagree (${byNode
+          .map((n) => `${n.port}=${n.rev}`)
+          .join(", ")}), so this check proves nothing`
+      );
+    } else if (abstained.length) {
+      report.fail(
+        `All nodes hold ${revs[0]} yet node(s) ${abstained.join(", ")} logged SPI NOWINNER for it`
+      );
+    } else {
+      report.ok(`All nodes hold ${revs[0]} and none abstained about it`);
+    }
+  }
 }
 
 /**

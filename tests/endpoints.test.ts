@@ -248,7 +248,9 @@ describe("Endpoints.spiConsensus (Activenetwork)", () => {
   });
 
   it("abstains on a stream a node could not report, rather than voting on the rest", () => {
-    // The node3 case: peers busy, so only the stale local answer counts
+    // The node3 case: peers busy, so only the stale local answer counts.
+    // One vote cannot clear a threshold of 2, so this abstains on the
+    // threshold alone - a lone stale answer must never carry a stream.
     const { winners, abstained } = Endpoints.spiConsensus(
       [
         [{ _id: "088067", locked: true }, identity],
@@ -259,7 +261,8 @@ describe("Endpoints.spiConsensus (Activenetwork)", () => {
     );
 
     expect(winners["088067"]).to.equal(undefined);
-    expect(abstained["088067"]).to.contain("sample incomplete");
+    expect(abstained["088067"]).to.contain("no revision reached consensus");
+    expect(abstained["088067"]).to.contain("2 node(s) could not report");
 
     // and the stream nobody was busy with is still decided
     expect(winners["8e55d6"].rev).to.equal("2-5559ccf9");
@@ -358,7 +361,14 @@ describe("Endpoints.spiConsensus - one vote per node (Activenetwork)", () => {
   });
 
   it("counts a doubled locked marker once", () => {
-    const { abstained } = Endpoints.spiConsensus(
+    // One node answers locked twice for the same stream; two others agree.
+    //
+    // Deduplication now has a visible consequence rather than only showing
+    // up in a message. Counted once, silence is 1 against 2 agreeing votes
+    // and the stream is decided. Counted twice it would be 2 against 2, and
+    // a winner that silence could overturn is not acted on - so the bug
+    // would turn a decidable stream into an abstention.
+    const { winners, abstained } = Endpoints.spiConsensus(
       [
         [
           { _id: "088067", locked: true },
@@ -370,7 +380,9 @@ describe("Endpoints.spiConsensus - one vote per node (Activenetwork)", () => {
       2
     );
 
-    expect(abstained["088067"]).to.contain("1 node(s) could not report");
+    expect(abstained["088067"]).to.equal(undefined);
+    expect(winners["088067"].rev).to.equal(stale._rev);
+    expect(winners["088067"].votes).to.equal(2);
   });
 });
 
