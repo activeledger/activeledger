@@ -672,7 +672,37 @@ export class CLIHandler {
           parseInt(ActiveOptions.get<string>("port", 5260)) - 1
         ).toString();
 
-        // Disable auto starts as they have their own port settings
+        // activecore genuinely does have its own port setting, and it
+        // would collide with a node that has moved off the default, so it
+        // stays disabled here.
+        //
+        // activerestore does NOT. It binds no port and reads no port
+        // config - it reads config.json from its working directory and
+        // talks to this node's own storage. It was swept in alongside
+        // activecore to stop --testnet's generated instances each running
+        // a restore engine, which was a real performance concern on one
+        // machine, but the cost landed somewhere else entirely: ANY node
+        // set up on a non-default port had its restore engine silently
+        // disabled, which is most real deployments.
+        //
+        // What that costs is not obvious, because SPI still converges
+        // state and the node looks healthy. The 950 "UMID not found"
+        // documents SPI raises after a repair are never consumed, so
+        // missing umids are never backfilled, the events those
+        // transactions raised never replay, and activeledgererrors grows
+        // with nothing reading it. A node that was ever behind keeps a
+        // permanent hole in its event feed.
+        //
+        // The testnet case is now handled where it belongs, by testnet
+        // passing --disable-autostart explicitly, rather than inferred from a
+        // port number that cannot tell the two situations apart.
+        defConfig.autostart.core = false;
+      }
+
+      // An explicit opt out, for a generator standing up many instances on
+      // one machine that does not want a full set of background processes
+      // per node.
+      if (ActiveOptions.get<boolean>("disable-autostart", false)) {
         defConfig.autostart.core = false;
         defConfig.autostart.restore = false;
       }
