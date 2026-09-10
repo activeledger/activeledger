@@ -702,10 +702,27 @@ export class Endpoints {
    * equals what this node already holds, so nothing is rewritten, nothing
    * is logged, and the node stays behind while SPI reports success.
    *
-   * So a stream is only decided when the sample for it is complete.
-   * Abstaining leaves the node out of date for now and it will try again
-   * on the next transaction, which is recoverable; acting on a partial
-   * sample is not.
+   * The first fix for that abstained whenever ANY node could not report.
+   * That was too blunt in both directions. On a hot stream some node is
+   * nearly always mid-transaction, so streams every node held identically
+   * still logged NOWINNER on every round - 218 times in two hours on one
+   * production stream, about a copy nothing disagreed about. And the same
+   * veto is why a genuinely diverged busy stream never healed: the one
+   * condition that has to clear for repair to happen is the condition
+   * traffic guarantees will not.
+   *
+   * The rule now is that silence does not vote and does not veto. A
+   * revision must clear consensusReached AND be held by more nodes than
+   * could not report, so nothing the unseen nodes hold could overturn it.
+   * Three agreeing with one silent is decided; two agreeing with two
+   * silent is not, because if both silent nodes disagreed the real picture
+   * would be a 2-2 split, which is a fork and needs a human.
+   *
+   * Every vote counted still comes from a node that is provably not
+   * moving, so a partial sample never puts an unstable revision into the
+   * tally - only a smaller one. Abstaining leaves the node out of date for
+   * now and it will try again on the next transaction, which is
+   * recoverable; acting on a sample that could be overturned is not.
    *
    * @static
    * @param {any[]} networkStreams one entry per node, as knockAll returns
@@ -787,10 +804,25 @@ export class Endpoints {
     for (let g = ids.length; g--; ) {
       const id = ids[g];
 
-      if (unreported[id]) {
-        abstained[id] = `sample incomplete, ${unreported[id]} node(s) could not report`;
-        continue;
-      }
+      // A node that could not report does not vote - but it does not get to
+      // veto the ones that could, either.
+      //
+      // This used to abstain the whole stream the moment ANY node answered
+      // with the locked marker, however many others had agreed. On a hot
+      // stream some node is nearly always mid-transaction, so a stream that
+      // all four nodes held byte-identically still logged NOWINNER on every
+      // single round - 218 times in two hours on one production stream,
+      // against a copy nothing disagreed about. Worse, the same veto is why
+      // a genuinely diverged busy stream never healed: the one condition
+      // that has to clear for repair to happen is the condition traffic
+      // guarantees will not.
+      //
+      // Every vote still comes from a node that is provably not moving, so
+      // nothing unstable enters the tally. The only change is that silence
+      // now counts as absence rather than as an objection, which is what
+      // consensusReached already exists to handle. If the nodes that could
+      // answer do not reach it between them, this still abstains.
+      const silent = unreported[id] || 0;
 
       const revisions = tally[id] || {};
       let winner = "";
@@ -831,8 +863,23 @@ export class Endpoints {
       if (forked) {
         abstained[id] =
           "forked - two revisions at the same position, needs a human";
+      } else if (winner && max <= silent) {
+        // Enough nodes agreed to clear the threshold, but not enough to
+        // outnumber the ones that said nothing. Silence is not evidence
+        // either way, and a rewrite is destructive - force_rev overwrites
+        // whatever is here - so a winner that could be overturned by the
+        // nodes we could not see is not a winner worth acting on.
+        //
+        // Two agreeing with two silent is the case this catches: if both
+        // silent nodes hold something else the real picture is a 2-2 split,
+        // which is a fork and needs a human, not a coin toss. Three
+        // agreeing with one silent is decided, because nothing the silent
+        // node holds can change the answer.
+        abstained[id] = `inconclusive - ${max} agreed on ${winner} but ${silent} node(s) could not report`;
       } else if (winner) {
         winners[id] = { rev: winner, votes: max, doc: revisions[winner].doc };
+      } else if (silent) {
+        abstained[id] = `no revision reached consensus, ${silent} node(s) could not report`;
       } else {
         abstained[id] = "no revision reached consensus";
       }
