@@ -10,7 +10,13 @@
 import * as path from "path";
 import * as fsSync from "fs";
 import { NetworkHarness, NetworkNode } from "./harness";
-import { submit, storageGet, storagePut, requestJsonWithStatus } from "./http";
+import {
+  submit,
+  storageGet,
+  storagePut,
+  storageDelete,
+  requestJsonWithStatus,
+} from "./http";
 import { SSEClient } from "./sse";
 import { Report } from "./report";
 import {
@@ -1071,6 +1077,74 @@ async function runSpiTests(
       );
     } else {
       report.ok(`Fork left intact for a human: ${Array.from(new Set(after.byNode.map((n) => n.rev))).join(" vs ")}`);
+    }
+  }
+
+  // A node that LOST a document, rather than fell behind on one.
+  //
+  // These are different faults and only one of them was covered. A stale
+  // node votes "Stream Position Incorrect"; a node missing the document
+  // entirely raises 950 StreamNotFound, which is the single error code
+  // activerestore's interagent acts on.
+  //
+  // Observed on this harness, SPI gets there first - the log shows
+  // SPI REWRITING for both documents and then "SPI Adding 950 Checker",
+  // queueing the restore path behind a repair that has already happened.
+  // So this asserts the OUTCOME, which is what actually matters to an
+  // operator, and reports which mechanism did it rather than assuming.
+  // If that ever changes - if SPI stops covering this and restore becomes
+  // the only path - the reported mechanism changes and the check still
+  // holds, which is the point of not hard-coding the answer.
+  //
+  // Deletes the stream and its :stream meta together, because losing one
+  // and recovering the other would leave meta._rev:state._rev mismatched,
+  // which nothing can repair afterwards.
+  report.phase(`SPI/restore: node ${desyncTarget.port} loses a document outright`);
+  {
+    const start = Date.now();
+    const lossIdentity = await onboard(nodes[0].baseUrl);
+    await waitForConvergence(nodes, lossIdentity.streamId, 10000);
+    const expected = await storageGet(nodes[0].storageUrl, lossIdentity.streamId);
+
+    await storageDelete(desyncTarget.storageUrl, lossIdentity.streamId);
+    await storageDelete(desyncTarget.storageUrl, `${lossIdentity.streamId}:stream`);
+
+    // Confirm the loss actually happened - otherwise the recovery below
+    // proves nothing at all.
+    let reallyGone = false;
+    try {
+      const after = await storageGet(desyncTarget.storageUrl, lossIdentity.streamId);
+      reallyGone = !after?._rev;
+    } catch {
+      reallyGone = true;
+    }
+
+    // Give the network a reason to notice.
+    await runContract(nodes[0].baseUrl, lossIdentity, namespace, returnerId, {
+      message: "post-loss",
+    }).catch(() => undefined);
+
+    const { byNode, converged } = await waitForConvergence(nodes, lossIdentity.streamId, 20000);
+    const recovered = byNode.find((n) => n.port === desyncTarget.port);
+    const holdsSomething = !!recovered && recovered.rev !== "missing" && recovered.rev !== "unreadable";
+
+    const ok = reallyGone && holdsSomething && converged;
+    report.record("recovers-a-lost-document", ok, Date.now() - start);
+    if (!reallyGone) {
+      report.fail(`Could not delete ${lossIdentity.streamId} from node ${desyncTarget.port} - the check proves nothing`);
+    } else if (!holdsSomething) {
+      report.fail(`Node ${desyncTarget.port} never got the document back (was ${expected?._rev})`);
+    } else if (!converged) {
+      report.fail(
+        `Recovered but did not converge: ${byNode.map((n) => `${n.port}=${n.rev}`).join(", ")}`
+      );
+    } else {
+      const by = healedBy(desyncTarget, lossIdentity.streamId);
+      report.ok(
+        `Node ${desyncTarget.port} lost and recovered the document (${
+          by.length ? by.join(", ") : "no repair marker logged"
+        }), all nodes on ${byNode[0].rev}`
+      );
     }
   }
 
