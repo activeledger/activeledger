@@ -90,6 +90,13 @@ jobs:
       - name: Build all packages
         run: npm run build
 
+      # Last gate before anything leaves the runner. A tarball missing its
+      # entry point cannot be unpublished once it is on npm - 4.5.11, 4.5.12
+      # and 4.5.13 are all permanently broken because of one missing `files`
+      # field - so this fails the release instead.
+      - name: Check every package ships its entry points
+        run: node scripts/check-package-contents.mjs
+
       - name: Publish to GitHub Packages
         run: npm publish --workspaces --access public --registry https://npm.pkg.github.com/
         env:
