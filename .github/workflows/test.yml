@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 24 (current LTS), not the 18 publish.yml used. uWebSockets.js v20.67.0 ships
       # prebuilt binaries only for Node 22, 24 and 26 (ABI 127/137/147), so
