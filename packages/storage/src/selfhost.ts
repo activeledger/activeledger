@@ -1050,7 +1050,23 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
     // If path is not default overwrite
     if (req.url !== "/_utils/") {
-      file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
+      // Resolved and contained, not concatenated. uWebSockets hands the
+      // path through as sent, so "../" segments arrive verbatim - and
+      // FAUXTON_PATH sits several levels inside the install, so a few of
+      // them reach the node's working directory, where config.json and the
+      // .identity private key live.
+      const requested = path.resolve(
+        FAUXTON_PATH,
+        "." + decodeURIComponent((req.url as string).replace("/_utils", ""))
+      );
+
+      if (!requested.startsWith(path.resolve(FAUXTON_PATH) + path.sep)) {
+        // Outside the asset directory. Serve the app shell rather than
+        // reporting whether the path existed.
+        return fauxtonCache[FAUXTON_PATH + "/index.html"] || null;
+      }
+
+      file = requested;
     }
 
     if (fauxtonCache[file]) {

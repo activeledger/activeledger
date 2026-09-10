@@ -48,7 +48,16 @@ if (
 if (!fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
   let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
-  fs.writeFileSync("./.identity", JSON.stringify(identity.generate()));
+  // 0600: this file contains the node's RSA PRIVATE key - KeyPair.pem is a
+  // public field, so JSON.stringify emits it. Without a mode it lands at
+  // 0644 under a default umask, readable by every user on the host.
+  //
+  // Only affects a newly generated identity; an existing .identity keeps
+  // whatever permissions it already has, so tightening one that is already
+  // on disk is a separate, deliberate step.
+  fs.writeFileSync("./.identity", JSON.stringify(identity.generate()), {
+    mode: 0o600,
+  });
   ActiveLogger.info("Identity Generated. Continue Boot Cycle");
 }
 
