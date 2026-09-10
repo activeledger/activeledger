@@ -17,6 +17,10 @@
   ],
   "homepage": "https://github.com/activeledger/activeledger",
   "main": "./lib/index.js",
+  "files": [
+    "es",
+    "lib"
+  ],
   "scripts": {
     "start": "node lib/index.js",
     "test": "cd ../../ && npm test",

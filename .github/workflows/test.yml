@@ -53,5 +53,13 @@ jobs:
             echo "::endgroup::"
           done
 
+      # Catches a package whose build output exists but which npm would
+      # leave out of the tarball. v4.5.11-4.5.13 shipped activestorage
+      # with no lib/ at all: on the registry, right version, resolvable,
+      # and MODULE_NOT_FOUND on require. Cheap, and it runs on every PR
+      # rather than only at release, so the next one cannot reach npm.
+      - name: Check every package ships its entry points
+        run: node scripts/check-package-contents.mjs
+
       - name: Run tests
         run: npm test
