@@ -1,0 +1,335 @@
+import { expect } from "chai";
+import "mocha";
+import { Endpoints } from "../packages/network/src/network/endpoints";
+
+/**
+ * Walking a stream's umid history backwards.
+ *
+ * SPI can adopt a stream's current revision, but that leaves a node with
+ * correct state and no record of how it got there. The most recent umid is
+ * recoverable because the :stream meta names it; everything before that was
+ * unreachable, because nothing could enumerate what had been skipped.
+ *
+ * The fix is a backward pointer rather than a list. Each umid records the
+ * umid it replaced, per stream, so the history is a linked list:
+ *
+ *   :stream meta -> U0 --prev--> U1 --prev--> U2 -> ... -> creation
+ *
+ * A list of transactions per stream was tried before (meta.txs) and
+ * abandoned because it grew without limit on any busy stream, costing
+ * space, memory and speed at once. A pointer costs one field per stream
+ * per transaction however long the history is, and a walk fetches only the
+ * hops actually missing.
+ *
+ * These tests drive the walk against a fake network so the termination
+ * conditions can be checked exactly - the interesting behaviour is all in
+ * when it STOPS.
+ */
+
+const STREAM = "3f7a1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f";
+
+/**
+ * A network holding a umid chain, and a node holding some prefix of it.
+ *
+ * `chain` is newest-first: chain[0] replaced chain[1], and so on.
+ */
+function fakeHost(chain: string[], held: string[] = [], opts: any = {}) {
+  const local = new Set(held.map((u) => `${u}:umid`));
+  const adopted: string[] = [];
+  const replayed: string[] = [];
+
+  const docFor = (umid: string) => {
+    const index = chain.indexOf(umid);
+    if (index === -1) return undefined;
+    const prev = chain[index + 1];
+    return {
+      _id: `${umid}:umid`,
+      umid: { $umid: umid },
+      // One event per transaction, id'd the way EventEngine does, so a
+      // replay can be counted and checked for duplicates.
+      events: [{ _id: `event:1,${umid}`, name: "Moved", data: { umid } }],
+      streams: prev
+        ? { new: [], updated: [{ id: STREAM, prev }] }
+        : // The oldest entry is the creation - no prev, which is what makes
+          // the start of a stream a natural terminator.
+          { new: [{ id: STREAM, name: "created" }], updated: [] },
+    };
+  };
+
+  return {
+    adopted,
+    replayed,
+    host: {
+      dbConnection: {
+        get: async (id: string) => {
+          if (!local.has(id)) throw new Error("not found");
+          return docFor(id.replace(":umid", ""));
+        },
+        bulkDocs: async (docs: any[]) => {
+          if (opts.writeFails) return false;
+          for (const doc of docs) {
+            local.add(doc._id);
+            adopted.push(doc._id.replace(":umid", ""));
+          }
+          return { ok: true };
+        },
+      },
+      dbEventConnection: {
+        post: async (doc: any) => {
+          replayed.push(doc._id);
+          return { ok: true };
+        },
+      },
+      neighbourhood: {
+        knockAll: async (endpoint: string) => {
+          const umid = endpoint.replace("umid/", "");
+          if (opts.unreachable?.includes(umid)) return [];
+          const doc = docFor(umid);
+          // Two nodes agreeing, as a real sample would return
+          return doc ? [doc, doc] : [];
+        },
+      },
+    } as any,
+  };
+}
+
+describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () => {
+  it("walks back through every umid the node is missing", async () => {
+    // Node holds nothing; the network has four transactions plus a creation
+    const chain = ["u4", "u3", "u2", "u1", "created"];
+    const { host, adopted } = fakeHost(chain, []);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u4");
+
+    expect(result.recovered).to.deep.equal(["u4", "u3", "u2", "u1", "created"]);
+    expect(adopted).to.deep.equal(["u4", "u3", "u2", "u1", "created"]);
+    expect(result.stoppedAt).to.equal("start of stream");
+  });
+
+  it("stops at the first umid it already holds", async () => {
+    // The common case: behind by two, everything older already present.
+    const chain = ["u4", "u3", "u2", "u1", "created"];
+    const { host, adopted } = fakeHost(chain, ["u2", "u1", "created"]);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u4");
+
+    expect(result.recovered).to.deep.equal(["u4", "u3"]);
+    expect(adopted).to.deep.equal(["u4", "u3"]);
+    expect(result.stoppedAt).to.contain("already held");
+  });
+
+  it("does nothing at all when the node is already current", async () => {
+    const chain = ["u2", "u1", "created"];
+    const { host, adopted } = fakeHost(chain, ["u2", "u1", "created"]);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u2");
+
+    expect(result.recovered).to.have.length(0);
+    expect(adopted).to.have.length(0);
+    expect(result.stoppedAt).to.contain("already held");
+  });
+
+  it("stops at the cap rather than grinding through an unbounded chain", async () => {
+    // A node this far behind wants a full restore, not 500 sequential
+    // network fetches holding the SPI path open.
+    const chain = Array.from({ length: 250 }, (_, i) => `u${i}`);
+    const { host } = fakeHost(chain, []);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u0");
+
+    expect(result.recovered).to.have.length(100);
+    expect(result.stoppedAt).to.equal("limit reached");
+  });
+
+  it("stops cleanly when a umid cannot be recovered from anyone", async () => {
+    // A broken chain must not look like a completed walk.
+    const chain = ["u3", "u2", "u1", "created"];
+    const { host, adopted } = fakeHost(chain, [], { unreachable: ["u2"] });
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u3");
+
+    expect(result.recovered).to.deep.equal(["u3"]);
+    expect(adopted).to.deep.equal(["u3"]);
+    expect(result.stoppedAt).to.contain("could not recover u2");
+  });
+
+  it("reports a write failure rather than continuing past it", async () => {
+    const chain = ["u2", "u1", "created"];
+    const { host } = fakeHost(chain, [], { writeFails: true });
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u2");
+
+    expect(result.recovered).to.have.length(0);
+    expect(result.stoppedAt).to.contain("could not recover");
+  });
+
+  it("refuses to spin if a chain ever loops back on itself", async () => {
+    // Should be impossible. If it happens something upstream is wrong, and
+    // spinning forever would hide it.
+    // The node holds neither, so the walk actually fetches and follows -
+    // an earlier version of this fixture pre-seeded "a" and the walk
+    // correctly stopped at "already held" before it could ever loop, which
+    // proved nothing.
+    const store = new Map<string, any>();
+    const docFor = (umid: string) => ({
+      _id: `${umid}:umid`,
+      umid: { $umid: umid },
+      streams: {
+        new: [],
+        updated: [{ id: STREAM, prev: umid === "a" ? "b" : "a" }],
+      },
+    });
+    const looping: any = {
+      dbConnection: {
+        get: async (id: string) => {
+          if (!store.has(id)) throw new Error("not found");
+          return store.get(id);
+        },
+        bulkDocs: async (docs: any[]) => {
+          for (const doc of docs) store.set(doc._id, doc);
+          return { ok: true };
+        },
+      },
+      dbEventConnection: { post: async () => ({ ok: true }) },
+      neighbourhood: {
+        knockAll: async (endpoint: string) => {
+          const umid = endpoint.replace("umid/", "");
+          return [docFor(umid), docFor(umid)];
+        },
+      },
+    };
+
+    const result = await Endpoints.walkUmidHistory(looping, STREAM, "a");
+
+    expect(result.stoppedAt).to.equal("loop detected");
+  });
+
+  it("only follows the pointer for the stream being repaired", async () => {
+    // A transaction touches several streams and records a different prev
+    // for each. Following the wrong one would walk another stream's history
+    // and silently recover the wrong transactions.
+    const OTHER = "9999999999999999999999999999999999999999999999999999999999999999";
+    const store = new Map<string, any>();
+    const network: { [umid: string]: any } = {
+      top: {
+        _id: "top:umid",
+        umid: { $umid: "top" },
+        streams: {
+          new: [],
+          updated: [
+            { id: OTHER, prev: "wrong-branch" },
+            { id: STREAM, prev: "right-branch" },
+          ],
+        },
+      },
+      "right-branch": {
+        _id: "right-branch:umid",
+        umid: { $umid: "right-branch" },
+        streams: { new: [{ id: STREAM, name: "created" }], updated: [] },
+      },
+      "wrong-branch": {
+        _id: "wrong-branch:umid",
+        umid: { $umid: "wrong-branch" },
+        streams: { new: [{ id: OTHER, name: "created" }], updated: [] },
+      },
+    };
+
+    const multi: any = {
+      dbConnection: {
+        get: async (id: string) => {
+          if (!store.has(id)) throw new Error("not found");
+          return store.get(id);
+        },
+        bulkDocs: async (docs: any[]) => {
+          for (const doc of docs) store.set(doc._id, doc);
+          return { ok: true };
+        },
+      },
+      dbEventConnection: { post: async () => ({ ok: true }) },
+      neighbourhood: {
+        knockAll: async (endpoint: string) => {
+          const doc = network[endpoint.replace("umid/", "")];
+          return doc ? [doc, doc] : [];
+        },
+      },
+    };
+
+    const result = await Endpoints.walkUmidHistory(multi, STREAM, "top");
+
+    // right-branch, never wrong-branch
+    expect(result.recovered).to.deep.equal(["top", "right-branch"]);
+    expect(result.stoppedAt).to.equal("start of stream");
+  });
+
+  it("recovers a long gap in one walk, with every umid's events", async () => {
+    // Fifty missed transactions, which is the shape of a node that was down
+    // for a while rather than one that dropped a single round.
+    const chain = [...Array.from({ length: 50 }, (_, i) => `u${49 - i}`), "created"];
+    const { host, adopted, replayed } = fakeHost(chain, ["created"]);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u49");
+
+    expect(result.recovered).to.have.length(50);
+    expect(adopted).to.have.length(50);
+    expect(result.stoppedAt).to.contain("already held");
+
+    // Every recovered umid replayed its event, exactly once each - plus
+    // one for the terminus, the already-held umid the walk stopped at.
+    // That extra pass is deliberate: a held umid can still be missing its
+    // events, and replaying is idempotent because ids are reused.
+    expect(replayed).to.have.length(51);
+    expect(new Set(replayed).size).to.equal(51);
+    for (const umid of result.recovered) {
+      expect(replayed).to.contain(`event:1,${umid}`);
+    }
+    expect(replayed, "the terminus replays too").to.contain("event:1,created");
+  });
+
+  it("recovers in order, newest first, so a partial walk leaves the newest present", async () => {
+    // If a walk is cut short the node should hold the MOST recent history,
+    // not a random middle slice - that is what a feed consumer needs.
+    const chain = ["u5", "u4", "u3", "u2", "u1", "created"];
+    const { host } = fakeHost(chain, [], { unreachable: ["u2"] });
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u5");
+
+    expect(result.recovered).to.deep.equal(["u5", "u4", "u3"]);
+  });
+
+  it("stops at the first held umid even when older ones are missing", async () => {
+    // Deliberate, and worth stating: the walk assumes history below a held
+    // umid is intact, because a node only gains umids in order. A hole
+    // underneath one it holds is not something this repairs - that is what
+    // a full restore is for.
+    const chain = ["u4", "u3", "u2", "u1", "created"];
+    const { host } = fakeHost(chain, ["u2"]); // holds u2, but not u1/created
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u4");
+
+    expect(result.recovered).to.deep.equal(["u4", "u3"]);
+    expect(result.stoppedAt).to.contain("already held");
+  });
+
+  it("recovers exactly the cap when the gap is exactly the cap", async () => {
+    const chain = [...Array.from({ length: 100 }, (_, i) => `u${99 - i}`), "created"];
+    const { host } = fakeHost(chain, ["created"]);
+
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "u99");
+
+    expect(result.recovered).to.have.length(100);
+    // Hit the cap and the held marker at once - either message is honest,
+    // but it must not claim to have reached the start of the stream.
+    expect(result.stoppedAt).to.not.equal("start of stream");
+  });
+
+  it("replays events even for a umid it already held but whose events went missing", async () => {
+    // Holding the umid does not imply holding its events: separate
+    // documents, and EventEngine.emit() is fire-and-forget.
+    const chain = ["u1", "created"];
+    const { host, replayed } = fakeHost(chain, ["u1", "created"]);
+
+    await Endpoints.walkUmidHistory(host, STREAM, "u1");
+
+    expect(replayed).to.contain("event:1,u1");
+  });
+});

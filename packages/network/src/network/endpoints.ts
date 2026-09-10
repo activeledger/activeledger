@@ -254,7 +254,12 @@ export class Endpoints {
                             let rewroteSomething = false;
                             // umids named in the :stream metas adopted this
                             // round - the transactions this node missed.
-                            const adoptedUmids = new Set<string>();
+                            // Streams repaired this round. The umid to walk
+                            // from is read off each stream's own :stream meta
+                            // afterwards, rather than taken from whichever
+                            // document happened to be rewritten - a round may
+                            // rewrite only the state, and that carries no umid.
+                            const repairedStreams = new Set<string>();
                             const streams = [
                               ...new Set([
                                 ...this.labelOrKey(tx.$tx.$i),
@@ -369,9 +374,9 @@ export class Endpoints {
                                         // revision just adopted. That is the
                                         // one this node missed, and the only
                                         // umid derivable from what SPI holds.
-                                        if (winningDoc.umid) {
-                                          adoptedUmids.add(winningDoc.umid);
-                                        }
+                                        repairedStreams.add(
+                                          winningDoc._id.replace(":stream", "")
+                                        );
                                       }
                                     }
                                   }
@@ -387,25 +392,24 @@ export class Endpoints {
                                   // with correct state and no record of how it got there: no
                                   // umid, and none of the events that transaction raised. State
                                   // converges, history does not, and nothing reports a fault.
-                                  for (const adopted of adoptedUmids) {
-                                    const backfilled = await Endpoints.backfillUmid(host, adopted);
-                                    if (!backfilled) {
-                                      // Durable retry, same as the non-origin path. Restore
-                                      // skips it if this succeeded on a later attempt.
-                                      ActiveLogger.warn(adopted, `SPI Adding 950 Checker #1`);
-                                      await host.dbErrorConnection.post({
-                                        _id: `${adopted}:${Date.now()}`,
-                                        code: 950,
-                                        processed: false,
-                                        umid: adopted,
-                                        transaction: {
-                                          $broadcast: true,
-                                          $tx: {},
-                                          $revs: {},
-                                        },
-                                        reason: 'Vote Failure - "SPI#1 UMID not found',
-                                      });
-                                    }
+                                  // NOT awaited, deliberately. The client is
+                                  // waiting on the resubmission below, and a
+                                  // walk is up to UMID_WALK_LIMIT sequential
+                                  // network fetches - putting that in front of
+                                  // the response would trade a latency problem
+                                  // for a correctness one nobody asked for.
+                                  // History repair is pure backfill: nothing in
+                                  // this transaction depends on it.
+                                  //
+                                  // Fire-and-forget is only acceptable here
+                                  // because the 950 makes it durable. A failed
+                                  // walk leaves a work item restore picks up,
+                                  // so this is an optimisation over that path
+                                  // rather than a replacement for it - which is
+                                  // the difference between this and an emit
+                                  // that vanishes silently.
+                                  for (const streamId of repairedStreams) {
+                                    Endpoints.repairHistoryInBackground(host, streamId, "#1");
                                   }
 
                                   //  need TO ONLY run this if SPI rewrites occured?
@@ -1292,7 +1296,7 @@ export class Endpoints {
 
                         // umids named in the :stream metas adopted this
                         // round - the transactions this node missed.
-                        const adoptedUmidsNonOrigin = new Set<string>();
+                        const repairedStreamsNonOrigin = new Set<string>();
 
                         // now find the ones that match
                         // One shared, tested tally - see Endpoints.spiConsensus(). It
@@ -1358,9 +1362,9 @@ export class Endpoints {
                               // Same as the origin path: the :stream meta
                               // names the transaction that produced this
                               // revision, which is the one that was missed.
-                              if (winningDoc.umid) {
-                                adoptedUmidsNonOrigin.add(winningDoc.umid);
-                              }
+                              repairedStreamsNonOrigin.add(
+                                winningDoc._id.replace(":stream", "")
+                              );
                             }
                           }
                         }
@@ -1379,8 +1383,9 @@ export class Endpoints {
                           // the :stream metas just adopted. These are the
                           // ones nothing recovered before: state converged
                           // while the umid and its events never arrived.
-                          for (const adopted of adoptedUmidsNonOrigin) {
-                            await Endpoints.backfillUmid(host, adopted);
+                          // Same reasoning as the origin path - not awaited.
+                          for (const streamId of repairedStreamsNonOrigin) {
+                            Endpoints.repairHistoryInBackground(host, streamId, "#2");
                           }
 
                           ActiveLogger.warn(tx.$umid, `SPI Adding 950 Checker`);
@@ -2044,6 +2049,233 @@ export class Endpoints {
     ActiveLogger.warn(
       `SPI UMID ${umidDoc?.umid?.$umid} - replayed ${events.length} event(s)`
     );
+  }
+
+  /**
+   * How far back a single walk will go before giving up.
+   *
+   * A node this far behind has a bigger problem than one stream, and a
+   * full activerestore is the right tool - grinding through an unbounded
+   * chain one network fetch at a time would be slower and would hold the
+   * SPI path open while doing it.
+   */
+  private static readonly UMID_WALK_LIMIT = 100;
+
+  /**
+   * Recover every umid a stream is missing, by walking its history
+   * backwards.
+   *
+   * SPI can adopt a stream's current revision, but that leaves a node with
+   * correct state and no record of how it got there - no umids, and none
+   * of the events those transactions raised. backfillUmid() fixes the most
+   * recent one, because the :stream meta names it. Everything before that
+   * was unreachable: nothing could enumerate what had been skipped.
+   *
+   * It can now, because each umid records what it replaced. refStreams
+   * .updated carries `prev` per stream - the umid that transaction
+   * superseded - so the history is a linked list walked one hop at a time:
+   *
+   *   :stream meta  ->  umid U0  --prev-->  U1  --prev-->  U2  ...
+   *
+   * The alternative was a list of transactions per stream, which is what
+   * meta.txs was and why it was abandoned: it grew without limit on any
+   * busy stream. A backward pointer is one field per stream per
+   * transaction whatever the history length, and this walk fetches only
+   * the hops actually missing rather than scanning a global index and
+   * discarding almost all of it.
+   *
+   * Stops at the first umid already held (the common case is one or two
+   * hops), at a creation, at a broken chain, or at UMID_WALK_LIMIT.
+   *
+   * @static
+   * @param {Host} host
+   * @param {string} streamId the stream being repaired
+   * @param {string} fromUmid the network's current umid for that stream
+   * @returns {Promise<{ recovered: string[]; stoppedAt: string }>}
+   */
+  public static async walkUmidHistory(
+    host: Host,
+    streamId: string,
+    fromUmid: string
+  ): Promise<{ recovered: string[]; stoppedAt: string }> {
+    const recovered: string[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined = fromUmid;
+
+    while (cursor) {
+      if (seen.has(cursor)) {
+        // A chain should never loop. If one does, stop rather than spin -
+        // and say so, because it means something upstream is wrong.
+        return { recovered, stoppedAt: "loop detected" };
+      }
+      seen.add(cursor);
+
+      if (recovered.length >= Endpoints.UMID_WALK_LIMIT) {
+        ActiveLogger.warn(
+          `SPI WALK ${streamId} - stopped at ${Endpoints.UMID_WALK_LIMIT}, a full restore is the right tool from here`
+        );
+        return { recovered, stoppedAt: "limit reached" };
+      }
+
+      // Do we already have it? Everything before it is here too, because a
+      // node only gains umids by walking this same chain or by committing
+      // in order - so this is where the walk stops, and it is what keeps
+      // the common case cheap.
+      let held = false;
+      try {
+        const local = await host.dbConnection.get(`${cursor}:umid`);
+        held = !!(local && local._id);
+      } catch {
+        held = false;
+      }
+
+      // Call backfillUmid even when held, and stop afterwards rather than
+      // before. Holding the umid does NOT imply holding its events - they
+      // are separate documents and EventEngine.emit() is fire-and-forget,
+      // so an event can be missing under a umid that is present. An earlier
+      // version of this returned on `held` without calling through, which
+      // silently removed the replay that ran before the walk existed.
+      // Replaying is idempotent (events keep their original _id), so the
+      // one extra pass at the terminus costs nothing but closes that hole.
+      const ok = await Endpoints.backfillUmid(host, cursor);
+      if (!ok) {
+        return { recovered, stoppedAt: `could not recover ${cursor}` };
+      }
+      if (held) {
+        return { recovered, stoppedAt: "reached a umid already held" };
+      }
+      recovered.push(cursor);
+
+      // Read the hop we just adopted to find the one before it.
+      let doc: any;
+      try {
+        doc = await host.dbConnection.get(`${cursor}:umid`);
+      } catch {
+        return { recovered, stoppedAt: "adopted umid could not be read back" };
+      }
+
+      cursor = Endpoints.previousUmidFor(doc, streamId);
+    }
+
+    return { recovered, stoppedAt: "start of stream" };
+  }
+
+  /**
+   * Repair a stream's umid history without holding anything up.
+   *
+   * Started, never awaited. The transaction that triggered SPI has a client
+   * waiting on it, and a walk is up to UMID_WALK_LIMIT sequential network
+   * fetches - nothing in the transaction depends on the history being back,
+   * so making the client wait for it would be trading a real latency cost
+   * for no correctness gain.
+   *
+   * Safe to fire and forget only because of what happens when it fails: a
+   * 950 is written, restore picks it up, and the work survives a crash.
+   * That is the difference between this and a bare emit that disappears -
+   * the fast path is an optimisation over a durable one, not a replacement
+   * for it.
+   *
+   * @private
+   * @static
+   */
+  private static repairHistoryInBackground(
+    host: Host,
+    streamId: string,
+    label: string
+  ): void {
+    void (async () => {
+      try {
+        const adopted = await Endpoints.currentUmidFor(host, streamId);
+        if (!adopted) {
+          return;
+        }
+
+        const walk = await Endpoints.walkUmidHistory(host, streamId, adopted);
+        if (walk.recovered.length) {
+          ActiveLogger.warn(
+            `SPI WALK ${label} ${streamId} recovered ${walk.recovered.length} umid(s), stopped: ${walk.stoppedAt}`
+          );
+          return;
+        }
+
+        // Nothing recovered and nothing was missing is the common case -
+        // the walk stopped immediately on a umid already held. Only a walk
+        // that could not do its job earns a durable retry.
+        if (walk.stoppedAt.indexOf("already held") !== -1) {
+          return;
+        }
+
+        ActiveLogger.warn(adopted, `SPI Adding 950 Checker ${label}`);
+        await host.dbErrorConnection.post({
+          _id: `${adopted}:${Date.now()}`,
+          code: 950,
+          processed: false,
+          umid: adopted,
+          transaction: {
+            $broadcast: true,
+            $tx: {},
+            $revs: {},
+          },
+          reason: `Vote Failure - "SPI${label} UMID not found`,
+        });
+      } catch (error) {
+        // Must never surface into the transaction path it was detached from
+        ActiveLogger.error(error, `SPI WALK ${label} ${streamId} failed`);
+      }
+    })();
+  }
+
+  /**
+   * The umid this node currently believes produced a stream's state.
+   *
+   * Read from the stream's own :stream meta after a repair, rather than
+   * from whichever document the tally happened to rewrite. A round may
+   * rewrite only the state document, which carries no umid at all - taking
+   * it from there meant the walk simply never started in exactly the case
+   * it was built for.
+   *
+   * @private
+   * @static
+   */
+  private static async currentUmidFor(
+    host: Host,
+    streamId: string
+  ): Promise<string | undefined> {
+    try {
+      const meta = await host.dbConnection.get(`${streamId}:stream`);
+      return meta?.umid || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * The umid a given umid document replaced, for one stream.
+   *
+   * Reads refStreams.updated, matching on the stream id. A creation lives
+   * in refStreams.new and carries no prev, which is what makes the start of
+   * a stream a natural terminator.
+   *
+   * @private
+   * @static
+   */
+  private static previousUmidFor(
+    umidDoc: any,
+    streamId: string
+  ): string | undefined {
+    const updated = umidDoc?.streams?.updated;
+    if (!Array.isArray(updated)) {
+      return undefined;
+    }
+    for (const entry of updated) {
+      if (!entry) continue;
+      // Ids may carry a virtual prefix depending on where they were built.
+      const id: string = entry.id || "";
+      if (id === streamId || id.endsWith(streamId) || streamId.endsWith(id)) {
+        return entry.prev || undefined;
+      }
+    }
+    return undefined;
   }
 
   /**

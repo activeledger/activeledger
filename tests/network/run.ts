@@ -209,7 +209,7 @@ async function main(): Promise<boolean> {
 
     await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
-    await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId);
+    await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId, emitterId);
 
     return report.summary();
   } finally {
@@ -1376,7 +1376,8 @@ async function runNodeRecoveryTests(
   nodes: NetworkNode[],
   identity: Identity,
   namespace: string,
-  returnerId: string
+  returnerId: string,
+  emitterId: string
 ): Promise<void> {
   const downNode = nodes[1];
   const originNode = nodes[0];
@@ -1506,6 +1507,111 @@ async function runNodeRecoveryTests(
           (held < missed.length
             ? ` - the rest are backfilled only by a full activerestore, not by SPI`
             : "")
+      );
+    }
+  }
+
+  // A long gap, with events - the shape of a node that was down for a
+  // while rather than one that dropped a round.
+  //
+  // Each umid records the umid it replaced, per stream, so the history is
+  // a linked list SPI can walk backwards one hop at a time. This is the
+  // check that the chain actually holds across a real run: fifty
+  // transactions, every one raising an event, none of which this node saw.
+  //
+  // Measured rather than asserted at a number. A partial walk is a real
+  // outcome (a peer may not hold an old umid, and the walk caps at 100),
+  // and reporting what came back is more use than failing on an arbitrary
+  // threshold - the pass condition is that state converges and that
+  // whatever history IS recovered brought its events with it, because a
+  // umid without its events is the fault this was built to fix.
+  const LONG_GAP = 50;
+  report.phase(`Node recovery: a ${LONG_GAP}-transaction gap, with events`);
+  {
+    const start = Date.now();
+    const subject = await onboard(originNode.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    // Sequential: they all touch the same stream, so each depends on the
+    // revision the last one produced.
+    const missedUmids: string[] = [];
+    for (let i = 0; i < LONG_GAP; i++) {
+      const res: any = await runContract(
+        originNode.baseUrl,
+        subject,
+        namespace,
+        emitterId,
+        { message: `gap-${i}`, correlationId: `gap-${i}-${Date.now()}` }
+      ).catch(() => undefined);
+      if (res?.$umid) missedUmids.push(res.$umid);
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Something for the returned node to notice on.
+    await runContract(originNode.baseUrl, subject, namespace, emitterId, {
+      message: "gap-trigger",
+      correlationId: `gap-trigger-${Date.now()}`,
+    }).catch(() => undefined);
+
+    const { byNode, converged } = await waitForConvergence(nodes, subject.streamId, 30000);
+
+    // The walk is asynchronous - give it room, then count.
+    let heldUmids = 0;
+    let heldEvents = 0;
+    let expectedEvents = 0;
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      heldUmids = 0;
+      heldEvents = 0;
+      expectedEvents = 0;
+      for (const umid of missedUmids) {
+        let doc: any;
+        try {
+          doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
+        } catch {
+          continue;
+        }
+        if (!doc?._id) continue;
+        heldUmids++;
+        for (const event of doc.events || []) {
+          if (!event?._id) continue;
+          expectedEvents++;
+          try {
+            const ev = await storageGet(downNode.storageUrl, event._id, "activeledgerevents");
+            if (ev?._id) heldEvents++;
+          } catch {
+            // not yet
+          }
+        }
+      }
+      if (heldUmids >= missedUmids.length && heldEvents >= expectedEvents) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Every umid recovered must have brought its events. That is the
+    // property; how far back the walk got is reported, not asserted.
+    const eventsIntact = expectedEvents === 0 || heldEvents === expectedEvents;
+    const ok = converged && eventsIntact;
+
+    report.record("recovers-a-long-gap", ok, Date.now() - start);
+    if (!converged) {
+      report.fail(
+        `State did not converge after a ${LONG_GAP}-transaction gap: ${byNode
+          .map((n) => `${n.port}=${n.rev}`)
+          .join(", ")}`
+      );
+    } else if (!eventsIntact) {
+      report.fail(
+        `Recovered ${heldUmids}/${missedUmids.length} umids but only ${heldEvents}/${expectedEvents} of their events - a umid without its events is the fault this exists to fix`
+      );
+    } else {
+      report.ok(
+        `State converged on ${byNode[0].rev}; node ${downNode.port} recovered ` +
+          `${heldUmids}/${missedUmids.length} missed umids and all ${heldEvents} of their events`
       );
     }
   }
