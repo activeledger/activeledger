@@ -397,24 +397,11 @@ export class Endpoints {
                                     if (!response.dontRelease) {
                                       host.release(tx.$umid);
                                     }
-                                    // Resolve thiscopy paste, We are within a timeout so not ideal
-                                    const output: ActiveDefinitions.LedgerResponse =
-                                    {
-                                      $umid: tx.$umid,
-                                      $summary: summary,
-                                      $streams: tx.$streams,
-                                    };
-                                    // Optional Responses to add
-                                    if (responses.length) {
-                                      output.$responses = responses;
-                                    }
-
-                                    // Append Debug View
-                                    if (
-                                      ActiveOptions.get<boolean>("debugToClient", false)
-                                    ) {
-                                      output.$debug = tx;
-                                    }
+                                    const output = Endpoints.buildClientResponse(
+                                      tx,
+                                      summary,
+                                      responses
+                                    );
 
                                     ActiveLogger.warn(
                                       output,
@@ -431,9 +418,25 @@ export class Endpoints {
                                     `SPI Skipped not enough returned for consensus yet (${networkStreams.length}/${consensusReached})`
                                   );
                                   // Maybe retry  somehow? They could be spi lock failures
+                                  //
+                                  // Releasing as well as responding. The
+                                  // sibling branch above does both; this one
+                                  // did neither, because it threw before it
+                                  // got here - so the transaction's streams
+                                  // stayed locked until Locker's three minute
+                                  // sweep, on a network already short of
+                                  // responding nodes.
+                                  if (!response.dontRelease) {
+                                    host.release(tx.$umid);
+                                  }
+
                                   return resolve({
                                     statusCode: 200,
-                                    content: output,
+                                    content: Endpoints.buildClientResponse(
+                                      tx,
+                                      summary,
+                                      responses
+                                    ),
                                   });
 
                                 }
@@ -487,29 +490,14 @@ export class Endpoints {
                       host.release(tx.$umid);
                     }
 
-                    // doubt it as not trying to catch here
                     // We have the entire network $tx object. This isn't something we want to return
-                    const output: ActiveDefinitions.LedgerResponse = {
-                      $umid: tx.$umid,
-                      $summary: summary,
-                      $streams: tx.$streams,
-                    };
-                    // Optional Responses to add
-                    if (responses.length) {
-                      // Just pick one for now (should be same?)
-                      // I imagine its because commit is called early now so less filter chance
-                      //output.$responses = [responses[0]];
-                      output.$responses = responses;
-                    }
-
-                    // Append Debug View
-                    if (ActiveOptions.get<boolean>("debugToClient", false)) {
-                      output.$debug = tx;
-                    }
-
                     return resolve({
                       statusCode: 200,
-                      content: output,
+                      content: Endpoints.buildClientResponse(
+                        tx,
+                        summary,
+                        responses
+                      ),
                     });
                   } else {
                     // Release here?
@@ -863,6 +851,41 @@ export class Endpoints {
   public static revPosition(rev: string): number {
     const position = parseInt((rev || "").split("-")[0], 10);
     return isNaN(position) ? 0 : position;
+  }
+
+  /**
+   * The response a client gets back for a finished transaction.
+   *
+   * Built in one place because it was built in three, and one of them
+   * referred to a `const output` belonging to a sibling block. The name
+   * still resolved - to another `output` declared later in an enclosing
+   * scope - so TypeScript said nothing and the branch threw
+   * "Cannot access 'output' before initialization" at runtime, from inside
+   * a setTimeout callback where the rejection is unhandled: the client's
+   * promise never settles and the transaction's locks are never released.
+   *
+   * @static
+   */
+  public static buildClientResponse(
+    tx: ActiveDefinitions.LedgerEntry,
+    summary: ActiveDefinitions.ISummary,
+    responses: unknown[]
+  ): ActiveDefinitions.LedgerResponse {
+    const output: ActiveDefinitions.LedgerResponse = {
+      $umid: tx.$umid,
+      $summary: summary,
+      $streams: tx.$streams,
+    };
+
+    if (responses.length) {
+      output.$responses = responses;
+    }
+
+    if (ActiveOptions.get<boolean>("debugToClient", false)) {
+      output.$debug = tx;
+    }
+
+    return output;
   }
 
   public static shouldSelfRepairPosition(
