@@ -50,6 +50,61 @@ describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
       expect(result).to.have.length(1);
       expect(result[0].name).to.equal("alpha");
     });
+
+    // A multi-key read used to serve whichever keys were warm from the cache
+    // and fetch the rest from disk. Across several keys that quietly breaks
+    // the only property worth having, because the two halves are read at
+    // different moments: the cache probe is synchronous but the driver read
+    // is awaited, so a commit can land in between and pair a cached state
+    // from before it with a meta from after. A commit writes a stream and
+    // its :stream meta in ONE batch precisely so nobody sees half of it.
+    it("does not mix a cached document with a freshly read one", async () => {
+      await db.bulkDocs(
+        [
+          { _id: "streamA", name: "alpha", counter: 1 },
+          { _id: "streamA:stream", name: "alpha-meta", counter: 1 },
+        ],
+        { new_edits: true }
+      );
+
+      // Warm streamA only, leaving its companion cold
+      const [warm] = await db.getMany(["streamA"]);
+      expect(warm.name).to.equal("alpha");
+
+      const pair = await db.getMany(["streamA", "streamA:stream"]);
+      const state = pair.find((d: any) => d._id === "streamA");
+      const meta = pair.find((d: any) => d._id === "streamA:stream");
+
+      expect(state, "state should be present").to.not.equal(undefined);
+      expect(meta, "meta should be present").to.not.equal(undefined);
+      // Content is unchanged...
+      expect(state.name).to.equal("alpha");
+      expect(meta.name).to.equal("alpha-meta");
+      // ...but it is a different object, because a cold sibling forces the
+      // whole set to be re-read together rather than half-served from cache.
+      // Previously this returned the cached instance itself.
+      expect(state).to.not.equal(warm);
+    });
+
+    it("still serves from cache when every requested key is warm", async () => {
+      // The consistency rule must not become "never use the cache" - an
+      // all-warm read has nothing to straddle, because nothing can mutate
+      // the cache between two synchronous reads.
+      await db.bulkDocs(
+        [
+          { _id: "streamA", name: "alpha", counter: 1 },
+          { _id: "streamA:stream", name: "alpha-meta", counter: 1 },
+        ],
+        { new_edits: true }
+      );
+
+      const first = await db.getMany(["streamA", "streamA:stream"]);
+      const second = await db.getMany(["streamA", "streamA:stream"]);
+
+      const firstState = first.find((d: any) => d._id === "streamA");
+      const secondState = second.find((d: any) => d._id === "streamA");
+      expect(secondState).to.equal(firstState); // same reference: cache served it
+    });
   });
 
   describe("bulkDocs() change-event shape and error signalling (ac05364)", () => {
