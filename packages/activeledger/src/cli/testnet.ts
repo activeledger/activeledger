@@ -55,6 +55,13 @@ export class TestnetHandler {
             `--port ${5250 + (i + 1) * 10}`,
             `--data-dir .ds`,
             `--setup-only`,
+            // A testnet is many nodes on one machine, and a restore engine
+            // per instance is real load for no benefit locally. Said
+            // explicitly here rather than inferred from the port, which
+            // could not tell a testnet instance apart from a production
+            // node that had simply moved off 5260 - and so disabled restore
+            // on both.
+            `--disable-autostart`,
           ];
 
           // Push to Merge
