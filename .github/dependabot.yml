@@ -1,0 +1,34 @@
+# Without this file dependabot discovers each packages/*/package.json as its
+# own manifest and opens a PR that edits only that file. That worked while
+# every package carried its own package-lock.json. It does not now: the
+# workspace has ONE lockfile at the root, so a PR touching a package manifest
+# alone leaves the lock stale and `npm ci` refuses to install:
+#
+#   npm error `npm ci` can only install packages when your package.json and
+#   package-lock.json are in sync
+#   npm error Invalid: lock file's undici@6.18.2 does not satisfy undici@6.28.0
+#
+# Every dependency PR would fail CI in eight seconds, for a reason that has
+# nothing to do with the dependency. Pointing dependabot at the root instead
+# makes it treat the workspace as the single unit it now is, and update the
+# root lock alongside whichever package manifest changed.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # These move together and are pointless to review one at a time
+      types:
+        patterns:
+          - "@types/*"
+
+  # The workflows pin actions by major version, and a deprecation only
+  # surfaces as a runner warning until the day it becomes an error - Node 20
+  # is already warning on actions/checkout@v4 and actions/setup-node@v4.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
