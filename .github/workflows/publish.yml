@@ -200,16 +200,21 @@ jobs:
           # Still not there. Now republish, treating "already staged" as the
           # confirmation it is.
           echo "::warning::not visible after 90s, republishing: $missing"
+          staged=""
           for dir in $missing; do
             out="$( (cd "$dir" && npm publish --access public --registry https://registry.npmjs.org/) 2>&1 )" || true
             echo "$out"
             case "$out" in
               *"previously staged version"*)
-                echo "$dir was already staged - npm has it" ;;
+                echo "$dir was already staged - npm has it"
+                staged="$staged $dir" ;;
             esac
           done
 
-          for attempt in 1 2 3 4; do
+          # npm's staging can stay unreadable for minutes. At v4.5.13
+          # activenetwork was accepted but invisible for about five of them,
+          # so four tries at 20s was nowhere near enough patience.
+          for attempt in $(seq 1 18); do
             sleep 20
             missing="$(missing_dirs)"
             if [ -z "$missing" ]; then
@@ -218,8 +223,28 @@ jobs:
             fi
           done
 
-          echo "::error::still missing from npmjs at $target: $missing"
-          exit 1
+          # Anything still invisible that npm answered "previously staged" for
+          # HAS been accepted: that error is the registry refusing to take the
+          # same version twice, which it would not say about a version it does
+          # not hold. Treating it as a failure marks a complete release broken,
+          # and the cost is not cosmetic - the job aborts before the GitHub
+          # Release step, so the release has to be created by hand afterwards.
+          # That is exactly what happened to v4.5.13. Only packages npm never
+          # acknowledged are a real error.
+          unaccounted=""
+          for dir in $missing; do
+            case " $staged " in
+              *" $dir "*) ;;
+              *) unaccounted="$unaccounted $dir" ;;
+            esac
+          done
+
+          if [ -n "$unaccounted" ]; then
+            echo "::error::still missing from npmjs at $target:$unaccounted"
+            exit 1
+          fi
+
+          echo "::warning::npm accepted$missing at $target but has not surfaced them yet - treating as published"
 
       - name: Resolve release tag
         id: releasetag
