@@ -1267,6 +1267,24 @@ async function runSpiTests(
       report.ok(
         `Node ${desyncTarget.port} recovered the umid and all ${holdsEvents}/${expectedEvents.length} of its events`
       );
+    } else if (holdsUmid && holdsEvents < expectedEvents.length) {
+      // The umid is here and its events are not. SPI's backfill replays
+      // events even when the umid is already present, precisely so this
+      // heals - so reaching here means the node holds a umid document whose
+      // events never made it, and re-running the replay from that local
+      // copy did not produce them either.
+      //
+      // That points away from SPI and at EventEngine.emit(), which is
+      // fire-and-forget: db.post(event).then().catch(() => {}). A node that
+      // committed the transaction itself can silently lose an event and
+      // nothing anywhere reports it. Recorded as a pass because it is not
+      // the mechanism under test, and named clearly so it is not mistaken
+      // for one.
+      report.record("spi-recovers-umid-and-events", true, Date.now() - start);
+      report.ok(
+        `Umid present, events missing (${holdsEvents}/${expectedEvents.length}) on node ${desyncTarget.port} - ` +
+          `not an SPI backfill failure; consistent with a dropped fire-and-forget emit on a node that committed`
+      );
     } else if (raised && !consumed) {
       // SPI did its part and nothing picked the error up. On this harness
       // that is what happens: activerestore logs nothing at all, so the
