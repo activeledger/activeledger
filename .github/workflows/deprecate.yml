@@ -68,17 +68,54 @@ jobs:
           # Read it back from the registry rather than trusting the exit
           # code. npm has reported success on writes this registry had not
           # taken before, which is why the publish workflow verifies too.
-          echo "Verifying against the registry:"
-          for v in $VERSIONS; do
-            got="$(npm view "$PACKAGE@$v" deprecated 2>/dev/null || true)"
-            if [ -n "$got" ]; then
-              echo "  $v -> $got"
-            else
-              echo "  $v -> (no deprecation recorded)"
-            fi
+          #
+          # But be patient about it. The first run of this workflow reported
+          # "no deprecation recorded" for all three versions moments after npm
+          # said it had deprecated them, and all three were in fact correct
+          # when read again a minute later. Same propagation lag that made a
+          # complete v4.5.13 release report itself as failed. An impatient
+          # check that cries wolf is worse than no check, because the next
+          # person reads a real failure as the usual false alarm.
+          #
+          # Success means the registry AGREES with what we asked for: a
+          # non-empty message when deprecating, and nothing when the empty
+          # message was used to un-deprecate.
+          echo "Verifying against the registry (up to 3 minutes):"
+          pending="$VERSIONS"
+          for attempt in $(seq 1 12); do
+            still=""
+            for v in $pending; do
+              got="$(npm view "$PACKAGE@$v" deprecated 2>/dev/null || true)"
+              if [ -n "$MESSAGE" ]; then
+                # Deprecating: expect the message to be there
+                if [ -n "$got" ]; then
+                  echo "  $v -> $got"
+                else
+                  still="$still $v"
+                fi
+              else
+                # Un-deprecating: expect it to be gone
+                if [ -z "$got" ]; then
+                  echo "  $v -> (deprecation removed)"
+                else
+                  still="$still $v"
+                fi
+              fi
+            done
+            pending="$(echo $still)"
+            [ -z "$pending" ] && break
+            echo "  waiting for npmjs to surface:$pending"
+            sleep 15
           done
+
+          if [ -n "$pending" ]; then
+            echo "::error::registry still disagrees after 3 minutes for:$pending"
+            exit 1
+          fi
 
           if [ -n "$failed" ]; then
             echo "::error::failed:$failed"
             exit 1
           fi
+
+          echo "Registry confirms every requested version."
