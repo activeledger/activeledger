@@ -1551,6 +1551,7 @@ async function runNodeRecoveryTests(
     await harness.restartNode(downNode.index);
     await new Promise((r) => setTimeout(r, 4000));
 
+
     // Something for the returned node to notice on.
     await runContract(originNode.baseUrl, subject, namespace, emitterId, {
       message: "gap-trigger",
@@ -1558,6 +1559,8 @@ async function runNodeRecoveryTests(
     }).catch(() => undefined);
 
     const { byNode, converged } = await waitForConvergence(nodes, subject.streamId, 30000);
+    report.ok(
+    );
 
     // The walk is asynchronous - give it room, then count.
     let heldUmids = 0;

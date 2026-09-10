@@ -408,7 +408,7 @@ export class Endpoints {
                                   // rather than a replacement for it - which is
                                   // the difference between this and an emit
                                   // that vanishes silently.
-                                  for (const streamId of repairedStreams) {
+                                  for (const streamId of Array.from(repairedStreams)) {
                                     Endpoints.repairHistoryInBackground(host, streamId, "#1");
                                   }
 
@@ -1384,7 +1384,7 @@ export class Endpoints {
                           // ones nothing recovered before: state converged
                           // while the umid and its events never arrived.
                           // Same reasoning as the origin path - not awaited.
-                          for (const streamId of repairedStreamsNonOrigin) {
+                          for (const streamId of Array.from(repairedStreamsNonOrigin)) {
                             Endpoints.repairHistoryInBackground(host, streamId, "#2");
                           }
 
