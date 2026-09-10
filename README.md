@@ -5,11 +5,11 @@
 
 <img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 
-Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus — each node reaching its own conclusion by watching the same traffic, rather than waiting on a single leader. Application logic lives in smart contracts (TypeScript, sandboxed), and consensus is tracked per-stream rather than globally, so unrelated transactions can be voted on and committed concurrently.
+Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus — each node reaching its own conclusion by watching the same traffic, rather than waiting on a single leader. Application logic lives in smart contracts (TypeScript, executed in a per-transaction worker process and checked by a security scan at deploy time), and consensus is tracked per-stream rather than globally, so unrelated transactions can be voted on and committed concurrently.
 
 ## Requirements
 
-**Node.js 24.x** (the current LTS line) is the recommended and actively-tested version. The native HTTP/consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors at any given time — 22.x also works today, but if you hit an error like `This version of uWS.js (...) supports only Node.js versions ...` on a Node version you'd expect to work, check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming the version genuinely isn't supported.
+**Node.js 24.x** (the current LTS line) is the recommended and actively-tested version — every workflow in `.github/workflows/` builds, tests and publishes on 24. The native HTTP/consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors at any given time; the pinned v20.67.0 carries ABI 127, 137 and 147, which is Node 22, 24 and 26, so 22.x also works today. If you hit an error like `This version of uWS.js (...) supports only Node.js versions ...` on a Node version you'd expect to work, check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming the version genuinely isn't supported.
 
 ## Installation
 
@@ -63,7 +63,9 @@ activeledger
 
 ## Installing from GitHub Packages
 
-As of v4.0.0, packages are published to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages) rather than npmjs.com. GitHub Packages requires authentication for install even on public repositories, so add an `.npmrc` alongside your `package.json` (do not commit a real token):
+Releases go to npmjs.com and are mirrored to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages), so the quickstart above installs without any authentication. The one gap is the start of the 4.x line: v4.0.0 through v4.3.2 were published to GitHub Packages only, and every release from v4.3.3 onward is on both.
+
+To install from GitHub Packages instead, note that it requires authentication even on public repositories, so add an `.npmrc` alongside your `package.json` (do not commit a real token):
 
 ```
 @activeledger:registry=https://npm.pkg.github.com
@@ -108,6 +110,12 @@ npm run build
 
 `npm run setup` (install + build) is also available if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
 
+The packages import each other by their published `@activeledger/*` names, so the build has to run once before type resolution works — `npm run build` builds them in dependency order for exactly that reason.
+
+### Releases
+
+A release is cut by dispatching the `Release` workflow with a version number. It bumps the root, every package, and every dependency range pointing at a sibling; commits; tags `vX.Y.Z`; and publishes in the same run, so the source tree at a tag, the tag itself and the published packages all report the same version. Tags cut before this existed do not — the manifests inside a v4.0.1 through v4.5.7 checkout report an older number than the tag (v4.5.7 reads 4.2.0), so do not identify one of those builds by its package version.
+
 ## Testing
 
 Two separate test suites, deliberately decoupled so the fast one stays fast:
@@ -117,7 +125,7 @@ npm test              # fast unit tests (tests/*.ts, Mocha) - in-process, no rea
 npm run test:network  # live 4-node network integration test - boots real nodes on the local machine
 ```
 
-`npm test` runs in well under a second and is safe to run constantly during development.
+`npm test` takes a handful of seconds (201 tests today, most of the time being ts-node's transpile pass) and is safe to run constantly during development. It also runs in CI on every push and pull request, on Node 24; the network suite does not, because it boots real nodes.
 
 `npm run test:network` (`tests/network/`) boots a real 4-node bare-host network, runs 100+ real transactions spread across every node as origin, deploys custom contracts and verifies `returnToRemote()`, verifies live event delivery over SSE, and verifies the network's Stream-Position-Incorrect self-healing by directly desyncing one node's local copy of a stream and confirming a transaction still succeeds whether that node is the transaction's origin or not. It prints live progress and a pass/fail summary, and takes well under a minute. Deliberately bare-host rather than Docker, so it doesn't add any requirements beyond what building the repo already needs.
 

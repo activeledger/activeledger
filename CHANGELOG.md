@@ -1,5 +1,262 @@
 # Activeledger Changelog
 
+## [4.5.13]
+
+### Security Fix
+* **Protocol** : A contract could reach the `Function` constructor through `this`. `securityScan()` is the only barrier in front of contract code - there is no runtime sandbox behind it - and its dynamic-element-access rule exempted any chain that started at `this`. Once a hop lands on a banned name the object is no longer the contract, so `const k = "constructor"; (this.constructor)[k](...)` passed the scan and was a full escape. A chain is now tainted by a demonstrably banned hop; dynamic access directly on `this` and computed reads of transaction data still pass.
+* **Storage** : The self-hosted data store listened on every interface and ignored its own `db.selfhost.host` setting - that value had only ever been used to build a client connection string. The store has no authentication of any kind: `_bulk_docs` sets any document to any revision (the repair primitive, which has to stay), `DELETE` removes a stream or the whole database, and `_utils` serves files. It now binds `127.0.0.1` by default and honours `db.selfhost.host` when set. Loopback, SSH tunnels and containers sharing the node's network namespace (how the gateways reach it) are unaffected; if you deliberately expose the store, set `db.selfhost.host` explicitly.
+* **Options / Storage / Activeledger** : Three inputs that were trusted further than they are owned. Document ids are now encoded before becoming a URL path segment, so a relative segment in an id from a peer can no longer redirect a request to a different database. The Fauxton static handler resolves and contains its path rather than concatenating it - traversal reached far enough in to touch the working directory holding `config.json` and the `.identity` private key. A newly generated `.identity` is written `0600` instead of landing at `0644` under a default umask; tightening one already on disk is a separate, deliberate step.
+
+### Fix
+* **Network** : The SPI "skipped" branch - taken when fewer nodes answer than consensus needs - referred to a `const output` declared in the sibling block above it. The name resolved to a later declaration in an enclosing scope, so the compiler said nothing and the branch threw `ReferenceError: Cannot access 'output' before initialization` at runtime. The throw happened inside the SPI check's `setTimeout` callback, so it surfaced as an unhandled rejection: the submitting client's promise never settled and `host.release()` was never reached, leaving every stream the transaction named locked until the three minute sweep. This fired precisely when the network was already short of responding nodes.
+* **Build** : TypeScript upgraded from 4.7.3 to 5.6.3. 4.7 cannot parse `const` type parameters, so any modern `@types/node` failed at parse time and blocked the types update. 5.6.3 rather than latest, because 5.7 makes the typed arrays generic and turns every `Buffer.concat` in crypto, utilities, httpd and network into a variance error. No source changes.
+* **Build** : Dependency round - `@types/node` 18.0.0 -> 24.10.1 (matching the Node the workflows actually run, rather than a major ahead of it), `@types/levelup`, mocha 10.8.2, ts-node 10.9.2, browserslist and brace-expansion transitively. `npm audit --omit=dev` reports no vulnerabilities. An earlier build break from undici 6.28's types needing DOM globals is fixed in the same range.
+* **CI** : Dependabot did not know the repository had become an npm workspace, so its updates targeted the wrong manifests. `actions/checkout` and `actions/setup-node` moved to v7.
+
+## [4.5.12]
+
+### Fix
+* **Activeledger CLI** : The CLI symlinks `node_modules` into `contracts/` and `default_contracts/` so contracts can require dependencies at runtime, and resolved it as the package's own folder. npm only creates that folder when a dependency cannot be hoisted, and converting the repository to workspaces hoists everything to the root - at which point the CLI died with `ENOENT ... packages/activeledger/node_modules` before doing anything at all. It now asks Node where the modules are (`require.resolve.paths()`), which is correct in a package folder, a workspace root and a global install alike.
+* **CI** : The post-publish registry check asked npm too soon and failed a release that had published correctly.
+
+## [4.5.11]
+
+### Fix
+* **Network** : A node that originates a transaction on a stream it lags could never heal. SPI only runs on a failed vote, and a broadcast contract update holds a lock on its output stream on every node for the life of the round - so every peer answered "locked" to the origin's own SPI sample and it abstained on a sample its own transaction had spoiled. It is doubly stuck, because `$revs` is stamped by the first node to see the stream: a lagging origin stamps its stale position into the broadcast and the round dies with one yes vote. A peer now answers with its real revision instead of the locked marker, but only when the lock is held by the same transaction the asker is running SPI for (matched on umid) and that peer has already voted against it - a node that voted no cannot commit, so its copy is stable by construction. Everything else stays refused. In the failing case all three peers reject on the position gate, the origin gets a clean majority and corrects itself inside the same round. Re-submitting the transaction after an in-round heal is deliberately not included.
+
+### Changed
+* **Build** : lerna is gone, replaced by npm workspaces. `lerna bootstrap` -> `npm ci` / `npm install`, `lerna publish` -> `npm publish --workspaces`, `lerna version` -> `scripts/set-version.mjs`. lerna 6 had misreported three releases in a row and lerna 7 removes `bootstrap` entirely, handing workspace linking to the package manager - which is where this ends up anyway. The version script moves the three things that have to move together or a release is inconsistent: the root version, every package version, and every dependency range pointing at a sibling. Building from source is now `npm i` at the root; nothing needs installing globally.
+* **CI** : A release is called done only after the registry confirms it, rather than on the publisher's own success line.
+
+## [4.5.10]
+
+### Fix
+* **Restore** : Reverted the interagent stream reconciler added in 4.5.9. Restore talks to the store over HTTP and takes no part in the Locker protocol that serialises transactions against a stream, so a write from there could land on top of a transaction committing on this node - and because it wrote with `force_rev`, which checks nothing, it would have done so silently, destroying a commit. It also ignored the `{ _id, locked: true }` markers, so it could vote on a sample taken while a transaction held the stream. Restore's remit returns to adding documents this node is missing rather than overwriting ones it holds. The 1200 error document from 4.5.9 is kept - it writes to the error database, never to a stream, and is a durable record that this node disagreed about a stream. Reconciling the stream itself belongs to SPI, inside the transaction's own lifecycle, which reaches it 10-50x sooner in any case.
+* **Tests** : An RSA key test asserted its own boundary and flaked.
+
+## [4.5.9]
+
+### Fix
+* **Utilities** : The HTTP client outlived the server's connection and writes died on dead sockets. undici's `keepAliveTimeout` had been raised to 30s to avoid a handshake between consensus rounds, while the server closes idle connections at around 10s - leaving roughly twenty seconds in which a request is handed to a socket the server has already closed. undici does not retry non-idempotent requests, and a stream write is a `POST` to `_bulk_docs`, so the write died, `ActiveRequest.send()` returned `{ data: null }`, and the node raised 1510 "Failed to save streams" and dropped out of the round. It looked intermittent, affected writes but not reads (GETs are idempotent and are retried silently), left nothing in the server's log because the close was deliberate, and was worse on quiet nodes whose connections sit idle longer. On a four node network, losing two nodes this way puts a round below consensus and commits nothing anywhere. **If you have seen unexplained intermittent 1510s, this is the release to take.**
+* **Network** : SPI took a write lock to do a read and starved the writer. `Endpoints.streams()` held `Locker.hold(stream, "SPI")` for a second on every request, and `hold()` refuses a transaction if any of its streams is held by anything - so a stream several peers were asking about had a read lock on it more or less continuously and the transaction trying to write it was pushed into the busy-locks queue again and again. Seen live as a contract update running 30 seconds to its TTL while every node logged "Lock busy for `<stream>` ... requested by SPI". The endpoint now reads without locking, and still answers `{ _id, locked: true }` when a real transaction holds the stream.
+* **Network / Restore** : An even split was resolved by coin toss rather than by evidence. Two revisions with equal support can mean two different things: a lag has different positions (103 against 104), where one side simply missed a transaction and taking the later position loses nothing; a fork has the same position with different content (104-aaa against 104-bbb), where each side committed something the other did not and adopting either silently destroys a transaction. Revisions are content addressed, so there is nothing to choose between them on merit. Both reconcilers now refuse a fork and say so - endpoints abstains with "forked - two revisions at the same position, needs a human", restore logs it as an error. A forked stream now surfaces instead of being quietly resolved one way.
+* **Protocol / Restore** : A node that dissents on a stream now leaves a durable record of it. A 1200 position error in broadcast mode writes an error document, which the interagent's five second poll picks up; previously only a 950 did, so a dissent left nothing behind and a lagging node had no route to reconcile a stream while idle. (The reconciler this originally fed was reverted in 4.5.10; the error document remains.)
+* **Tests** : A commit is now judged by what the nodes wrote rather than by what the origin heard, and the network suite gained a live contract-divergence case with a real convergence assertion.
+
+## [4.5.8]
+
+A repair release. Every mechanism a node has for getting back onto the network's revision of a stream - SPI, restore, and the changes feed the gateways read - was broken in at least one way. Recommended for any network that has seen a node stuck voting "Stream Position Incorrect".
+
+### Fix
+* **Network** : A node could only self-heal a stale stream on broadcast transactions. A node that misses one committed update votes "Stream Position Incorrect" against that stream forever, and the recovery for it - the SPI lookup, where the node asks its peers for the stream, takes the revision they agree on and force-writes it locally - is gated entirely on the node's own record of why it voted no. `postVote()` only ever wrote that field inside the `$broadcast` branch, so a node that fell behind on a territorial or round-robin transaction never opened the gate and had no route back by any path.
+* **Network** : The SPI self-repair decision ignored what the nodes actually reported. `error?.indexOf(...) !== -1` evaluates to `undefined !== -1`, which is true, so every node that reported no error at all was counted as disagreeing - the gate measured how many nodes were in the transaction rather than what any of them said.
+* **Network** : SPI voted on whatever came back, so a busy stream elected its own stale revision. `Endpoints.streams()` silently omitted any stream it could not take an SPI lock on, at HTTP 200 with no marker, so the nodes holding the current revision of a busy contract stream routinely answered as though they had never heard of it - while an idle stream, like a deployer identity, always answered. Observed live: a node one revision behind on a contract stream elected its own copy against three peers.
+* **Network** : One node answering twice counted as two votes. The tally now counts one vote per node per stream, which is what the threshold assumes it is counting.
+* **Network** : SPI treated a repair that never landed as a completed one. Nothing under `bulkDocs()` reports failure by throwing - LevelMe returns `false`, the self-hosted HTTP layer turns that into `200 { ok: false }`, `ActiveRequest.send()` resolves `{ data: null }` for every transport fault, and CouchDB reports per-document errors - so a node whose disk was full, which is exactly the condition that puts a node behind in the first place, would run the repair, fail to write, mark itself caught up and say nothing. All three shapes are now read, the failure is logged loudly, and the next transaction retries rather than skipping the stream.
+* **Restore** : A full restore (`activerestore --full`) could repair a missing document but not a divergent one. It wrote everything with a single `bulkDocs(docs, { new_edits: false })`, which is precisely the mode the store refuses for a document that already exists on a different revision - the throw aborted the whole batch and the run ended with "There was an error running quick full restore". Only the not-found branch ever wrote, so the one state a full restore is the obvious thing to reach for was the one it could not fix. Each document now picks its own mode.
+* **Restore** : Restore discarded the one record that could recover a stale stream. On a failed vote the interagent raised an error document and tried to recover by fetching the missed transaction's umid from a peer and replaying its events - but the `:umid` record only exists on nodes that committed, and this node is asking precisely because it did not. The fetch failed, the document was marked processed and purged unarchived, and the stream was never looked at again.
+* **Storage / Core** : A longpoll round delivered one document of a multi-document commit. `bulkDocs` emits one change per document in a synchronous loop, and the listener responded to the first by writing it, ending the response and detaching itself - synchronously - so every remaining document in the same commit found no listener, with no sequence backfill able to replay them. Every transaction is a multi-document commit (a stream's state document and its `:stream` meta document move together), so one of the two was dropped on every commit, and which one was arbitrary. Consumers that exclude `:` ids, such as nano-gateway's SSE handler, therefore received nothing at all for a transaction whenever the meta document won - which reads as an intermittent push bug.
+* **Storage** : The changes feed could not report failure, and could spin or double-run. `ActiveRequest.send()` never rejects - it returns `{ data: null }` for connection refused, DNS failure, body timeout, socket reset, non-2xx and unparseable body alike - so no consumer could ever be told the datastore was unreachable, and the entire restart machinery driven by that error event was dead code. With the datastore completely down this polled in silence forever.
+
+### Changed
+* **Build** : Internal `@activeledger` dependencies are pinned exactly rather than by caret range, so what a build installs is decided by the repository rather than by whatever npm happens to hold at that moment. 69 ranges across 14 packages. In-repo versions are also put in lockstep with the release tag - they had drifted from every tag since v4.0.0, so a manifest inside a built image reported the wrong version and the only way to identify a build was to grep compiled output for a symbol.
+* **CI** : The test suite now runs in CI. Nothing ran it before: publish was the only workflow, so `npm test` only ever ran when someone remembered to, on code that decides consensus and repairs divergent ledger state. Tests, build and publish all run on Node 24.
+
+## [4.5.7]
+
+### Fix
+* **Storage** : One empty longpoll round permanently killed the changes feed.
+* **Storage** : The longpoll heartbeat had been commented out, so a quiet feed timed out.
+* **CI** : Publishing never created a GitHub Release, so the releases page went stale.
+
+## [4.5.6]
+
+### Fix
+* **Protocol** : A `:stream` meta document's umid was permanently frozen at the transaction that created it. `buildReferenceStreams()` only set `meta.txs`/`meta.umid` in the branch handling a genuinely new stream, and for a plain `setState()` change the meta object was not passed to the stream updater at all. Anything resolving "which transaction last touched this stream" through `meta.umid` - which is what a client does after a live push, since a push event carries only the changed stream's own document - was silently resolving a stale transaction for any stream updated more than once.
+
+## [4.5.5]
+
+### Fix
+* **Storage** : The `_changes` handler called Node `http.ServerResponse` methods that do not exist on the real uWebSockets response.
+
+## [4.5.4]
+
+### Fix
+* **Storage** : A live `_changes` push carried no real sequence number, which broke the response JSON.
+
+## [4.5.3]
+
+### Fix
+* **Storage** : `since="now"` crashed `_changes` with an opaque 500.
+
+## [4.5.2]
+
+### Fix
+* **Storage** : The `_changes` longpoll response body was corrupted by garbage header bytes.
+
+## [4.5.1]
+
+### New
+* **Nano Gateway** : SSE resume via `Last-Event-ID`, matching Activecore's convention.
+
+### Fix
+* **Storage** : The self-hosted `_changes` longpoll never finalised its response.
+* **Storage** : Missing-key reads leaked LevelDB error objects to the caller.
+
+## [4.5.0]
+
+### New
+* **Nano Gateway** : New package `@activeledger/nano-gateway` - a lightweight, permissioned SSE and read gateway for light-node clients. Modelled on activehybrid: direct datastore access alongside a real node, no consensus involvement, no Activecore dependency. Its SSE implementation is written against the uWebSockets response the httpd layer actually provides (cork-wrapped writes, a 5s heartbeat against uWS's ~10s idle timeout) rather than the Node `http.ServerResponse` API Activecore's controller assumes.
+
+## [4.4.0]
+
+### Features
+* **Network** : Neighbourhood health is now tracked reactively instead of by routinely full-mesh polling every neighbour every 10-25s. A neighbour is assumed connected until a real broadcast to it fails, at which point it is marked down and individually re-polled every few seconds until it recovers - one fewer permanently running job per node. Two paths in `knock()` that assumed a failed request would reject (it never does) were fixed along the way.
+
+## [4.3.4]
+
+### Security Fix
+* **Crypto** : secp256k1 private keys are padded to a fixed 32 bytes. `ECDH.getPrivateKey()` strips leading zero bytes rather than returning a fixed-width scalar, so roughly 1 in 400 generated keys came back short in both the raw hex and SEC1/PEM paths. OpenSSL's own sign and verify tolerate it, which is why it went unnoticed, but the key material is spec-noncompliant and stricter external parsers and other-language SDKs may reject it.
+
+### Fix
+* **Activeledger** : npm package homepage links point at GitHub rather than the dead activeledger.io.
+* **CI** : `lerna publish` has no `--access` flag, which had been failing the publish step.
+
+## [4.3.3]
+
+### Security Fix
+* **Storage** : Path traversal blocked in the self-hosted `/_backup` and `/_restore` routes.
+* **Storage** : Unused `ethers` and `dd-trace` dependencies removed.
+
+### Fix
+* **CI** : `publish.yml` failed schema validation, which blocked every push including tags - no workflow ran at all, tag or not.
+* **CI** : Packages publish to npmjs.org alongside GitHub Packages again. 4.3.3 is the first 4.x release available from npmjs.org; 4.0.0 through 4.3.2 are on GitHub Packages only.
+
+### Performance
+* **Network** : `Locker.cell` as a `Map` instead of a plain object.
+* **Core** : Multi-stream SSE subscriptions use a `Set` instead of `Array.indexOf()`.
+* **Storage** : Directory entries stat'd concurrently in the self-hosted admin endpoints; a plain string split in place of a single-character regex.
+* **Restore** : A umid's events are replayed concurrently instead of one at a time, and quick-restore's pagination loop no longer copies the array on every page.
+* **Protocol** : `filterPrefix(streamId)` computed once per stream instead of up to three times; `hasOutstandingVotes()` reuses the cached neighbourhood length.
+
+## [4.3.2]
+
+### Fix
+* **Network** : The origin node ran the expensive SPI lookup for errors that had nothing to do with stream position.
+
+## [4.3.1]
+
+### Fix
+* **Protocol** : Deterministic streams always false-positived as an existing collision, so a deterministic stream could never be created after the first.
+
+## [4.3.0]
+
+### Security Fix
+* **Protocol** : `import x = require("y")` was a complete, silent bypass of the contract module allow-list. TypeScript's import-equals syntax is a distinct AST node, and `securityScan()`'s module-loading check only ever inspected call expressions and import declarations. Confirmed end to end on a real node before the fix: a contract using it read the host's `/etc/hostname` and returned the contents through ledger state.
+* **Protocol** : Backtick module specifiers bypassed every module-loading check.
+* **Protocol** : Bracket-access and computed-destructuring sandbox escapes closed.
+
+### Features
+* **Protocol** : `policy.allowLocalLibs` - a per-namespace flag allowing a contract to require sibling files in its own namespace directory. Previously every shared library file had to be named literally in each node's `config.namespace.<ns>` allow-list, and re-added on every version bump.
+
+## [4.2.1]
+
+### Fix
+* **Storage** : The PID-file "already running" check was unreliable and has been removed.
+* **CI** : The publish pipeline had been silently broken since v4.0.0. The published version is now derived from the git tag rather than from committed manifests, which had drifted from every tag.
+
+## [4.2.0]
+
+### Features
+* **Protocol / Restore** : Raised events are stored in the umid document and replayed on restore, so a node that missed a transaction also recovers the events it should have emitted.
+* **Tests** : A live 4-node network integration test (`npm run test:network`), plus negative-path coverage and unit coverage for the storage fixes in 4.1.x.
+
+### Fix
+* **Activeledger CLI** : `activeledger --stop` hung forever instead of exiting.
+* **Protocol** : `buildPromises()` masked every specific error (1700 / 1710) into a generic 950.
+* **Network** : `Error` content on a 500 response is normalised rather than serialising to `{}`.
+
+## [4.1.2]
+
+### Fix
+* **Storage** : `LevelMe.post()` always reported success, even on a real write failure.
+* **Storage** : `bulkDocs()` spuriously failed every transaction while an `/events` client was connected.
+* **Httpd** : The dead `enableCORS` flag is gone; CORS is always on and is now documented as such.
+
+### Performance
+* SSE listeners are cleaned up immediately on disconnect rather than on the next write; the P2P receive buffer is no longer re-concatenated per TCP chunk; the verify-key cache is actually reachable; contract security denylists, `ActiveOptions.get("build")` and `URLSearchParams` parsing hoisted out of hot paths.
+
+## [4.1.1]
+
+### Changed
+* **Core** : `autostart.core` defaults to `false` in the config template written for new installations. The self-hosted storage engine now exposes its own HTTP API - SSE events, changes feed, document reads and Mango queries - covering most of what Activecore provided. Restore still starts by default, and core remains fully installable and usable for anyone who wants it; it simply is not started unless asked for. Existing configuration files are not modified.
+
+### Fix
+* **Crypto** : Deprecated `new Buffer()` in `KeyPair.sign()` replaced (Node 24 compatibility).
+* **Storage** : `getMany()` crashed the whole batch on a single missing key.
+* **Activeledger** : The default config still named storage engine "rocks" after the LevelDB fallback in 4.1.0. Cosmetic - the value is ignored - but it misled every node's startup log.
+
+## [4.1.0]
+
+### Features
+* **Storage** : New `LevelDBDriver` built on `classic-level`. `@nxtedition/rocksdb`, which the RocksDB driver needed, was removed from the npm registry entirely - not unpublished at one version, the whole package is gone - and its GitHub source does not match the pinned version, so there is no safe way to know what that code contained. `RocksDBDriver` is left in place, unused.
+* **Storage** : Internal storage moved to V8 serialization with a JSON fallback, plus process-level instance locking.
+* **Network** : Persistent P2P binary stream transport with an HTTP legacy fallback, a smarter reconnection policy, and transport identification in the logs.
+* **Network** : Admin configuration hot-reload.
+* **Contracts** : Predicate-based key deletions and audit-trail archiving; the transaction umid is recorded on authority additions and updates.
+
+### Security Fix
+* **Protocol** : Contract transpile security check added, contract lifecycle access hardened, and authenticated spoofing prevented.
+
+### Fix
+* **Core** : Cache pollution and stale contracts on upgrade; labels and symlinks pointing at a superseded contract id are cleared.
+* **Protocol** : The static contract path cache is invalidated on a version mismatch.
+* **Storage** : Deserialization data loss resolved; backup and restore I/O converted to `fs.promises`.
+
+### Performance
+* Hybrid async `ActiveClone` on msgpackr with gzip, contract path cache persisted across process instances, and the vmscript proxy replaced by direct contract execution in the VM.
+
+## [4.0.1]
+
+### Fix
+* **Network** : Unresolved early-vote placeholders were broadcast as real votes, and a stale early flag was not cleared once a vote actually resolved.
+* **Storage** : A stale resolved-document cache entry survived a write.
+
+### Performance
+* gzip skipped for small request bodies; undici keep-alive raised for inter-node requests (revisited in 4.5.9); `openapi.json` cached instead of read per request; consistent raw/parsed cache keys in LevelMe; cached public `KeyObject` in `KeyPair.verify()`; a `Set` for busy-lock queue dedupe; no full deep clone in `storeError()`; no O(n^2) buffer growth reading request bodies.
+
+## [4.0.0]
+
+The 4.0.0 line is two years of work between 2.15.7 and this tag, and the entries below group it by theme rather than listing every change.
+
+### BREAKING CHANGES
+* **Protocol** : vm2 has been removed. Contracts no longer execute inside a vm2 sandbox - vm2's breakout problem is not fixable - and the boundary is now the per-transaction worker process together with a static security scan of the contract source at deploy time. `export2ledger` is no longer needed.
+* **Network / Httpd** : The HTTP layer is uWebSockets.js, with undici as the client. This is where the node's sensitivity to the Node major version comes from: uWebSockets.js ships prebuilt bindings for a specific set of Node majors, and a node will not start on one it does not cover.
+* **Distribution** : Packages are published on version tags to GitHub Packages. npmjs.org publishing was restored in 4.3.3.
+
+### Features
+* **Network** : Stream Position Index (SPI). A node that votes "Stream Position Incorrect" asks its peers for the stream, takes the revision they agree on and force-writes it locally, rather than being stuck against that stream indefinitely. Includes inline correction, longest-chain-first matching on a race, exclusion of self-signed inputs from the count, and a requirement that a corrected document reach consensus.
+* **Network** : A busy-lock queue that holds and replays contended transactions instead of rejecting them, locking keyed by umid, and faster lock release.
+* **Network** : Batch processing and internal HTTP bundling for inter-node traffic; early and delayed broadcast modes; stable dual peering modes.
+* **Protocol** : Contract data (`getContractData`) with a cache layer, and an L2 database cache.
+* **Protocol** : Expiring and repeatable transactions; transactions that take no locks; inputs that sign only; self-signed contract data access.
+* **Activeledger** : Backup and restore process; `--cpus` argument to set the processor count.
+* **Logger** : Winston file logging with an optional Datadog integration, single-line response logging, and a graceful shutdown routine.
+
+### Fix
+* **Network** : SSE works again under uWebSockets, and the missing CORS allow-headers are sent.
+* **Network** : Multiple crash points, memory growth and keep-alive/timeout handling; unhandled rejections surfaced rather than swallowed.
+* **Protocol** : Error documents keyed by umid, consistent umid output, and error passthrough for non-broadcast transactions.
+* **Restore** : On-demand consensus data restoring, and umid recovery that no longer archives false positives.
+
+## [2.15.7]
+
+### New
+* **Network** : Experimental leadership mode.
+
+### Fix
+* **Network** : Default back to gzip networking.
+
 ## [2.15.6]
 
 ### Fix
