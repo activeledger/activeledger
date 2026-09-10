@@ -1547,7 +1547,8 @@ export class Endpoints {
     return new Promise((resolve, reject) => {
       if (body.$streams) {
         // Restrict Access to any volatile requests
-        const fetchStream = [];
+        // Ids, not promises - they are read together in one call below.
+        const fetchStream: string[] = [];
 
         // Streams this node holds but cannot report on right now
         const unavailable: { _id: string; locked: boolean }[] = [];
@@ -1604,10 +1605,29 @@ export class Endpoints {
           // state@43 with meta@21. Writing that pair locally makes
           // meta._rev:state._rev permanently wrong, which is a worse fault
           // than the one being fixed and is not repairable by SPI.
-          const heldByAsker =
-            body.$umid && Locker.is(holdValue, body.$umid);
+          //
+          // What actually makes a locked stream safe to report is one
+          // thing only: the holder will never write it. A node that voted
+          // no never reaches commit(), so its copy cannot move.
+          //
+          // This used to demand something stricter and unrelated - that
+          // the lock be held by the ASKER'S OWN transaction - because that
+          // was the case it was written for (a broadcast contract update
+          // whose origin lags, where every peer holds the very stream the
+          // origin needs to ask about). But whose transaction holds the
+          // lock says nothing about whether this node's copy is stable.
+          // Two nodes can each be sitting on a rejected transaction for
+          // the same stream and both were refusing to answer, for no
+          // reason beyond not having been asked by the right umid.
+          //
+          // So ask the question that carries the safety: whoever holds
+          // this lock, have I voted against THEM? Streams held by a
+          // transaction this node is still voting on, or has voted yes on
+          // and may commit, are refused exactly as before.
+          const holder = Locker.holder(holdValue);
+          const holderWillNotCommit = !!holder && !!host?.willNotCommit(holder);
 
-          if (Locker.has(holdValue) && !(heldByAsker && host?.willNotCommit(body.$umid))) {
+          if (Locker.has(holdValue) && !holderWillNotCommit) {
             // Held by a transaction, so this node cannot report the stream
             // right now. Saying nothing is indistinguishable from "I do not
             // have it", and the caller votes on whatever comes back - so
@@ -1623,14 +1643,37 @@ export class Endpoints {
             // flight on every node when SPI runs.
             unavailable.push({ _id: body.$streams[i], locked: true });
           } else {
-            fetchStream.push(db.get(body.$streams[i]));
+            fetchStream.push(body.$streams[i]);
           }
         }
 
         if (fetchStream.length) {
-          // Wait for all streams to be returned
-          Promise.all(fetchStream)
-            .then((docs: any) => {
+          // ONE read for the whole sample, not one per stream.
+          //
+          // This used to be Promise.all() over a db.get() per id, and db is
+          // an HTTP client - so a sample of a stream plus its :stream meta
+          // was two independent requests to the data store, concurrent but
+          // unordered. A commit lands both documents in a single leveldb
+          // batch, so a batch completing between those two responses hands
+          // back state@43 paired with meta@21. Writing that pair makes
+          // meta._rev:state._rev permanently wrong and SPI cannot repair
+          // it - the torn read the lock check above exists to avoid.
+          //
+          // allDocs({keys}) is one request, and inside the store it is one
+          // driver.getMany() over all the keys, which cannot straddle a
+          // batch write. It is also N-1 fewer round trips per sample on a
+          // path that runs for every transaction that fails its position
+          // check.
+          //
+          // include_docs is set for CouchDB's benefit; LevelMe's keys
+          // branch returns the documents either way.
+          db.allDocs({ keys: fetchStream, include_docs: true })
+            .then((result: any) => {
+              // CouchDB and LevelMe both answer { rows: [{ doc }] } here.
+              // A key the node does not hold still occupies a row, with no
+              // doc - the ._id check below drops those, exactly as the
+              // previous code dropped a failed get().
+              const docs = (result?.rows || []).map((row: any) => row?.doc).filter(Boolean);
               // Could just pass docs but that will send unnecessary data at this point
               const streams = [];
               for (let i = docs.length; i--;) {

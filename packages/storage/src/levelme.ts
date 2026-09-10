@@ -447,53 +447,56 @@ export class LevelMe {
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
-    if (ENABLE_CACHE) {
-      let tmpKeys = [];
-      let cached = [];
-      for (let i = keys.length; i--;) {
-        if (!this.cache.has(keys[i])) {
-          tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-        } else {
-          // No copy here, same as the cache-miss branch below (cached.push(data)
-          // shares the object with cache.set() unconditionally) - this was an
-          // inconsistent, incomplete defensive copy: a stream that's already
-          // warm skipped mutation exposure, one that wasn't didn't. Contract
-          // code itself never touches either one directly regardless -
-          // Activity.getState() (contracts/stream.ts) always deep-clones
-          // before handing state to a contract - so this copy wasn't
-          // load-bearing for correctness, just an extra allocation on every
-          // cache hit.
-          cached.push(this.cache.get(keys[i], 30000));
-        }
-      }
+    // All from cache, or all from disk - never a mixture.
+    //
+    // This used to serve whichever keys happened to be warm from the cache
+    // and fetch the rest from the driver. For one key that is just a cache;
+    // across several it silently breaks the one property a multi-key read
+    // is worth having, because the two halves are read at different times.
+    // The cache probe is synchronous but the driver read is awaited, so a
+    // batch write can land in between - and a caller asking for a stream
+    // and its :stream meta together could get the cached state from before
+    // that write paired with the meta from after it. A commit writes both
+    // in ONE batch precisely so no reader sees half of it; mixing sources
+    // hands back exactly the torn pair the batch existed to prevent, and a
+    // mismatched meta._rev:state._rev is not repairable afterwards.
+    //
+    // So: if every key is warm, answer from the cache - consistent, because
+    // nothing can mutate it between synchronous reads. Otherwise read the
+    // whole set from the driver in a single getMany, which cannot straddle
+    // a batch. The cost is re-reading a warm key when a sibling is cold,
+    // which is one extra key in an existing call.
+    const allCached =
+      ENABLE_CACHE && keys.every((key) => this.cache.has(key));
 
-      // Get uncached keys
-      if (tmpKeys.length) {
-        const result = await this.driver.getMany(tmpKeys);
-        // Loop and cache
-        for (let i = result.length; i--;) {
-          const data = await ActiveClone.deserialize(result[i]) as any;
-          this.cache.set(data._id, data);
-          cached.push(data);
-        }
-      }
-      return cached;
-    } else {
-      const tmpKeys = [];
-      for (let i = keys.length; i--;) {
-        tmpKeys.push(LevelMe.DOC_PREFIX + keys[i]);
-      }
-
-      // Get uncached keys
-      const result = await this.driver.getMany(tmpKeys);
-
-      // Loop and parse
-      const parsed = await Promise.all(result.map(async (data) => {
-          const doc = await ActiveClone.deserialize(data) as any;
-          return doc;
-      }));
-      return parsed;
+    if (allCached) {
+      // No defensive copy, matching the driver path below and the previous
+      // behaviour - Activity.getState() (contracts/stream.ts) deep-clones
+      // before any contract sees state, so this was never load-bearing.
+      return keys.map((key) => this.cache.get(key, 30000));
     }
+
+    const prefixed = keys.map((key) => LevelMe.DOC_PREFIX + key);
+    const result = await this.driver.getMany(prefixed);
+
+    const docs: any[] = [];
+    for (let i = 0; i < result.length; i++) {
+      // A key this node does not hold comes back undefined. Deserializing
+      // that threw, so a single absent stream failed the whole read - and
+      // SPI asks about streams a node may legitimately not have.
+      if (result[i] === undefined || result[i] === null) {
+        continue;
+      }
+      const data = (await ActiveClone.deserialize(result[i])) as any;
+      if (!data || !data._id) {
+        continue;
+      }
+      if (ENABLE_CACHE) {
+        this.cache.set(data._id, data);
+      }
+      docs.push(data);
+    }
+    return docs;
   }
 
   /**

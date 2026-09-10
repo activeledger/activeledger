@@ -92,6 +92,25 @@ export class Locker {
   }
 
   /**
+   * Which transaction currently holds this stream, if any.
+   *
+   * is() answers "is it this umid?", which only helps a caller that
+   * already knows which umid to guess. SPI needs the opposite direction:
+   * given a locked stream, find out who holds it, so it can ask whether
+   * that holder is ever going to commit. getLocks() could answer too, but
+   * it rebuilds the entire map through Object.fromEntries on every call -
+   * fine for the debug endpoint it was written for, wasteful on a sampling
+   * path that runs per stream per transaction.
+   *
+   * @static
+   * @param {string} stream
+   * @return {*}  {(string | undefined)} the holding umid, or undefined
+   */
+  public static holder(stream: string): string | undefined {
+    return this.cell.get(stream)?.umid;
+  }
+
+  /**
    * Attempts to lock streams
    *
    * @static

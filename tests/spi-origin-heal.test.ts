@@ -51,10 +51,20 @@ describe("Host.hasVotedAgainst (Activenetwork)", () => {
 
 describe("Endpoints.streams - answering about a locked stream (Activenetwork)", () => {
   const doc = { _id: STREAM, _rev: "42-746224aa" };
+  // The sample is one allDocs({keys}) rather than a get() per id, so that a
+  // stream and its :stream meta cannot be read either side of a commit
+  // batch. Answers in CouchDB's shape, which is what LevelMe returns too.
   const db: any = {
-    get: async (id: string) => (id === STREAM ? doc : { error: "not found" }),
+    allDocs: async ({ keys }: { keys: string[] }) => ({
+      rows: keys.map((key) => ({ doc: key === STREAM ? doc : undefined })),
+    }),
   };
-  const hostThatVotedAgainst: any = { willNotCommit: () => true };
+  // Umid-aware, so a test can prove which transaction was actually asked
+  // about rather than passing because the double says yes to everything.
+  const votedAgainst = (...umids: string[]): any => ({
+    willNotCommit: (umid: string) => umids.indexOf(umid) !== -1,
+  });
+  const hostThatVotedAgainst: any = votedAgainst("tx-under-way");
   const hostThatMayCommit: any = { willNotCommit: () => false };
 
   const ask = async (body: any, host?: any) =>
@@ -84,9 +94,11 @@ describe("Endpoints.streams - answering about a locked stream (Activenetwork)", 
     expect(content).to.deep.equal([{ _id: STREAM, locked: true }]);
   });
 
-  it("refuses a DIFFERENT transaction, however this node voted", async () => {
-    // The exception is only ever about the asker's own round. Another
-    // transaction's write is still in flight as far as this one knows.
+  it("answers a DIFFERENT transaction, because the HOLDER is the one that was voted down", async () => {
+    // This used to refuse: the rule demanded the lock be held by the
+    // asker's own transaction. That condition never carried any safety -
+    // whose round is asking says nothing about whether this node's copy is
+    // about to move. What matters is that the HOLDER will never write it.
     Locker.hold(STREAM, "tx-under-way");
 
     const content = await ask(
@@ -94,14 +106,29 @@ describe("Endpoints.streams - answering about a locked stream (Activenetwork)", 
       hostThatVotedAgainst
     );
 
-    expect(content).to.deep.equal([{ _id: STREAM, locked: true }]);
+    expect(content).to.deep.equal([doc]);
   });
 
-  it("refuses when no umid is offered at all", async () => {
-    // An older node, or any caller that does not identify its round
+  it("answers when no umid is offered at all, since the holder is looked up not guessed", async () => {
+    // The asker no longer has to identify its round for this to work, so an
+    // older node - or any caller that omits $umid - is served too.
     Locker.hold(STREAM, "tx-under-way");
 
     const content = await ask({ $streams: [STREAM] }, hostThatVotedAgainst);
+
+    expect(content).to.deep.equal([doc]);
+  });
+
+  it("refuses when the node voted against a DIFFERENT transaction to the one holding the lock", async () => {
+    // The safety property, stated the hard way: having voted something down
+    // is only relevant if that something is what holds this stream. Here the
+    // node rejected an unrelated round while the holder is still live.
+    Locker.hold(STREAM, "tx-under-way");
+
+    const content = await ask(
+      { $streams: [STREAM], $umid: "tx-under-way" },
+      votedAgainst("a-completely-different-tx")
+    );
 
     expect(content).to.deep.equal([{ _id: STREAM, locked: true }]);
   });
