@@ -1,0 +1,84 @@
+# Marks published versions deprecated on npmjs.
+#
+# This exists because `npm deprecate` is a publish-class operation, so an
+# account with 2FA enforced cannot run it from a laptop without an OTP for
+# every single call. The NPM_TOKEN this repo already publishes with is a
+# granular token with 2FA bypass, so the same credential that cuts a release
+# can do this - and it never has to leave GitHub.
+#
+# Deliberately manual (workflow_dispatch) and deliberately parameterised:
+# deprecating the wrong package or version is easy to do and annoying to
+# reverse, so nothing here is implicit or scheduled.
+#
+# To UNDO a deprecation, run this again with an empty message - npm treats
+# an empty string as "not deprecated".
+name: Deprecate versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Full package name, e.g. @activeledger/activestorage"
+        required: true
+      versions:
+        description: "Space-separated versions, e.g. 4.5.11 4.5.12 4.5.13"
+        required: true
+      message:
+        description: "Deprecation message (empty string un-deprecates)"
+        required: true
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node (npmjs.org)
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          scope: "@activeledger"
+
+      - name: Deprecate
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE: ${{ inputs.package }}
+          VERSIONS: ${{ inputs.versions }}
+          MESSAGE: ${{ inputs.message }}
+        run: |
+          set -u
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is not set on this repository"
+            exit 1
+          fi
+
+          failed=""
+          for v in $VERSIONS; do
+            echo "::group::$PACKAGE@$v"
+            # Quoted: an unquoted message is split by the shell and npm
+            # silently records only its first word.
+            if npm deprecate "$PACKAGE@$v" "$MESSAGE"; then
+              echo "deprecated $PACKAGE@$v"
+            else
+              echo "::warning::failed to deprecate $PACKAGE@$v"
+              failed="$failed $v"
+            fi
+            echo "::endgroup::"
+          done
+
+          # Read it back from the registry rather than trusting the exit
+          # code. npm has reported success on writes this registry had not
+          # taken before, which is why the publish workflow verifies too.
+          echo "Verifying against the registry:"
+          for v in $VERSIONS; do
+            got="$(npm view "$PACKAGE@$v" deprecated 2>/dev/null || true)"
+            if [ -n "$got" ]; then
+              echo "  $v -> $got"
+            else
+              echo "  $v -> (no deprecation recorded)"
+            fi
+          done
+
+          if [ -n "$failed" ]; then
+            echo "::error::failed:$failed"
+            exit 1
+          fi
