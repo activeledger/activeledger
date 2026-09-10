@@ -45,6 +45,16 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // Data Storage Engine Provider, level provides backwards compatiblility
   const DS_PROVIDER = process.argv[4] || "level";
 
+  // Which interface to listen on. This store has no authentication of any
+  // kind - _bulk_docs will set any document to any revision, DELETE removes
+  // a stream or the whole database - so it should be reachable only by the
+  // node that owns it unless someone has deliberately decided otherwise.
+  //
+  // Local by default. An SSH tunnel still works (it connects from on the
+  // host), and so does a container sharing the node's network namespace,
+  // which is how the gateways reach it. Set db.selfhost.host to widen it.
+  const BIND_HOST = process.argv[5] || "127.0.0.1";
+
   // Database Connection Cache
   let dbCache: { [index: string]: LevelMe } = {};
 
@@ -1050,7 +1060,23 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
     // If path is not default overwrite
     if (req.url !== "/_utils/") {
-      file = FAUXTON_PATH + (req.url as string).replace("/_utils", "");
+      // Resolved and contained, not concatenated. uWebSockets hands the
+      // path through as sent, so "../" segments arrive verbatim - and
+      // FAUXTON_PATH sits several levels inside the install, so a few of
+      // them reach the node's working directory, where config.json and the
+      // .identity private key live.
+      const requested = path.resolve(
+        FAUXTON_PATH,
+        "." + decodeURIComponent((req.url as string).replace("/_utils", ""))
+      );
+
+      if (!requested.startsWith(path.resolve(FAUXTON_PATH) + path.sep)) {
+        // Outside the asset directory. Serve the app shell rather than
+        // reporting whether the path existed.
+        return fauxtonCache[FAUXTON_PATH + "/index.html"] || null;
+      }
+
+      file = requested;
     }
 
     if (fauxtonCache[file]) {
@@ -1074,5 +1100,5 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   http.use("_utils/**", "GET", fauxton);
 
   // Start Server
-  http.listen(parseInt(PORT));
+  http.listen(parseInt(PORT), false, BIND_HOST);
 })();
