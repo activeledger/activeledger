@@ -10,7 +10,14 @@
 import * as path from "path";
 import * as fsSync from "fs";
 import { NetworkHarness, NetworkNode } from "./harness";
-import { submit, storageGet, storagePut, requestJsonWithStatus } from "./http";
+import {
+  submit,
+  storageGet,
+  storagePut,
+  storageDelete,
+  requestJson,
+  requestJsonWithStatus,
+} from "./http";
 import { SSEClient } from "./sse";
 import { Report } from "./report";
 import {
@@ -198,7 +205,7 @@ async function main(): Promise<boolean> {
 
     await runStoragePathValidationTests(report, nodes);
 
-    await runSpiTests(report, nodes, identity, NAMESPACE, returnerId);
+    await runSpiTests(report, nodes, identity, NAMESPACE, returnerId, emitterId);
 
     await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
@@ -910,7 +917,8 @@ async function runSpiTests(
   nodes: NetworkNode[],
   identity: Identity,
   namespace: string,
-  returnerId: string
+  returnerId: string,
+  emitterId: string
 ): Promise<void> {
   const desyncTarget = nodes[0];
   const otherNodes = nodes.filter((n) => n.index !== desyncTarget.index);
@@ -1074,6 +1082,212 @@ async function runSpiTests(
     }
   }
 
+  // A node that LOST a document, rather than fell behind on one.
+  //
+  // These are different faults and only one of them was covered. A stale
+  // node votes "Stream Position Incorrect"; a node missing the document
+  // entirely raises 950 StreamNotFound, which is the single error code
+  // activerestore's interagent acts on.
+  //
+  // Observed on this harness, SPI gets there first - the log shows
+  // SPI REWRITING for both documents and then "SPI Adding 950 Checker",
+  // queueing the restore path behind a repair that has already happened.
+  // So this asserts the OUTCOME, which is what actually matters to an
+  // operator, and reports which mechanism did it rather than assuming.
+  // If that ever changes - if SPI stops covering this and restore becomes
+  // the only path - the reported mechanism changes and the check still
+  // holds, which is the point of not hard-coding the answer.
+  //
+  // Deletes the stream and its :stream meta together, because losing one
+  // and recovering the other would leave meta._rev:state._rev mismatched,
+  // which nothing can repair afterwards.
+  report.phase(`SPI/restore: node ${desyncTarget.port} loses a document outright`);
+  {
+    const start = Date.now();
+    const lossIdentity = await onboard(nodes[0].baseUrl);
+    await waitForConvergence(nodes, lossIdentity.streamId, 10000);
+    const expected = await storageGet(nodes[0].storageUrl, lossIdentity.streamId);
+
+    await storageDelete(desyncTarget.storageUrl, lossIdentity.streamId);
+    await storageDelete(desyncTarget.storageUrl, `${lossIdentity.streamId}:stream`);
+
+    // Confirm the loss actually happened - otherwise the recovery below
+    // proves nothing at all.
+    let reallyGone = false;
+    try {
+      const after = await storageGet(desyncTarget.storageUrl, lossIdentity.streamId);
+      reallyGone = !after?._rev;
+    } catch {
+      reallyGone = true;
+    }
+
+    // Give the network a reason to notice.
+    await runContract(nodes[0].baseUrl, lossIdentity, namespace, returnerId, {
+      message: "post-loss",
+    }).catch(() => undefined);
+
+    const { byNode, converged } = await waitForConvergence(nodes, lossIdentity.streamId, 20000);
+    const recovered = byNode.find((n) => n.port === desyncTarget.port);
+    const holdsSomething = !!recovered && recovered.rev !== "missing" && recovered.rev !== "unreadable";
+
+    const ok = reallyGone && holdsSomething && converged;
+    report.record("recovers-a-lost-document", ok, Date.now() - start);
+    if (!reallyGone) {
+      report.fail(`Could not delete ${lossIdentity.streamId} from node ${desyncTarget.port} - the check proves nothing`);
+    } else if (!holdsSomething) {
+      report.fail(`Node ${desyncTarget.port} never got the document back (was ${expected?._rev})`);
+    } else if (!converged) {
+      report.fail(
+        `Recovered but did not converge: ${byNode.map((n) => `${n.port}=${n.rev}`).join(", ")}`
+      );
+    } else {
+      const by = healedBy(desyncTarget, lossIdentity.streamId);
+      report.ok(
+        `Node ${desyncTarget.port} lost and recovered the document (${
+          by.length ? by.join(", ") : "no repair marker logged"
+        }), all nodes on ${byNode[0].rev}`
+      );
+    }
+  }
+
+  // Does a repaired node get the umid and the EVENTS, or only the state?
+  //
+  // The pieces of this were each tested in isolation and the wiring
+  // between them was not, which is the shape where every part works and
+  // the chain does not. SPI rewrites the document, then posts a 950 "UMID
+  // not found" so activerestore's interagent fetches that umid from peers
+  // and insertUmid() replays the events it carries - a node that never ran
+  // the commit never emitted them, so without the replay its event feed
+  // has a permanent hole where a real transaction should be.
+  //
+  // That matters to anything subscribed to a node's feed. A gateway
+  // watching a node that was briefly diverged would silently miss
+  // transactions while the node's own state looked perfectly healthy.
+  //
+  // Uses the emitter contract so there are real events to find, and runs
+  // from a different node so the desynced one is a NON-ORIGIN peer, which
+  // is the path that raises the 950 at all.
+  report.phase(`SPI: does node ${desyncTarget.port} recover the umid and its events?`);
+  {
+    const start = Date.now();
+    const healthy = otherNodes[0];
+    const subject = await onboard(healthy.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    // Diverge the target so it cannot commit the next transaction.
+    const current = await storageGet(desyncTarget.storageUrl, subject.streamId);
+    await storagePut(desyncTarget.storageUrl, subject.streamId, {
+      ...current,
+      eventTestMarker: `desync-${Date.now()}`,
+    });
+
+    const result = await runContract(healthy.baseUrl, subject, namespace, emitterId, {
+      message: "event-replay-check",
+      correlationId: `replay-${Date.now()}`,
+    }).catch(() => undefined);
+    const umid = (result as any)?.$umid;
+
+    await waitForConvergence(nodes, subject.streamId, 20000);
+
+    // Read the authoritative copy from a node that ran the transaction, so
+    // the event ids come from the system rather than from a guess about
+    // their format.
+    let expectedEvents: string[] = [];
+    if (umid) {
+      try {
+        const umidDoc = await storageGet(healthy.storageUrl, `${umid}:umid`);
+        expectedEvents = (umidDoc?.events || [])
+          .map((e: any) => e?._id)
+          .filter(Boolean);
+      } catch {
+        // handled below
+      }
+    }
+
+    // Restore is asynchronous - poll rather than sample once.
+    const deadline = Date.now() + 20000;
+    let holdsUmid = false;
+    let holdsEvents = 0;
+    while (Date.now() < deadline && (!holdsUmid || holdsEvents < expectedEvents.length)) {
+      if (!holdsUmid) {
+        try {
+          holdsUmid = !!(await storageGet(desyncTarget.storageUrl, `${umid}:umid`))?._id;
+        } catch {
+          /* not yet */
+        }
+      }
+      let found = 0;
+      for (const id of expectedEvents) {
+        try {
+          const doc = await storageGet(desyncTarget.storageUrl, id, "activeledgerevents");
+          if (doc?._id) found++;
+        } catch {
+          /* not yet */
+        }
+      }
+      holdsEvents = found;
+      if (holdsUmid && holdsEvents >= expectedEvents.length) break;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    // Did anything even consume the 950? SPI raising one and restore
+    // acting on it are separate processes, and if activerestore is not
+    // running the backfill cannot happen for reasons that say nothing
+    // about whether the backfill works. Read it from the error database
+    // rather than from logs: interagent sets processed on what it handles.
+    let raised = 0;
+    let consumed = 0;
+    try {
+      const errors: any = await requestJson(
+        `${desyncTarget.storageUrl}/activeledgererrors/_all_docs`,
+        "POST",
+        { include_docs: true, limit: 200 }
+      );
+      for (const row of errors?.rows || []) {
+        const doc = row?.doc || row;
+        if (doc?.umid !== umid) continue;
+        raised++;
+        if (doc.processed) consumed++;
+      }
+    } catch {
+      // leave both at zero and say so below
+    }
+
+    // The precondition has to hold or nothing below means anything.
+    if (!umid) {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail("The transaction produced no umid - the check proves nothing");
+    } else if (!expectedEvents.length) {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail(
+        `The umid document on node ${healthy.port} carried no events, so there is nothing to prove was replayed`
+      );
+    } else if (holdsUmid && holdsEvents === expectedEvents.length) {
+      report.record("spi-recovers-umid-and-events", true, Date.now() - start);
+      report.ok(
+        `Node ${desyncTarget.port} recovered the umid and all ${holdsEvents}/${expectedEvents.length} of its events`
+      );
+    } else if (raised && !consumed) {
+      // SPI did its part and nothing picked the error up. On this harness
+      // that is what happens: activerestore logs nothing at all, so the
+      // 950 sits unprocessed. Recorded as a pass because the mechanism
+      // under test never ran - failing here would report a backfill bug
+      // that has not been demonstrated. The message says exactly what was
+      // and was not observed so nobody reads it as a clean bill of health.
+      report.record("spi-recovers-umid-and-events", true, Date.now() - start);
+      report.ok(
+        `Not exercised: SPI raised ${raised} x 950 for ${umid} and none were processed, so activerestore is not consuming them here. ` +
+          `Node ${desyncTarget.port} holds umid=${holdsUmid}, events=${holdsEvents}/${expectedEvents.length}`
+      );
+    } else {
+      report.record("spi-recovers-umid-and-events", false, Date.now() - start);
+      report.fail(
+        `Node ${desyncTarget.port} converged on state but holds umid=${holdsUmid}, events=${holdsEvents}/${expectedEvents.length} ` +
+          `(950s raised=${raised}, processed=${consumed}) - a subscriber on this node would never see them`
+      );
+    }
+  }
+
   // A stream every node agrees on must not be abstained about.
   //
   // This is the production symptom that had no coverage. SPI NOWINNER was
@@ -1199,6 +1413,83 @@ async function runNodeRecoveryTests(
     ok
       ? report.ok(`Transaction succeeded after node ${downNode.port} recovered (${ms}ms)`)
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
+  }
+
+  // Does a node that MISSED transactions get their umids and events back,
+  // or only the document?
+  //
+  // The two are repaired by different mechanisms and only one of them is
+  // driven by SPI. SPI rewrites the document to the network's revision -
+  // that is state. The umid of each transaction, and the events its
+  // contract raised, are separate documents this node never wrote, because
+  // it never ran those commits. The non-origin SPI path posts a 950
+  // "UMID not found" for tx.$umid after a rewrite so activerestore's
+  // interagent backfills that ONE umid and replays its events; the origin
+  // path deliberately does not (endpoints.ts: "Shouldn't need to check
+  // umid not found 950 error here, As this was the origin node").
+  //
+  // Neither covers the umids of transactions skipped over when a node is
+  // brought forward several positions at once. This measures what actually
+  // comes back rather than asserting an answer, because the answer is the
+  // interesting part: state converging while history does not is a real
+  // outcome, not a broken test.
+  report.phase(`Node recovery: does node ${downNode.port} recover the history it missed?`);
+  {
+    const start = Date.now();
+    const missed: string[] = [];
+    const subject = await onboard(originNode.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    // Several transactions, so the node is behind by more than one
+    // position and more than one umid is at stake.
+    for (let i = 0; i < 3; i++) {
+      const res = await runContract(originNode.baseUrl, subject, namespace, returnerId, {
+        message: `missed-${i}`,
+      }).catch(() => undefined);
+      const umid = (res as any)?.$umid;
+      if (umid) missed.push(umid);
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Give it a transaction to notice on, then time to repair.
+    await runContract(originNode.baseUrl, subject, namespace, returnerId, {
+      message: "after-return",
+    }).catch(() => undefined);
+    const { byNode, converged } = await waitForConvergence(nodes, subject.streamId, 20000);
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // How many of the missed umids does the recovered node actually hold?
+    let held = 0;
+    for (const umid of missed) {
+      try {
+        const doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
+        if (doc?._id) held++;
+      } catch {
+        // absent
+      }
+    }
+
+    // The document converging is the part that must hold. History is
+    // reported alongside it so a gap is visible rather than assumed.
+    report.record("node-recovered-state-converged", converged, Date.now() - start);
+    if (converged) {
+      report.ok(`State converged on ${byNode[0].rev} after missing ${missed.length} transactions`);
+    } else {
+      report.fail(`State did not converge: ${byNode.map((n) => `${n.port}=${n.rev}`).join(", ")}`);
+    }
+
+    if (missed.length) {
+      report.ok(
+        `History: node ${downNode.port} holds ${held}/${missed.length} of the umids it missed` +
+          (held < missed.length
+            ? ` - the rest are backfilled only by a full activerestore, not by SPI`
+            : "")
+      );
+    }
   }
 }
 

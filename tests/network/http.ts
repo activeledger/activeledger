@@ -125,3 +125,21 @@ export function storagePut(
 ): Promise<any> {
   return requestJson(`${storageUrl}/${database}/${encodeURIComponent(streamId)}`, "PUT", doc);
 }
+
+/**
+ * Removes a document from one node's storage engine outright.
+ *
+ * Losing a document is a different fault to holding a stale one, and it
+ * has a different repair path: a node that is merely behind votes "Stream
+ * Position Incorrect" and SPI arbitrates, while a node missing the
+ * document entirely raises 950 StreamNotFound, which is the one error code
+ * activerestore's interagent actually acts on. Simulating that needs a
+ * real delete rather than another PUT.
+ */
+export function storageDelete(
+  storageUrl: string,
+  streamId: string,
+  database = "activeledger"
+): Promise<any> {
+  return requestJson(`${storageUrl}/${database}/${encodeURIComponent(streamId)}`, "DELETE");
+}
