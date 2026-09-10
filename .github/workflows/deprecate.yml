@@ -51,7 +51,13 @@ jobs:
             exit 1
           fi
 
-          failed=""
+          # Write errors are recorded but do NOT decide the outcome - the
+          # registry does, below. npm answers E422 when asked to set a
+          # message a version already carries, so a correct re-run errors on
+          # every version while the desired state is already in place. What
+          # matters is where the registry ends up, not whether each PUT was
+          # accepted.
+          wrote_error=""
           for v in $VERSIONS; do
             echo "::group::$PACKAGE@$v"
             # Quoted: an unquoted message is split by the shell and npm
@@ -59,8 +65,8 @@ jobs:
             if npm deprecate "$PACKAGE@$v" "$MESSAGE"; then
               echo "deprecated $PACKAGE@$v"
             else
-              echo "::warning::failed to deprecate $PACKAGE@$v"
-              failed="$failed $v"
+              echo "write rejected for $PACKAGE@$v - checking the registry before judging it"
+              wrote_error="$wrote_error $v"
             fi
             echo "::endgroup::"
           done
@@ -110,12 +116,12 @@ jobs:
 
           if [ -n "$pending" ]; then
             echo "::error::registry still disagrees after 3 minutes for:$pending"
+            [ -n "$wrote_error" ] && echo "::error::writes were also rejected for:$wrote_error"
             exit 1
           fi
 
-          if [ -n "$failed" ]; then
-            echo "::error::failed:$failed"
-            exit 1
+          if [ -n "$wrote_error" ]; then
+            echo "::notice::already in the requested state (npm rejected the redundant write) for:$wrote_error"
           fi
 
           echo "Registry confirms every requested version."
