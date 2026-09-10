@@ -957,6 +957,25 @@ async function runSpiTests(
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
   }
 
+  // The transaction succeeding is a question about the transaction, not
+  // about the network. A round that commits on three nodes while the
+  // fourth stays behind answers it with a cheerful yes - and being behind
+  // is precisely the fault worth catching, because that node then vetoes
+  // every future transaction touching the stream. Read convergence off the
+  // nodes themselves.
+  {
+    const start = Date.now();
+    const { byNode, converged } = await waitForConvergence(nodes, identity.streamId, 10000);
+    report.record("spi-origin-converged", converged, Date.now() - start);
+    converged
+      ? report.ok(`All ${nodes.length} nodes agree on ${byNode[0].rev}`)
+      : report.fail(
+          `Transaction succeeded but nodes disagree: ${byNode
+            .map((n) => `${n.port}=${n.rev}`)
+            .join(", ")}`
+        );
+  }
+
   // Let the network fully settle/converge after the previous repair cycle
   // before injecting a fresh desync - SPI convergence is explicitly
   // asynchronous/eventual (architecture.md: "There is no single moment
@@ -976,6 +995,83 @@ async function runSpiTests(
     ok
       ? report.ok(`Transaction succeeded via node ${originNode.port} as origin, desynced peer included (${ms}ms)`)
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
+  }
+
+  {
+    const start = Date.now();
+    const { byNode, converged } = await waitForConvergence(nodes, identity.streamId, 10000);
+    report.record("spi-non-origin-converged", converged, Date.now() - start);
+    converged
+      ? report.ok(`All ${nodes.length} nodes agree on ${byNode[0].rev}`)
+      : report.fail(
+          `Transaction succeeded but nodes disagree: ${byNode
+            .map((n) => `${n.port}=${n.rev}`)
+            .join(", ")}`
+        );
+  }
+
+  // A genuine fork must NOT be resolved silently.
+  //
+  // Two nodes committing different content at the same position is the one
+  // shape with no safe automatic answer: revisions are position-md5, so
+  // there is nothing to tell the two sides apart on merit, and adopting
+  // either destroys the other's transaction. The tally is supposed to
+  // abstain and say so. Nothing has ever tested that end to end, and a
+  // mechanism that quietly picked a side would look exactly like a
+  // mechanism that worked.
+  //
+  // Uses its own throwaway identity: this deliberately leaves a stream
+  // broken, and it must not be one anything later depends on.
+  report.phase("SPI: a genuine fork is refused rather than guessed");
+  {
+    const start = Date.now();
+    const forkIdentity = await onboard(nodes[0].baseUrl);
+    await waitForConvergence(nodes, forkIdentity.streamId, 10000);
+
+    // Same position on every node, two different contents - a real fork,
+    // not a lag.
+    const half = Math.floor(nodes.length / 2);
+    for (let i = 0; i < nodes.length; i++) {
+      const current = await storageGet(nodes[i].storageUrl, forkIdentity.streamId);
+      await storagePut(nodes[i].storageUrl, forkIdentity.streamId, {
+        ...current,
+        forkMarker: i < half ? "side-a" : "side-b",
+      });
+    }
+
+    const injected = await revisionsAcross(nodes, forkIdentity.streamId);
+    const positions = new Set(injected.byNode.map((n) => n.rev.split("-")[0]));
+    const contents = new Set(injected.byNode.map((n) => n.rev));
+
+    // The injection itself has to be a real fork or the check proves
+    // nothing: one position, more than one revision.
+    const isFork = positions.size === 1 && contents.size > 1;
+
+    // Give SPI every chance to do the wrong thing - against the FORKED
+    // stream specifically. touchStream() runs on the shared identity and
+    // would neither exercise this fork nor leave that stream alone for the
+    // checks that follow.
+    await runContract(nodes[0].baseUrl, forkIdentity, namespace, returnerId, {
+      message: "fork-probe",
+    }).catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const after = await revisionsAcross(nodes, forkIdentity.streamId);
+    const stillSplit = new Set(after.byNode.map((n) => n.rev)).size > 1;
+
+    const ok = isFork && stillSplit;
+    report.record("spi-fork-not-guessed", ok, Date.now() - start);
+    if (!isFork) {
+      report.fail(
+        `Could not inject a fork (positions ${Array.from(positions).join("/")}, revisions ${contents.size}) - the check proves nothing`
+      );
+    } else if (!stillSplit) {
+      report.fail(
+        `A same-position fork was silently resolved to ${after.byNode[0].rev} - one side's transaction was destroyed`
+      );
+    } else {
+      report.ok(`Fork left intact for a human: ${Array.from(new Set(after.byNode.map((n) => n.rev))).join(" vs ")}`);
+    }
   }
 
   // A stream every node agrees on must not be abstained about.
