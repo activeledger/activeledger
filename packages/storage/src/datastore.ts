@@ -112,6 +112,10 @@ export class ActiveDataStore {
         this.dsLocation,
         `${dbInfo.selfhost.port}`,
         `${dbInfo.selfhost.engine || "level"}`,
+        // db.selfhost.host has always existed and was only ever used as a
+        // client connection string; the server ignored it and bound every
+        // interface. Now it does what it looks like it does.
+        `${dbInfo.selfhost.host || "127.0.0.1"}`,
       ],
       {
         stdio: "inherit",
