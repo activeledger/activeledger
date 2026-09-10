@@ -1274,6 +1274,83 @@ async function runNodeRecoveryTests(
       ? report.ok(`Transaction succeeded after node ${downNode.port} recovered (${ms}ms)`)
       : report.fail(`Failed: ${JSON.stringify(result.$summary)}`);
   }
+
+  // Does a node that MISSED transactions get their umids and events back,
+  // or only the document?
+  //
+  // The two are repaired by different mechanisms and only one of them is
+  // driven by SPI. SPI rewrites the document to the network's revision -
+  // that is state. The umid of each transaction, and the events its
+  // contract raised, are separate documents this node never wrote, because
+  // it never ran those commits. The non-origin SPI path posts a 950
+  // "UMID not found" for tx.$umid after a rewrite so activerestore's
+  // interagent backfills that ONE umid and replays its events; the origin
+  // path deliberately does not (endpoints.ts: "Shouldn't need to check
+  // umid not found 950 error here, As this was the origin node").
+  //
+  // Neither covers the umids of transactions skipped over when a node is
+  // brought forward several positions at once. This measures what actually
+  // comes back rather than asserting an answer, because the answer is the
+  // interesting part: state converging while history does not is a real
+  // outcome, not a broken test.
+  report.phase(`Node recovery: does node ${downNode.port} recover the history it missed?`);
+  {
+    const start = Date.now();
+    const missed: string[] = [];
+    const subject = await onboard(originNode.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    // Several transactions, so the node is behind by more than one
+    // position and more than one umid is at stake.
+    for (let i = 0; i < 3; i++) {
+      const res = await runContract(originNode.baseUrl, subject, namespace, returnerId, {
+        message: `missed-${i}`,
+      }).catch(() => undefined);
+      const umid = (res as any)?.$umid;
+      if (umid) missed.push(umid);
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Give it a transaction to notice on, then time to repair.
+    await runContract(originNode.baseUrl, subject, namespace, returnerId, {
+      message: "after-return",
+    }).catch(() => undefined);
+    const { byNode, converged } = await waitForConvergence(nodes, subject.streamId, 20000);
+    await new Promise((r) => setTimeout(r, 3000));
+
+    // How many of the missed umids does the recovered node actually hold?
+    let held = 0;
+    for (const umid of missed) {
+      try {
+        const doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
+        if (doc?._id) held++;
+      } catch {
+        // absent
+      }
+    }
+
+    // The document converging is the part that must hold. History is
+    // reported alongside it so a gap is visible rather than assumed.
+    report.record("node-recovered-state-converged", converged, Date.now() - start);
+    if (converged) {
+      report.ok(`State converged on ${byNode[0].rev} after missing ${missed.length} transactions`);
+    } else {
+      report.fail(`State did not converge: ${byNode.map((n) => `${n.port}=${n.rev}`).join(", ")}`);
+    }
+
+    if (missed.length) {
+      report.ok(
+        `History: node ${downNode.port} holds ${held}/${missed.length} of the umids it missed` +
+          (held < missed.length
+            ? ` - the rest are backfilled only by a full activerestore, not by SPI`
+            : "")
+      );
+    }
+  }
 }
 
 main()
