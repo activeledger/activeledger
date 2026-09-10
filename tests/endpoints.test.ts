@@ -475,3 +475,48 @@ describe("Endpoints.spiConsensus - lag versus fork (Activenetwork)", () => {
     expect(winners["eb10c7"].rev).to.equal("104-aaaaaaaa");
   });
 });
+
+// Built in three places, and one of them referred to a `const output`
+// belonging to a sibling block. The name still resolved - to another
+// `output` declared later in an enclosing scope - so the compiler said
+// nothing and the branch threw "Cannot access 'output' before
+// initialization" at runtime, from inside a setTimeout callback where the
+// rejection is unhandled. The client's promise never settled and the
+// transaction's locks were never released.
+//
+// Reachable exactly when the network is already degraded: it is the branch
+// for "fewer nodes answered than consensus needs".
+describe("Endpoints.buildClientResponse (Activenetwork)", () => {
+  const tx: any = {
+    $umid: "umid-1",
+    $streams: { new: [], updated: ["stream-a"] },
+  };
+  const summary: any = { total: 4, vote: 3, commit: 3 };
+
+  it("carries the umid, summary and streams", () => {
+    const out = Endpoints.buildClientResponse(tx, summary, []);
+
+    expect(out.$umid).to.equal("umid-1");
+    expect(out.$summary).to.deep.equal(summary);
+    expect(out.$streams).to.deep.equal(tx.$streams);
+  });
+
+  it("omits $responses when a contract returned nothing", () => {
+    const out = Endpoints.buildClientResponse(tx, summary, []);
+
+    expect(out).to.not.have.property("$responses");
+  });
+
+  it("includes $responses when a contract returned something", () => {
+    const out = Endpoints.buildClientResponse(tx, summary, [{ a: 1 }]);
+
+    expect(out.$responses).to.deep.equal([{ a: 1 }]);
+  });
+
+  it("does not leak the whole transaction unless debugToClient is on", () => {
+    // $debug is the entire network $tx, node responses included
+    const out = Endpoints.buildClientResponse(tx, summary, []);
+
+    expect(out).to.not.have.property("$debug");
+  });
+});
