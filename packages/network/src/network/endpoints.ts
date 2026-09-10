@@ -252,6 +252,9 @@ export class Endpoints {
                           // however we need a delay to at least know the record has been written!
                           setTimeout(async () => {
                             let rewroteSomething = false;
+                            // umids named in the :stream metas adopted this
+                            // round - the transactions this node missed.
+                            const adoptedUmids = new Set<string>();
                             const streams = [
                               ...new Set([
                                 ...this.labelOrKey(tx.$tx.$i),
@@ -361,12 +364,49 @@ export class Endpoints {
                                         rewrote.delete(winningDoc._id);
                                       } else {
                                         rewroteSomething = true;
+                                        // A :stream meta names the umid of the
+                                        // transaction that produced the
+                                        // revision just adopted. That is the
+                                        // one this node missed, and the only
+                                        // umid derivable from what SPI holds.
+                                        if (winningDoc.umid) {
+                                          adoptedUmids.add(winningDoc.umid);
+                                        }
                                       }
                                     }
                                   }
 
-                                  // Shouldn't need to check umid not found 950 error here, As this was the origin node
-                                  // and its position indexes were incorrect.
+                                  // The origin genuinely does not need a check on tx.$umid:
+                                  // its own transaction failed on every node, so no peer holds
+                                  // that umid and there is nothing to fetch. It resubmits under
+                                  // a fresh umid instead, which commits normally.
+                                  //
+                                  // What it DOES miss is the transaction that produced the
+                                  // revision it just adopted - a different umid entirely, named
+                                  // in the winning :stream meta. Without this the node ends up
+                                  // with correct state and no record of how it got there: no
+                                  // umid, and none of the events that transaction raised. State
+                                  // converges, history does not, and nothing reports a fault.
+                                  for (const adopted of adoptedUmids) {
+                                    const backfilled = await Endpoints.backfillUmid(host, adopted);
+                                    if (!backfilled) {
+                                      // Durable retry, same as the non-origin path. Restore
+                                      // skips it if this succeeded on a later attempt.
+                                      ActiveLogger.warn(adopted, `SPI Adding 950 Checker #1`);
+                                      await host.dbErrorConnection.post({
+                                        _id: `${adopted}:${Date.now()}`,
+                                        code: 950,
+                                        processed: false,
+                                        umid: adopted,
+                                        transaction: {
+                                          $broadcast: true,
+                                          $tx: {},
+                                          $revs: {},
+                                        },
+                                        reason: 'Vote Failure - "SPI#1 UMID not found',
+                                      });
+                                    }
+                                  }
 
                                   //  need TO ONLY run this if SPI rewrites occured?
                                   // also need to attach orignal umid to reference against! As this is double spend potential
@@ -1250,6 +1290,10 @@ export class Endpoints {
                           return;
                         }
 
+                        // umids named in the :stream metas adopted this
+                        // round - the transactions this node missed.
+                        const adoptedUmidsNonOrigin = new Set<string>();
+
                         // now find the ones that match
                         // One shared, tested tally - see Endpoints.spiConsensus(). It
                         // abstains on any stream some node could not report, rather than
@@ -1311,6 +1355,12 @@ export class Endpoints {
                               rewrote.delete(winningDoc._id);
                             } else {
                               canRetry = true;
+                              // Same as the origin path: the :stream meta
+                              // names the transaction that produced this
+                              // revision, which is the one that was missed.
+                              if (winningDoc.umid) {
+                                adoptedUmidsNonOrigin.add(winningDoc.umid);
+                              }
                             }
                           }
                         }
@@ -1319,6 +1369,20 @@ export class Endpoints {
                         // As it wont be saving it and new doc also should do the same. I think even SPI #1 should do this
                         // Don't have access to protocol/shared.ts#storeError
                         if (rewrote.has(tx.$umid)) {
+                          // Try to backfill here and now. The 950 below is
+                          // still written either way - it is the durable
+                          // retry if this fails or the node dies mid-fetch,
+                          // and restore skips work already done.
+                          await Endpoints.backfillUmid(host, tx.$umid);
+
+                          // And the transactions actually missed, named in
+                          // the :stream metas just adopted. These are the
+                          // ones nothing recovered before: state converged
+                          // while the umid and its events never arrived.
+                          for (const adopted of adoptedUmidsNonOrigin) {
+                            await Endpoints.backfillUmid(host, adopted);
+                          }
+
                           ActiveLogger.warn(tx.$umid, `SPI Adding 950 Checker`);
                           // No need to await but help with catching errors flow
                           await host.dbErrorConnection.post({
@@ -1832,6 +1896,154 @@ export class Endpoints {
           reject({ error: 3 });
         });
     });
+  }
+
+  /**
+   * Fetch a transaction's umid document from the network and adopt it,
+   * replaying the events it carried.
+   *
+   * SPI rewrites a node's STATE. The umid of the transaction that produced
+   * that state, and the events its contract raised, are separate documents
+   * this node never wrote because it never ran that commit. Until now the
+   * only thing that backfilled them was activerestore's interagent, driven
+   * by the 950 error document SPI writes - so the repair depended on a
+   * whole second process being alive. That process was disabled outright
+   * on any node set up on a non-default port, and has been observed dead
+   * for days in production. Neither shows up as a fault: state converges,
+   * the node looks healthy, and only the event feed quietly stops.
+   *
+   * Doing it here removes that dependency for the common case. The 950 is
+   * still written, so a durable retry survives a crash or an unreachable
+   * peer - restore then finds the work already done (its own
+   * verifyUmidNotFound check) and marks it processed. Belt and braces,
+   * with no double write.
+   *
+   * Safe from the network layer in a way stream repair is not: umid and
+   * event documents are append-only and keyed by umid, so no transaction
+   * ever rewrites one and there is nothing to race. That is exactly the
+   * argument interagent gives for why it must NOT repair streams from
+   * outside the Locker protocol, and it does not apply here.
+   *
+   * @static
+   * @param {Host} host
+   * @param {string} umid
+   * @returns {Promise<boolean>} true if the umid is now present locally
+   */
+  public static async backfillUmid(host: Host, umid: string): Promise<boolean> {
+    if (!umid) {
+      return false;
+    }
+
+    // Already have the umid? Still replay its events before returning.
+    //
+    // Holding the umid does NOT imply holding its events: they are separate
+    // documents written by separate paths, and EventEngine.emit() is
+    // fire-and-forget, so an event write can fail silently while the umid
+    // lands. An earlier version of this returned here, and a node was
+    // observed holding umid=true with events=0/1 - correct history, empty
+    // feed, and no error anywhere to say so.
+    //
+    // Safe to repeat, because each event keeps its original _id, so this is
+    // idempotent by construction. That is also what makes running both this
+    // and restore over the same 950 harmless.
+    try {
+      const local = await host.dbConnection.get(`${umid}:umid`);
+      if (local && local._id) {
+        await Endpoints.replaySpiEvents(host, local);
+        return true;
+      }
+    } catch {
+      // Not found is the normal path here
+    }
+
+    let responses: any[];
+    try {
+      responses = await host.neighbourhood.knockAll(`umid/${umid}`, null, true);
+    } catch {
+      ActiveLogger.warn(`SPI UMID ${umid} - could not reach the network`);
+      return false;
+    }
+
+    // Group identical answers and take the most supported, rather than
+    // trusting whichever node replied first. Hashing the whole document
+    // means two nodes only agree if they agree on the events too.
+    const grouped: { [hash: string]: { count: number; doc: any } } = {};
+    for (let i = responses.length; i--; ) {
+      const response = responses[i];
+      if (!response?.umid?.$umid) {
+        continue;
+      }
+      const hash = ActiveCrypto.Hash.getHash(JSON.stringify(response));
+      grouped[hash]
+        ? grouped[hash].count++
+        : (grouped[hash] = { count: 1, doc: response });
+    }
+
+    const hashes = Object.keys(grouped);
+    if (!hashes.length) {
+      ActiveLogger.warn(`SPI UMID ${umid} - no node could supply it`);
+      return false;
+    }
+
+    const winner =
+      grouped[hashes.sort((a, b) => grouped[b].count - grouped[a].count)[0]].doc;
+
+    try {
+      // new_edits:false only ever ADDS a document we do not have, keeping
+      // the network's revision. It cannot overwrite anything.
+      const written = await host.dbConnection.bulkDocs([winner], {
+        new_edits: false,
+      });
+      if (Endpoints.bulkWriteFailed(written)) {
+        ActiveLogger.error(`SPI UMID ${umid} - write failed, left for restore`);
+        return false;
+      }
+    } catch (error) {
+      ActiveLogger.error(error, `SPI UMID ${umid} - write threw, left for restore`);
+      return false;
+    }
+
+    ActiveLogger.warn(`SPI UMID ADDED ${umid}`);
+    await Endpoints.replaySpiEvents(host, winner);
+    return true;
+  }
+
+  /**
+   * Replay the events a backfilled umid carried.
+   *
+   * Reuses each event's original _id rather than minting a new one, so a
+   * second attempt is idempotent and a subscriber tracking Last-Event-ID
+   * sees the same identity a node that ran the transaction itself would
+   * have produced.
+   *
+   * One event failing must not cost the others or the umid - the umid is
+   * already written by this point, and a missing event is recoverable
+   * where a lost umid is not.
+   *
+   * @private
+   * @static
+   */
+  private static async replaySpiEvents(host: Host, umidDoc: any): Promise<void> {
+    const events = umidDoc?.events;
+    if (!Array.isArray(events) || !events.length) {
+      return;
+    }
+
+    await Promise.all(
+      events.map(async (event: any) => {
+        try {
+          await host.dbEventConnection.post(event);
+        } catch (error) {
+          ActiveLogger.error(
+            error,
+            `SPI UMID ${umidDoc?.umid?.$umid} - failed to replay event ${event?._id}`
+          );
+        }
+      })
+    );
+    ActiveLogger.warn(
+      `SPI UMID ${umidDoc?.umid?.$umid} - replayed ${events.length} event(s)`
+    );
   }
 
   /**

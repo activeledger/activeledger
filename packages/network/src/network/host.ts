@@ -184,7 +184,7 @@ export class Host extends Home {
    * @private
    * @type ActiveDSConnect
    */
-  private dbEventConnection: ActiveDSConnect;
+  public dbEventConnection: ActiveDSConnect;
 
   /**
    * Has this node already decided it will NOT commit a transaction?
