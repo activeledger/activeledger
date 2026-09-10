@@ -53,6 +53,6 @@
     "@activeledger/activelogger": "4.5.12",
     "@activeledger/activeoptions": "4.5.12",
     "@activeledger/httpd": "4.5.12",
-    "typescript": "5.5.4"
+    "typescript": "5.6.3"
   }
 }
