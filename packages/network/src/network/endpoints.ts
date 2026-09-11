@@ -2425,6 +2425,17 @@ export class Endpoints {
     if (walk.complete) {
       return;
     }
+
+    // The hop limit is the one incomplete ending a 950 cannot help with.
+    // The record asks the interagent to fetch ONE umid from peers; here the
+    // hole is every hop beyond the limit, so fetching the frontier closes a
+    // hundredth of it, does not resume the walk, and the document is purged
+    // after the attempt either way. walkUmidHistory already logs that a full
+    // restore is the right tool from here, which is the actual answer.
+    if (walk.stoppedAt === "limit reached") {
+      return;
+    }
+
     const stuckOn = walk.frontier || fallbackUmid;
     ActiveLogger.warn(
       `SPI WALK ${label} ${streamId} left history behind - stopped: ${walk.stoppedAt}`

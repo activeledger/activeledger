@@ -880,9 +880,11 @@ describe("SPI history repair - a partial walk leaves a durable record", () => {
    * A committed umid whose history breaks partway back. repairHistoryAfterCommit
    * walks from the commit's `prev`, so the chain below that is what matters.
    */
-  function partialHost(unreachable: string[]) {
+  function partialHost(unreachable: string[], depth = 0) {
     const STREAM_P = `p${n}pp`.padEnd(64, "a") + `${n++}`;
-    const chain = ["p3", "p2", "p1", "p0"];
+    const chain = depth
+      ? Array.from({ length: depth }, (_, i) => `d${depth - 1 - i}`)
+      : ["p3", "p2", "p1", "p0"];
     const errors: any[] = [];
     const store = new Map<string, any>();
     const id = `commit-${Date.now()}-${n}`;
@@ -904,7 +906,7 @@ describe("SPI history repair - a partial walk leaves a durable record", () => {
     const committed = {
       _id: `${id}:umid`,
       umid: { $umid: id },
-      streams: { new: [], updated: [{ id: STREAM_P, prev: "p3" }] },
+      streams: { new: [], updated: [{ id: STREAM_P, prev: chain[0] }] },
     };
     store.set(`${id}:umid`, committed);
 
@@ -953,6 +955,15 @@ describe("SPI history repair - a partial walk leaves a durable record", () => {
     // by definition, so a recovery attempt against it finds nothing to do
     // and the hole behind it stays.
     expect(errors[0].umid).to.equal("p1");
+  });
+
+  it("records nothing for the hop limit, which a single umid cannot fix", async () => {
+    // 130 hops behind: the walk stops at 100 and the answer is a full
+    // restore, not a peer fetch for one umid at the frontier.
+    const { host, errors, id } = partialHost([], 130);
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(errors).to.deep.equal([]);
   });
 
   it("records nothing when the walk finished the job", async () => {
