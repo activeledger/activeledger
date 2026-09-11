@@ -1511,84 +1511,74 @@ async function runNodeRecoveryTests(
     }
   }
 
-  // TWO nodes down at once, each behind on its OWN stream.
+  // ONE node down, behind on TWO streams at once.
   //
-  // The single-node case proves the walk works. This proves it stays
-  // correct when two of them run at the same time on the same network,
-  // which is the shape that would actually be seen after a rack or a
-  // network partition - and the shape where a shared in-flight guard, a
-  // shared cooldown, or a chain read from the wrong node would show up as
-  // one node recovering another's history, or neither recovering its own.
+  // Two nodes each missing their own stream reads like the harder test and
+  // is actually the easier one: nodes are separate processes, so their
+  // walks cannot collide by construction. The real concurrency risk is two
+  // walks on the SAME node - they share the in-flight guard, the cooldown
+  // map, one event loop and one storage engine. That is where a shared-state
+  // bug would show up, and it costs one outage rather than two.
   //
-  // Each node gets its own stream so the two walks must stay independent:
-  // if they cross, the counts below cannot both be right.
+  // Interleaved so neither stream is idle while the other moves, and both
+  // triggered together so the walks genuinely overlap rather than queueing.
   const PARALLEL_GAP = 50;
-  report.phase(`Node recovery: two nodes, two streams, ${PARALLEL_GAP} missed each, in parallel`);
+  report.phase(`Node recovery: one node, two streams, ${PARALLEL_GAP} missed on each`);
   {
     const start = Date.now();
-    const nodeA = nodes[1];
-    const nodeB = nodes[2];
     const driver = nodes[0];
-
     const streamA = await onboard(driver.baseUrl);
     const streamB = await onboard(driver.baseUrl);
     await waitForConvergence(nodes, streamA.streamId, 10000);
     await waitForConvergence(nodes, streamB.streamId, 10000);
 
-    // Staggered, never simultaneous. Two of four nodes down leaves the
-    // network short of what consensus needs, so the transactions simply do
-    // not commit and the test measures nothing - the first version of this
-    // stalled for exactly that reason. Taking one node at a time keeps
-    // three up throughout.
-    //
-    // The walks still overlap, which is the point: node A is restarted and
-    // its repair started BEFORE node B is touched, so by the time B is
-    // walking, A still is.
-    const gapFor = async (
-      node: NetworkNode,
-      identity: Identity,
-      tag: string
-    ): Promise<string[]> => {
-      const missed: string[] = [];
-      await harness.killNode(node.index);
-      for (let i = 0; i < PARALLEL_GAP; i++) {
-        const res: any = await runContract(driver.baseUrl, identity, namespace, emitterId, {
-          message: `${tag}-${i}`,
-          correlationId: `${tag}-${i}-${Date.now()}`,
-        }).catch(() => undefined);
-        if (res?.$umid) missed.push(res.$umid);
-      }
-      await harness.restartNode(node.index);
-      return missed;
-    };
+    // Only one node leaves, so the network keeps three and consensus holds
+    // throughout. An earlier version took two of four down and simply
+    // stalled - nothing could commit, so the test measured nothing.
+    await harness.killNode(downNode.index);
 
-    const missedA = await gapFor(nodeA, streamA, "par-a");
-    await new Promise((r) => setTimeout(r, 4000));
-    // Kick A's recovery off, then immediately go and break B - so A is
-    // still walking while B starts.
-    await runContract(driver.baseUrl, streamA, namespace, emitterId, {
-      message: "par-a-trigger",
-      correlationId: `par-a-trigger-${Date.now()}`,
-    }).catch(() => undefined);
+    const missedA: string[] = [];
+    const missedB: string[] = [];
+    for (let i = 0; i < PARALLEL_GAP; i++) {
+      const a: any = await runContract(driver.baseUrl, streamA, namespace, emitterId, {
+        message: `par-a-${i}`,
+        correlationId: `par-a-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (a?.$umid) missedA.push(a.$umid);
 
-    const missedB = await gapFor(nodeB, streamB, "par-b");
+      const b: any = await runContract(driver.baseUrl, streamB, namespace, emitterId, {
+        message: `par-b-${i}`,
+        correlationId: `par-b-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (b?.$umid) missedB.push(b.$umid);
+    }
+
+    await harness.restartNode(downNode.index);
     await new Promise((r) => setTimeout(r, 4000));
-    await runContract(driver.baseUrl, streamB, namespace, emitterId, {
-      message: "par-b-trigger",
-      correlationId: `par-b-trigger-${Date.now()}`,
-    }).catch(() => undefined);
+
+    // Both triggers back to back, so the node is walking two chains at once
+    await Promise.all([
+      runContract(driver.baseUrl, streamA, namespace, emitterId, {
+        message: "par-a-trigger",
+        correlationId: `par-a-trigger-${Date.now()}`,
+      }).catch(() => undefined),
+      runContract(driver.baseUrl, streamB, namespace, emitterId, {
+        message: "par-b-trigger",
+        correlationId: `par-b-trigger-${Date.now()}`,
+      }).catch(() => undefined),
+    ]);
 
     const convA = await waitForConvergence(nodes, streamA.streamId, 30000);
     const convB = await waitForConvergence(nodes, streamB.streamId, 30000);
 
-    const countFor = async (node: NetworkNode, umids: string[]) => {
+    const countFor = async (umids: string[]) => {
       let held = 0;
       let events = 0;
       let expected = 0;
       for (const umid of umids) {
         let doc: any;
         try {
-          doc = await storageGet(node.storageUrl, `${umid}:umid`);
+          doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
         } catch {
           continue;
         }
@@ -1598,7 +1588,7 @@ async function runNodeRecoveryTests(
           if (!event?._id) continue;
           expected++;
           try {
-            const ev = await storageGet(node.storageUrl, event._id, "activeledgerevents");
+            const ev = await storageGet(downNode.storageUrl, event._id, "activeledgerevents");
             if (ev?._id) events++;
           } catch {
             // not yet
@@ -1610,52 +1600,47 @@ async function runNodeRecoveryTests(
 
     let a = { held: 0, events: 0, expected: 0 };
     let b = { held: 0, events: 0, expected: 0 };
-    const deadline = Date.now() + 45000;
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
-      a = await countFor(nodeA, missedA);
-      b = await countFor(nodeB, missedB);
+      a = await countFor(missedA);
+      b = await countFor(missedB);
       if (a.held >= missedA.length && b.held >= missedB.length) break;
       await new Promise((r) => setTimeout(r, 2000));
     }
 
-    // There is deliberately NO cross-contamination check here.
-    //
-    // An earlier version counted how many of stream B's umids node A held,
-    // expecting zero, and reported "10 (want 0)" while passing - because it
-    // was never wired into the pass condition. Just as well: the number was
-    // correct and the expectation was nonsense. Node B was UP during node
-    // A's gap, so it committed every one of stream A's transactions at the
-    // time. Every node legitimately holds every umid; that is what
-    // consensus means.
-    //
-    // So a walk following the wrong stream's chain is indistinguishable
-    // from normal commits, and cannot be detected this way at all. What IS
-    // meaningful is that each node recovered its own missed set in full,
-    // which is what the counts below assert. Left as a comment rather than
-    // deleted quietly, because the check looked reasonable and was not.
+    // No cross-stream check here, deliberately. An earlier version counted
+    // how many of stream B's umids this node held while repairing A and
+    // expected zero - it reported 10 and passed only because it was never
+    // in the pass condition. The count was right and the expectation was
+    // nonsense: every node holds every umid, which is what consensus means.
+    // What matters is that BOTH chains came back in full, with their events.
     const eventsIntact =
       (a.expected === 0 || a.events === a.expected) &&
       (b.expected === 0 || b.events === b.expected);
-    const ok = convA.converged && convB.converged && eventsIntact;
+    const bothComplete = a.held === missedA.length && b.held === missedB.length;
+    const ok = convA.converged && convB.converged && eventsIntact && bothComplete;
 
-    report.record("two-nodes-recover-in-parallel", ok, Date.now() - start);
+    report.record("two-streams-recover-in-parallel", ok, Date.now() - start);
     if (!convA.converged || !convB.converged) {
       report.fail(
         `State did not converge - A:${convA.byNode.map((n) => n.rev).join("/")} B:${convB.byNode
           .map((n) => n.rev)
           .join("/")}`
       );
+    } else if (!bothComplete) {
+      report.fail(
+        `One chain lagged the other - A ${a.held}/${missedA.length}, B ${b.held}/${missedB.length}. ` +
+          `Two walks on one node must not starve each other`
+      );
     } else if (!eventsIntact) {
       report.fail(
         `Umids recovered without their events - A ${a.events}/${a.expected}, B ${b.events}/${b.expected}`
       );
     } else {
-      const bothComplete =
-        a.held === missedA.length && b.held === missedB.length;
       report.ok(
-        `Node ${nodeA.port}: ${a.held}/${missedA.length} umids, ${a.events} events. ` +
-          `Node ${nodeB.port}: ${b.held}/${missedB.length} umids, ${b.events} events. ` +
-          `${bothComplete ? "Both walks completed independently." : "Partial - see counts."}`
+        `Node ${downNode.port} walked both chains at once: ` +
+          `stream A ${a.held}/${missedA.length} umids + ${a.events} events, ` +
+          `stream B ${b.held}/${missedB.length} umids + ${b.events} events`
       );
     }
   }
