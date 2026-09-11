@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [4.5.17]
+
+### Fix
+* **Network** : The history-repair cooldown was keyed by umid, and a umid is a hash of the whole transaction - unique every time. Every commit brought a key that had never been seen, the lookup always missed, and the rate limit never once applied, so every successful commit still broadcast to every peer on a path that was previously silent. It is now keyed per stream, with the stream ids read from the local umid document first, so a stream inside its window costs one local read and no network at all. The in-flight guard stays keyed by umid, which is the right identity for "this walk must not run twice".
+
+### Correction to 4.5.16
+* **Activeledger CLI** : 4.5.16 said a node set up on a non-default port had its restore engine disabled, and fixed it. That fix reaches NEW installs only. `checkConfig()` runs only when `config.json` does not already exist, so every node already deployed on a non-default port still has `autostart.restore: false` written into its config and keeps it on upgrade. If you run nodes on a non-default port - which is most deployments - check `autostart` in each node's `config.json` and set `restore` to true by hand. Nothing migrates it for you, deliberately: rewriting an operator's config on upgrade is not something a patch release should do silently.
+
 ## [4.5.16]
 
 History repair. A node that adopts the network's state now recovers the
