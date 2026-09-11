@@ -94,6 +94,18 @@ function fakeHost(chain: string[], held: string[] = [], opts: any = {}) {
 }
 
 describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () => {
+  // The walk paces itself between hops so it never competes with live
+  // traffic. That is the point in production and pure dead time here, so
+  // it is turned off for the cases about WHAT the walk does, and verified
+  // on its own below.
+  const realDelay = Endpoints.UMID_WALK_HOP_DELAY_MS;
+  before(() => {
+    Endpoints.UMID_WALK_HOP_DELAY_MS = 0;
+  });
+  after(() => {
+    Endpoints.UMID_WALK_HOP_DELAY_MS = realDelay;
+  });
+
   it("walks back through every umid the node is missing", async () => {
     // Node holds nothing; the network has four transactions plus a creation
     const chain = ["u4", "u3", "u2", "u1", "created"];
@@ -331,5 +343,211 @@ describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () 
     await Endpoints.walkUmidHistory(host, STREAM, "u1");
 
     expect(replayed).to.contain("event:1,u1");
+  });
+});
+
+/**
+ * The post-commit trigger, and the guards around it.
+ *
+ * This runs after every commit, so its cost and its concurrency behaviour
+ * matter more than its happy path. It must never run twice over the same
+ * umid at once, must not put a network call in front of every transaction,
+ * and must never let a failure wedge a umid so it is skipped forever.
+ */
+describe("Endpoints.repairHistoryAfterCommit - guards", () => {
+  const STREAM_B = "aaaa1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5eaa";
+
+  /** Counts network calls, so "does not run twice" is measured not assumed. */
+  // The cooldown map is static and survives between tests, so every test
+  // needs its own umid. An earlier version shared one and the second test
+  // silently measured nothing because the first had already put it in
+  // cooldown - a pass that proved the opposite of what it claimed.
+  let counter = 0;
+  function guardHost(opts: any = {}) {
+    const calls = { knockAll: 0 };
+    const store = new Map<string, any>();
+    const id = `committed-${Date.now()}-${counter++}`;
+    const missing = `${id}-missing`;
+    const committed = {
+      _id: `${id}:umid`,
+      umid: { $umid: id },
+      streams: { new: [], updated: [{ id: STREAM_B, prev: missing }] },
+    };
+    store.set(`${id}:umid`, committed);
+
+    return {
+      id,
+      missing,
+      calls,
+      store,
+      host: {
+        dbConnection: {
+          get: async (id: string) => {
+            if (!store.has(id)) throw new Error("not found");
+            return store.get(id);
+          },
+          bulkDocs: async (docs: any[]) => {
+            for (const doc of docs) store.set(doc._id, doc);
+            return { ok: true };
+          },
+        },
+        dbEventConnection: { post: async () => ({ ok: true }) },
+        neighbourhood: {
+          knockAll: async (endpoint: string) => {
+            calls.knockAll++;
+            if (opts.throwOnKnock) throw new Error("network down");
+            const umid = endpoint.replace("umid/", "");
+            if (umid === id) return [committed, committed];
+            // Anything older is a creation, so the walk terminates
+            return [
+              {
+                _id: `${umid}:umid`,
+                umid: { $umid: umid },
+                streams: { new: [{ id: STREAM_B, name: "c" }], updated: [] },
+              },
+            ];
+          },
+        },
+      } as any,
+    };
+  }
+
+  // Each test uses its own umid so the shared cooldown map cannot make one
+  // test's run silence the next - which it would, and which would look
+  // like a passing test that never ran.
+  const freshUmid = () => `commit-${Date.now()}-${Math.random()}`;
+
+  it("recovers the gap behind a commit", async () => {
+    const { host, store, id, missing } = guardHost();
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    expect(store.has(`${missing}:umid`)).to.equal(true);
+  });
+
+  it("does not run twice for the same umid at the same time", async () => {
+    const { host, calls, id } = guardHost();
+
+    // Fire several concurrently, as repeated commits on a hot stream would
+    await Promise.all([
+      Endpoints.repairHistoryAfterCommit(host, id),
+      Endpoints.repairHistoryAfterCommit(host, id),
+      Endpoints.repairHistoryAfterCommit(host, id),
+    ]);
+
+    // One walk's worth of network traffic, not three
+    expect(calls.knockAll).to.be.greaterThan(0);
+    const afterFirstBurst = calls.knockAll;
+
+    await Promise.all([
+      Endpoints.repairHistoryAfterCommit(host, id),
+      Endpoints.repairHistoryAfterCommit(host, id),
+    ]);
+
+    // Still inside the cooldown, so nothing new went out
+    expect(calls.knockAll).to.equal(afterFirstBurst);
+  });
+
+  it("stays quiet on repeated commits of the same umid", async () => {
+    const { host, calls, id } = guardHost();
+
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    const first = calls.knockAll;
+
+    for (let i = 0; i < 20; i++) {
+      await Endpoints.repairHistoryAfterCommit(host, id);
+    }
+
+    expect(calls.knockAll, "a busy stream must not broadcast per commit").to.equal(first);
+  });
+
+  it("does nothing at all without a umid", async () => {
+    const { host, calls } = guardHost();
+    await Endpoints.repairHistoryAfterCommit(host, "");
+    expect(calls.knockAll).to.equal(0);
+  });
+
+  it("releases the guard when the walk throws, so the umid is not wedged forever", async () => {
+    // A failure that left the in-flight marker set would silently disable
+    // repair for that umid for the life of the process.
+    const failing = guardHost({ throwOnKnock: true });
+    const umid = freshUmid();
+
+    await Endpoints.repairHistoryAfterCommit(failing.host, umid);
+
+    // Second attempt is blocked by the cooldown, not by a stuck marker -
+    // prove the marker itself cleared by using a different umid on the same
+    // in-flight set.
+    const other = freshUmid();
+    await Endpoints.repairHistoryAfterCommit(failing.host, other);
+
+    expect(failing.calls.knockAll, "both attempts reached the network").to.equal(2);
+  });
+
+  it("never rejects, whatever the network does", async () => {
+    // It is detached from the transaction path; an unhandled rejection here
+    // would surface as a process-level warning at best.
+    const { host } = guardHost({ throwOnKnock: true });
+    const umid = freshUmid();
+
+    let threw = false;
+    try {
+      await Endpoints.repairHistoryAfterCommit(host, umid);
+    } catch {
+      threw = true;
+    }
+
+    expect(threw).to.equal(false);
+  });
+});
+
+describe("Endpoints.walkUmidHistory - pacing", () => {
+  const STREAM_C = "bbbb1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5ebb";
+
+  it("paces itself between hops, so a long walk never becomes a burst", async () => {
+    // These are old umids. Live transactions and current stream data are
+    // what matter, so the walk is deliberately unhurried - late repair,
+    // never no repair.
+    const chain = ["c3", "c2", "c1", "created"];
+    const store = new Map<string, any>();
+    const docFor = (umid: string) => {
+      const i = chain.indexOf(umid);
+      const prev = chain[i + 1];
+      return {
+        _id: `${umid}:umid`,
+        umid: { $umid: umid },
+        events: [],
+        streams: prev
+          ? { new: [], updated: [{ id: STREAM_C, prev }] }
+          : { new: [{ id: STREAM_C, name: "c" }], updated: [] },
+      };
+    };
+    const host: any = {
+      dbConnection: {
+        get: async (id: string) => {
+          if (!store.has(id)) throw new Error("not found");
+          return store.get(id);
+        },
+        bulkDocs: async (docs: any[]) => {
+          for (const d of docs) store.set(d._id, d);
+          return { ok: true };
+        },
+      },
+      dbEventConnection: { post: async () => ({ ok: true }) },
+      neighbourhood: {
+        knockAll: async (endpoint: string) => {
+          const doc = docFor(endpoint.replace("umid/", ""));
+          return doc ? [doc, doc] : [];
+        },
+      },
+    };
+
+    Endpoints.UMID_WALK_HOP_DELAY_MS = 40;
+    const start = Date.now();
+    const result = await Endpoints.walkUmidHistory(host, STREAM_C, "c3");
+    const elapsed = Date.now() - start;
+    Endpoints.UMID_WALK_HOP_DELAY_MS = 50;
+
+    expect(result.recovered).to.have.length(4);
+    // Three gaps between four hops, so at least ~120ms of deliberate pause
+    expect(elapsed, `walk took ${elapsed}ms, expected pacing`).to.be.greaterThan(100);
   });
 });

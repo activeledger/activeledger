@@ -2062,6 +2062,31 @@ export class Endpoints {
   private static readonly UMID_WALK_LIMIT = 100;
 
   /**
+   * Pause between hops, so a walk never competes with live traffic.
+   *
+   * These are old umids. The stream data and the transactions happening now
+   * are what matter, which is why a node fast-forwards to the tip and
+   * repairs its history afterwards - late repair, never no repair. There is
+   * nothing to gain from fetching a hundred of them as fast as the network
+   * will answer.
+   *
+   * Node is single threaded and every hop is I/O, so a walk already yields
+   * constantly and does not hold the CPU away from anything. This is about
+   * the resources it shares regardless of that: the storage engine and the
+   * sockets. Spacing the hops turns a burst into a trickle - a full
+   * hundred-hop walk spreads over about five seconds instead of hammering
+   * for as long as it takes.
+   *
+   * A separate process would not help here. It would not reclaim CPU that
+   * is not being spent, and it would not avoid the shared store or network
+   * either - it would only move which process makes the same calls, while
+   * making repair depend on that process being alive.
+   */
+  // Not readonly so a test can drive a hundred hops without waiting five
+  // real seconds for them. Production never writes to it.
+  public static UMID_WALK_HOP_DELAY_MS = 50;
+
+  /**
    * Recover every umid a stream is missing, by walking its history
    * backwards.
    *
@@ -2155,10 +2180,33 @@ export class Endpoints {
       }
 
       cursor = Endpoints.previousUmidFor(doc, streamId);
+
+      // Deliberately after a successful hop, not before the first one: a
+      // walk with nothing to do costs nothing at all, and the common case
+      // is exactly that.
+      if (cursor) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, Endpoints.UMID_WALK_HOP_DELAY_MS)
+        );
+      }
     }
 
     return { recovered, stoppedAt: "start of stream" };
   }
+
+  /** Walks running right now, so the same one never runs twice at once. */
+  private static historyRepairInFlight = new Set<string>();
+
+  /** When each umid was last checked, so a busy stream stays quiet. */
+  private static historyRepairLastRun = new Map<string, number>();
+
+  /**
+   * How long before the same umid is worth checking again.
+   *
+   * A gap does not heal itself, so skipping only ever delays a repair -
+   * the next commit past the window finds it.
+   */
+  private static readonly HISTORY_REPAIR_COOLDOWN_MS = 30_000;
 
   /**
    * After a commit, check whether this node is missing the history behind
@@ -2183,12 +2231,40 @@ export class Endpoints {
    * @param {Host} host
    * @param {string} umid the transaction just committed here
    */
-  public static repairHistoryAfterCommit(host: Host, umid: string): void {
+  public static repairHistoryAfterCommit(host: Host, umid: string): Promise<void> {
     if (!umid) {
-      return;
+      return Promise.resolve();
     }
 
-    void (async () => {
+    // One at a time, and not on every single commit.
+    //
+    // Two separate problems. A walk that ran twice over the same umid would
+    // duplicate the network fetches for no gain, and two overlapping walks
+    // down the same chain would race each other into the same writes -
+    // harmless, because every write here is idempotent, but pure waste and
+    // exactly the sort of thing that turns into a thundering herd on a busy
+    // stream.
+    //
+    // And the check itself is not free: it asks the network for the umid
+    // just written, which on a healthy node finds nothing missing. Doing
+    // that per commit would add a broadcast per transaction to a path that
+    // was previously silent. The cooldown makes it per stream per window
+    // instead, which keeps a busy stream quiet while still noticing a gap
+    // within seconds of one appearing.
+    //
+    // Skipping is always safe: a gap does not heal itself, so the next
+    // commit after the window finds it. Late repair, never no repair.
+    if (Endpoints.historyRepairInFlight.has(umid)) {
+      return Promise.resolve();
+    }
+    const lastRun = Endpoints.historyRepairLastRun.get(umid) || 0;
+    if (Date.now() - lastRun < Endpoints.HISTORY_REPAIR_COOLDOWN_MS) {
+      return Promise.resolve();
+    }
+    Endpoints.historyRepairInFlight.add(umid);
+    Endpoints.historyRepairLastRun.set(umid, Date.now());
+
+    return (async () => {
       try {
         // Deliberately NOT the local copy.
         //
@@ -2258,8 +2334,36 @@ export class Endpoints {
       } catch (error) {
         // Detached from the transaction path - must never surface into it
         ActiveLogger.error(error, `SPI WALK (post-commit) failed for ${umid}`);
+      } finally {
+        // Always, or one thrown error wedges this umid permanently
+        Endpoints.historyRepairInFlight.delete(umid);
+        Endpoints.pruneHistoryRepairMemory();
       }
     })();
+  }
+
+  /**
+   * Keeps the cooldown map from being a slow memory leak.
+   *
+   * One entry per umid repaired would grow for the life of the process.
+   * Entries older than the cooldown cannot affect a decision, so they are
+   * dropped once the map is big enough to be worth the sweep.
+   *
+   * @private
+   * @static
+   */
+  private static pruneHistoryRepairMemory(): void {
+    if (Endpoints.historyRepairLastRun.size < 1000) {
+      return;
+    }
+    const cutoff = Date.now() - Endpoints.HISTORY_REPAIR_COOLDOWN_MS;
+    for (const [key, at] of Array.from(
+      Endpoints.historyRepairLastRun.entries()
+    )) {
+      if (at < cutoff) {
+        Endpoints.historyRepairLastRun.delete(key);
+      }
+    }
   }
 
   /**
