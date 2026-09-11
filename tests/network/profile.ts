@@ -117,9 +117,15 @@ async function setup(nodeCount: number, keyType: string, contract = "returner") 
     baseUrl, identity, namespace, contract,
     path.join(__dirname, "contracts", `${contract}-contract.ts`)
   );
-  // Contracts are compiled and cached on first use - pay that once, outside
-  // every measurement below, so the first sample is not an outlier.
-  await runTx(baseUrl, identity, namespace, contractStreamId, "warm");
+  // Warm up properly before anything is measured. One transaction is not
+  // enough: contract compilation, V8's JIT and the connection pools all settle
+  // over the first handful, and with a short sample count those stragglers land
+  // on the p50 rather than the tail. Warming once put --quick at 15/36ms
+  // against the full run's 5/23ms for the same build - a profiler reporting
+  // three times the real number is worse than no profiler.
+  for (let i = 0; i < 8; i++) {
+    await runTx(baseUrl, identity, namespace, contractStreamId, `warm${i}`);
+  }
   return { harness, nodes, baseUrl, identity, namespace, contractStreamId, keyType };
 }
 
