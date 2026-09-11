@@ -1,5 +1,23 @@
 # Activeledger Changelog
 
+## [4.5.16]
+
+History repair. A node that adopts the network's state now recovers the
+transactions behind it too, rather than holding correct data with no record of
+how it got there.
+
+### New
+* **Network** : A node that missed transactions recovers their umids and replays their events. SPI fast-forwards a stream to the tip, which is the right priority - live transactions matter, old umids do not - but until now that left the node with correct state and a permanent hole in its history and its event feed, with nothing reporting a fault. Each transaction now records the umid it replaced, per stream, so the history is a backward chain a node can walk one hop at a time. This is deliberately NOT a list: `meta.txs` tried that and grew without limit on any busy stream, costing space, memory and speed at once. A pointer is one field on a document written once and never appended to, so a stream updated a million times produces a million documents each holding one pointer rather than one document holding a million entries. Measured on a live network: a node that missed fifty transactions recovers all fifty umids and all fifty of their events.
+* **Network** : The repair is triggered by the commit, not by SPI. A returning node adopts the network's revision through an ordinary round without SPI firing at all, so wiring the walk only to SPI meant it never ran in the case it was built for. It now runs from `host.ts`'s commit handler, after the client's response has already been sent.
+
+### Changed
+* **Network** : History repair never competes with live traffic. It is started and never awaited, so the client's response is already sent; it pauses 50ms between hops, so a hundred-hop walk trickles over about five seconds rather than fetching as fast as the network answers; and a per-umid cooldown means a busy stream checks once per window rather than once per transaction. An in-flight guard stops the same walk running twice, released in a `finally` so a failure cannot disable repair for that umid for the life of the process. A separate process was considered and rejected - the walk is I/O bound and already yields constantly, so it would not reclaim CPU that is not being spent, would not avoid the shared store or sockets, and would put repair back behind "is that process alive".
+* **Network** : Failure in history repair cannot harm the node. Every layer contains its own errors, verified by forcing a throw at each in turn and watching for the unhandled rejections Node treats as fatal. Proven live as well: given a chain it cannot walk - a mid-chain umid replaced with nonsense on every peer - the node stays up, keeps committing on other streams, and its own state still converges. A failed repair leaves the node exactly as it was.
+
+### Known Limits
+* A node more than 100 hops behind stops there and wants a full `activerestore`; nothing can enumerate umids skipped beyond a chain it cannot reach.
+* A crash mid-walk keeps whatever was already recovered but loses the remainder, and will not resume on a later commit - the trigger only looks one hop back, and by then that hop is present. `activerestore --full` still recovers it.
+
 ## [4.5.15]
 
 The SPI release. Three changes to when a node repairs itself, one to what it
