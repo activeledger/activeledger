@@ -25,7 +25,7 @@ import { promises as fs } from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IVMDataPayload, IVirtualMachine } from "./interfaces/vm.interface";
@@ -415,6 +415,7 @@ export class Process extends EventEmitter {
     contractVersion?: string,
     contractData?: ActiveDefinitions.IContractData | undefined | null
   ) {
+    ActiveTiming.mark(this.entry.$umid, "proto.start");
     ActiveLogger.debug(`New TX : ${this.entry.$umid}`);
 
     // Compiled Contracts sit in another location
@@ -529,6 +530,7 @@ export class Process extends EventEmitter {
       await (this.entry.$tx.$namespace === "default"
         ? setupDefaultLocation()
         : setupLocation());
+      ActiveTiming.mark(this.entry.$umid, "proto.contractPath");
     } catch (error) {
       // Simple Error Return (Can't use postVote yet due to VM)
       this.entry.$nodes[this.reference].error = `Init Contract Error - ${error.message || error
@@ -549,6 +551,7 @@ export class Process extends EventEmitter {
 
     // Get contract file (Or From Database)
     if (await fs.stat(this.contractLocation).catch(() => false)) {
+      ActiveTiming.mark(this.entry.$umid, "proto.contractStat");
       // Now we know we can execute the contract now or more costly cpu checks
       // Build Inputs Key Maps (Reference is Stream)
       this.inputs = Object.keys(this.entry.$tx.$i || {});
@@ -596,14 +599,18 @@ export class Process extends EventEmitter {
           // Check the input revisions
           const inputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.inputs);
+          ActiveTiming.mark(this.entry.$umid, "proto.inputsChecked");
 
           // Check the output revisions
           const outputStreams: ActiveDefinitions.LedgerStream[] =
             await this.permissionChecker.process(this.outputs, false);
+          ActiveTiming.mark(this.entry.$umid, "proto.outputsChecked");
+          const contractDate = await this.getContractDate(contractData);
+          ActiveTiming.mark(this.entry.$umid, "proto.contractDate");
           this.process(
             inputStreams,
             outputStreams,
-            await this.getContractDate(contractData)
+            contractDate
           );
         } catch (error) {
           // Replay from here?
@@ -1068,6 +1075,8 @@ export class Process extends EventEmitter {
         // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
       }
 
+      ActiveTiming.mark(this.entry.$umid, "proto.streamsReady");
+
       // Get readonly data
       const readonly = await this.getReadOnlyStreams();
 
@@ -1122,6 +1131,7 @@ export class Process extends EventEmitter {
    * @private
    */
   private postVote(virtualMachine: IVirtualMachine, error: any = false): void {
+    ActiveTiming.mark(this.entry?.$umid, "proto.voted");
     // Set voting completed state
     this.voting = false;
     this.nodeResponse.early = false;
@@ -1433,6 +1443,7 @@ export class Process extends EventEmitter {
         (this.nodeResponse.leader || this.canCommit())
       ) {
         // Consensus reached commit phase
+        ActiveTiming.mark(this.entry.$umid, "proto.commitBegin");
         this.commiting = true;
         //ActiveLogger.info(`Commit proceeding for ${this.entry.$umid}`);
 
@@ -1447,6 +1458,7 @@ export class Process extends EventEmitter {
             this.entry.$territoriality === this.reference,
             this.entry.$umid
           );
+          ActiveTiming.mark(this.entry.$umid, "proto.commitEnd");
 
           // Update Commit Entry
           this.nodeResponse.commit = true;

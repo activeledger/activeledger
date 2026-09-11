@@ -27,7 +27,7 @@ import { Shared } from "./shared";
 import { IVirtualMachine } from "./interfaces/vm.interface";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { EventEmitter } from "events";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 
 /**
  * Handles updating the streams
@@ -371,7 +371,9 @@ export class StreamUpdater {
 
   private async append() {
     try {
+      ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
       const bulkWriteResult = await this.db.bulkDocs(this.docs);
+      ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
       // A write that failed does not come back falsy. The self hosted store
       // answers HTTP 200 with { ok: false } when its batch write fails, and
       // that object is truthy, so it sailed through this check and the

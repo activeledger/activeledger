@@ -34,7 +34,7 @@ import {
   ActiveClone,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
@@ -390,6 +390,7 @@ export class Host extends Home {
 
       // Check we don't have it, Process finding may have failed.
       if (!this.processPending[entry.$umid]) {
+        ActiveTiming.mark(entry.$umid, "host.pending");
         // Add to pending (Using Promises instead of http request)
         this.processPending[entry.$umid] = {
           entry,
@@ -406,6 +407,7 @@ export class Host extends Home {
               this.processPending[entry.$umid].finished = true;
             }
             if (!this.processPending[entry.$umid]?.responded) {
+              ActiveTiming.mark(entry.$umid, "host.resolve");
               resolve(response);
 
               try {
@@ -1617,6 +1619,7 @@ export class Host extends Home {
 
       //setTimeout(() => {
       // Pass transaction to sub processor
+      ActiveTiming.mark(v.$umid, "host.dispatch");
       robin.send({
         type: "tx",
         entry: this.processPending[v.$umid].entry,
@@ -2278,6 +2281,7 @@ export class Host extends Home {
         // Write Header 
         // All outputs are JSON and
         if (data.$umid) {
+          ActiveTiming.mark(data.$umid, "http.out");
           const TT = Date.now() - started;
           if (TT > 5) {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)

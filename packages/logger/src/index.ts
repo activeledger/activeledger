@@ -392,3 +392,38 @@ export class ActiveLogger {
     return text;
   }
 }
+
+/**
+ * Cross-process transaction timing marks.
+ *
+ * A transaction is not handled in one place - the host process parses it and
+ * holds the locks, a forked worker runs the contract, and on a multi-node
+ * network other hosts do the same again. Wall-clock end-to-end numbers can
+ * say a transaction costs 11ms but not which of those stages it was spent in.
+ *
+ * Marks are written as plain log lines carrying an absolute timestamp, so
+ * lines from different processes (and different nodes) can be sorted into one
+ * timeline afterwards by umid. performance.timeOrigin + performance.now() is
+ * used rather than hrtime because hrtime's epoch is per-process and therefore
+ * meaningless to compare across the fork boundary, and rather than Date.now()
+ * because millisecond resolution is too coarse for stages this short.
+ *
+ * Off unless ACTIVELEDGER_PROFILE is set, costing one boolean test per call.
+ * Never enable it in production: it is unbounded output, one line per stage
+ * per transaction.
+ */
+export class ActiveTiming {
+  public static readonly enabled: boolean = !!process.env.ACTIVELEDGER_PROFILE;
+
+  /**
+   * Records that umid reached a named stage, now.
+   */
+  public static mark(umid: string | undefined, label: string): void {
+    if (!ActiveTiming.enabled || !umid) return;
+    const at = performance.timeOrigin + performance.now();
+    // Written straight to stdout rather than through the logger's own
+    // formatting - this has to stay cheap enough not to distort what it is
+    // measuring, and has to survive whatever log level is configured.
+    process.stdout.write(`[PROF] ${umid} ${label} ${at.toFixed(3)}\n`);
+  }
+}

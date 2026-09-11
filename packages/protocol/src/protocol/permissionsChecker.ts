@@ -25,7 +25,7 @@ import { ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 
 /**
  * Manages the permissions of revisions and signatures of each stream type
@@ -74,10 +74,14 @@ export class PermissionsChecker {
     this.data = data;
     try {
       // Get all streams to process from the database
+      ActiveTiming.mark(this.entry?.$umid, inputs ? "perm.iFetchBegin" : "perm.oFetchBegin");
       const streams: ActiveDefinitions.LedgerStream[] =
         await this.buildPromises();
+      ActiveTiming.mark(this.entry?.$umid, inputs ? "perm.iFetchEnd" : "perm.oFetchEnd");
 
-      return this.processStreams(streams);
+      const checked = this.processStreams(streams);
+      ActiveTiming.mark(this.entry?.$umid, inputs ? "perm.iSigsDone" : "perm.oSigsDone");
+      return checked;
     } catch (error) {
       // Quorum change safety mech. 60% instant new transaction needing 100%
       // TODO make this variable based on entry node or not.

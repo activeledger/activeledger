@@ -26,6 +26,8 @@
     "build:core": "cd ./packages/core/ && npm run build",
     "test": "mocha -r ts-node/register/transpile-only tests/*.ts --exit -- --no-warnings",
     "test:network": "ts-node --transpile-only tests/network/run.ts",
+    "profile:tx": "ts-node --transpile-only tests/network/profile.ts",
+    "profile:stages": "ts-node --transpile-only tests/network/profile-stages.ts",
     "version:set": "node scripts/set-version.mjs"
   },
   "devDependencies": {

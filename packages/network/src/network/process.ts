@@ -23,7 +23,7 @@
 
 import { ActiveDSConnect, ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
@@ -185,6 +185,7 @@ class Processor {
           this.housekeeping(m.data.right ?? Home.right, m.data.neighbourhood);
           break;
         case "tx":
+          ActiveTiming.mark(m.entry.$umid, "worker.recv");
           // Create new Protocol Process object for transaction
           this.protocols[m.entry.$umid] = new ActiveProtocol.Process(
             m.entry,
@@ -291,6 +292,7 @@ class Processor {
           );
 
           // Start the process
+          ActiveTiming.mark(m.entry.$umid, "worker.start");
           this.protocols[m.entry.$umid].start(
             this.latestContractVersion[m.entry.$tx.$contract],
             this.latestContractData[m.entry.$tx.$contract.substring(0, 64)]

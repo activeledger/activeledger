@@ -209,11 +209,15 @@ export class NetworkHarness {
     );
 
     // Stitch every instance's neighbourhood together into one list, written
-    // back into every config.json.
-    await runOnce(
-      dataDirs.flatMap((dataDir) => ["--merge", path.join(dataDir, "config.json")]),
-      this.rootDir
-    );
+    // back into every config.json. A single-instance network has nothing to
+    // stitch, and --merge rejects a one-config list outright, so skip it -
+    // that instance's own setup already left it as its own sole neighbour.
+    if (dataDirs.length > 1) {
+      await runOnce(
+        dataDirs.flatMap((dataDir) => ["--merge", path.join(dataDir, "config.json")]),
+        this.rootDir
+      );
+    }
 
     // Start every node for real.
     this.nodes = dataDirs.map((dataDir, i) => {
