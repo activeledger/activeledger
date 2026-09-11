@@ -453,8 +453,20 @@ export class Process extends EventEmitter {
             namespacePath = await fs.realpath(
               `${process.cwd()}/contracts/${this.entry.$tx.$namespace}/`
             );
-          } catch {
-            throw new Error("Namespace not found");
+          } catch (error) {
+            // Say why. realpath fails for reasons that are not "the namespace
+            // does not exist" - EIO and EMFILE among them - and discarding the
+            // errno turned a storage or descriptor problem under load into a
+            // message pointing at the transaction's namespace, which is the
+            // one thing that was fine. Seen in profiling: bursts of concurrent
+            // transactions failing as "Namespace not found" against a
+            // namespace that plainly existed, with nothing recorded about the
+            // actual cause.
+            throw new Error(
+              `Namespace not found - ${(error as NodeJS.ErrnoException)?.code ||
+                (error as Error)?.message ||
+                error}`
+            );
           }
 
 
