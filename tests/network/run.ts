@@ -1505,7 +1505,7 @@ async function runNodeRecoveryTests(
       report.ok(
         `History: node ${downNode.port} holds ${held}/${missed.length} of the umids it missed` +
           (held < missed.length
-            ? ` - the rest are backfilled only by a full activerestore, not by SPI`
+            ? ` - the rest are behind a broken chain or past the walk limit, and need a full activerestore`
             : "")
       );
     }

@@ -2161,6 +2161,108 @@ export class Endpoints {
   }
 
   /**
+   * After a commit, check whether this node is missing the history behind
+   * the transaction it just wrote - and if so, go and get it.
+   *
+   * SPI is not the only way a node adopts state it did not derive. A node
+   * that was down comes back, takes part in the next round, and ends up
+   * holding the network's revision directly - which is correct and wanted.
+   * But it wrote one umid, for the transaction it just took part in, and
+   * has nothing for the fifty before it. State jumps; history does not
+   * follow, and nothing anywhere reports a gap.
+   *
+   * Wiring the walk only to SPI missed exactly that case: SPI never fires,
+   * so the walk never ran, and a node could sit with correct state and an
+   * empty feed indefinitely.
+   *
+   * Cheap enough to do on every commit: one local read of the umid just
+   * written, then one held-check per stream it touched. Only a real hole
+   * costs anything more, and the walk itself is detached.
+   *
+   * @static
+   * @param {Host} host
+   * @param {string} umid the transaction just committed here
+   */
+  public static repairHistoryAfterCommit(host: Host, umid: string): void {
+    if (!umid) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        // Deliberately NOT the local copy.
+        //
+        // `prev` is captured at commit time from the node's own :stream
+        // meta, so on a node that was behind it points at whatever that
+        // node last believed - the creation, say - rather than at the
+        // transaction the network actually superseded. That is exactly
+        // backwards on the only node that needs the chain, and reading the
+        // local document here made this trigger a no-op in precisely the
+        // case it was written for.
+        //
+        // A peer that was up has the right pointer, so take it from the
+        // majority copy. Same source of truth the walk itself uses.
+        const responses = await host.neighbourhood.knockAll(
+          `umid/${umid}`,
+          null,
+          true
+        );
+        const grouped: { [hash: string]: { count: number; doc: any } } = {};
+        for (let i = responses.length; i--; ) {
+          const response = responses[i];
+          if (!response?.streams) continue;
+          const hash = ActiveCrypto.Hash.getHash(JSON.stringify(response));
+          grouped[hash]
+            ? grouped[hash].count++
+            : (grouped[hash] = { count: 1, doc: response });
+        }
+        const hashes = Object.keys(grouped);
+        if (!hashes.length) {
+          return;
+        }
+        const doc =
+          grouped[hashes.sort((a, b) => grouped[b].count - grouped[a].count)[0]]
+            .doc;
+
+        const updated = doc?.streams?.updated;
+        if (!Array.isArray(updated) || !updated.length) {
+          return;
+        }
+
+        for (const entry of updated) {
+          const prev = entry?.prev;
+          const streamId = entry?.id;
+          if (!prev || !streamId) {
+            // A creation has no prev, and nothing to walk behind it.
+            continue;
+          }
+
+          // The common case by far: we have the one before, so there is no
+          // gap and this costs a single local read.
+          try {
+            const held = await host.dbConnection.get(`${prev}:umid`);
+            if (held && held._id) {
+              continue;
+            }
+          } catch {
+            // Missing - which is the whole point
+          }
+
+          const walk = await Endpoints.walkUmidHistory(host, streamId, prev);
+          if (walk.recovered.length) {
+            ActiveLogger.warn(
+              `SPI WALK (post-commit) ${streamId} recovered ${walk.recovered.length} umid(s), stopped: ${walk.stoppedAt}`
+            );
+          }
+        }
+      } catch (error) {
+        // Detached from the transaction path - must never surface into it
+        ActiveLogger.error(error, `SPI WALK (post-commit) failed for ${umid}`);
+      }
+    })();
+  }
+
+  /**
    * Repair a stream's umid history without holding anything up.
    *
    * Started, never awaited. The transaction that triggered SPI has a client
