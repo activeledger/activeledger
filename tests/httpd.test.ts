@@ -27,7 +27,10 @@ describe("ActiveHttpd - hpe-14 regressions", () => {
   });
 
   after(() => {
-    httpd.shutdown();
+    // false = close the port but leave the process alone. The default ends
+    // the process 1.3s later, which here meant killing the mocha run
+    // mid-suite with status 0 - see ActiveHttpd.shutdown().
+    httpd.shutdown(false);
   });
 
   function get(path: string): Promise<{ statusCode: number; headers: http.IncomingHttpHeaders; body: string }> {
