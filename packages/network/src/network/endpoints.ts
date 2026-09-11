@@ -2123,7 +2123,20 @@ export class Endpoints {
     host: Host,
     streamId: string,
     fromUmid: string
-  ): Promise<{ recovered: string[]; stoppedAt: string }> {
+  ): Promise<{
+    recovered: string[];
+    stoppedAt: string;
+    /**
+     * True when the walk ran out of history to recover rather than out of
+     * road - it reached a umid already held, or the creation of the stream.
+     * Anything else left history behind, and the caller has to decide what
+     * to do about that. Returned as a flag rather than left for the caller
+     * to match on stoppedAt's prose, which is written for humans.
+     */
+    complete: boolean;
+    /** The umid it could not get past, when it did not finish. */
+    frontier?: string;
+  }> {
     const recovered: string[] = [];
     const seen = new Set<string>();
     let cursor: string | undefined = fromUmid;
@@ -2132,7 +2145,7 @@ export class Endpoints {
       if (seen.has(cursor)) {
         // A chain should never loop. If one does, stop rather than spin -
         // and say so, because it means something upstream is wrong.
-        return { recovered, stoppedAt: "loop detected" };
+        return { recovered, stoppedAt: "loop detected", complete: false, frontier: cursor };
       }
       seen.add(cursor);
 
@@ -2140,7 +2153,7 @@ export class Endpoints {
         ActiveLogger.warn(
           `SPI WALK ${streamId} - stopped at ${Endpoints.UMID_WALK_LIMIT}, a full restore is the right tool from here`
         );
-        return { recovered, stoppedAt: "limit reached" };
+        return { recovered, stoppedAt: "limit reached", complete: false, frontier: cursor };
       }
 
       // Do we already have it? Everything before it is here too, because a
@@ -2165,10 +2178,10 @@ export class Endpoints {
       // one extra pass at the terminus costs nothing but closes that hole.
       const ok = await Endpoints.backfillUmid(host, cursor);
       if (!ok) {
-        return { recovered, stoppedAt: `could not recover ${cursor}` };
+        return { recovered, stoppedAt: `could not recover ${cursor}`, complete: false, frontier: cursor };
       }
       if (held) {
-        return { recovered, stoppedAt: "reached a umid already held" };
+        return { recovered, stoppedAt: "reached a umid already held", complete: true };
       }
       recovered.push(cursor);
 
@@ -2177,7 +2190,7 @@ export class Endpoints {
       try {
         doc = await host.dbConnection.get(`${cursor}:umid`);
       } catch {
-        return { recovered, stoppedAt: "adopted umid could not be read back" };
+        return { recovered, stoppedAt: "adopted umid could not be read back", complete: false, frontier: cursor };
       }
 
       cursor = Endpoints.previousUmidFor(doc, streamId);
@@ -2192,7 +2205,7 @@ export class Endpoints {
       }
     }
 
-    return { recovered, stoppedAt: "start of stream" };
+    return { recovered, stoppedAt: "start of stream", complete: true };
   }
 
   /** Walks running right now, so the same one never runs twice at once. */
@@ -2363,6 +2376,13 @@ export class Endpoints {
               `SPI WALK (post-commit) ${streamId} recovered ${walk.recovered.length} umid(s), stopped: ${walk.stoppedAt}`
             );
           }
+          await Endpoints.recordIncompleteWalk(
+            host,
+            streamId,
+            walk,
+            prev,
+            "(post-commit)"
+          );
         }
       } catch (error) {
         // Detached from the transaction path - must never surface into it
@@ -2373,6 +2393,55 @@ export class Endpoints {
         Endpoints.pruneHistoryRepairMemory();
       }
     })();
+  }
+
+  /**
+   * Leaves a durable record when a walk stopped before it ran out of history.
+   *
+   * Without this a partial walk existed only as a log line: the node kept
+   * whatever it recovered, still had a hole behind it, and nothing outside
+   * the log said so. The post-commit path did not even do that - it logged
+   * what it recovered and dropped the rest silently.
+   *
+   * The umid recorded is the one the walk could not get past, never the one
+   * it started from. The starting umid is present by definition, so a
+   * recovery attempt against it finds nothing to do and the hole stays.
+   *
+   * Note this is a record, not a retry loop: activerestore's interagent
+   * makes ONE attempt to fetch the umid from peers and purges the document
+   * either way, so a umid no peer can serve right now leaves nothing behind
+   * at all. Making that durable is a separate change on the restore side.
+   *
+   * @private
+   * @static
+   */
+  private static async recordIncompleteWalk(
+    host: Host,
+    streamId: string,
+    walk: { complete: boolean; frontier?: string; stoppedAt: string },
+    fallbackUmid: string,
+    label: string
+  ): Promise<void> {
+    if (walk.complete) {
+      return;
+    }
+    const stuckOn = walk.frontier || fallbackUmid;
+    ActiveLogger.warn(
+      `SPI WALK ${label} ${streamId} left history behind - stopped: ${walk.stoppedAt}`
+    );
+    ActiveLogger.warn(stuckOn, `SPI Adding 950 Checker ${label}`);
+    await host.dbErrorConnection.post({
+      _id: `${stuckOn}:${Date.now()}`,
+      code: 950,
+      processed: false,
+      umid: stuckOn,
+      transaction: {
+        $broadcast: true,
+        $tx: {},
+        $revs: {},
+      },
+      reason: `Vote Failure - "SPI${label} UMID not found`,
+    });
   }
 
   /**
@@ -2430,33 +2499,30 @@ export class Endpoints {
         }
 
         const walk = await Endpoints.walkUmidHistory(host, streamId, adopted);
+
         if (walk.recovered.length) {
           ActiveLogger.warn(
             `SPI WALK ${label} ${streamId} recovered ${walk.recovered.length} umid(s), stopped: ${walk.stoppedAt}`
           );
-          return;
         }
 
-        // Nothing recovered and nothing was missing is the common case -
-        // the walk stopped immediately on a umid already held. Only a walk
-        // that could not do its job earns a durable retry.
-        if (walk.stoppedAt.indexOf("already held") !== -1) {
-          return;
-        }
-
-        ActiveLogger.warn(adopted, `SPI Adding 950 Checker ${label}`);
-        await host.dbErrorConnection.post({
-          _id: `${adopted}:${Date.now()}`,
-          code: 950,
-          processed: false,
-          umid: adopted,
-          transaction: {
-            $broadcast: true,
-            $tx: {},
-            $revs: {},
-          },
-          reason: `Vote Failure - "SPI${label} UMID not found`,
-        });
+        // Whether anything was recovered says nothing about whether the job
+        // is done, and this used to return early whenever it was non-zero.
+        // A walk that recovered fifty umids and then hit a chain it could
+        // not follow logged that fact and left it there: no record outside
+        // the log, no retry, and nothing to tell an operator the stream
+        // still had a hole. Only a walk that recovered *nothing* ever
+        // earned one, which is the least likely case.
+        //
+        // The walk itself now says whether it ran out of history or out of
+        // road, so that is what decides.
+        await Endpoints.recordIncompleteWalk(
+          host,
+          streamId,
+          walk,
+          adopted,
+          label
+        );
       } catch (error) {
         // Must never surface into the transaction path it was detached from
         ActiveLogger.error(error, `SPI WALK ${label} ${streamId} failed`);

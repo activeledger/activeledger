@@ -37,6 +37,7 @@ function fakeHost(chain: string[], held: string[] = [], opts: any = {}) {
   const local = new Set(held.map((u) => `${u}:umid`));
   const adopted: string[] = [];
   const replayed: string[] = [];
+  const errors: any[] = [];
 
   const docFor = (umid: string) => {
     const index = chain.indexOf(umid);
@@ -59,6 +60,7 @@ function fakeHost(chain: string[], held: string[] = [], opts: any = {}) {
   return {
     adopted,
     replayed,
+    errors,
     host: {
       dbConnection: {
         get: async (id: string) => {
@@ -77,6 +79,12 @@ function fakeHost(chain: string[], held: string[] = [], opts: any = {}) {
       dbEventConnection: {
         post: async (doc: any) => {
           replayed.push(doc._id);
+          return { ok: true };
+        },
+      },
+      dbErrorConnection: {
+        post: async (doc: any) => {
+          errors.push(doc);
           return { ok: true };
         },
       },
@@ -373,6 +381,7 @@ describe("Endpoints.repairHistoryAfterCommit - guards", () => {
   let counter = 0;
   function guardHost(opts: any = {}) {
     const calls = { knockAll: 0 };
+    const errors: any[] = [];
     const store = new Map<string, any>();
     const id = `committed-${Date.now()}-${counter++}`;
     const missing = `${id}-missing`;
@@ -388,6 +397,7 @@ describe("Endpoints.repairHistoryAfterCommit - guards", () => {
       id,
       missing,
       calls,
+      errors,
       store,
       host: {
         dbConnection: {
@@ -401,6 +411,12 @@ describe("Endpoints.repairHistoryAfterCommit - guards", () => {
           },
         },
         dbEventConnection: { post: async () => ({ ok: true }) },
+        dbErrorConnection: {
+          post: async (doc: any) => {
+            errors.push(doc);
+            return { ok: true };
+          },
+        },
         neighbourhood: {
           knockAll: async (endpoint: string) => {
             calls.knockAll++;
@@ -797,5 +813,152 @@ describe("Endpoints.repairHistoryAfterCommit - the cooldown must be per stream",
     await Endpoints.repairHistoryAfterCommit(host, "w-2");
 
     expect(calls.knockAll).to.be.greaterThan(afterFirst);
+  });
+});
+
+/**
+ * A walk that recovers something and then cannot continue used to return
+ * early and leave nothing behind but a log line. Whether anything was
+ * recovered says nothing about whether the job is finished, and these pin
+ * that distinction so it cannot quietly regress to counting again.
+ */
+describe("Endpoints.walkUmidHistory - saying whether it finished", () => {
+  const CHAIN = ["w5", "w4", "w3", "w2", "w1", "w0"];
+  const realDelay = Endpoints.UMID_WALK_HOP_DELAY_MS;
+  before(() => { Endpoints.UMID_WALK_HOP_DELAY_MS = 0; });
+  after(() => { Endpoints.UMID_WALK_HOP_DELAY_MS = realDelay; });
+
+  it("is complete when it reaches a umid already held", async () => {
+    const { host } = fakeHost(CHAIN, ["w2", "w1", "w0"]);
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "w5");
+    expect(result.stoppedAt).to.contain("already held");
+    expect(result.complete).to.equal(true);
+    expect(result.frontier).to.equal(undefined);
+  });
+
+  it("is complete when it reaches the start of the stream", async () => {
+    const { host } = fakeHost(CHAIN, []);
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "w5");
+    expect(result.stoppedAt).to.equal("start of stream");
+    expect(result.complete).to.equal(true);
+    expect(result.frontier).to.equal(undefined);
+  });
+
+  it("is NOT complete when a hop cannot be recovered, and names it", async () => {
+    const { host } = fakeHost(CHAIN, [], { unreachable: ["w2"] });
+    const result = await Endpoints.walkUmidHistory(host, STREAM, "w5");
+    expect(result.complete).to.equal(false);
+    expect(result.frontier).to.equal("w2");
+    // It keeps what it managed to get - the point is that the remainder is
+    // reported, not that the walk is thrown away.
+    expect(result.recovered).to.deep.equal(["w5", "w4", "w3"]);
+  });
+
+  it("is NOT complete when it hits the hop limit", async () => {
+    const long = Array.from({ length: 130 }, (_, i) => `L${129 - i}`);
+    const { host } = fakeHost(long, []);
+    const result = await Endpoints.walkUmidHistory(host, STREAM, long[0]);
+    expect(result.stoppedAt).to.equal("limit reached");
+    expect(result.complete).to.equal(false);
+    expect(result.frontier).to.be.a("string");
+  });
+});
+
+describe("SPI history repair - a partial walk leaves a durable record", () => {
+  const realDelay = Endpoints.UMID_WALK_HOP_DELAY_MS;
+  before(() => { Endpoints.UMID_WALK_HOP_DELAY_MS = 0; });
+  after(() => { Endpoints.UMID_WALK_HOP_DELAY_MS = realDelay; });
+
+  beforeEach(() => {
+    (Endpoints as any).historyRepairLastRun.clear();
+    (Endpoints as any).historyRepairInFlight.clear();
+  });
+
+  let n = 0;
+
+  /**
+   * A committed umid whose history breaks partway back. repairHistoryAfterCommit
+   * walks from the commit's `prev`, so the chain below that is what matters.
+   */
+  function partialHost(unreachable: string[]) {
+    const STREAM_P = `p${n}pp`.padEnd(64, "a") + `${n++}`;
+    const chain = ["p3", "p2", "p1", "p0"];
+    const errors: any[] = [];
+    const store = new Map<string, any>();
+    const id = `commit-${Date.now()}-${n}`;
+
+    const docFor = (umid: string) => {
+      const i = chain.indexOf(umid);
+      if (i === -1) return undefined;
+      const prev = chain[i + 1];
+      return {
+        _id: `${umid}:umid`,
+        umid: { $umid: umid },
+        streams: prev
+          ? { new: [], updated: [{ id: STREAM_P, prev }] }
+          : { new: [{ id: STREAM_P, name: "created" }], updated: [] },
+      };
+    };
+
+    // The commit itself: held, and pointing at p3 which is not.
+    const committed = {
+      _id: `${id}:umid`,
+      umid: { $umid: id },
+      streams: { new: [], updated: [{ id: STREAM_P, prev: "p3" }] },
+    };
+    store.set(`${id}:umid`, committed);
+
+    return {
+      id,
+      errors,
+      store,
+      host: {
+        dbConnection: {
+          get: async (key: string) => {
+            if (!store.has(key)) throw new Error("not found");
+            return store.get(key);
+          },
+          bulkDocs: async (docs: any[]) => {
+            for (const d of docs) store.set(d._id, d);
+            return { ok: true };
+          },
+        },
+        dbEventConnection: { post: async () => ({ ok: true }) },
+        dbErrorConnection: {
+          post: async (doc: any) => { errors.push(doc); return { ok: true }; },
+        },
+        neighbourhood: {
+          knockAll: async (endpoint: string) => {
+            const umid = endpoint.replace("umid/", "");
+            if (unreachable.indexOf(umid) !== -1) return [];
+            if (umid === id) return [committed, committed];
+            const doc = docFor(umid);
+            return doc ? [doc, doc] : [];
+          },
+        },
+      } as any,
+    };
+  }
+
+  it("records the umid it got stuck on, not the one it started from", async () => {
+    // p3 and p2 recover; p1 is unreachable.
+    const { host, errors, id } = partialHost(["p1"]);
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    await new Promise((r) => setTimeout(r, 500));
+
+    expect(errors.length).to.equal(1);
+    expect(errors[0].code).to.equal(950);
+    expect(errors[0].processed).to.equal(false);
+    // Recording p3 (where the walk began) would be useless: it is present
+    // by definition, so a recovery attempt against it finds nothing to do
+    // and the hole behind it stays.
+    expect(errors[0].umid).to.equal("p1");
+  });
+
+  it("records nothing when the walk finished the job", async () => {
+    const { host, errors, id } = partialHost([]);
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    await new Promise((r) => setTimeout(r, 500));
+    expect(errors).to.deep.equal([]);
   });
 });
