@@ -2248,24 +2248,56 @@ export class Endpoints {
     // And the check itself is not free: it asks the network for the umid
     // just written, which on a healthy node finds nothing missing. Doing
     // that per commit would add a broadcast per transaction to a path that
-    // was previously silent. The cooldown makes it per stream per window
+    // was previously silent. The cooldown makes it per STREAM per window
     // instead, which keeps a busy stream quiet while still noticing a gap
     // within seconds of one appearing.
     //
     // Skipping is always safe: a gap does not heal itself, so the next
     // commit after the window finds it. Late repair, never no repair.
+    //
+    // The in-flight guard is keyed by umid because it is about one walk not
+    // running twice. The cooldown must NOT be - a umid is a hash of the
+    // whole transaction, so every commit brings a key that has never been
+    // seen, the lookup always misses and the branch never runs. Keyed that
+    // way it rate limited nothing at all and every commit still broadcast.
+    // The streams are what repeat, so the streams are what to count.
     if (Endpoints.historyRepairInFlight.has(umid)) {
       return Promise.resolve();
     }
-    const lastRun = Endpoints.historyRepairLastRun.get(umid) || 0;
-    if (Date.now() - lastRun < Endpoints.HISTORY_REPAIR_COOLDOWN_MS) {
-      return Promise.resolve();
-    }
     Endpoints.historyRepairInFlight.add(umid);
-    Endpoints.historyRepairLastRun.set(umid, Date.now());
 
     return (async () => {
       try {
+        // Which streams did this transaction touch? Read that locally -
+        // the stream ids in our own copy are correct even on a node that
+        // was behind; only `prev` is stale, which is why the authoritative
+        // fetch below still happens. Doing it in this order means a stream
+        // inside its cooldown costs one local read and no network at all.
+        let localStreams: string[] = [];
+        try {
+          const localDoc = await host.dbConnection.get(`${umid}:umid`);
+          localStreams = (localDoc?.streams?.updated || [])
+            .map((entry: any) => entry?.id)
+            .filter(Boolean);
+        } catch {
+          // No local copy - fall through and let the network decide
+        }
+
+        if (localStreams.length) {
+          const now = Date.now();
+          const due = localStreams.filter(
+            (id) =>
+              now - (Endpoints.historyRepairLastRun.get(id) || 0) >=
+              Endpoints.HISTORY_REPAIR_COOLDOWN_MS
+          );
+          if (!due.length) {
+            return;
+          }
+          for (const id of due) {
+            Endpoints.historyRepairLastRun.set(id, now);
+          }
+        }
+
         // Deliberately NOT the local copy.
         //
         // `prev` is captured at commit time from the node's own :stream
