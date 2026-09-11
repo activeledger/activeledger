@@ -158,6 +158,41 @@ The four sections are independent and each boots its own networks:
 | 2 | how much is signature verification (rsa vs secp256k1) |
 | 3 | latency against actual capacity (1 to 128 in flight) |
 | 4 | does the consensus gap grow with contract work, or is it fixed overhead |
+| 5 | what a contended stream costs (N writers against ONE stream) |
+
+Sections 1-4 use independent streams, which is the flattering case: nothing
+ever waits on a lock. Section 5 is the opposite, because most real workloads
+have at least one hot stream — a shared pool, a counter, a registry — and
+writers to it must serialise. Add `--contend-nodes=1` to run it on a single
+node, where nothing else drives the lock queue.
+
+### Measuring a network that isn't on loopback
+
+`AL_SIMULATED_RTT_MS` delays every node-to-node knock, so a four-node harness
+on one machine can be made to behave like four nodes in different regions.
+Half the value is applied per knock, so a request and its reply together cost
+the round trip you ask for.
+
+```bash
+AL_SIMULATED_RTT_MS=60 npm run profile:tx -- --only=1
+```
+
+It matters because every other number here is taken on loopback, where a peer
+is ~0.3ms away and consensus looks nearly free. Measured across 0/20/60/150ms,
+a transaction costs **a fixed ~21ms plus exactly one round trip**, whatever the
+node count:
+
+| RTT | 1 node | 2 nodes | 4 nodes |
+|---|---|---|---|
+| 0ms | 5ms | 19ms | 23ms |
+| 20ms | 6ms | 35ms | 41ms |
+| 60ms | 6ms | 80ms | 81ms |
+| 150ms | 5ms | 171ms | 171ms |
+
+So consensus is one round trip rather than several, extra nodes are close to
+free, and any saving in local work is **absolute, not proportional** — 10ms off
+a transaction is 30% of a same-datacentre one and 6% of an antipodal one. Set
+it only for profiling.
 
 Section 4 uses `tests/network/contracts/burn-contract.ts`, which burns a
 caller-specified amount of CPU inside `commit()`. If the gap over a 1-node

@@ -44,6 +44,12 @@ const RECOVERY_CHECK_INTERVAL = 3 * 1000;
  * @class Neighbour
  */
 export class Neighbour implements ActiveDefinitions.INeighbourBase {
+  /** See knock(). Profiling affordance, read once at startup. */
+  public static simulatedRttMs: number = Number(
+    process.env.AL_SIMULATED_RTT_MS || 0
+  );
+  private static rttAnnounced = false;
+
   /**
    * Persistent client for P2P messaging
    *
@@ -159,6 +165,27 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     resend?: number, // Max retry attempts for connection resets
     bundle?: boolean // Should this request be bundled?
   ): Promise<any> {
+    // Profiling only: pretend this neighbour is far away.
+    //
+    // Every multi-node measurement is otherwise taken on loopback, where a
+    // node is ~0.3ms away and consensus looks almost free. Real deployments
+    // put nodes in different regions, where one round trip costs more than an
+    // entire local transaction - which changes which costs are worth chasing.
+    // Half the configured round trip is applied per knock, so a request and
+    // its matching reply knock together cost AL_SIMULATED_RTT_MS.
+    //
+    // Inert unless set, and never to be set in production.
+    if (Neighbour.simulatedRttMs > 0) {
+      if (!Neighbour.rttAnnounced) {
+        Neighbour.rttAnnounced = true;
+        ActiveLogger.warn(
+          `SIMULATED RTT ACTIVE: ${Neighbour.simulatedRttMs}ms - profiling only`
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Neighbour.simulatedRttMs / 2)
+      );
+    }
     // Persistent P2P Broadcast Path
     if (
       params &&
