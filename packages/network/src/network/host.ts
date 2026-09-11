@@ -1217,6 +1217,14 @@ export class Host extends Home {
           if (this.hybridHosts.length) {
             this.processHybridNodes(pending.entry, m.data.entry?.$streams);
           }
+
+          // The client has its answer (resolve above), so this costs it
+          // nothing. A node that was behind can adopt the network's state
+          // through an ordinary commit without SPI ever running - correct,
+          // and wanted - but it then holds one umid and none of the history
+          // behind it. Check for that gap here rather than only on the SPI
+          // path, which this case never touches.
+          Endpoints.repairHistoryAfterCommit(this, pending.entry.$umid);
           break;
         case "broadcast":
           this.broadcast(m.data.umid, m.data.early);

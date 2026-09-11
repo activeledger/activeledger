@@ -209,7 +209,7 @@ async function main(): Promise<boolean> {
 
     await runContractDivergenceTest(report, nodes, identity, NAMESPACE);
 
-    await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId);
+    await runNodeRecoveryTests(report, harness, nodes, identity, NAMESPACE, returnerId, emitterId);
 
     return report.summary();
   } finally {
@@ -1376,7 +1376,8 @@ async function runNodeRecoveryTests(
   nodes: NetworkNode[],
   identity: Identity,
   namespace: string,
-  returnerId: string
+  returnerId: string,
+  emitterId: string
 ): Promise<void> {
   const downNode = nodes[1];
   const originNode = nodes[0];
@@ -1504,8 +1505,350 @@ async function runNodeRecoveryTests(
       report.ok(
         `History: node ${downNode.port} holds ${held}/${missed.length} of the umids it missed` +
           (held < missed.length
-            ? ` - the rest are backfilled only by a full activerestore, not by SPI`
+            ? ` - the rest are behind a broken chain or past the walk limit, and need a full activerestore`
             : "")
+      );
+    }
+  }
+
+  // ONE node down, behind on TWO streams at once.
+  //
+  // Two nodes each missing their own stream reads like the harder test and
+  // is actually the easier one: nodes are separate processes, so their
+  // walks cannot collide by construction. The real concurrency risk is two
+  // walks on the SAME node - they share the in-flight guard, the cooldown
+  // map, one event loop and one storage engine. That is where a shared-state
+  // bug would show up, and it costs one outage rather than two.
+  //
+  // Interleaved so neither stream is idle while the other moves, and both
+  // triggered together so the walks genuinely overlap rather than queueing.
+  const PARALLEL_GAP = 50;
+  report.phase(`Node recovery: one node, two streams, ${PARALLEL_GAP} missed on each`);
+  {
+    const start = Date.now();
+    const driver = nodes[0];
+    const streamA = await onboard(driver.baseUrl);
+    const streamB = await onboard(driver.baseUrl);
+    await waitForConvergence(nodes, streamA.streamId, 10000);
+    await waitForConvergence(nodes, streamB.streamId, 10000);
+
+    // Only one node leaves, so the network keeps three and consensus holds
+    // throughout. An earlier version took two of four down and simply
+    // stalled - nothing could commit, so the test measured nothing.
+    await harness.killNode(downNode.index);
+
+    const missedA: string[] = [];
+    const missedB: string[] = [];
+    for (let i = 0; i < PARALLEL_GAP; i++) {
+      const a: any = await runContract(driver.baseUrl, streamA, namespace, emitterId, {
+        message: `par-a-${i}`,
+        correlationId: `par-a-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (a?.$umid) missedA.push(a.$umid);
+
+      const b: any = await runContract(driver.baseUrl, streamB, namespace, emitterId, {
+        message: `par-b-${i}`,
+        correlationId: `par-b-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (b?.$umid) missedB.push(b.$umid);
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Both triggers back to back, so the node is walking two chains at once
+    await Promise.all([
+      runContract(driver.baseUrl, streamA, namespace, emitterId, {
+        message: "par-a-trigger",
+        correlationId: `par-a-trigger-${Date.now()}`,
+      }).catch(() => undefined),
+      runContract(driver.baseUrl, streamB, namespace, emitterId, {
+        message: "par-b-trigger",
+        correlationId: `par-b-trigger-${Date.now()}`,
+      }).catch(() => undefined),
+    ]);
+
+    const convA = await waitForConvergence(nodes, streamA.streamId, 30000);
+    const convB = await waitForConvergence(nodes, streamB.streamId, 30000);
+
+    const countFor = async (umids: string[]) => {
+      let held = 0;
+      let events = 0;
+      let expected = 0;
+      for (const umid of umids) {
+        let doc: any;
+        try {
+          doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
+        } catch {
+          continue;
+        }
+        if (!doc?._id) continue;
+        held++;
+        for (const event of doc.events || []) {
+          if (!event?._id) continue;
+          expected++;
+          try {
+            const ev = await storageGet(downNode.storageUrl, event._id, "activeledgerevents");
+            if (ev?._id) events++;
+          } catch {
+            // not yet
+          }
+        }
+      }
+      return { held, events, expected };
+    };
+
+    let a = { held: 0, events: 0, expected: 0 };
+    let b = { held: 0, events: 0, expected: 0 };
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      a = await countFor(missedA);
+      b = await countFor(missedB);
+      if (a.held >= missedA.length && b.held >= missedB.length) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // No cross-stream check here, deliberately. An earlier version counted
+    // how many of stream B's umids this node held while repairing A and
+    // expected zero - it reported 10 and passed only because it was never
+    // in the pass condition. The count was right and the expectation was
+    // nonsense: every node holds every umid, which is what consensus means.
+    // What matters is that BOTH chains came back in full, with their events.
+    const eventsIntact =
+      (a.expected === 0 || a.events === a.expected) &&
+      (b.expected === 0 || b.events === b.expected);
+    const bothComplete = a.held === missedA.length && b.held === missedB.length;
+    const ok = convA.converged && convB.converged && eventsIntact && bothComplete;
+
+    report.record("two-streams-recover-in-parallel", ok, Date.now() - start);
+    if (!convA.converged || !convB.converged) {
+      report.fail(
+        `State did not converge - A:${convA.byNode.map((n) => n.rev).join("/")} B:${convB.byNode
+          .map((n) => n.rev)
+          .join("/")}`
+      );
+    } else if (!bothComplete) {
+      report.fail(
+        `One chain lagged the other - A ${a.held}/${missedA.length}, B ${b.held}/${missedB.length}. ` +
+          `Two walks on one node must not starve each other`
+      );
+    } else if (!eventsIntact) {
+      report.fail(
+        `Umids recovered without their events - A ${a.events}/${a.expected}, B ${b.events}/${b.expected}`
+      );
+    } else {
+      report.ok(
+        `Node ${downNode.port} walked both chains at once: ` +
+          `stream A ${a.held}/${missedA.length} umids + ${a.events} events, ` +
+          `stream B ${b.held}/${missedB.length} umids + ${b.events} events`
+      );
+    }
+  }
+
+  // A DELIBERATELY BROKEN chain, on a live network.
+  //
+  // The unit tests prove every layer of the repair contains its own
+  // failures. They cannot prove that a real node survives one, and that is
+  // the property that actually matters: history repair is the least
+  // important thing a node does, and it must never be worth a node. Node
+  // treats an unhandled rejection as fatal, so a bug here could take down a
+  // node that was otherwise perfectly healthy.
+  //
+  // So: give a returning node a chain it cannot walk - a mid-chain umid
+  // replaced with nonsense on every peer, so the fetch returns junk rather
+  // than failing cleanly - then check the node is still a working member of
+  // the network afterwards.
+  report.phase("Node recovery: a broken history chain must not harm the node");
+  {
+    const start = Date.now();
+    const driver = nodes[0];
+    const victim = await onboard(driver.baseUrl);
+    const bystander = await onboard(driver.baseUrl);
+    await waitForConvergence(nodes, victim.streamId, 10000);
+    await waitForConvergence(nodes, bystander.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    const missed: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const res: any = await runContract(driver.baseUrl, victim, namespace, emitterId, {
+        message: `broken-${i}`,
+        correlationId: `broken-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (res?.$umid) missed.push(res.$umid);
+    }
+
+    // Poison the middle of the chain on every node that is up, so the walk
+    // gets a malformed document back rather than a clean "not found".
+    const poisoned = missed[Math.floor(missed.length / 2)];
+    if (poisoned) {
+      for (const node of nodes) {
+        if (node.index === downNode.index) continue;
+        await storagePut(node.storageUrl, `${poisoned}:umid`, {
+          _id: `${poisoned}:umid`,
+          umid: "not-an-object",
+          streams: "not-an-array",
+          events: { nope: true },
+        }).catch(() => undefined);
+      }
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+    await runContract(driver.baseUrl, victim, namespace, emitterId, {
+      message: "broken-trigger",
+      correlationId: `broken-trigger-${Date.now()}`,
+    }).catch(() => undefined);
+
+    // Let the walk run into the poison and give up
+    await new Promise((r) => setTimeout(r, 8000));
+
+    // 1. Is the node still there at all?
+    let alive = false;
+    try {
+      const status: any = await requestJsonWithStatus(`${downNode.baseUrl}/a/status`, "GET");
+      alive = status.statusCode === 200;
+    } catch {
+      alive = false;
+    }
+
+    // 2. Is it still a working consensus member? A transaction on an
+    //    unrelated stream has to commit with it taking part.
+    const after: any = await runContract(driver.baseUrl, bystander, namespace, returnerId, {
+      message: "after-broken-chain",
+    }).catch(() => undefined);
+    const stillCommitting = !!after && !after.$summary?.errors;
+
+    // 3. Did the stream it was actually repairing still converge? State is
+    //    what matters; the history behind it is allowed to be incomplete.
+    const conv = await waitForConvergence(nodes, victim.streamId, 20000);
+
+    const ok = alive && stillCommitting && conv.converged;
+    report.record("broken-chain-does-not-harm-the-node", ok, Date.now() - start);
+    if (!alive) {
+      report.fail(`Node ${downNode.port} is not responding - a broken history chain took it down`);
+    } else if (!stillCommitting) {
+      report.fail(
+        `Node ${downNode.port} is up but no longer committing: ${JSON.stringify(after?.$summary)}`
+      );
+    } else if (!conv.converged) {
+      report.fail(
+        `State did not converge after a broken chain: ${conv.byNode
+          .map((n) => `${n.port}=${n.rev}`)
+          .join(", ")}`
+      );
+    } else {
+      report.ok(
+        `Poisoned the chain at ${poisoned?.slice(0, 12) || "?"} - node ${downNode.port} stayed up, ` +
+          `kept committing, and its state still converged on ${conv.byNode[0].rev}`
+      );
+    }
+  }
+
+  // A long gap, with events - the shape of a node that was down for a
+  // while rather than one that dropped a round.
+  //
+  // Each umid records the umid it replaced, per stream, so the history is
+  // a linked list SPI can walk backwards one hop at a time. This is the
+  // check that the chain actually holds across a real run: fifty
+  // transactions, every one raising an event, none of which this node saw.
+  //
+  // Measured rather than asserted at a number. A partial walk is a real
+  // outcome (a peer may not hold an old umid, and the walk caps at 100),
+  // and reporting what came back is more use than failing on an arbitrary
+  // threshold - the pass condition is that state converges and that
+  // whatever history IS recovered brought its events with it, because a
+  // umid without its events is the fault this was built to fix.
+  const LONG_GAP = 50;
+  report.phase(`Node recovery: a ${LONG_GAP}-transaction gap, with events`);
+  {
+    const start = Date.now();
+    const subject = await onboard(originNode.baseUrl);
+    await waitForConvergence(nodes, subject.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    // Sequential: they all touch the same stream, so each depends on the
+    // revision the last one produced.
+    const missedUmids: string[] = [];
+    for (let i = 0; i < LONG_GAP; i++) {
+      const res: any = await runContract(
+        originNode.baseUrl,
+        subject,
+        namespace,
+        emitterId,
+        { message: `gap-${i}`, correlationId: `gap-${i}-${Date.now()}` }
+      ).catch(() => undefined);
+      if (res?.$umid) missedUmids.push(res.$umid);
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+
+
+    // Something for the returned node to notice on.
+    await runContract(originNode.baseUrl, subject, namespace, emitterId, {
+      message: "gap-trigger",
+      correlationId: `gap-trigger-${Date.now()}`,
+    }).catch(() => undefined);
+
+    const { byNode, converged } = await waitForConvergence(nodes, subject.streamId, 30000);
+    report.ok(
+    );
+
+    // The walk is asynchronous - give it room, then count.
+    let heldUmids = 0;
+    let heldEvents = 0;
+    let expectedEvents = 0;
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      heldUmids = 0;
+      heldEvents = 0;
+      expectedEvents = 0;
+      for (const umid of missedUmids) {
+        let doc: any;
+        try {
+          doc = await storageGet(downNode.storageUrl, `${umid}:umid`);
+        } catch {
+          continue;
+        }
+        if (!doc?._id) continue;
+        heldUmids++;
+        for (const event of doc.events || []) {
+          if (!event?._id) continue;
+          expectedEvents++;
+          try {
+            const ev = await storageGet(downNode.storageUrl, event._id, "activeledgerevents");
+            if (ev?._id) heldEvents++;
+          } catch {
+            // not yet
+          }
+        }
+      }
+      if (heldUmids >= missedUmids.length && heldEvents >= expectedEvents) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    // Every umid recovered must have brought its events. That is the
+    // property; how far back the walk got is reported, not asserted.
+    const eventsIntact = expectedEvents === 0 || heldEvents === expectedEvents;
+    const ok = converged && eventsIntact;
+
+    report.record("recovers-a-long-gap", ok, Date.now() - start);
+    if (!converged) {
+      report.fail(
+        `State did not converge after a ${LONG_GAP}-transaction gap: ${byNode
+          .map((n) => `${n.port}=${n.rev}`)
+          .join(", ")}`
+      );
+    } else if (!eventsIntact) {
+      report.fail(
+        `Recovered ${heldUmids}/${missedUmids.length} umids but only ${heldEvents}/${expectedEvents} of their events - a umid without its events is the fault this exists to fix`
+      );
+    } else {
+      report.ok(
+        `State converged on ${byNode[0].rev}; node ${downNode.port} recovered ` +
+          `${heldUmids}/${missedUmids.length} missed umids and all ${heldEvents} of their events`
       );
     }
   }

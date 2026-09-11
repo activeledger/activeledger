@@ -308,8 +308,26 @@ export class StreamUpdater {
         });
       } else {
         // Add to updated stream reference
+        //
+        // `prev` is the umid this transaction replaces on this stream,
+        // captured here because meta.umid is overwritten further down. One
+        // field per stream this transaction touched - bounded by $i u $o,
+        // never by how long the stream has existed.
+        //
+        // That bound is the point. meta.txs tried to keep the history as a
+        // list and grew without limit on any stream updated often, costing
+        // space, memory and speed at once. A backward pointer costs the
+        // same on a stream updated once as on one updated a million times,
+        // and chaining them gives the same walk a list would have: one hop
+        // per fetch, and only the hops actually needed.
+        //
+        // A node that missed transactions can walk from the network's
+        // current umid back through prev until it reaches one it already
+        // holds. Creations carry no prev, so a walk terminates naturally at
+        // the start of the stream rather than needing a sentinel.
         this.refStreams.updated.push({
           id: this.shared.filterPrefix(this.streams[i].state._id as string),
+          prev: this.streams[i].meta?.umid,
         });
 
         // meta.umid was previously left untouched on every update after
