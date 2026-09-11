@@ -2,6 +2,9 @@
   "name": "@activeledger/activehybrid",
   "description": "Activeledger Hybrid Connect, Maintain every permissioned chain yourself",
   "version": "4.5.17",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "publishConfig": {
     "access": "public"
   },

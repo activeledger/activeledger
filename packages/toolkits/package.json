@@ -1,6 +1,9 @@
 {
   "name": "@activeledger/activetoolkits",
   "version": "4.5.17",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "description": "Toolkit SDKs available for Activeledger Smart Contracts",
   "keywords": [
     "blockchain",
