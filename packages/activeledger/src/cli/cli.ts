@@ -74,6 +74,52 @@ function resolveModulesDir(): string {
   );
 }
 
+/**
+ * Absolute path to a sibling service's entry script, or null.
+ *
+ * The autostart block used to spawn the bare command name - "activerestore"
+ * - which works only when npm has put its shim on PATH. A global install
+ * does; running `node lib/index.js` directly does not, and neither does a
+ * local install outside an npm script. So a node could have
+ * autostart.restore set correctly, log "Auto starting - Restore Engine",
+ * and then fail, leaving "restore is enabled" and "restore is running" as
+ * two different things.
+ *
+ * Asking Node where the package actually is removes the guess. Same fix as
+ * resolveModulesDir() above, for the same reason: resolve it rather than
+ * assume where it landed.
+ *
+ * Returns null rather than throwing, because PATH is still a legitimate
+ * route - a global install may not have the service resolvable from this
+ * package's own location, and the caller falls back to the old behaviour.
+ */
+function resolveServiceScript(pkg: string): string | null {
+  try {
+    const searched = require.resolve.paths(pkg) || [];
+    for (const dir of searched) {
+      const root = path.join(dir, pkg);
+      const manifest = path.join(root, "package.json");
+      if (!fs.existsSync(manifest)) {
+        continue;
+      }
+      const bin = JSON.parse(fs.readFileSync(manifest, "utf8")).bin;
+      // bin is either a string or { name: path }; take whichever is there
+      const rel =
+        typeof bin === "string" ? bin : bin && Object.values(bin)[0];
+      if (typeof rel !== "string") {
+        continue;
+      }
+      const entry = path.join(root, rel);
+      if (fs.existsSync(entry)) {
+        return fs.realpathSync(entry);
+      }
+    }
+  } catch {
+    // Fall through - the caller still has PATH to try
+  }
+  return null;
+}
+
 export class CLIHandler {
   private static readonly pidHandler: PIDHandler = new PIDHandler();
   private static readonly statsHandler: StatsHandler = new StatsHandler();
@@ -660,20 +706,36 @@ export class CLIHandler {
         if (ActiveOptions.get<any>("autostart", {}).restore) {
           ActiveLogger.info("Auto starting - Restore Engine");
           // Launch & Listen for launch error
-          const activerestoreChild = child
-            .spawn(
-              /^win/.test(process.platform)
-                ? "activerestore.cmd"
-                : "activerestore",
-              [],
-              {
-                cwd: "./",
-                stdio: "inherit",
-              }
-            )
-            .on("error", (error) => {
-              ActiveLogger.error(error, "Restore Engine Failed to start");
-            });
+          // Resolved path first, PATH second. Spawning node with the
+          // script avoids the shim entirely, so this works the same from a
+          // global install, a local one, or `node lib/index.js`.
+          const restoreScript = resolveServiceScript(
+            "@activeledger/activerestore"
+          );
+          const activerestoreChild = (
+            restoreScript
+              ? child.spawn(process.execPath, [restoreScript], {
+                  cwd: "./",
+                  stdio: "inherit",
+                })
+              : child.spawn(
+                  /^win/.test(process.platform)
+                    ? "activerestore.cmd"
+                    : "activerestore",
+                  [],
+                  {
+                    cwd: "./",
+                    stdio: "inherit",
+                  }
+                )
+          ).on("error", (error) => {
+            ActiveLogger.error(
+              error,
+              restoreScript
+                ? `Restore Engine Failed to start (${restoreScript})`
+                : "Restore Engine Failed to start - activerestore is not on PATH and could not be resolved"
+            );
+          });
 
           await CLIHandler.pidHandler.addPid(
             EPIDChild.RESTORE,
