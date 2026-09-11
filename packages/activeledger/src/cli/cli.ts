@@ -584,6 +584,54 @@ export class CLIHandler {
       });
 
       //#region Auto starting Activeledger Services
+      // Say something when the restore engine is switched off.
+      //
+      // Until 4.5.16 the CLI disabled it for any node set up on a
+      // non-default port, which is most real deployments, and wrote that
+      // into config.json. Fixing the generator does not reach a node that
+      // already has the file - checkConfig() only runs when there is no
+      // config to read - so those nodes keep the flag and keep the hole.
+      //
+      // Deliberately a warning and not a migration. A config records WHAT
+      // was decided and never WHY, so nothing here can tell an operator
+      // who meant it from a CLI that guessed - and some deployments run
+      // activerestore as its own process on purpose, where flipping this
+      // on upgrade would start a second engine per node that nobody asked
+      // for. Correcting someone's configuration silently is worse than
+      // leaving it wrong and saying so.
+      //
+      // What it costs when nothing repairs: SPI still converges STATE, so
+      // the node looks healthy. What stops is the backfill of umid
+      // documents and the events they carried, and 950 error documents
+      // accumulate with nothing reading them. On 4.5.16+ the network layer
+      // recovers most of this itself, which narrows the gap but does not
+      // close it - a node further behind than the walk limit still needs a
+      // full activerestore.
+      // A config with no configVersion predates the field, so it was
+      // written by a CLI old enough to have the port heuristic. That does
+      // not prove the flag is wrong - an operator may have chosen it - but
+      // it does mean nobody can tell, which is worth saying out loud.
+      // Configs written from here carry a version, so the next default
+      // that turns out to be wrong can be corrected on a known set rather
+      // than guessed at across all of them.
+      if (ActiveOptions.get<number>("configVersion", 0) < 1) {
+        ActiveLogger.info(
+          "config.json predates configVersion - it cannot be told apart from one written by a CLI with known-bad defaults. " +
+            "Adding \"configVersion\": 1 once its settings are confirmed correct will silence this."
+        );
+      }
+
+      if (ActiveOptions.get<any>("autostart", {}).restore === false) {
+        ActiveLogger.warn(
+          "autostart.restore is false - this node will not run activerestore. " +
+            "If that is deliberate (a dedicated restore process elsewhere), ignore this. " +
+            "If not, it is likely left over from a pre-4.5.16 setup on a non-default port: " +
+            'set "autostart": { "restore": true } in config.json and restart. ' +
+            "Until then this node cannot backfill umids or replay their events beyond what SPI recovers, " +
+            "and activeledgererrors will grow with nothing processing it."
+        );
+      }
+
       if (ActiveOptions.get<any>("autostart", {})) {
         // Auto starting Core API?
         if (ActiveOptions.get<any>("autostart", {}).core) {
