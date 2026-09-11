@@ -1,6 +1,6 @@
 {
   "name": "activeledger-monorepo",
-  "version": "4.5.15",
+  "version": "4.5.16",
   "private": true,
   "workspaces": [
     "packages/*"
