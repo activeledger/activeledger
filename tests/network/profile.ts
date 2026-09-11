@@ -318,6 +318,90 @@ async function measureConcurrent(ctx: Ctx, identities: Identity[], inFlight: num
   }
   }
 
+  // --- 6. Does a hot stream slow down everything else? ---------------------
+  //
+  // Section 5 measures a contended stream on its own, which cannot show the
+  // cost that matters most: whether transactions with nothing to do with that
+  // stream get slower while it is being hammered.
+  //
+  // They might, because processQueue() scans the whole busy-lock queue and
+  // tries hold() on every entry, so a long queue makes each pass O(n) - and
+  // each completed transaction schedules a pass. This measures unrelated
+  // work's latency during a burst against one hot stream, against the same
+  // work with no burst running at all.
+  if (wants(6)) {
+  console.log(`\n[6] Does a hot stream slow unrelated transactions down?`);
+  {
+    const nodeCount = Number((process.argv.find(a => a.startsWith("--contend-nodes=")) || "--contend-nodes=1").split("=")[1]);
+    const ctx = await setup(nodeCount, "rsa");
+    try {
+      const BACKGROUND = Number((process.argv.find(a => a.startsWith("--background=")) || "--background=8").split("=")[1]);
+      const HOT = Number((process.argv.find(a => a.startsWith("--hot=")) || "--hot=20").split("=")[1]);
+      process.stdout.write(`  onboarding ${BACKGROUND} background identities...`);
+      const others: Identity[] = [];
+      for (let i = 0; i < BACKGROUND; i++) others.push(await onboardAs(ctx.baseUrl, "rsa"));
+      console.log(" done");
+
+      /** Sequential transactions on independent streams - the unrelated work. */
+      const background = async (label: string) => {
+        const samples: number[] = [];
+        let failed = 0;
+        let example = "";
+        for (let i = 0; i < others.length; i++) {
+          const t = process.hrtime.bigint();
+          const r = await runTx(ctx.baseUrl, others[i], ctx.namespace, ctx.contractStreamId, `${label}${i}`)
+            .catch((e) => ({ __threw: String(e) }));
+          samples.push(Number(process.hrtime.bigint() - t) / 1e6);
+          // A transaction that failed fast is not a fast transaction. Without
+          // this the numbers invert and rejections read as an improvement.
+          if (!(r as any)?.$streams?.updated?.length) {
+            failed++;
+            if (!example) example = JSON.stringify(r).slice(0, 400);
+          }
+        }
+        return { st: stats(samples), failed, example };
+      };
+
+      const quiet = await background("quiet");
+      fmt("unrelated, nothing else running", quiet.st,
+        quiet.failed ? `(${quiet.failed}/${others.length} DID NOT COMMIT: ${quiet.example})` : "");
+
+      // Same work, but with a hot stream under sustained contention.
+      let hotDone = false;
+      const hot = Promise.all(
+        Array.from({ length: HOT }, (_, i) =>
+          runTx(ctx.baseUrl, ctx.identity, ctx.namespace, ctx.contractStreamId, `hot${i}`).catch(() => null))
+      ).then((r) => { hotDone = true; return r; });
+      const busy = await background("busy");
+      fmt("unrelated, during a hot stream", busy.st,
+        (hotDone ? "(burst finished early) " : "") +
+        (busy.failed ? `(${busy.failed}/${others.length} DID NOT COMMIT: ${busy.example})` : ""));
+      const hotResults = await hot;
+      const hotOk = hotResults.filter((r: any) => r?.$streams?.updated?.length).length;
+
+      if (quiet.failed || busy.failed || hotOk < HOT) {
+        console.log(
+          `\n  NOT A VALID COMPARISON - work failed, and a failure is fast.\n` +
+          `  unrelated quiet ${quiet.failed} failed, during-burst ${busy.failed} failed, ` +
+          `hot ${HOT - hotOk} failed.`
+        );
+      }
+
+      const slowdown = quiet.st.p50 > 0 ? busy.st.p50 / quiet.st.p50 : 0;
+      console.log(
+        `\n  hot stream committed ${hotOk}/${HOT}; unrelated work ran ` +
+        `${slowdown.toFixed(2)}x its quiet latency while that happened.`
+      );
+      console.log(
+        `  Above ~1.5x the queue scan is stealing time from work that never\n` +
+        `  touched the contended stream.`
+      );
+    } finally {
+      await shutdown(ctx.harness);
+    }
+  }
+  }
+
   // --- Summary ------------------------------------------------------------
   console.log(`\n${"=".repeat(60)}\nWhat this says`);
   if (bySize[1]?.p50 !== undefined && bySize[4]?.p50 !== undefined) {
