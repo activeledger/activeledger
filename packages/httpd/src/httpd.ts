@@ -268,7 +268,25 @@ export class ActiveHttpd {
   }
 
 
-  public shutdown(): void {
+  /**
+   * Stops listening, then closes the app once in-flight requests have had a
+   * moment to finish.
+   *
+   * exitProcess ends the process afterwards, which is what a node being shut
+   * down wants - there is a SIGKILL coming and anything still open dies with
+   * it either way. It is a parameter because that behaviour is actively
+   * harmful anywhere the server is not the whole process: the timer below
+   * outlives shutdown() by 1.3 seconds and then takes the host process with
+   * it, whatever else that process was doing.
+   *
+   * Which is not hypothetical. tests/httpd.test.ts shut a server down in an
+   * after() hook, and 1.3s later this killed the entire mocha run with
+   * status 0 - mid-suite, so the remaining tests never ran, the reporter's
+   * output was cut off wherever it had got to, and the failure count was
+   * discarded. `npm test` reported success no matter what failed. A test
+   * asserting 1 === 2 was reported as a pass by CI.
+   */
+  public shutdown(exitProcess: boolean = true): void {
     if (this.listenSocket) {
       // Close the listen socket
       us_listen_socket_close(this.listenSocket);
@@ -276,10 +294,19 @@ export class ActiveHttpd {
 
       // Only have a a short while before sigkill
       // Lets try let them finish up then close the app before sigkill can happen
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         this.server.close();
-        process.exit(0);
+        if (exitProcess) {
+          process.exit(0);
+        }
       }, 1300);
+
+      // Don't hold the event loop open for the wait when we aren't going to
+      // end the process anyway - a caller that only wanted the port back
+      // should not be kept alive for another 1.3 seconds by this.
+      if (!exitProcess) {
+        timer.unref?.();
+      }
     }
   }
 
