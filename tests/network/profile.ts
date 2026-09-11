@@ -274,6 +274,50 @@ async function measureConcurrent(ctx: Ctx, identities: Identity[], inFlight: num
   }
   }
 
+  // --- 5. Contention: many transactions, one stream ------------------------
+  //
+  // Every other section here uses independent streams, which is the flattering
+  // case: nothing ever waits on a lock. A real workload usually has at least
+  // one hot stream - a shared pool, a counter, a registry - and transactions
+  // against it must serialise. This measures what that costs, which is a
+  // different question from how fast one transaction is.
+  if (wants(5)) {
+  console.log(`\n[5] Contention: N transactions at once against ONE stream`);
+  {
+    const contendNodes = Number((process.argv.find(a => a.startsWith("--contend-nodes=")) || "--contend-nodes=4").split("=")[1]);
+    const ctx = await setup(contendNodes, "rsa");
+    try {
+      for (const inFlight of QUICK ? [2, 4] : [2, 4, 8]) {
+        const t = process.hrtime.bigint();
+        const samples: number[] = [];
+        const results = await Promise.all(
+          Array.from({ length: inFlight }, (_, i) => {
+            const started = process.hrtime.bigint();
+            return runTx(ctx.baseUrl, ctx.identity, ctx.namespace, ctx.contractStreamId, `hot${i}`)
+              .then((r) => { samples.push(Number(process.hrtime.bigint() - started) / 1e6); return r; })
+              .catch(() => null);
+          })
+        );
+        const wall = Number(process.hrtime.bigint() - t) / 1e6;
+        const ok = results.filter((r) => r?.$streams?.updated?.length).length;
+        const st = stats(samples);
+        console.log(
+          `  ${String(inFlight).padStart(2)} on one stream  wall=${wall.toFixed(0).padStart(6)}ms  ` +
+          `committed=${String(ok).padStart(2)}/${inFlight}  ` +
+          `p50=${st.p50.toFixed(0).padStart(5)}ms  max=${st.max.toFixed(0).padStart(5)}ms  ` +
+          `per-commit=${(wall / Math.max(ok, 1)).toFixed(0).padStart(5)}ms`
+        );
+      }
+      console.log(
+        `\n  For reference an uncontended transaction is ~22ms, so per-commit is the\n` +
+        `  number to watch - it is what a second writer to a hot stream actually waits.`
+      );
+    } finally {
+      await shutdown(ctx.harness);
+    }
+  }
+  }
+
   // --- Summary ------------------------------------------------------------
   console.log(`\n${"=".repeat(60)}\nWhat this says`);
   if (bySize[1]?.p50 !== undefined && bySize[4]?.p50 !== undefined) {
