@@ -125,9 +125,101 @@ npm test              # fast unit tests (tests/*.ts, Mocha) - in-process, no rea
 npm run test:network  # live 4-node network integration test - boots real nodes on the local machine
 ```
 
-`npm test` takes a handful of seconds (201 tests today, most of the time being ts-node's transpile pass) and is safe to run constantly during development. It also runs in CI on every push and pull request, on Node 24; the network suite does not, because it boots real nodes.
+`npm test` takes a handful of seconds (324 tests today, most of the time being ts-node's transpile pass) and is safe to run constantly during development. It also runs in CI on every push and pull request, on Node 24; the network suite does not, because it boots real nodes.
 
 `npm run test:network` (`tests/network/`) boots a real 4-node bare-host network, runs 100+ real transactions spread across every node as origin, deploys custom contracts and verifies `returnToRemote()`, verifies live event delivery over SSE, and verifies the network's Stream-Position-Incorrect self-healing by directly desyncing one node's local copy of a stream and confirming a transaction still succeeds whether that node is the transaction's origin or not. It prints live progress and a pass/fail summary, and takes well under a minute. Deliberately bare-host rather than Docker, so it doesn't add any requirements beyond what building the repo already needs.
+
+## Profiling
+
+Two profilers, answering different questions. Both drive the same live harness
+the network tests use, so they measure real nodes rather than a model.
+
+```bash
+npm run profile:tx      # what a transaction costs
+npm run profile:stages  # where that cost sits
+```
+
+### `profile:tx` — what it costs
+
+Varies one thing at a time and prints the effect: network size, key type,
+concurrency, and how a transaction responds to contract work getting heavier.
+
+```
+npm run profile:tx                  # full sweep, a few minutes
+npm run profile:tx -- --quick       # shorter, for a fast before/after
+npm run profile:tx -- --only=1,3    # just sections 1 and 3
+```
+
+The four sections are independent and each boots its own networks:
+
+| | question it answers |
+|---|---|
+| 1 | how much of a transaction is consensus (1 vs 2 vs 4 nodes) |
+| 2 | how much is signature verification (rsa vs secp256k1) |
+| 3 | latency against actual capacity (1 to 128 in flight) |
+| 4 | does the consensus gap grow with contract work, or is it fixed overhead |
+
+Section 4 uses `tests/network/contracts/burn-contract.ts`, which burns a
+caller-specified amount of CPU inside `commit()`. If the gap over a 1-node
+network grows ~1:1 with the burn, the other nodes are repeating the work after
+the origin finishes; if it stays flat, their execution already overlaps and the
+gap is fixed overhead. It is flat.
+
+Reference numbers on a developer machine, p50, so a change can be recognised as
+a change rather than noise — expect ±1-2ms run to run:
+
+```
+1 node 6ms    2 nodes 21ms    4 nodes 22ms    peak ~220 tx/s at 128 in flight
+```
+
+`--quick` is directly comparable to a full run, not a rougher reading of the
+same thing: every network is warmed with eight discarded transactions before
+anything is measured, so contract compilation, the JIT and the connection pools
+have settled. Skipping that put `--quick` at 15/36ms against the full run's
+5/23ms for an identical build, because with a short sample count the stragglers
+land on the p50 instead of the tail.
+
+### `profile:stages` — where it sits
+
+Marks each stage of a transaction and stitches every process that touched it
+into one timeline. A transaction crosses processes — the host parses it, a
+forked worker runs the contract, and on a multi-node network other hosts do the
+same again — so the marks carry an absolute wall-clock timestamp. `hrtime`'s
+epoch is per-process and means nothing across a fork.
+
+```
+npm run profile:stages                        # 4 nodes
+npm run profile:stages -- --nodes=1           # 1 node: the clearest local picture
+npm run profile:stages -- --nodes=4 --runs=20
+```
+
+It prints one full timeline, then the mean cost of every stage transition on the
+origin node, sorted worst-first. Start with `--nodes=1`: on a multi-node run the
+origin also answers knocks about the same transaction from its peers, and the
+waiting-on-peers window dominates everything local.
+
+The marks come from `ActiveTiming` in `@activeledger/activelogger`, which is
+inert unless `ACTIVELEDGER_PROFILE` is set — the profiler sets it for the nodes
+it starts. You can set it yourself against a node you run by hand, but never in
+production: it is one unbounded line of stdout per stage per transaction.
+
+To time something not yet marked, add `ActiveTiming.mark(umid, "your.stage")`
+where you want it and add the name to `ORDER` in `tests/network/profile-stages.ts`
+so it sorts into the right place.
+
+### Two ways to profile the wrong thing
+
+Both of these have produced confident, wrong numbers here:
+
+- **A stale build.** The nodes run `lib/`, not `src/`, so a source change that
+  hasn't been compiled is silently absent from any live measurement — including
+  anything after a `git stash` / build / `git stash pop`. Rebuild, then check the
+  change is actually in the output (`grep` the built file) rather than trusting
+  the build's exit code.
+- **Leftover nodes.** A crashed run can leave nodes holding ports 5510-5540, and
+  the next run measures those instead. `profile:tx` tears its own networks down
+  on failure; if something else dies badly, check with
+  `ss -lntp | grep :55` before believing a surprising result.
 
 ## License
 
