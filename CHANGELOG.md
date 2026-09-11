@@ -1,5 +1,113 @@
 # Activeledger Changelog
 
+## [4.5.18]
+
+Performance. A transaction was 32ms and is now 22ms on a four-node network,
+and the largest single cause was a dependency pinned one patch release short
+of its own fix.
+
+### Requires Node 20.18.1 or later
+* **All packages** : `engines` is now declared, for the first time, at
+  `>=20.18.1`. This is not a new requirement being imposed so much as one being
+  admitted: undici 7 (below) needs it, and with nothing declared an install on
+  Node 18 would have succeeded and then failed at runtime with nothing pointing
+  at the cause. Activeledger targets Node LTS and is developed on 24.
+
+### Changed
+* **Utilities** : undici moved from 6.28.0 to 7. 6.28.0 added idle keep-alive
+  socket validation for GHSA-35p6-xmwp-9g52 and scheduled it with
+  `setTimeout(..., 0)`, which pays Node's ~1ms timer floor on every socket
+  reuse - so on every request against a warm pool. 6.28.1 changed it to
+  `setImmediate`; the lockfile was holding 6.28.0, and `^6.28.0` had always
+  allowed the fix. Measured against a bare server, p50 per request went from
+  1.235ms to 0.110ms. It matters here because every database operation and
+  every node-to-node knock goes through `ActiveRequest.send`, so a node paid it
+  four times over on its own storage before answering a client. End to end:
+  1/2/4-node transactions went from 10/30/32ms to 5/20/22ms. 7 rather than 8
+  because 8 benchmarks no faster (identical on `dispatch`, ~8% slower on
+  `request`), needs its dispatch handler rewritten, and drops Node 20.
+* **Utilities** : `ActiveRequest.send` uses undici's `dispatch()` rather than
+  `request()`, which builds a `Readable` per response. Against live storage
+  that is 31027 req/s against 14736 at 64 in flight, with p99 6.5ms against
+  37.8ms. A node generates nowhere near that, so this is headroom and tail
+  rather than speed - kept because a node's p99 is a consensus system's p50,
+  since the slowest node sets the round.
+* **Protocol** : Input and output streams are fetched in one query. The two
+  `permissionChecker.process()` calls made an `allDocs` each - two sequential
+  round trips for documents one query returns. Prefetching rather than running
+  the two concurrently is deliberate: `process()` writes instance state that is
+  read all the way through the signature checks, so overlapping calls would
+  race and the second would decide the first's streams were outputs.
+* **Network** : A transaction waits for a busy stream by time, not by how much
+  unrelated traffic went past. The give-up test was a retry count of 35, but
+  `processQueue()` runs on every `pending()` call, so any transaction arriving
+  anywhere on the node burned one. A quiet node waited ~7s before reporting
+  busy locks while a node at 200 tx/s gave up in a fraction of that - the
+  opposite of useful, since a busy node is where a stream is worth waiting for.
+  It is now a 7s deadline. `queue_retry`, if explicitly configured, is
+  unchanged.
+* **Network** : The lock queue is re-checked 50ms after a release rather than
+  200ms. `Locker.release()` is synchronous, so the locks are already free when
+  that timer is armed - a queued writer was waiting a fifth of a second for a
+  lock nobody held. On a quiet node, two writers on one stream cost 26ms rather
+  than 81ms. Deliberately not `setImmediate`, which is faster still (35ms
+  against 108ms for eight writers) but gives unrelated transactions a
+  threefold worse p90 during a burst, since `processQueue()` scans the whole
+  queue and the delay is the only thing throttling those scans. Both values are
+  overridable by environment (`AL_QUEUE_RECHECK_MS`, `AL_QUEUE_MAX_WAIT_MS`).
+
+### Fix
+* **Testing** : The unit suite could not fail. `ActiveHttpd.shutdown()` arms a
+  1300ms timer that calls `process.exit(0)` - correct for a node being shut
+  down, wrong anywhere the server is not the whole process. A test shutting a
+  server down in an `after()` hook killed the mocha run mid-suite with status
+  0: remaining tests never ran, the reporter's output stopped wherever it had
+  got to, and the failure count went with it. A test asserting `1 === 2` was
+  reported as passing, by CI as well. `shutdown()` now takes `exitProcess`,
+  defaulting true, so production shutdown is unchanged. Verified in both
+  directions afterwards.
+* **Protocol** : A failed namespace lookup says why. `realpath` fails for
+  reasons that are not "the namespace does not exist" - EIO and EMFILE among
+  them - and a bare `catch` turned a storage or descriptor problem under load
+  into a message pointing at the transaction's namespace, which was the one
+  thing that was fine.
+* **Activeledger CLI** : `autostart.restore` now does what it says. A node
+  could have the flag set correctly, log "Auto starting - Restore Engine", and
+  fail the next line, because the restore engine was spawned by bare command
+  name and so only started where npm had put its shim on `PATH`. It is now
+  resolved through Node. Nodes that still have `restore: false` from a
+  pre-4.5.16 setup are warned at startup rather than silently corrected, and
+  the shipped config carries a `configVersion` so the next default that turns
+  out to be wrong can be corrected against a known set.
+
+### New
+* **Testing** : Two profilers, `npm run profile:tx` and
+  `npm run profile:stages`, documented in the README. The first varies one
+  thing at a time - network size, key type, concurrency, contract cost, stream
+  contention - and the second stitches every process's timing marks into one
+  timeline per umid. `ActiveTiming` is inert unless `ACTIVELEDGER_PROFILE` is
+  set: 10/30/32ms compiled in and disabled, against 10/31/33ms before it
+  existed. `AL_SIMULATED_RTT_MS` delays node-to-node knocks so a harness on one
+  machine can be made to behave like nodes in different regions.
+* **Testing** : `ActiveRequest.send` has behavioural coverage - JSON, gzip both
+  ways, chunked responses, and the three ways it must resolve `{ data: null }`
+  rather than reject, which is what `neighbour.knock()` and
+  `checkNeighbourhood()` rely on to decide a node is down.
+
+### Worth knowing
+* Measured across simulated round trips of 0/20/60/150ms, a transaction costs a
+  fixed ~21ms plus exactly one round trip, whatever the node count. Consensus
+  is a single round trip rather than several and extra nodes are close to free,
+  but it also means the ~10ms taken off here is absolute rather than
+  proportional: ~31% of a same-datacentre transaction and ~6% of an antipodal
+  one. Do not expect a third off a geographically spread network.
+* Three hypotheses died to measurement and are recorded so they are not chased
+  again: signature verification is not a lever (rsa and secp256k1 are within
+  noise of each other), transport is not one (a bare HTTP round trip against a
+  live node is 0.3ms), and consensus is not the other nodes repeating the
+  origin's work (adding 648ms of contract burn left the four-node gap
+  unmoved).
+
 ## [4.5.17]
 
 ### Fix

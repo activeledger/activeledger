@@ -1,6 +1,9 @@
 {
   "name": "@activeledger/activenetwork",
   "version": "4.5.17",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [
     "blockchain",

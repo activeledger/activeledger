@@ -1,6 +1,9 @@
 {
   "name": "@activeledger/activecore",
   "version": "4.5.17",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "description": "This package contains the basic API application to access the data stored on Activeledger.",
   "keywords": [
     "blockchain",

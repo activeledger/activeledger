@@ -1,6 +1,9 @@
 {
   "name": "@activeledger/httpd",
   "version": "4.5.17",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "description": "Lightweight portable HTTP server used by Activeledger",
   "publishConfig": {
     "access": "public"
