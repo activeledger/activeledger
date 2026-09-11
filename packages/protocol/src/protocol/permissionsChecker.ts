@@ -101,6 +101,11 @@ export class PermissionsChecker {
         // Small delay should help write finalise but we don't want
         // wait to long as it holds the transaction up from failing its vote
         await this.sleep(waitTime);
+        // Drop any prefetched copy first. The whole point of this retry is
+        // that a write may not have finalised yet, so re-reading is what
+        // makes it work - retrying against the same cached documents would
+        // just fail identically six more times.
+        this.prefetched = null;
         ActiveLogger.info(error, `Retrying PermissionsChecker due to - ${this.entry.$umid}`);
         return await this.process(data, inputs, ++retry);
       }
@@ -126,11 +131,11 @@ export class PermissionsChecker {
    * @private
    * @returns {Promise<any>[]}
    */
-  private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
+  private buildKeys(data: string[]): { keyArray: string[]; contractDataIncluded: boolean } {
     const keys = new Set<string>();
     let contractDataIncluded = false;
 
-    for (const streamId of this.data) {
+    for (const streamId of data) {
       const filteredPrefix = this.shared.filterPrefix(streamId, true);
       const suffix = streamId.split(":")[1];
       contractDataIncluded = suffix === "data";
@@ -144,7 +149,52 @@ export class PermissionsChecker {
       }
     }
 
+    return { keyArray: Array.from(keys), contractDataIncluded };
+  }
+
+  /**
+   * Documents from a prefetch(), keyed by _id, or null when there hasn't been
+   * one and each process() call should fetch for itself.
+   */
+  private prefetched: { [id: string]: any } | null = null;
+
+  /**
+   * Fetches the streams for several key sets in one request.
+   *
+   * process() is called twice per transaction, once for inputs and once for
+   * outputs, and each call used to make its own allDocs - two sequential
+   * round trips to the storage process for data that is available in one.
+   * (The TODO asking for this sat in protocol/process.ts.)
+   *
+   * Prefetching rather than running the two process() calls concurrently is
+   * deliberate: process() writes this.data and this.inputs on entry and both
+   * are read all the way through buildPromises, processStreams and the
+   * signature checks, so two overlapping calls on the same instance would
+   * race and the second would decide the first's streams were outputs.
+   *
+   * Missing keys are simply absent from the cache, which is what the
+   * database does too - buildPromises' own length check turns that into the
+   * same 950 it always did.
+   */
+  public async prefetch(sets: string[][]): Promise<void> {
+    const keys = new Set<string>();
+    for (const set of sets) {
+      for (const key of this.buildKeys(set).keyArray) keys.add(key);
+    }
+
     const keyArray = Array.from(keys);
+    if (!keyArray.length) return;
+
+    const docs = await this.db.allDocs({ keys: keyArray, include_docs: true });
+    const cache: { [id: string]: any } = {};
+    for (const row of docs?.rows || []) {
+      if (row?.doc?._id) cache[row.doc._id] = row.doc;
+    }
+    this.prefetched = cache;
+  }
+
+  private async buildPromises(): Promise<ActiveDefinitions.LedgerStream[]> {
+    const { keyArray, contractDataIncluded } = this.buildKeys(this.data);
     // Single fetch
     try {
       // The docs wont be ordered as the keys said they would be need to create a reorder
@@ -154,10 +204,12 @@ export class PermissionsChecker {
       const results: ActiveDefinitions.LedgerStream[] = [];
 
       if (keyArray.length) {
-        const docs = await this.db.allDocs({
-          keys: keyArray,
-          include_docs: true,
-        });
+        const docs = this.prefetched
+          ? { rows: keyArray.filter((k) => this.prefetched![k]).map((k) => ({ doc: this.prefetched![k] })) }
+          : await this.db.allDocs({
+            keys: keyArray,
+            include_docs: true,
+          });
 
         // Must be a better way to manage this, Less operations
         if (docs?.rows) {

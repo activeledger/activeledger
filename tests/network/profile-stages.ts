@@ -40,6 +40,7 @@ function readMarks(logPath: string, node: number): Mark[] {
 const ORDER = [
   "http.in", "host.pending", "host.dispatch", "worker.recv", "worker.start",
   "proto.start", "proto.contractPath", "proto.contractStat",
+  "perm.prefetchBegin", "perm.prefetchEnd",
   "perm.iFetchBegin", "perm.iFetchEnd", "perm.iSigsDone", "proto.inputsChecked",
   "perm.oFetchBegin", "perm.oFetchEnd", "perm.oSigsDone",
   "proto.outputsChecked", "proto.contractDate", "proto.streamsReady", "proto.voted", "proto.commitBegin",
