@@ -28,7 +28,7 @@ import {
   ActiveCacheManager,
 } from "@activeledger/activeoptions";
 import { ActiveClone } from "@activeledger/activeutilities";
-import { ActiveLogger } from "@activeledger/activelogger";
+import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Host } from "./host";
@@ -146,6 +146,7 @@ export class Endpoints {
             //   tx.$broadcast = true;
             // }
 
+            ActiveTiming.mark(tx.$umid, "http.in");
             ActiveLogger.debug("Client Sent TX : " + tx.$umid);
             // If we got here everything is ok to send into internal
             // Now sending direct reducing http overhead
