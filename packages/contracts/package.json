@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecontracts",
-  "version": "4.5.17",
+  "version": "4.6.0",
   "engines": {
     "node": ">=20.18.1"
   },
@@ -46,10 +46,10 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.5.17",
-    "@activeledger/activedefinitions": "4.5.17",
-    "@activeledger/activelogger": "4.5.17",
-    "@activeledger/activequery": "4.5.17",
-    "@activeledger/activeutilities": "4.5.17"
+    "@activeledger/activecrypto": "4.6.0",
+    "@activeledger/activedefinitions": "4.6.0",
+    "@activeledger/activelogger": "4.6.0",
+    "@activeledger/activequery": "4.6.0",
+    "@activeledger/activeutilities": "4.6.0"
   }
 }

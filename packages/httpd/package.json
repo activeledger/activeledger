@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/httpd",
-  "version": "4.5.17",
+  "version": "4.6.0",
   "engines": {
     "node": ">=20.18.1"
   },
@@ -45,8 +45,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "4.5.17",
-    "@activeledger/activeutilities": "4.5.17",
+    "@activeledger/activelogger": "4.6.0",
+    "@activeledger/activeutilities": "4.6.0",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   }
 }
