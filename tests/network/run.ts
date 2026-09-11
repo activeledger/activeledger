@@ -1645,6 +1645,106 @@ async function runNodeRecoveryTests(
     }
   }
 
+  // A DELIBERATELY BROKEN chain, on a live network.
+  //
+  // The unit tests prove every layer of the repair contains its own
+  // failures. They cannot prove that a real node survives one, and that is
+  // the property that actually matters: history repair is the least
+  // important thing a node does, and it must never be worth a node. Node
+  // treats an unhandled rejection as fatal, so a bug here could take down a
+  // node that was otherwise perfectly healthy.
+  //
+  // So: give a returning node a chain it cannot walk - a mid-chain umid
+  // replaced with nonsense on every peer, so the fetch returns junk rather
+  // than failing cleanly - then check the node is still a working member of
+  // the network afterwards.
+  report.phase("Node recovery: a broken history chain must not harm the node");
+  {
+    const start = Date.now();
+    const driver = nodes[0];
+    const victim = await onboard(driver.baseUrl);
+    const bystander = await onboard(driver.baseUrl);
+    await waitForConvergence(nodes, victim.streamId, 10000);
+    await waitForConvergence(nodes, bystander.streamId, 10000);
+
+    await harness.killNode(downNode.index);
+
+    const missed: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      const res: any = await runContract(driver.baseUrl, victim, namespace, emitterId, {
+        message: `broken-${i}`,
+        correlationId: `broken-${i}-${Date.now()}`,
+      }).catch(() => undefined);
+      if (res?.$umid) missed.push(res.$umid);
+    }
+
+    // Poison the middle of the chain on every node that is up, so the walk
+    // gets a malformed document back rather than a clean "not found".
+    const poisoned = missed[Math.floor(missed.length / 2)];
+    if (poisoned) {
+      for (const node of nodes) {
+        if (node.index === downNode.index) continue;
+        await storagePut(node.storageUrl, `${poisoned}:umid`, {
+          _id: `${poisoned}:umid`,
+          umid: "not-an-object",
+          streams: "not-an-array",
+          events: { nope: true },
+        }).catch(() => undefined);
+      }
+    }
+
+    await harness.restartNode(downNode.index);
+    await new Promise((r) => setTimeout(r, 4000));
+    await runContract(driver.baseUrl, victim, namespace, emitterId, {
+      message: "broken-trigger",
+      correlationId: `broken-trigger-${Date.now()}`,
+    }).catch(() => undefined);
+
+    // Let the walk run into the poison and give up
+    await new Promise((r) => setTimeout(r, 8000));
+
+    // 1. Is the node still there at all?
+    let alive = false;
+    try {
+      const status: any = await requestJsonWithStatus(`${downNode.baseUrl}/a/status`, "GET");
+      alive = status.statusCode === 200;
+    } catch {
+      alive = false;
+    }
+
+    // 2. Is it still a working consensus member? A transaction on an
+    //    unrelated stream has to commit with it taking part.
+    const after: any = await runContract(driver.baseUrl, bystander, namespace, returnerId, {
+      message: "after-broken-chain",
+    }).catch(() => undefined);
+    const stillCommitting = !!after && !after.$summary?.errors;
+
+    // 3. Did the stream it was actually repairing still converge? State is
+    //    what matters; the history behind it is allowed to be incomplete.
+    const conv = await waitForConvergence(nodes, victim.streamId, 20000);
+
+    const ok = alive && stillCommitting && conv.converged;
+    report.record("broken-chain-does-not-harm-the-node", ok, Date.now() - start);
+    if (!alive) {
+      report.fail(`Node ${downNode.port} is not responding - a broken history chain took it down`);
+    } else if (!stillCommitting) {
+      report.fail(
+        `Node ${downNode.port} is up but no longer committing: ${JSON.stringify(after?.$summary)}`
+      );
+    } else if (!conv.converged) {
+      report.fail(
+        `State did not converge after a broken chain: ${conv.byNode
+          .map((n) => `${n.port}=${n.rev}`)
+          .join(", ")}`
+      );
+    } else {
+      report.ok(
+        `Poisoned the chain at ${poisoned?.slice(0, 12) || "?"} - node ${downNode.port} stayed up, ` +
+          `kept committing, and its state still converged on ${conv.byNode[0].rev}`
+      );
+    }
+  }
+
   // A long gap, with events - the shape of a node that was down for a
   // while rather than one that dropped a round.
   //

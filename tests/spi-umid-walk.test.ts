@@ -551,3 +551,138 @@ describe("Endpoints.walkUmidHistory - pacing", () => {
     expect(elapsed, `walk took ${elapsed}ms, expected pacing`).to.be.greaterThan(100);
   });
 });
+
+/**
+ * Failure containment.
+ *
+ * This runs detached behind every commit, so an escaping error has nowhere
+ * to be caught. Node treats an unhandled rejection as fatal by default, so
+ * a bug in history repair - the least important thing the node does -
+ * could take down a node that was otherwise healthy. That trade is
+ * unacceptable in both directions: history is worth having, and it is
+ * never worth a node for.
+ *
+ * Every layer is made to throw in turn, and the assertion is the same each
+ * time: the call resolves, the process sees no unhandled rejection, and
+ * the guard is released so the umid is not wedged.
+ */
+describe("Endpoints - history repair cannot take the node down", () => {
+  const STREAM_D = "cccc1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5ecc";
+
+  /** Fails at exactly one layer, works everywhere else. */
+  function brokenAt(layer: string): any {
+    const doc = (umid: string) => ({
+      _id: `${umid}:umid`,
+      umid: { $umid: umid },
+      events: [{ _id: `event:1,${umid}`, name: "E", data: {} }],
+      streams: { new: [], updated: [{ id: STREAM_D, prev: `${umid}-prev` }] },
+    });
+
+    return {
+      dbConnection: {
+        get: async (id: string) => {
+          if (layer === "get") throw new Error("store unreachable");
+          if (layer === "get-returns-junk") return { nonsense: true };
+          if (layer === "get-returns-null") return null;
+          throw new Error("not found");
+        },
+        bulkDocs: async () => {
+          if (layer === "bulkDocs") throw new Error("disk full");
+          if (layer === "bulkDocs-junk") return undefined;
+          return { ok: true };
+        },
+      },
+      dbEventConnection: {
+        post: async () => {
+          if (layer === "eventPost") throw new Error("event store gone");
+          return { ok: true };
+        },
+      },
+      neighbourhood: {
+        knockAll: async (endpoint: string) => {
+          if (layer === "knockAll") throw new Error("network partitioned");
+          if (layer === "knockAll-junk") return [null, undefined, 42, "nope"];
+          if (layer === "knockAll-empty") return [];
+          return [doc(endpoint.replace("umid/", ""))];
+        },
+      },
+    };
+  }
+
+  /** Runs fn while watching for any unhandled rejection it causes. */
+  async function withRejectionWatch(fn: () => Promise<void>): Promise<string[]> {
+    const seen: string[] = [];
+    const onUnhandled = (reason: any) => seen.push(String(reason));
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      await fn();
+      // Give a detached promise a turn to reject if it is going to
+      await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    return seen;
+  }
+
+  const layers = [
+    "get",
+    "get-returns-junk",
+    "get-returns-null",
+    "bulkDocs",
+    "bulkDocs-junk",
+    "eventPost",
+    "knockAll",
+    "knockAll-junk",
+    "knockAll-empty",
+  ];
+
+  for (const layer of layers) {
+    it(`survives a failure in ${layer}`, async () => {
+      const host = brokenAt(layer);
+      const umid = `fail-${layer}-${Date.now()}`;
+
+      const rejections = await withRejectionWatch(async () => {
+        // Both entry points, since both run detached in production
+        await Endpoints.repairHistoryAfterCommit(host, umid);
+        await Endpoints.walkUmidHistory(host, STREAM_D, `${umid}-start`);
+        await Endpoints.backfillUmid(host, `${umid}-b`);
+      });
+
+      expect(rejections, `unhandled rejection from ${layer}`).to.have.length(0);
+    });
+  }
+
+  it("survives a host missing the connections entirely", async () => {
+    // Defensive rather than expected - but a partially constructed host
+    // during startup or shutdown should not be fatal either.
+    const rejections = await withRejectionWatch(async () => {
+      await Endpoints.repairHistoryAfterCommit({} as any, `bare-${Date.now()}`);
+      await Endpoints.walkUmidHistory({} as any, STREAM_D, `bare2-${Date.now()}`);
+      await Endpoints.backfillUmid({} as any, `bare3-${Date.now()}`);
+    });
+
+    expect(rejections).to.have.length(0);
+  });
+
+  it("releases the in-flight guard after a failure, so the umid is not wedged", async () => {
+    const host = brokenAt("knockAll");
+    const umid = `wedge-${Date.now()}`;
+
+    await Endpoints.repairHistoryAfterCommit(host, umid);
+
+    // A second umid must still be able to run - if the guard leaked, the
+    // set would be growing but this would still pass, so also check the
+    // first umid is no longer marked in flight by running it again after
+    // clearing its cooldown.
+    (Endpoints as any).historyRepairLastRun.delete(umid);
+    let threw = false;
+    try {
+      await Endpoints.repairHistoryAfterCommit(host, umid);
+    } catch {
+      threw = true;
+    }
+
+    expect(threw).to.equal(false);
+    expect((Endpoints as any).historyRepairInFlight.has(umid)).to.equal(false);
+  });
+});
