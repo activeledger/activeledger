@@ -1,10 +1,15 @@
 # Activeledger Changelog
 
-## [4.5.18]
+## [4.6.0]
 
 Performance. A transaction was 32ms and is now 22ms on a four-node network,
 and the largest single cause was a dependency pinned one patch release short
 of its own fix.
+
+A minor rather than a patch, deliberately. Nothing here changes an API, but a
+minimum Node version is now declared and every outbound HTTP request - each
+database read and write, each node-to-node knock - goes through a rewritten
+transport. Neither belongs in a version number that says "nothing to see".
 
 ### Requires Node 20.18.1 or later
 * **All packages** : `engines` is now declared, for the first time, at
