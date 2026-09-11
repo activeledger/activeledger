@@ -355,7 +355,15 @@ describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () 
  * and must never let a failure wedge a umid so it is skipped forever.
  */
 describe("Endpoints.repairHistoryAfterCommit - guards", () => {
-  const STREAM_B = "aaaa1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5eaa";
+  // Each fixture gets its OWN stream. The cooldown is per stream, so
+  // sharing one would make each test silence the next - which is correct
+  // behaviour and a useless test.
+  let streamCounter = 0;
+
+  beforeEach(() => {
+    (Endpoints as any).historyRepairLastRun.clear();
+    (Endpoints as any).historyRepairInFlight.clear();
+  });
 
   /** Counts network calls, so "does not run twice" is measured not assumed. */
   // The cooldown map is static and survives between tests, so every test
@@ -368,6 +376,7 @@ describe("Endpoints.repairHistoryAfterCommit - guards", () => {
     const store = new Map<string, any>();
     const id = `committed-${Date.now()}-${counter++}`;
     const missing = `${id}-missing`;
+    const STREAM_B = `bbbb${streamCounter++}c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5eaa`;
     const committed = {
       _id: `${id}:umid`,
       umid: { $umid: id },
@@ -684,5 +693,109 @@ describe("Endpoints - history repair cannot take the node down", () => {
 
     expect(threw).to.equal(false);
     expect((Endpoints as any).historyRepairInFlight.has(umid)).to.equal(false);
+  });
+});
+
+/**
+ * The cooldown has to be keyed by something that REPEATS.
+ *
+ * It was keyed by umid, which is a hash of the whole transaction - so every
+ * commit brought a key that had never been seen, the lookup always missed,
+ * and the rate limit never once applied. Every commit still broadcast to
+ * every peer, which is precisely the cost the cooldown was added to remove.
+ *
+ * The existing guard tests did not catch it because they reused one umid,
+ * which is the one thing production never does. These use a fresh umid per
+ * commit, as real traffic does, and count what reaches the network.
+ */
+describe("Endpoints.repairHistoryAfterCommit - the cooldown must be per stream", () => {
+  const HOT = "dddd1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5edd";
+  const OTHER = "eeee1c9e5b2d4a6c8e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5eee";
+
+  /** A node holding every umid, so nothing needs repairing - the common case. */
+  function healthyHost(streamId: string) {
+    const calls = { knockAll: 0 };
+    const store = new Map<string, any>();
+    const host: any = {
+      dbConnection: {
+        get: async (id: string) => {
+          if (store.has(id)) return store.get(id);
+          throw new Error("not found");
+        },
+        bulkDocs: async () => ({ ok: true }),
+      },
+      dbEventConnection: { post: async () => ({ ok: true }) },
+      neighbourhood: {
+        knockAll: async () => {
+          calls.knockAll++;
+          return [];
+        },
+      },
+    };
+    // Each commit writes its own umid doc naming the same stream
+    const commit = (umid: string, prev: string) => {
+      store.set(`${umid}:umid`, {
+        _id: `${umid}:umid`,
+        umid: { $umid: umid },
+        streams: { new: [], updated: [{ id: streamId, prev }] },
+      });
+      // the node holds the previous one, so there is no gap to repair
+      store.set(`${prev}:umid`, { _id: `${prev}:umid`, streams: { new: [], updated: [] } });
+    };
+    return { calls, host, commit };
+  }
+
+  beforeEach(() => {
+    (Endpoints as any).historyRepairLastRun.clear();
+    (Endpoints as any).historyRepairInFlight.clear();
+  });
+
+  it("stays quiet across many commits on one stream, each with its own umid", async () => {
+    // The real shape of a busy stream: twenty transactions, twenty distinct
+    // umids, one stream. Keyed by umid this broadcast twenty times.
+    const { host, calls, commit } = healthyHost(HOT);
+
+    for (let i = 0; i < 20; i++) {
+      const umid = `hot-tx-${i}`;
+      commit(umid, `hot-prev-${i}`);
+      await Endpoints.repairHistoryAfterCommit(host, umid);
+    }
+
+    expect(
+      calls.knockAll,
+      `broadcast ${calls.knockAll} times for one stream - the cooldown is not holding`
+    ).to.be.at.most(1);
+  });
+
+  it("still checks a different stream straight away", async () => {
+    // Rate limiting one stream must not silence another - a gap on a quiet
+    // stream should be noticed on its very first commit.
+    const first = healthyHost(HOT);
+    first.commit("a-1", "a-prev");
+    await Endpoints.repairHistoryAfterCommit(first.host, "a-1");
+
+    const second = healthyHost(OTHER);
+    second.commit("b-1", "b-prev");
+    await Endpoints.repairHistoryAfterCommit(second.host, "b-1");
+
+    expect(second.calls.knockAll, "an unrelated stream was silenced").to.be.greaterThan(0);
+  });
+
+  it("checks again once the window has passed", async () => {
+    // Skipping only ever delays a repair, so the window must actually reopen.
+    const { host, calls, commit } = healthyHost(HOT);
+
+    commit("w-1", "w-prev");
+    await Endpoints.repairHistoryAfterCommit(host, "w-1");
+    const afterFirst = calls.knockAll;
+
+    // Age the recorded time past the window rather than waiting 30s
+    const cooldown = (Endpoints as any).HISTORY_REPAIR_COOLDOWN_MS;
+    (Endpoints as any).historyRepairLastRun.set(HOT, Date.now() - cooldown - 1000);
+
+    commit("w-2", "w-prev2");
+    await Endpoints.repairHistoryAfterCommit(host, "w-2");
+
+    expect(calls.knockAll).to.be.greaterThan(afterFirst);
   });
 });
