@@ -368,3 +368,79 @@ You can expand on a single contract file to manage multiple actions. The transac
   }
 ```
 
+
+#### Leader (delegated) voting
+
+A voting round costs a transaction a round trip to every other node before the
+client hears anything back. For some contracts that round trip buys nothing:
+every node is about to run the same deterministic checks over the same state
+and arrive at the same answer. Leader voting lets such a contract say so, and
+have the answer reached once.
+
+Return `{ leader: true }` from `vote()` instead of `true`:
+
+```typescript
+  public vote(): Promise<boolean | { leader: boolean }> {
+    return new Promise((resolve, reject) => {
+      // ...your checks, exactly as before...
+      resolve({ leader: true });
+    });
+  }
+```
+
+The transaction must also be submitted with
+[`$delegated`](../transactions.md#delegated) set. Both halves are required:
+the flag tells the entry node not to pass the transaction on before it has
+voted, and the contract's `{ leader: true }` is what actually delegates it. A
+client setting the flag on a contract that returns an ordinary `true` gets an
+ordinary voting round.
+
+When both agree, the entry node commits and broadcasts its decision, and every
+other node commits on that decision without voting.
+
+##### What the other nodes still check
+
+Everything that protects a stream from a bad write. The transaction's expiry,
+the input and output revisions against that node's own copy of the streams,
+and the signatures are all checked before the contract is loaded, and none of
+that is skipped. A node holding a stream at a revision the leader did not
+expect still refuses the write, records it, and is repaired by the Stream
+Position Index in the usual way.
+
+##### What your contract gives up
+
+`verify()` and `vote()` do not run anywhere except the entry node.
+
+This is the part that bites. In the transfer example above, `vote()` assigns
+`this.iActivity` and `this.txValue`, and `commit()` reads them back. Under
+leader voting that contract would commit correctly on the entry node and throw
+on every other node, because on those nodes `vote()` never ran and both
+properties are undefined.
+
+**A contract using leader voting must do all of its work in `commit()`** and
+must not rely on anything the earlier phases set up:
+
+```typescript
+  public commit(): Promise<any> {
+    return new Promise((resolve, reject) => {
+      // Read it here. Not in vote() - vote() did not run on this node.
+      const oStreams = Object.keys(this.transactions.$o);
+      const activity = this.getActivityStreams(oStreams[0]);
+      // ...
+    });
+  }
+```
+
+The same determinism rule as always applies, and matters more here: `commit()`
+runs independently on every node, so anything that reads the clock or a random
+source produces a different result per node and diverges the ledger.
+
+##### When to use it
+
+When the contract's decision is a pure function of state every node already
+holds, and the cost of a node occasionally having to be repaired by SPI is
+lower than the cost of the latency. On a four node network it is roughly a 4x
+reduction in what the client waits.
+
+Not for contracts that call out to anything, that depend on per-node state, or
+where a wrong write is worse than a slow one.

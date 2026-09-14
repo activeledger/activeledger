@@ -49,6 +49,11 @@ export interface LedgerEntry {
   $encrypt?: boolean;
   $nolock?:boolean;
   $spiRetry?:boolean
+  // Ask for leader (delegated) consensus. This is a request, not a grant: it
+  // only tells the entry node not to broadcast before it has voted. The grant
+  // is $nodes[$origin].leader, which the entry node sets when its contract
+  // votes leader, and which is what the other nodes actually act on.
+  $delegated?: boolean;
   $$noreply?: boolean;
   $$labelOrKey?: string[]; // Need to move elsewhere as this will be sent with rightKnocks (or reduce right)
 }

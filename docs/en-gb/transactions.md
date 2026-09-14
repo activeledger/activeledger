@@ -128,6 +128,45 @@ state now contains the current execution time stream state .
 
 This Boolean instructs Activeledger that the identity issuing the transaction is going to self sign. That means they do not yet have an identity onboarded onto the network but want to raise a transaction. An example of this is [here](README.md) which explains how it is used to onboard. This information is available during the verify phase of contract operation .
 
+### \$delegated
+
+This Boolean asks the network to decide the transaction on the entry node's
+vote alone, instead of running a voting round on every node.
+
+It is a request, not an instruction. All it does on its own is stop the entry
+node from passing the transaction on before it has voted. What actually
+delegates the transaction is the contract: if its `vote()` returns
+`{ leader: true }`, the entry node commits, broadcasts its decision, and every
+other node commits on that decision rather than voting itself. If the contract
+returns an ordinary `true`, the transaction falls back to a normal voting
+round and nothing is skipped. A client cannot switch consensus off by setting
+this flag - only the contract can, and only on the node that received the
+transaction.
+
+The other nodes still check everything that protects a stream from a bad
+write: the transaction's expiry, the input and output revisions against their
+own copy of the streams, and the signatures. A node that disagrees on a
+revision still refuses the write and is repaired by the Stream Position Index,
+the same as any other node that has fallen behind.
+
+What is skipped on those nodes is the contract's `verify()` and `vote()`
+phases, which do not run at all. **A contract written for this must do all of
+its work in `commit()`** - anything it assigns to `this` during verify or vote
+will be undefined everywhere except the entry node. See
+[Leader (delegated) voting](contracts/standard.md#leader-delegated-voting).
+
+On a four node network this is roughly a 4x reduction in the time the client
+waits, because the client is answered as soon as the entry node has written
+rather than after a round trip to every other node.
+
+```json
+{
+    "$delegated": true,
+    "$tx": { },
+    "$sigs": { }
+}
+```
+
 ### \$sigs
 
 This property contains a simple key-value object. They key has to much all the keys provided in the \$i object. The value is the private key signature of the entire \$tx object.
