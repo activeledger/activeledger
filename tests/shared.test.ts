@@ -96,3 +96,79 @@ describe("Shared.signatureCheck() - hpe-14 regression (64d6f0f)", () => {
     expect(cache.size()).to.be.at.least(2);
   });
 });
+
+/**
+ * The post-quantum types at the chokepoint the protocol actually calls.
+ *
+ * permissionsChecker and the $selfsign path both reach KeyPair only through
+ * Shared.signatureCheck(publicKey, signature, type), so this is where a
+ * post-quantum identity is either a first-class citizen or is not. The
+ * KeyPair tests prove the algorithms; these prove the wiring, including the
+ * per-type key cache that sits in between.
+ */
+describe("Shared.signatureCheck() - post-quantum types", () => {
+  const PQ = ["ml-dsa-65", "falcon-512"];
+
+  for (const type of PQ) {
+    it(`accepts a valid ${type} signature`, () => {
+      const txBody = { $namespace: "default", $contract: "transfer", $i: { alice: {} } };
+      const shared = new Shared(false, { $tx: txBody } as any, {} as any, {} as any);
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      expect(shared.signatureCheck(keys.pub.pkcs8pem, kp.sign(txBody), type)).to.equal(true);
+    });
+
+    it(`rejects another identity's ${type} signature`, () => {
+      const txBody = { $i: { alice: {} } };
+      const shared = new Shared(false, { $tx: txBody } as any, {} as any, {} as any);
+      const a = new ActiveCrypto.KeyPair(type); a.generate();
+      const b = new ActiveCrypto.KeyPair(type); const keysB = b.generate();
+      expect(shared.signatureCheck(keysB.pub.pkcs8pem, a.sign(txBody), type)).to.equal(false);
+    });
+
+    it(`rejects a ${type} signature over a different transaction`, () => {
+      const signed = { $i: { alice: { amount: "100" } } };
+      const checked = { $i: { alice: { amount: "999" } } };
+      const shared = new Shared(false, { $tx: checked } as any, {} as any, {} as any);
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      expect(shared.signatureCheck(keys.pub.pkcs8pem, kp.sign(signed), type)).to.equal(false);
+    });
+
+    it(`returns false rather than throwing on junk ${type} input`, () => {
+      // A client controls both the signature and the declared type, so this
+      // path has to absorb anything without taking the process down.
+      const shared = new Shared(false, { $tx: { a: 1 } } as any, {} as any, {} as any);
+      expect(shared.signatureCheck("not-base64!!", "also-junk", type)).to.equal(false);
+      expect(shared.signatureCheck("", "", type)).to.equal(false);
+    });
+  }
+
+  it("does not let the key cache confuse one type for another", () => {
+    // signatureCheck() caches KeyPair instances. The cache key includes the
+    // type, and this fails loudly if that ever stops being true: the same
+    // base64 string is a valid public key for neither of the other schemes,
+    // so a cache hit across types would surface as a wrong answer here.
+    const txBody = { $i: { alice: {} } };
+    const shared = new Shared(false, { $tx: txBody } as any, {} as any, {} as any);
+
+    const mldsa = new ActiveCrypto.KeyPair("ml-dsa-65");
+    const mldsaKeys = mldsa.generate();
+    const falcon = new ActiveCrypto.KeyPair("falcon-512");
+    const falconKeys = falcon.generate();
+
+    expect(shared.signatureCheck(mldsaKeys.pub.pkcs8pem, mldsa.sign(txBody), "ml-dsa-65")).to.equal(true);
+    expect(shared.signatureCheck(falconKeys.pub.pkcs8pem, falcon.sign(txBody), "falcon-512")).to.equal(true);
+    // Same key material, wrong type declared - must not be served from cache
+    // as the type it was first seen under.
+    expect(shared.signatureCheck(mldsaKeys.pub.pkcs8pem, mldsa.sign(txBody), "falcon-512")).to.equal(false);
+    expect(shared.signatureCheck(falconKeys.pub.pkcs8pem, falcon.sign(txBody), "ml-dsa-65")).to.equal(false);
+    // And the originals still verify afterwards.
+    expect(shared.signatureCheck(mldsaKeys.pub.pkcs8pem, mldsa.sign(txBody), "ml-dsa-65")).to.equal(true);
+  });
+
+  it("rejects an unimplemented type without taking the process down", () => {
+    const shared = new Shared(false, { $tx: { a: 1 } } as any, {} as any, {} as any);
+    expect(shared.signatureCheck("AAAA", "AAAA", "kyber-1024")).to.equal(false);
+  });
+});

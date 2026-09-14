@@ -145,3 +145,116 @@ describe("ActiveCrypto.KeyPair - post-quantum signatures", () => {
     }
   });
 });
+
+/**
+ * Type confusion. The type string decides which algorithm verifies a
+ * signature, and it travels with the transaction rather than being derived
+ * from the key - so the interesting question is what happens when it does
+ * not match the key material it arrives with.
+ */
+describe("ActiveCrypto.KeyPair - post-quantum type confusion", () => {
+  it("will not verify one scheme's signature under the other", () => {
+    const mldsa = new ActiveCrypto.KeyPair("ml-dsa-65");
+    const mldsaKeys = mldsa.generate();
+    const falcon = new ActiveCrypto.KeyPair("falcon-512");
+    const falconKeys = falcon.generate();
+    const tx = { $i: { alice: {} } };
+
+    // Right key, wrong algorithm declared: the key material is the wrong
+    // length for the declared scheme, so it is refused at construction.
+    expect(() => new ActiveCrypto.KeyPair("falcon-512", mldsaKeys.pub.pkcs8pem))
+      .to.throw(/expected/);
+    expect(() => new ActiveCrypto.KeyPair("ml-dsa-65", falconKeys.pub.pkcs8pem))
+      .to.throw(/expected/);
+
+    // Right algorithm and a valid key, but a signature made by the other
+    // scheme - a plain false, no throw.
+    expect(
+      new ActiveCrypto.KeyPair("ml-dsa-65", mldsaKeys.pub.pkcs8pem).verify(tx, falcon.sign(tx))
+    ).to.equal(false);
+    expect(
+      new ActiveCrypto.KeyPair("falcon-512", falconKeys.pub.pkcs8pem).verify(tx, mldsa.sign(tx))
+    ).to.equal(false);
+  });
+
+  it("will not verify a post-quantum signature as rsa", () => {
+    const kp = new ActiveCrypto.KeyPair("ml-dsa-65");
+    const keys = kp.generate();
+    const tx = { $i: { alice: {} } };
+    // An rsa KeyPair handed post-quantum key material: base64 that is not a
+    // PEM. It must refuse rather than accept anything.
+    let verified: boolean;
+    try {
+      verified = new ActiveCrypto.KeyPair("rsa", keys.pub.pkcs8pem).verify(tx, kp.sign(tx));
+    } catch {
+      verified = false; // throwing is a valid refusal
+    }
+    expect(verified).to.equal(false);
+  });
+
+  it("fails cleanly on a type nobody implements", () => {
+    // A client can put anything in $i.identity.type. It must not crash the
+    // process - shared.signatureCheck() turns a throw into a failed check,
+    // but the throw has to be reachable rather than a TypeError somewhere.
+    expect(() => new ActiveCrypto.KeyPair("dilithium-9000", "AAAA").verify({ a: 1 }, "AAAA"))
+      .to.throw();
+  });
+});
+
+describe("ActiveCrypto.KeyPair - post-quantum signing behaviour", () => {
+  for (const type of PQ_TYPES) {
+    it(`${type} produces a different signature each time, all valid`, () => {
+      // Signing is hedged, so identical input gives different signatures.
+      // Both must verify - a test that only checked one would pass against a
+      // broken implementation that ignored the entropy.
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      const tx = { $i: { alice: { amount: "100" } } };
+      const pub = new ActiveCrypto.KeyPair(type, keys.pub.pkcs8pem);
+      const sigs = new Set<string>();
+      for (let i = 0; i < 5; i++) {
+        const sig = kp.sign(tx);
+        expect(pub.verify(tx, sig)).to.equal(true);
+        sigs.add(sig);
+      }
+      expect(sigs.size).to.equal(5, "hedged signing should not repeat");
+    });
+
+    it(`${type} round-trips a payload with non-ASCII content`, () => {
+      // sign() and verify() must agree on encoding. Both go through
+      // Buffer.from(str, "utf8"); a mismatch would only show on bytes above
+      // the ASCII range, which a plain transaction never contains.
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      const tx = { $i: { "café": { note: "日本語 — emoji 🔐", amount: "١٢٣" } } };
+      expect(new ActiveCrypto.KeyPair(type, keys.pub.pkcs8pem).verify(tx, kp.sign(tx)))
+        .to.equal(true);
+    });
+
+    it(`${type} handles a large payload`, () => {
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      const tx = { $i: { alice: { blob: "x".repeat(200_000) } } };
+      expect(new ActiveCrypto.KeyPair(type, keys.pub.pkcs8pem).verify(tx, kp.sign(tx)))
+        .to.equal(true);
+    });
+
+    it(`${type} survives being carried as a string and rebuilt`, () => {
+      // How a node actually gets the key: read off a stream document, having
+      // been JSON encoded and decoded on the way.
+      const kp = new ActiveCrypto.KeyPair(type);
+      const keys = kp.generate();
+      const tx = { $i: { alice: {} } };
+      const sig = kp.sign(tx);
+      const carried = JSON.parse(JSON.stringify({ pub: keys.pub.pkcs8pem, sig }));
+      expect(new ActiveCrypto.KeyPair(type, carried.pub).verify(tx, carried.sig))
+        .to.equal(true);
+    });
+
+    it(`${type} rejects an empty signature`, () => {
+      const keys = new ActiveCrypto.KeyPair(type).generate();
+      const pub = new ActiveCrypto.KeyPair(type, keys.pub.pkcs8pem);
+      expect(pub.verify({ a: 1 }, "")).to.equal(false);
+    });
+  }
+});
