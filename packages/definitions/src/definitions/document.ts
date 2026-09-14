@@ -58,6 +58,8 @@ export interface IMeta extends IFullState {
   umid?: string;
   /** The transaction that originally created this stream - set once, never overwritten. `umid` itself now tracks the *latest* transaction that touched this stream instead (see stream.ts's setState()/streamUpdater.ts's buildReferenceStreams()). */
   origin?: string;
+  /** This stream's id was derived from a caller-supplied seed rather than from the transaction - `newActivityStream(name, deterministic)`. Set so streamUpdater can reject a collision with a stream that already exists; it used to infer this from `umid` holding the seed, which is no longer true because `umid` and `origin` must be real transactions. */
+  deterministic?: boolean;
   name?: string;
   public?: string;
   hash?: string;
