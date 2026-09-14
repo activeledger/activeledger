@@ -2,7 +2,7 @@
   "name": "@activeledger/activeledger",
   "version": "4.6.0",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24.0.0"
   },
   "description": "This package contains the main application for running the Activeledger blockchain",
   "keywords": [

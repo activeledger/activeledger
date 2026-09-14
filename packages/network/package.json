@@ -2,7 +2,7 @@
   "name": "@activeledger/activenetwork",
   "version": "4.6.0",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24.0.0"
   },
   "description": "This package manages the network communication of the Activeledger nodes.",
   "keywords": [

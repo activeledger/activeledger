@@ -2,7 +2,7 @@
   "name": "@activeledger/activeprotocol",
   "version": "4.6.0",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24.0.0"
   },
   "description": "Underlying protocol which handles consensus and the smart contract virtual machine of Activeledger",
   "keywords": [
