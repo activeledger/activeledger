@@ -2,7 +2,7 @@
   "name": "@activeledger/activecrypto",
   "version": "4.6.0",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24.0.0"
   },
   "description": "This package contains a wrapper for managing multiple cryptographic algorithms for Activeledger",
   "keywords": [
@@ -48,6 +48,7 @@
   "module": "./es/index.js",
   "dependencies": {
     "@activeledger/activelogger": "4.6.0",
+    "@noble/post-quantum": "^0.7.1",
     "asn1.js": "5.4.1"
   }
 }

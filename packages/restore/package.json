@@ -2,7 +2,7 @@
   "name": "@activeledger/activerestore",
   "version": "4.6.0",
   "engines": {
-    "node": ">=20.18.1"
+    "node": ">=24.0.0"
   },
   "description": "This pakacage contains the application which handles the network healing and rebuilding from an empty Activeledger node.",
   "keywords": [

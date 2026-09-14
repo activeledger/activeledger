@@ -24,6 +24,8 @@
 import * as crypto from "crypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { Hash } from "./hash";
+import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
+import { falcon512 } from "@noble/post-quantum/falcon.js";
 import { AsnParser } from "./asn";
 
 /**
@@ -59,6 +61,44 @@ export interface KeyHandler {
  * @export
  * @class KeyPair
  */
+/**
+ * The post-quantum signature schemes, by the type string that goes into a
+ * stream's `meta.authorities[].type`.
+ *
+ * Named for their parameter sets rather than shortened, because that string
+ * is written into ledger metadata once and read for the life of the identity
+ * - "ml-dsa" without the 65 would be ambiguous the moment a second parameter
+ * set is wanted, and nothing can rewrite it afterwards.
+ *
+ * ML-DSA-65 is FIPS 204, the conservative choice. Falcon-512 is FN-DSA,
+ * still a draft standard, and earns its place on size: 653 byte signatures
+ * against ML-DSA-65's 3309, which matters because every signature is
+ * broadcast to every node and then stored for good.
+ *
+ * Both come from @noble/post-quantum - pure JavaScript, no native binding,
+ * so the same code runs in a node, in the SDK and in a React Native client.
+ */
+const POST_QUANTUM: {
+  [type: string]: {
+    keygen: (seed: Uint8Array) => { publicKey: Uint8Array; secretKey: Uint8Array };
+    sign: (
+      msg: Uint8Array,
+      secretKey: Uint8Array,
+      opts?: { extraEntropy?: Uint8Array | false }
+    ) => Uint8Array;
+    verify: (sig: Uint8Array, msg: Uint8Array, publicKey: Uint8Array) => boolean;
+    // Deliberately no `signature` here. ML-DSA's is fixed at 3309 bytes, but
+    // Falcon's varies with the signature it produces - 649 to 662 bytes over
+    // 300 samples - and noble does not declare one for it at all. Nothing
+    // here needs it, and declaring it would assert a fact that is false for
+    // half the table.
+    lengths: { publicKey: number; secretKey: number; seed: number };
+  };
+} = {
+  "ml-dsa-65": ml_dsa65 as any,
+  "falcon-512": falcon512 as any,
+};
+
 export class KeyPair {
   /**
    * Holds Public Private Data
@@ -99,6 +139,24 @@ export class KeyPair {
   constructor(type?: string, pem?: string);
   constructor(private type: string = "rsa", public pem?: string) {
     if (pem) {
+      // Post-quantum keys are raw bytes, not PEM. Which of the pair this is
+      // can be read off its length - the parameter sets fix both, and they
+      // never collide - so a caller does not have to say, exactly as the
+      // hex branch below infers it for secp256k1.
+      const pq = POST_QUANTUM[type];
+      if (pq) {
+        const raw = Buffer.from(pem, "base64");
+        if (raw.length === pq.lengths.publicKey) {
+          this.createHandler("", pem);
+        } else if (raw.length === pq.lengths.secretKey) {
+          this.createHandler(pem, "");
+        } else {
+          throw ActiveLogger.fatal(
+            `${type} key is ${raw.length} bytes, expected ${pq.lengths.publicKey} (public) or ${pq.lengths.secretKey} (private)`
+          );
+        }
+        return;
+      }
       switch (type) {
         case "rsa":
         case "bitcoin":
@@ -316,6 +374,18 @@ export class KeyPair {
     pem?: boolean,
     compressed?: boolean
   ): KeyHandler {
+    const pq = POST_QUANTUM[this.type];
+    if (pq) {
+      const keys = pq.keygen(
+        new Uint8Array(crypto.randomBytes(pq.lengths.seed))
+      );
+      this.createHandler(
+        Buffer.from(keys.secretKey).toString("base64"),
+        Buffer.from(keys.publicKey).toString("base64")
+      );
+      return this.handler;
+    }
+
     switch (this.type) {
       case "rsa":
         // Node or Browser (Webpack doesn't have this yet)
@@ -489,6 +559,29 @@ export class KeyPair {
       );
     }
 
+    const pq = POST_QUANTUM[this.type];
+    if (pq) {
+      // Entropy is supplied rather than left to noble, which otherwise reads
+      // globalThis.crypto.getRandomValues. That global is not ours to rely
+      // on: the contract VM hands contracts an Activeledger `crypto` object
+      // under the same name, and anything doing that process-wide - as
+      // tests/contract.test.ts does - takes getRandomValues away and signing
+      // fails with "crypto.getRandomValues must be defined". Passing it
+      // explicitly keeps signing hedged (FIPS 204 recommends it over
+      // deterministic) while depending only on node's own crypto, which is
+      // already imported here.
+      //
+      // The length differs per scheme - 32 for ML-DSA, 48 for Falcon - and
+      // both happen to equal that scheme's seed length.
+      return Buffer.from(
+        pq.sign(
+          new Uint8Array(Buffer.from(data, "utf8")),
+          new Uint8Array(Buffer.from(this.handler.prv.pkcs8pem, "base64")),
+          { extraEntropy: new Uint8Array(crypto.randomBytes(pq.lengths.seed)) }
+        )
+      ).toString(encoding);
+    }
+
     // Signing Digest Object
     let sign;
 
@@ -555,6 +648,30 @@ export class KeyPair {
     signature: string,
     encoding: any = "base64"
   ): boolean {
+    const pq = POST_QUANTUM[this.type];
+    if (pq) {
+      if (!this.handler.pub.pkcs8pem) {
+        throw ActiveLogger.fatal(
+          data,
+          `Cannot verify with ${this.type} Private Key`
+        );
+      }
+      // Deliberately never throws on malformed input. A bad signature and a
+      // signature of the wrong length mean the same thing to a caller -
+      // this signature is not valid - and shared.signatureCheck() treats a
+      // throw as a check failure anyway, so raising would only turn a clean
+      // false into a logged error on every junk signature.
+      try {
+        return pq.verify(
+          new Uint8Array(Buffer.from(signature, encoding)),
+          new Uint8Array(Buffer.from(this.getString(data), "utf8")),
+          new Uint8Array(Buffer.from(this.handler.pub.pkcs8pem, "base64"))
+        );
+      } catch {
+        return false;
+      }
+    }
+
     // Presence of pub key may not be in pem.
     if (!this.handler.pub.pkcs8pem) {
       throw ActiveLogger.fatal(
