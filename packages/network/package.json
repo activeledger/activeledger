@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activenetwork",
-  "version": "4.7.0",
+  "version": "4.7.1",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -46,13 +46,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.7.0",
-    "@activeledger/activedefinitions": "4.7.0",
-    "@activeledger/activelogger": "4.7.0",
-    "@activeledger/activeoptions": "4.7.0",
-    "@activeledger/activeprotocol": "4.7.0",
-    "@activeledger/activequery": "4.7.0",
-    "@activeledger/activeutilities": "4.7.0",
+    "@activeledger/activecrypto": "4.7.1",
+    "@activeledger/activedefinitions": "4.7.1",
+    "@activeledger/activelogger": "4.7.1",
+    "@activeledger/activeoptions": "4.7.1",
+    "@activeledger/activeprotocol": "4.7.1",
+    "@activeledger/activequery": "4.7.1",
+    "@activeledger/activeutilities": "4.7.1",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
