@@ -37,7 +37,7 @@
   "devDependencies": {
     "@activeledger/activedefinitions": "4.7.1",
     "@types/minimist": "1.2.2",
-    "@types/node": "24.10.1",
+    "@types/node": "26.5.1",
     "typescript": "5.6.3"
   },
   "files": [
