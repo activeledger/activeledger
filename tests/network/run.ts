@@ -203,6 +203,12 @@ async function main(): Promise<boolean> {
 
     await runMetaGrowthTest(report, nodes, identity, NAMESPACE, returnerId);
 
+    const seededId = await deployContract(
+      nodes[0].baseUrl, identity, NAMESPACE, "seeded-identity",
+      path.join(__dirname, "contracts", "seeded-identity-contract.ts")
+    );
+    await runSeededStreamTest(report, nodes, identity, NAMESPACE, seededId);
+
     await runStoragePathValidationTests(report, nodes);
 
     await runSpiTests(report, nodes, identity, NAMESPACE, returnerId, emitterId);
@@ -385,6 +391,91 @@ async function runDeterministicStreamTests(report: Report, nodes: NetworkNode[])
  * every round, and the meta doc's own size stays flat rather than
  * creeping up as more transactions accumulate against the same stream.
  */
+/**
+ * A stream whose id is derived from a caller-supplied seed - newActivityStream's
+ * second argument, which is how an identity is reproduced from a recovery
+ * phrase off-chain - still has to record REAL transactions in umid and origin.
+ *
+ * One constructor argument used to do both jobs, so the seed landed in both
+ * fields. Nothing read them until 4.5.16 built the umid backward chain on
+ * meta.umid; after that a seeded stream wrote a `prev` pointing at a umid
+ * that never existed and history repair could not walk past it. Seen live on
+ * a Falcon-512 identity, where the 1196-character public key sitting in
+ * `umid` made it obvious - with a shorter key it would have looked plausible.
+ *
+ * The two halves pull against each other, so both are checked here: the id
+ * must keep coming from the seed, or a recovery phrase resolves to a
+ * different identity than it did yesterday; and umid/origin must be
+ * transactions, because SPI, events and history repair follow them.
+ */
+async function runSeededStreamTest(
+  report: Report,
+  nodes: NetworkNode[],
+  identity: Identity,
+  namespace: string,
+  seededId: string
+): Promise<void> {
+  report.phase("Deterministic seed: the id comes from the seed, umid/origin are transactions");
+
+  const start = Date.now();
+  const keyPair = new ActiveCrypto.KeyPair("falcon-512");
+  const keys = keyPair.generate();
+  const store = nodes[0].storageUrl;
+
+  const create = {
+    $namespace: namespace,
+    $contract: seededId,
+    $i: { [identity.streamId]: { publicKey: keys.pub.pkcs8pem, type: "falcon-512" } },
+  };
+  const first = await submit(nodes[0].baseUrl, {
+    $tx: create,
+    $sigs: { [identity.streamId]: identity.keyPair.sign(create) },
+  });
+  const streamId = first?.$streams?.new?.[0]?.id;
+  if (!streamId) {
+    report.record("seeded-stream-records-transactions", false, Date.now() - start);
+    report.fail(`Seeded stream was not created: ${JSON.stringify(first?.$summary || first).slice(0, 200)}`);
+    return;
+  }
+
+  const update = {
+    $namespace: namespace,
+    $contract: seededId,
+    $i: { [identity.streamId]: {} },
+    $o: { [streamId]: {} },
+  };
+  const second = await submit(nodes[0].baseUrl, {
+    $tx: update,
+    $sigs: { [identity.streamId]: identity.keyPair.sign(update) },
+  });
+
+  const meta = await storageGet(store, `${streamId}:stream`);
+  const prev = second?.$streams?.updated?.[0]?.prev;
+
+  // The id still comes from the seed - asserted against the hash itself, so
+  // this pins the derivation rather than merely its self-consistency.
+  const idFromSeed =
+    streamId === ActiveCrypto.Hash.getHash(keys.pub.pkcs8pem + "identity", "sha256");
+  const originIsFirst = meta?.origin === first.$umid;
+  const umidIsLatest = meta?.umid === second.$umid;
+  const prevIsFirst = prev === first.$umid;
+  // ...and the chain it produces actually goes somewhere.
+  const prevResolves = !!(await storageGet(store, `${prev}:umid`).catch(() => null));
+
+  const ok = idFromSeed && originIsFirst && umidIsLatest && prevIsFirst && prevResolves;
+  report.record("seeded-stream-records-transactions", ok, Date.now() - start);
+  if (ok) {
+    report.ok(
+      `Seeded stream id still derives from the seed, origin stayed at the first transaction, umid moved to the latest, and its prev resolves`
+    );
+  } else {
+    report.fail(
+      `id-from-seed=${idFromSeed} origin-is-first=${originIsFirst} ` +
+        `umid-is-latest=${umidIsLatest} prev-is-first=${prevIsFirst} prev-resolves=${prevResolves}`
+    );
+  }
+}
+
 async function runMetaGrowthTest(
   report: Report,
   nodes: NetworkNode[],

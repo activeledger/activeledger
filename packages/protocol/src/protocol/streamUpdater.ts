@@ -296,8 +296,16 @@ export class StreamUpdater {
         delete this.streams[i].meta._rev;
         delete this.streams[i].volatile!._rev;
 
-        // New Streams need to check if collision will happen
-        if (this.streams[i].meta.umid !== this.entry.$umid) {
+        // New Streams need to check if collision will happen.
+        //
+        // Asks the meta whether its id was seeded rather than inferring it
+        // from `meta.umid !== entry.$umid`. That comparison only worked
+        // because a seeded stream stored its SEED in umid; once umid became
+        // the transaction (which is what SPI, events and history repair
+        // follow) the condition could never be true and this check went
+        // silently dead - caught by the deterministic-real-collision live
+        // test, which is the whole reason it exists.
+        if (this.streams[i].meta.deterministic) {
           this.collisions.push(this.streams[i].meta._id as string);
         }
 

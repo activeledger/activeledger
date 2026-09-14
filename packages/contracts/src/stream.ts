@@ -245,10 +245,15 @@ export class Stream {
     } else {
       // Create new activity
       let activity = new Activity(
+        // Seed for the stream id - the caller's if they gave one
         deterministic ? deterministic : this.umid,
         name,
         false,
-        this.eventEmitter
+        this.eventEmitter,
+        undefined,
+        undefined,
+        // ...but the transaction is always the transaction
+        this.umid
       );
 
       // Set Secret Key
@@ -552,6 +557,9 @@ export class Activity {
    *
    * @type {boolean}
    */
+  /** The transaction this Activity belongs to - see the constructor. */
+  private txUmid: string = "";
+
   public updated: boolean = false;
 
   /**
@@ -601,16 +609,30 @@ export class Activity {
    * @param {ActiveDefinitions.IState} state
    */
   constructor(
+    // The SEED the stream id is derived from. Usually the transaction's
+    // umid, but newActivityStream(name, deterministic) passes an arbitrary
+    // string instead so the same input always produces the same stream -
+    // which is how an identity is derived from a recovery phrase off-chain.
     private umid: string,
     private name: string | null,
     private signature: boolean,
     private eventEmitter: EventEmitter,
     private meta: ActiveDefinitions.IMeta = { _id: null, _rev: null },
-    private state: ActiveDefinitions.IState = { _id: null, _rev: null }
+    private state: ActiveDefinitions.IState = { _id: null, _rev: null },
+    // The transaction that is creating this stream. Separate from the seed
+    // above because they are only the same thing when no deterministic seed
+    // was given, and everything that records "which transaction did this"
+    // needs the real one. Defaults to the seed so the two call sites that
+    // pass a real umid are completely unaffected.
+    txUmid?: string
   ) {
+    this.txUmid = txUmid || umid;
+
     // Only if name is defined (Quick solution)
     if (umid && name) {
-      // Create stream that is name safe
+      // Derived from the SEED, deliberately. Changing this would give a
+      // recovery phrase a different identity than it had yesterday, which
+      // is unrecoverable - nothing else in this fix may touch it.
       let stream = ActiveCrypto.Hash.getHash(umid + name, "sha256");
 
       this.state._id = stream;
@@ -630,9 +652,29 @@ export class Activity {
       // now refreshes it to the *latest* transaction on every real
       // update, so origin is what preserves the field's original purpose
       // (see that method's own comment).
-      this.meta.umid = umid;
-      this.meta.origin = umid;
+      // The TRANSACTION, not the seed. These were `umid` - the seed - which
+      // meant a deterministically-seeded stream recorded its own seed here
+      // instead of the transaction that created it. Harmless when nothing
+      // read it; 4.5.16's history repair then built the umid backward chain
+      // on meta.umid, so the next update recorded a `prev` pointing at a
+      // umid that never existed and the walk could not get past it.
+      this.meta.umid = this.txUmid;
+      this.meta.origin = this.txUmid;
       this.meta.name = name;
+
+      // Says outright that this stream's id came from a seed rather than
+      // from the transaction. streamUpdater needs to know, because a
+      // deterministic id can collide with a stream that already exists and
+      // must be rejected rather than silently written over.
+      //
+      // It used to infer this from `meta.umid !== entry.$umid`, which was
+      // only ever true because the seed was being stored in umid - the very
+      // thing this change stops. Left inferred, deterministic collision
+      // detection would have gone quiet, and a second transaction with the
+      // same seed would have overwritten the first instead of raising 1530.
+      if (umid !== this.txUmid) {
+        this.meta.deterministic = true;
+      }
 
       // Flag up everything
       this.updatedMeta = this.volatileUpdated = this.updated = true;
@@ -740,7 +782,7 @@ export class Activity {
             type,
             stake: 100,
             hash: ActiveCrypto.Hash.getHash(pubKey, "sha256"),
-            umid: this.umid ?? ""
+            umid: this.txUmid ?? ""
           },
         ];
         // Set Update Flag
@@ -781,7 +823,7 @@ export class Activity {
             auth.hash = ActiveCrypto.Hash.getHash(auth.public, "sha256");
           }
           if (this.umid) {
-            auth.umid = this.umid;
+            auth.umid = this.txUmid;
           }
         });
 
@@ -854,7 +896,7 @@ export class Activity {
           this.meta.authorities = filteredAuthorities;
 
           // Map removed authorities to lightweight audit entries (excluding the public key)
-          const revokedUmid = this.umid || "";
+          const revokedUmid = this.txUmid || "";
           const historyEntries: ActiveDefinitions.ILedgerRemovedAuthority[] = removed.map((auth) => ({
             hash: auth.hash,
             label: auth.label,
