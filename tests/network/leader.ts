@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     console.log(`contract ${contract.substring(0, 12)}... deployed\n`);
 
     const N = 20;
-    const SETTLE_MS = 150;
+    const SETTLE_MS = Number(process.env.AL_SETTLE_MS ?? 0);
 
     const cases: { label: string; request: boolean; grant: boolean }[] = [
       { label: "ordinary broadcast", request: false, grant: false },
@@ -118,6 +118,12 @@ async function main(): Promise<void> {
       // when it doesn't this has to fall all the way back to a normal
       // voting round rather than half-commit or stall.
       { label: "$delegated, contract refuses", request: true, grant: false },
+      // Leader without $delegated - the shape master already had. The entry
+      // node has broadcast before voting, so every node runs vote(), every
+      // node votes leader, and every node commits on its own authority with
+      // no consensus barrier anywhere. Nothing paces the client against the
+      // network. This is the case that has to be watched.
+      { label: "contract votes leader, no $delegated", request: false, grant: true },
     ];
 
     for (const { label, request, grant } of cases) {
@@ -128,13 +134,10 @@ async function main(): Promise<void> {
       await run(entry, identity, "leadertest", contract, "warmup", request, grant);
 
       for (let i = 0; i < N; i++) {
-        // Paced deliberately. In broadcast mode the client is answered as soon
-        // as the entry node commits, so firing the next transaction straight
-        // back writes to a stream the other nodes have not finished advancing
-        // - they veto on "Position Incorrect" and fall behind. That race is
-        // older than leader mode and would sit on top of what is being
-        // measured here, reported as a leader-mode divergence.
-        await new Promise((r) => setTimeout(r, SETTLE_MS));
+        // Unpaced by default: back-to-back writes to a single stream are the
+        // hardest case for convergence, so that is what gets measured. Raise
+        // AL_SETTLE_MS to tell a genuine race apart from a slow node.
+        if (SETTLE_MS) await new Promise((r) => setTimeout(r, SETTLE_MS));
         const started = Date.now();
         const result = await run(
           entry, identity, "leadertest", contract, `m${i}`, request, grant
