@@ -1,5 +1,49 @@
 # Activeledger Changelog
 
+## [4.7.1]
+
+### Fix
+* **Contracts / Protocol** : A deterministic stream seed was being stored as
+  the stream's umid. `newActivityStream(name, deterministic)` derives a stream
+  id from an arbitrary seed rather than from the transaction - which is how an
+  identity is reproduced from a recovery phrase off-chain - but one
+  constructor argument was doing both jobs, so that seed was also written to
+  `meta.umid`, `meta.origin` and `authorities[].umid`.
+
+  Harmless while nothing read those fields. 4.5.16 then built the umid
+  backward chain on `meta.umid`, so the next transaction against a seeded
+  stream recorded a `prev` pointing at a umid that had never existed, and
+  history repair could not walk past it. `umid` and `origin` are what SPI,
+  events and identity recovery follow - deliberately, in place of the
+  unbounded `meta.txs` array reverted for cost - so anything in them that is
+  not a umid breaks all three.
+
+  The stream id derivation is **unchanged**: it still comes from the seed, so
+  a recovery phrase resolves to the same identity it always did. `umid` now
+  tracks the latest transaction and `origin` the first, which is what they
+  were always meant to mean.
+
+  Found on a live Falcon-512 identity, where a 1196-character public key
+  sitting in `umid` was impossible to miss. Not a post-quantum bug - an RSA
+  PEM or a secp256k1 hex key would have done the same, just less visibly.
+
+* **Protocol** : Deterministic collision detection no longer infers what it
+  needs from a field that used to be wrong. `streamUpdater` decided whether a
+  new stream could collide by asking whether `meta.umid` differed from the
+  transaction's umid, which was only ever true because the seed was sitting
+  in `umid`. Correcting `umid` made that condition permanently false and the
+  check went silently dead - a second transaction with the same seed would
+  have overwritten the first instead of raising 1530. `meta.deterministic`
+  now records it outright. Caught by the `deterministic-real-collision` live
+  test, which existed for a different bug.
+
+### Known Limits
+* Streams created before this release are not migrated. Their `umid` and
+  `origin` keep whatever they were given; the first update after upgrading
+  restores `umid` to a real transaction, so such a stream has one broken link
+  in its history chain at that point and is correct from there on. `origin`
+  stays wrong on those documents permanently.
+
 ## [4.7.0]
 
 Post-quantum identities. An identity can be onboarded under ML-DSA-65 or
