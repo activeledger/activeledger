@@ -109,7 +109,8 @@ export class StreamUpdater {
     private dbev: ActiveDSConnect,
     private emitter: EventEmitter,
     private shared: Shared,
-    private contractId: string
+    private contractId: string,
+    private delegated = false
   ) {
     // Determanistic Collision Managamenent
     this.collisions = [];
@@ -462,7 +463,13 @@ export class StreamUpdater {
     }
 
     // Broadcast commit & returns
-    if (!this.nodeResponse.leader) {
+    //
+    // The leader already sent this transaction the moment it voted, and the
+    // nodes committing on that vote have nothing to add to it - no vote of
+    // their own and no consensus to help anyone else reach. Sending would be
+    // the whole network telling each other something they all already acted
+    // on.
+    if (!this.nodeResponse.leader && !this.delegated) {
       this.emitter.emit("broadcast");
     }
 

@@ -160,6 +160,18 @@ export class Process extends EventEmitter {
   private commiting = false;
 
   /**
+   * This node is committing on the leader's vote instead of its own.
+   *
+   * Set only on a node that is not the leader, and only when the leader's
+   * grant ($nodes[$origin].leader) arrived on a $delegated entry. It skips
+   * the contract's verify and vote phases entirely, so anything a contract
+   * sets up in those phases will be missing in commit.
+   *
+   * @private
+   */
+  private delegated = false;
+
+  /**
    *  Voting State
    *
    * @private
@@ -980,6 +992,45 @@ export class Process extends EventEmitter {
       continueProcessing = false;
     }
 
+    // Has the entry node already decided this transaction for us?
+    //
+    // Everything that protects a stream from a bad write has already run by
+    // the time we get here - the transaction's expiry, the input and output
+    // revisions, and the signatures were all checked on this node, against
+    // this node's own copy of the streams, before the contract was ever
+    // loaded. What the voting round adds on top of that is the contract's own
+    // opinion, and a leader transaction is the contract saying it only needs
+    // to hold that opinion once.
+    //
+    // So we skip verify and vote and commit on the leader's grant. The revs we
+    // checked still have to match at write time, and the streams are still
+    // locked, so a disagreement cannot be written silently - it fails, and SPI
+    // repairs it the same way it repairs any other node that falls behind.
+    //
+    // The contract carries the cost of this: nothing it sets up in verify or
+    // vote exists here, because neither ran.
+    if (
+      continueProcessing &&
+      this.entry.$broadcast &&
+      this.entry.$delegated &&
+      this.entry.$origin !== this.reference &&
+      this.entry.$nodes[this.entry.$origin]?.leader &&
+      this.entry.$nodes[this.entry.$origin]?.vote
+    ) {
+      ActiveLogger.debug(
+        `Committing on leader vote from ${this.entry.$origin} - ${payload.umid}`
+      );
+
+      this.delegated = true;
+      this.voting = false;
+      this.nodeResponse.vote = true;
+      this.nodeResponse.early = false;
+      ActiveTiming.mark(this.entry.$umid, "proto.voted");
+
+      this.commit(virtualMachine);
+      return;
+    }
+
     // Run the verification round
     try {
       if (continueProcessing)
@@ -1004,8 +1055,25 @@ export class Process extends EventEmitter {
 
         if (typeof vote !== "boolean" && vote.leader) {
           this.nodeResponse.vote = this.nodeResponse.leader = true;
+
+          // Without this the leader's own $nodes entry is still flagged early,
+          // and host.broadcast() deliberately sends {} in place of an early
+          // placeholder - so the grant below would go out carrying no vote and
+          // no leader flag, and the network would never hear that this
+          // transaction was decided. It is also what postVote() would have
+          // done for us on the ordinary path, which this return skips.
+          this.nodeResponse.early = false;
+
+          // Tell the network, now that - and only if - the entry node has
+          // voted yes. This is the grant: $nodes[origin] carries leader:true,
+          // and the receiving nodes commit on it rather than voting.
+          // Broadcasting here rather than after our commit lets them do their
+          // work alongside ours instead of behind it.
+          if (this.entry.$broadcast && this.entry.$origin === this.reference) {
+            this.emit("broadcast");
+          }
+
           // If leader we can run straight to the commit
-          // The data still gets sent on as part of a broadcast commit
           this.commit(virtualMachine);
           return;
         }
@@ -1085,7 +1153,16 @@ export class Process extends EventEmitter {
       // Transaction should be fully described now (revs etc)
       // we can now broadcast it before voting that way voting rounds will not lock up
       // if calling a 3rd party and awaiting multiple calls.
-      if (this.entry.$broadcast && !(this.entry as any).$wait) {
+      // A delegated transaction is the exception: the whole point is that the
+      // network does not see it until the entry node has voted, because the
+      // other nodes take the entry node's vote in place of running their own.
+      // Sending it early would have them start an ordinary voting round
+      // against a transaction that is about to arrive again as delegated.
+      if (
+        this.entry.$broadcast &&
+        !(this.entry as any).$wait &&
+        !this.entry.$delegated
+      ) {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
         if (this.entry.$origin === this.reference) {
@@ -1461,7 +1538,7 @@ export class Process extends EventEmitter {
 
       if (
         this.nodeResponse.vote &&
-        (this.nodeResponse.leader || this.canCommit())
+        (this.nodeResponse.leader || this.delegated || this.canCommit())
       ) {
         // Consensus reached commit phase
         ActiveTiming.mark(this.entry.$umid, "proto.commitBegin");
@@ -1511,7 +1588,8 @@ export class Process extends EventEmitter {
             this.dbev,
             this,
             this.shared,
-            this.contractId
+            this.contractId,
+            this.delegated
           );
 
           // TODO - manage async if it is really needed
@@ -1583,7 +1661,8 @@ export class Process extends EventEmitter {
                   this.dbev,
                   this,
                   this.shared,
-                  this.contractId
+                  this.contractId,
+                  this.delegated
                 );
                 await streamUpdater.updateStreams();
               } else {
