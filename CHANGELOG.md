@@ -1,5 +1,97 @@
 # Activeledger Changelog
 
+## [4.7.0]
+
+Post-quantum identities. An identity can be onboarded under ML-DSA-65 or
+Falcon-512 and then transact like any other.
+
+### Requires Node 24 or later
+* **All packages** : `engines` moves from `>=20.18.1` to `>=24.0.0`. Stated
+  plainly because it is the second engines change in a week and because it is
+  a **policy decision rather than a technical requirement** - post-quantum
+  support was tested on Node 20, 22 and 24 and works on all three, since
+  `require(esm)` has been unflagged since 20.19. Activeledger targets Node LTS
+  and every known deployment is on 24; this makes that explicit rather than
+  implied. The JavaScript SDKs deliberately do NOT carry this floor, because
+  forcing a Node version onto a client application is a different matter from
+  requiring one of a node operator.
+
+### New
+* **Crypto** : ML-DSA-65 (FIPS 204) and Falcon-512 (FN-DSA) join rsa and
+  secp256k1 as identity key types. Onboard with
+  `$i: { identity: { type: "ml-dsa-65", publicKey } }` and everything
+  afterwards behaves as it always did - `meta.authorities[].type` records the
+  scheme and every later transaction is verified against it. Proven on a live
+  four-node network: onboarded, namespace registered, contract deployed and a
+  transaction committed, all signed post-quantum, with a tampered payload
+  still rejected.
+
+  ML-DSA-65 is the conservative choice - a finalised standard. Falcon-512 is
+  still draft and earns its place on size, which matters because every
+  signature is broadcast to every node and then stored for the life of the
+  ledger:
+
+  | | public key | signature | signature b64 | verify |
+  |---|---|---|---|---|
+  | ML-DSA-65 | 1952 B | 3309 B | 4412 B | 1.269ms |
+  | Falcon-512 | 897 B | 649-662 B | ~872 B | 0.578ms |
+  | secp256k1 | 88 B | 71 B | 96 B | 0.284ms |
+  | RSA-2048 | 294 B | 256 B | 344 B | 0.019ms |
+
+  Verification sits on the transaction critical path and adds about a
+  millisecond at worst against a 22ms four-node transaction. Signing is the
+  client's cost, not a node's.
+
+  The change is almost entirely one class, because the type string was
+  already opaque everywhere else: it travels from the client's transaction
+  into `setAuthority()` - which validates nothing - is stored verbatim, and
+  comes back out through `shared.signatureCheck()` into `ActiveCrypto.KeyPair`.
+  `$selfsign` uses the same route. Nothing in the contracts, protocol,
+  consensus or storage needed touching.
+
+* **Crypto** : Both schemes come from `@noble/post-quantum` - pure JavaScript,
+  no native binding - so the same code runs in a node, in the SDKs and in a
+  React Native client.
+
+### Fix
+* **Network** : A partial history walk now leaves a durable record instead of
+  a log line. `walkUmidHistory` can stop for six reasons; two mean it finished
+  and four mean it stopped short, and both callers decided what to do next
+  from how many umids were recovered - which says nothing about either. The
+  SPI path returned early whenever anything was recovered, so a walk that
+  recovered fifty and then hit a chain it could not follow logged that and
+  moved on. The post-commit path - the primary one - wrote no record at all,
+  ever. The walk now reports whether it ran out of history or out of road, and
+  records the umid it could not get past rather than the one it started from,
+  which is present by definition. The hop limit is deliberately excluded: that
+  record would ask restore to fetch one umid when the hole is every hop beyond
+  it.
+
+### Known Limits
+* The durable record above is a record, not a retry. ActiveRestore's interagent
+  makes ONE attempt to fetch the umid from peers and purges the document either
+  way - `setProcessed(doc, false)` archives nothing and still purges - so a
+  umid no peer can serve at that moment leaves no trace. Making that survive a
+  failed attempt is a change on the restore side and a prerequisite for any
+  crash-resume work.
+* History repair only covers transactions committed on 4.5.16 or later. The
+  `prev` pointer it walks is written at commit time, so history from before
+  that has no backward chain and cannot be given one retroactively. A node
+  upgrading from below 4.5.16 will see repair stay silent for everything that
+  happened before the upgrade - which looks identical to healthy. Those gaps
+  still want `activerestore --full`.
+
+### Worth knowing
+* Two things here were caught by measuring rather than reading the standards.
+  Falcon's signature length **varies** - 649 to 662 bytes, because its
+  encoding compresses - and noble does not declare one for it; anything
+  assuming a fixed width will hold for a long time and then quietly not. And
+  post-quantum signing initially failed whenever another test suite ran first,
+  because `@noble` reads `globalThis.crypto.getRandomValues` and the contract
+  VM hands contracts an Activeledger `crypto` object under that same name.
+  Entropy is now supplied explicitly, which keeps signing hedged as FIPS 204
+  prefers and removes the dependency on a global that is not ours.
+
 ## [4.6.0]
 
 Performance. A transaction was 32ms and is now 22ms on a four-node network,
