@@ -1,6 +1,10 @@
 import { expect } from "chai";
 import "mocha";
 import { PermissionsChecker } from "../packages/protocol/src/protocol/permissionsChecker";
+// By package name, not ../packages/options/src - the subject resolves
+// "@activeledger/activeoptions" through node_modules to the built lib/,
+// which is a different module instance with its own static config.
+import { ActiveOptions } from "@activeledger/activeoptions";
 
 // An expired key must not authorise anything - and the rejection must
 // say WHY. A correct signature from a lapsed key reported as 1220
@@ -10,6 +14,19 @@ describe("Expired authorities cannot sign (Activeprotocol)", () => {
   const PAST = "2020-01-01T00:00:00.000Z";
   const FUTURE = "2099-01-01T00:00:00.000Z";
   const NOW = "2026-06-01T12:00:00.000Z";
+
+  // Expiry is gated behind build >= 40100 so a half-upgraded network
+  // cannot split consensus. This suite is about the enforcement itself,
+  // so it runs with the gate open; authority-expiry-rollout.test.ts
+  // covers the gate.
+  let originalBuild: any;
+  before(() => {
+    originalBuild = ActiveOptions.get("build", 0);
+    ActiveOptions.set("build", 40100);
+  });
+  after(() => {
+    ActiveOptions.set("build", originalBuild);
+  });
 
   const entry = (): any => ({
     $umid: "u".repeat(64),

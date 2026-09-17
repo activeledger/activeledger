@@ -235,6 +235,17 @@ export class VirtualMachine
           //@ts-ignore
           stream.meta = activities[streams[i]].meta;
 
+          // Separate threshold to the 40000 strip below: expiry changes
+          // how a node VOTES, not just what it stores, so a node below it
+          // must neither persist nor act on the field.
+          if (build < 40100 && Array.isArray(stream.meta?.authorities)) {
+            for (const auth of stream.meta.authorities) {
+              if (auth && "expire" in auth) {
+                delete (auth as any).expire;
+              }
+            }
+          }
+
           if (build < 40000) {
             if (stream.meta) {
               if (stream.meta.removedAuthorities) {

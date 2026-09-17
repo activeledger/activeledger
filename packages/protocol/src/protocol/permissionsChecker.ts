@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveDSConnect, ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ISecurityCache } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -518,6 +518,24 @@ export class PermissionsChecker {
   }
 
   /**
+   * Below this build, a node behaves exactly as it did before expiry
+   * existed: it neither acts on `expire` nor reports it.
+   *
+   * This is not the usual "hide a new field from old nodes" rollout.
+   * Expiry changes the VOTE - an enforcing node rejects a signature an
+   * ignoring node accepts - so a half-upgraded network would split
+   * consensus on a timer, caused by the rollout rather than by any
+   * fault. Operators raise build only once every node understands it.
+   */
+  private static readonly EXPIRY_BUILD = 40100;
+
+  private expiryEnforced(): boolean {
+    return (
+      ActiveOptions.get<number>("build", 0) >= PermissionsChecker.EXPIRY_BUILD
+    );
+  }
+
+  /**
    * The authorities that can still sign, as of this transaction.
    *
    * Uses the transaction's own $datetime and never a local clock - two
@@ -529,6 +547,7 @@ export class PermissionsChecker {
     stream: ActiveDefinitions.LedgerStream
   ): ActiveDefinitions.ILedgerAuthority[] {
     const authorities = stream.meta.authorities || [];
+    if (!this.expiryEnforced()) return authorities;
     return authorities.filter(
       (a: ActiveDefinitions.ILedgerAuthority) =>
         !ActiveDefinitions.isAuthorityExpired(a, this.entry.$datetime)
@@ -547,6 +566,7 @@ export class PermissionsChecker {
     stream: ActiveDefinitions.LedgerStream,
     signature: string
   ): boolean {
+    if (!this.expiryEnforced()) return false;
     const authorities = stream.meta.authorities || [];
     return authorities.some(
       (a: ActiveDefinitions.ILedgerAuthority) =>
