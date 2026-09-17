@@ -853,7 +853,16 @@ export class Activity {
         for (const auth of this.meta.authorities) {
           byHash.set(auth.hash as string, auth);
         }
-        this.meta.authorities = Array.from(byHash.values());
+        const deduped = Array.from(byHash.values());
+
+        // At least one key must be permanent - see
+        // hasNonExpiringAuthority. Checked BEFORE assigning, so a refused
+        // call leaves this.meta.authorities untouched.
+        if (!ActiveDefinitions.hasNonExpiringAuthority(deduped)) {
+          throw new Error("Operation denied this would expire every authority");
+        }
+
+        this.meta.authorities = deduped;
 
         // Set Update Flag
         this.updatedMeta = this.updated = true;
@@ -905,6 +914,13 @@ export class Activity {
 
         // Make sure we still have an authority over the stream
         if (filteredAuthorities.length) {
+          // ...and that at least one of the survivors is permanent.
+          // Removing the last non-expiring key leaves a stream that dies
+          // on a date with nothing able to sign the fix.
+          if (!ActiveDefinitions.hasNonExpiringAuthority(filteredAuthorities)) {
+            throw new Error("Operation denied this would expire every authority");
+          }
+
           this.meta.authorities = filteredAuthorities;
 
           // Map removed authorities to lightweight audit entries (excluding the public key)

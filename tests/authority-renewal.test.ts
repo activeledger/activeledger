@@ -19,14 +19,22 @@ describe("Re-adding an existing authority (Activecontracts)", () => {
     return new Activity("umid-seed", null, true, new EventEmitter(), meta, state);
   };
 
+  // OTHER is present and permanent throughout the expire-related cases:
+  // a stream must always keep one key with no expire, so renewing PUB
+  // into an expiring key is only legal while something else can still
+  // sign. See authority-forever-guard.test.ts for that rule itself.
   it("applies an expire added to an existing key", () => {
     const a = activity();
-    a.setAuthorities({ public: PUB, type: "rsa", stake: 100 } as any);
+    a.setAuthorities([
+      { public: PUB, type: "rsa", stake: 100 },
+      { public: OTHER, type: "rsa", stake: 100 },
+    ] as any);
     a.setAuthorities({ public: PUB, type: "rsa", stake: 100, expire: "2027-01-01T00:00:00.000Z" } as any);
 
     const authorities: any[] = a.getAuthorities();
-    expect(authorities).to.have.length(1);
-    expect(authorities[0].expire).to.equal("2027-01-01T00:00:00.000Z");
+    expect(authorities).to.have.length(2);
+    const renewed = authorities.find((x) => x.public === PUB);
+    expect(renewed.expire).to.equal("2027-01-01T00:00:00.000Z");
   });
 
   it("applies a changed stake to an existing key", () => {
@@ -42,12 +50,16 @@ describe("Re-adding an existing authority (Activecontracts)", () => {
   // Promotion back to a permanent key - the other half of renewal.
   it("removes an expire when the key is re-added without one", () => {
     const a = activity();
-    a.setAuthorities({ public: PUB, type: "rsa", stake: 100, expire: "2027-01-01T00:00:00.000Z" } as any);
+    a.setAuthorities([
+      { public: OTHER, type: "rsa", stake: 100 },
+      { public: PUB, type: "rsa", stake: 100, expire: "2027-01-01T00:00:00.000Z" },
+    ] as any);
     a.setAuthorities({ public: PUB, type: "rsa", stake: 100 } as any);
 
     const authorities: any[] = a.getAuthorities();
-    expect(authorities).to.have.length(1);
-    expect(authorities[0].expire).to.equal(undefined);
+    expect(authorities).to.have.length(2);
+    const promoted = authorities.find((x) => x.public === PUB);
+    expect(promoted.expire).to.equal(undefined);
   });
 
   it("still enforces one entry per public key", () => {
