@@ -6,3 +6,6 @@ node_modules
 **/tsconfig.tsbuildinfo
 *.sh
 *.gz
+# Local agent planning artefacts - specs/plans generated while working,
+# not project documentation. Kept on disk, never committed.
+docs/superpowers/
