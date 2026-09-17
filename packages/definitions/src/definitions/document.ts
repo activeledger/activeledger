@@ -78,3 +78,42 @@ export interface IMeta extends IFullState {
 export interface IVolatile extends IState {
   
 } 
+/**
+ * One version's entry in a contract stream's `state.contract` map.
+ *
+ * Versions deployed before contract streams stopped carrying their own
+ * source are a base64 string of the TypeScript, until an update
+ * normalises them. Versions deployed after are a reference to the
+ * transaction that carried the source, plus a hash of the decoded bytes
+ * so a node can prove what it recovered is what was deployed.
+ *
+ * `umid` is optional because a version deployed before this change has
+ * one, but the contract cannot learn it - that would need a database read
+ * the contract must not do. Such an entry keeps its identity and loses
+ * its recoverability.
+ */
+export interface IContractRef {
+  /** sha256 of the decoded source bytes, before transpile. Always present. */
+  hash: string;
+  /** The transaction whose $tx.$i[<identity>].contract holds the source. */
+  umid?: string;
+}
+
+export type TContractEntry = string | IContractRef;
+
+/**
+ * Discriminates a reference from legacy inline source.
+ *
+ * Deliberately stricter than `typeof entry === "object"`: an object
+ * without a hash would pass that and then be verified against undefined,
+ * which compares equal to nothing and fails closed - correct, but with a
+ * message blaming the hash rather than the malformed entry.
+ */
+export function isContractRef(entry: unknown): entry is IContractRef {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    return false;
+  }
+  const ref = entry as IContractRef;
+  if (typeof ref.hash !== "string") return false;
+  return ref.umid === undefined || typeof ref.umid === "string";
+}
