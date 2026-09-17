@@ -481,7 +481,9 @@ export class PermissionsChecker {
 
   private checkMultiSignature(streamId: string, stream: ActiveDefinitions.LedgerStream, signatureContainer: ActiveDefinitions.LedgerAuthSignatures, nhpkCheck: boolean, reject: (value?: any) => void): void {
     const sigStreamKeys = Object.keys(signatureContainer);
-    if (sigStreamKeys.length > stream.meta.authorities.length) {
+    // Counts LIVE authorities - an expired key cannot back a signature,
+    // so including it here would make this more permissive than intended.
+    if (sigStreamKeys.length > this.liveAuthorities(stream).length) {
       return reject({
         code: 1225,
         reason: `${this.inputs ? "Input" : "Output"} Incorrect Signature List Length`,
@@ -496,22 +498,65 @@ export class PermissionsChecker {
       }
 
       const signature = signatureContainer[sigStream];
-      return stream.meta.authorities.some(
+      return this.liveAuthorities(stream).some(
         (authority: ActiveDefinitions.ILedgerAuthority) =>
           authority.hash === sigStream && this.shared.signatureCheck(authority.public, signature, authority.type)
       );
     });
 
     if (!allSignaturesValid) {
+      const expiredMatch = sigStreamKeys.some((sigStream: string) =>
+        this.matchesExpiredAuthority(stream, signatureContainer[sigStream])
+      );
       return reject({
-        code: 1220,
-        reason: `${this.inputs ? "Input" : "Output"} Signature Incorrect`,
+        code: expiredMatch ? 1235 : 1220,
+        reason: `${this.inputs ? "Input" : "Output"} Signature ${
+          expiredMatch ? "Expired" : "Incorrect"
+        }`,
       });
     }
   }
 
+  /**
+   * The authorities that can still sign, as of this transaction.
+   *
+   * Uses the transaction's own $datetime and never a local clock - two
+   * nodes whose clocks straddle an expiry boundary would otherwise vote
+   * differently on the same signature, which is a consensus split rather
+   * than a disagreement about data.
+   */
+  private liveAuthorities(
+    stream: ActiveDefinitions.LedgerStream
+  ): ActiveDefinitions.ILedgerAuthority[] {
+    const authorities = stream.meta.authorities || [];
+    return authorities.filter(
+      (a: ActiveDefinitions.ILedgerAuthority) =>
+        !ActiveDefinitions.isAuthorityExpired(a, this.entry.$datetime)
+    );
+  }
+
+  /**
+   * Would this signature have matched, if the key had not lapsed?
+   *
+   * Only asked once a check has already failed, to tell "right key, too
+   * late" from "wrong key". Reporting the former as 1220 Signature
+   * Incorrect sends the caller looking for a key problem that is not
+   * there.
+   */
+  private matchesExpiredAuthority(
+    stream: ActiveDefinitions.LedgerStream,
+    signature: string
+  ): boolean {
+    const authorities = stream.meta.authorities || [];
+    return authorities.some(
+      (a: ActiveDefinitions.ILedgerAuthority) =>
+        ActiveDefinitions.isAuthorityExpired(a, this.entry.$datetime) &&
+        this.shared.signatureCheck(a.public, signature, a.type)
+    );
+  }
+
   private checkSingleSignature(streamId: string, filteredStreamId: string, stream: ActiveDefinitions.LedgerStream, signature: string, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
-    const authorityCheck = stream.meta.authorities.some(
+    const authorityCheck = this.liveAuthorities(stream).some(
       (authority: ActiveDefinitions.ILedgerAuthority) => {
         if (nhpkCheck) {
           const nhpk = nhpkCheckIO[this.shared.getLabelIOMap(this.inputs, streamId)].$nhpk;
@@ -538,9 +583,12 @@ export class PermissionsChecker {
     );
 
     if (!authorityCheck) {
+      const expiredMatch = this.matchesExpiredAuthority(stream, signature);
       reject({
-        code: 1220,
-        reason: `${this.inputs ? "Input" : "Output"} Signature Incorrect`,
+        code: expiredMatch ? 1235 : 1220,
+        reason: `${this.inputs ? "Input" : "Output"} Signature ${
+          expiredMatch ? "Expired" : "Incorrect"
+        }`,
       });
     }
   }
