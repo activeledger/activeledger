@@ -73,9 +73,35 @@ async function verifyVersionsAcrossNodes(
 ): Promise<void> {
   report.phase(`Verifying versions across ${nodes.length} nodes`);
 
-  const docs = await Promise.all(
-    nodes.map((n) => storageGet(n.storageUrl, streamId).catch(() => null))
-  );
+  // Wait for convergence before asserting.
+  //
+  // Consensus is a MAJORITY, so the origin's response means three of four
+  // nodes have committed - the fourth can still be writing. Reading once
+  // and asserting made this test pass or fail on timing, with a different
+  // node lagging each run. "Every node converges" is the real invariant;
+  // "every node has already converged the instant the origin replies" is
+  // not one, and asserting it produces a test that is green by luck.
+  const deadline = Date.now() + 15000;
+  let docs: any[] = [];
+  for (;;) {
+    docs = await Promise.all(
+      nodes.map((n) => storageGet(n.storageUrl, streamId).catch(() => null))
+    );
+    const converged = docs.every(
+      (d) => d && Object.keys(d.contract || {}).length === expectedVersionCount
+    );
+    if (converged || Date.now() > deadline) {
+      if (!converged) {
+        report.warn(
+          `nodes had not converged after 15s: ${docs
+            .map((d, i) => `${nodes[i].port}=${Object.keys(d?.contract || {}).length}`)
+            .join(" ")}`
+        );
+      }
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   const missing = docs
     .map((d, i) => (d ? null : nodes[i].port))
@@ -102,7 +128,7 @@ async function verifyVersionsAcrossNodes(
 
   // --- per-version umid and hash ---------------------------------------
   for (const version of expectedKeys) {
-    const refs = docs.map((d) => d.contract[version]);
+    const refs = docs.map((d) => (d.contract || {})[version]);
     const first = refs[0];
     const umidDisagree = refs
       .map((r, i) => (r?.umid === first?.umid ? null : nodes[i].port))
