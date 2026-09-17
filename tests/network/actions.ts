@@ -12,6 +12,13 @@ import { submit } from "./http";
 export interface Identity {
   streamId: string;
   keyPair: ActiveCrypto.KeyPair;
+  /**
+   * The onboarded public key. KeyPair does not retain what generate()
+   * produced, and calling generate() again makes a different key - so
+   * anything that needs to name this identity's own key in a payload
+   * (authority management, for one) has no other way to get it.
+   */
+  publicKey?: string;
 }
 
 export async function onboard(baseUrl: string): Promise<Identity> {
@@ -32,7 +39,7 @@ export async function onboard(baseUrl: string): Promise<Identity> {
   if (!result.$streams?.new?.[0]?.id) {
     throw new Error(`Onboard failed: ${JSON.stringify(result)}`);
   }
-  return { streamId: result.$streams.new[0].id, keyPair };
+  return { streamId: result.$streams.new[0].id, keyPair, publicKey: keys.pub.pkcs8pem };
 }
 
 export async function registerNamespace(
