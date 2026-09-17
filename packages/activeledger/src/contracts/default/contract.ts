@@ -406,6 +406,42 @@ export default class Contract extends Standard {
   }
 
   /**
+   * Replace any legacy base64 entry in this stream with a hash reference.
+   *
+   * This is the entire migration. A contract stream only grows when it is
+   * updated, and every update comes through here, so every stream that is
+   * growing gets normalised on its next growth event - nothing to
+   * schedule, nothing to operate, and a stream that never updates again
+   * never grows and needs nothing.
+   *
+   * Pure by requirement. The base64 being hashed is already in the stream
+   * state this node holds, so every node computes the same result with no
+   * I/O. Recovering these versions' umids would need a database read, and
+   * a contract that branched on whether a umid document was locally held
+   * would write different state on different nodes - nodes routinely do
+   * not hold the same ones, which is why walkUmidHistory exists.
+   *
+   * These entries therefore keep their identity and lose their
+   * recoverability. That is bounded: only versions deployed before this
+   * change can ever be hash-only, and never the newest one, which is
+   * written by the transaction that knows its own umid.
+   *
+   * @private
+   * @param {*} state
+   */
+  private normaliseLegacyVersions(state: any): void {
+    if (!state.contract) return;
+    const versions = Object.keys(state.contract);
+    for (let i = versions.length; i--; ) {
+      const entry = state.contract[versions[i]];
+      if (typeof entry !== "string") continue;
+      state.contract[versions[i]] = {
+        hash: Contract.hashContractSource(entry),
+      };
+    }
+  }
+
+  /**
    * Transpile Typescript to Javascript
    *
    * @private
@@ -1230,10 +1266,33 @@ export default class Contract extends Standard {
     state.namespace = this.namespace;
 
     // Version Management
+    //
+    // A reference, not the source. The source is already in the ledger
+    // once - this transaction's own umid document holds $tx verbatim, so
+    // $tx.$i[<identity>].contract is the same base64. Storing a copy per
+    // version here is what made contract streams grow without bound, and
+    // these are the documents SPI arbitrates and restore copies whole.
     state.contract = {};
-    state.contract[txi.version] = txi.contract;
+    state.contract[txi.version] = {
+      umid: this.umid,
+      hash: Contract.hashContractSource(txi.contract as string),
+    };
+
+    // Which $i key of the deploy transaction carried the source. Rebuild
+    // needs it to read $tx.$i[<identity>].contract back out of the umid
+    // document, and nothing in a contract stream's state has ever
+    // recorded it - so without this, every umid-based rebuild indexes
+    // $tx.$i[undefined] and fails.
+    state.identity = this.identity.getName();
 
     // Compiled Management
+    //
+    // Deprecated: this is stream.getName(), written identically for every
+    // version, and carries no per-version information despite looking
+    // like it does. It stays because quick-restore.ts's hasRequiredData
+    // and hybrid/server.ts's isContractStream both test `data.compiled`
+    // for truthiness to decide whether a document IS a contract stream.
+    // Removing it makes contract rebuild stop with nothing but a log line.
     state.compiled = {};
     state.compiled[txi.version] = stream.getName();
 
@@ -1321,10 +1380,20 @@ export default class Contract extends Standard {
     // Get Stream state to manipulate
     let state = stream.getState();
 
-    // Version Management
-    state.contract[txi.version] = txi.contract;
+    // Convert anything this stream is still carrying inline before adding
+    // to it - see normaliseLegacyVersions.
+    this.normaliseLegacyVersions(state);
 
-    // Compiled Management
+    // Version Management (see commitAdd for why this is a reference)
+    state.contract[txi.version] = {
+      umid: this.umid,
+      hash: Contract.hashContractSource(txi.contract as string),
+    };
+
+    // See commitAdd - rebuild cannot read the source back without it.
+    state.identity = this.identity.getName();
+
+    // Compiled Management (deprecated - see commitAdd)
     state.compiled[txi.version] = stream.getName();
 
     // Write the contract to its location as latest (Using its stream name)

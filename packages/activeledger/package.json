@@ -53,6 +53,7 @@
   "dependencies": {
     "@activeledger/activecontracts": "4.7.1",
     "@activeledger/activecrypto": "4.7.1",
+    "@activeledger/activedefinitions": "4.7.1",
     "@activeledger/activelogger": "4.7.1",
     "@activeledger/activenetwork": "4.7.1",
     "@activeledger/activeoptions": "4.7.1",
