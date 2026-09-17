@@ -4,6 +4,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import Contract from "../packages/activeledger/src/contracts/default/contract";
+// By package name - the subject resolves "@activeledger/activeoptions"
+// through node_modules to the built lib/, a separate module instance.
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { isContractRef } from "../packages/definitions/src/definitions/document";
 
 // commitAdd and commitUpdate are driven directly with a hand-built
@@ -27,6 +30,17 @@ describe("Contract commit writes references, not source (Activeledger)", () => {
   // contracts/<ns>/ was already created by the add that preceded it.
   let tmpDir: string;
   let cwd: string;
+  let originalBuild: any;
+
+  // Contract references are gated behind build >= 40100 so a rolling
+  // upgrade cannot diverge contract streams. This suite is about the
+  // reference shape itself, so it runs with the gate open;
+  // contract-reference-rollout.test.ts covers the gate.
+  before(() => {
+    originalBuild = ActiveOptions.get("build", 0);
+    ActiveOptions.set("build", 40100);
+  });
+  after(() => ActiveOptions.set("build", originalBuild));
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-commit-test-"));
@@ -65,6 +79,7 @@ describe("Contract commit writes references, not source (Activeledger)", () => {
       // so it has to be on the context. hashContractSource is a static and
       // is reached as Contract.hashContractSource - not needed here.
       normaliseLegacyVersions: (Contract as any).prototype.normaliseLegacyVersions,
+      useContractReferences: (Contract as any).prototype.useContractReferences,
       transpile: () => "class Example {}",
       newActivityStream: () => ({
         getName: () => streamName,

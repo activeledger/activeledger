@@ -113,9 +113,23 @@ async function main(): Promise<boolean> {
     check(!added.$summary?.errors, `expiring key added (expires ${expiresAt})`);
 
     report.phase("Every node records the same expiry");
-    const metas = await Promise.all(
-      nodes.map((n) => storageGet(n.storageUrl, `${identity.streamId}:stream`).catch(() => null))
-    );
+    // Wait for convergence before asserting. Consensus is a MAJORITY, so
+    // the origin's response means three of four nodes have committed -
+    // the fourth can still be writing. Asserting on a single read makes
+    // this pass or fail on timing, with a different node lagging each
+    // run. "Every node converges" is the invariant.
+    const metaDeadline = Date.now() + 15000;
+    let metas: any[] = [];
+    for (;;) {
+      metas = await Promise.all(
+        nodes.map((n) => storageGet(n.storageUrl, `${identity.streamId}:stream`).catch(() => null))
+      );
+      const converged = metas.every((m) =>
+        (m?.authorities || []).some((a: any) => a.expire === expiresAt)
+      );
+      if (converged || Date.now() > metaDeadline) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
     check(metas.every((m) => m), "all nodes hold the identity meta");
     const expiries = metas.map(
       (m) => (m?.authorities || []).find((a: any) => a.expire)?.expire

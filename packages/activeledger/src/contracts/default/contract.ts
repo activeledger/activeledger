@@ -398,6 +398,39 @@ export default class Contract extends Standard {
    * @param {string} base64
    * @returns {string}
    */
+  /**
+   * Below this build, a contract stream stores its source inline exactly
+   * as it always has.
+   *
+   * Default contracts are loaded from each node's own filesystem
+   * (process.ts's setupDefaultLocation), so what this handler writes is
+   * decided by the node's VERSION. Without a gate, a rolling upgrade has
+   * an old node writing base64 for a contract deploy while an upgraded
+   * one writes a reference - same transaction, different state,
+   * different revision, and the contract stream diverges. Nothing
+   * repairs that: restore cannot fix a divergent stream, and the stream
+   * then rejects ordinary transactions.
+   *
+   * Same threshold as authority expiry - both are this release's
+   * protocol level, and operators raise it once every node is upgraded.
+   *
+   * @private
+   * @static
+   */
+  private static readonly REFERENCE_BUILD = 40100;
+
+  /**
+   * Is this node allowed to write contract references yet?
+   *
+   * @private
+   * @returns {boolean}
+   */
+  private useContractReferences(): boolean {
+    return (
+      ActiveOptions.get<number>("build", 0) >= Contract.REFERENCE_BUILD
+    );
+  }
+
   private static hashContractSource(base64: string): string {
     return ActiveCrypto.Hash.getHash(
       Buffer.from(base64, "base64").toString(),
@@ -1273,17 +1306,21 @@ export default class Contract extends Standard {
     // version here is what made contract streams grow without bound, and
     // these are the documents SPI arbitrates and restore copies whole.
     state.contract = {};
-    state.contract[txi.version] = {
-      umid: this.umid,
-      hash: Contract.hashContractSource(txi.contract as string),
-    };
+    state.contract[txi.version] = this.useContractReferences()
+      ? {
+          umid: this.umid,
+          hash: Contract.hashContractSource(txi.contract as string),
+        }
+      : txi.contract;
 
     // Which $i key of the deploy transaction carried the source. Rebuild
     // needs it to read $tx.$i[<identity>].contract back out of the umid
     // document, and nothing in a contract stream's state has ever
     // recorded it - so without this, every umid-based rebuild indexes
     // $tx.$i[undefined] and fails.
-    state.identity = this.identity.getName();
+    if (this.useContractReferences()) {
+      state.identity = this.identity.getName();
+    }
 
     // Compiled Management
     //
@@ -1380,18 +1417,26 @@ export default class Contract extends Standard {
     // Get Stream state to manipulate
     let state = stream.getState();
 
-    // Convert anything this stream is still carrying inline before adding
-    // to it - see normaliseLegacyVersions.
-    this.normaliseLegacyVersions(state);
+    if (this.useContractReferences()) {
+      // Convert anything this stream is still carrying inline before
+      // adding to it - see normaliseLegacyVersions. Gated with the write
+      // below: normalising while some nodes still write base64 would
+      // diverge the stream just as surely as the write itself.
+      this.normaliseLegacyVersions(state);
+    }
 
     // Version Management (see commitAdd for why this is a reference)
-    state.contract[txi.version] = {
-      umid: this.umid,
-      hash: Contract.hashContractSource(txi.contract as string),
-    };
+    state.contract[txi.version] = this.useContractReferences()
+      ? {
+          umid: this.umid,
+          hash: Contract.hashContractSource(txi.contract as string),
+        }
+      : txi.contract;
 
     // See commitAdd - rebuild cannot read the source back without it.
-    state.identity = this.identity.getName();
+    if (this.useContractReferences()) {
+      state.identity = this.identity.getName();
+    }
 
     // Compiled Management (deprecated - see commitAdd)
     state.compiled[txi.version] = stream.getName();
