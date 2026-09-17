@@ -287,10 +287,16 @@ export class LedgerTypeChecks {
  *
  * The boundary is inclusive - expire equal to the compare time is
  * expired.
+ *
+ * `at` is deliberately `string | Date`. $datetime is declared Date and is
+ * a Date on the node that set it, but every other node receives the
+ * transaction as JSON, where it has become a string - so both are real at
+ * runtime and typing it as only one of them is a lie that happens to
+ * compile on the origin node.
  */
 export function isAuthorityExpired(
   authority: ILedgerAuthority,
-  at: string
+  at: string | Date
 ): boolean {
   if (authority.expire === undefined) return false;
   return new Date(authority.expire) <= new Date(at);
