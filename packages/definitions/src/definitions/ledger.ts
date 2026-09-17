@@ -212,6 +212,13 @@ export interface ILedgerAuthority {
   label?: string;
   metadata?: any;
   umid?: string;
+  /**
+   * ISO date string after which this key can no longer authorise
+   * anything. Absent means it never expires - which is why every stream
+   * that predates this field is already full of permanent keys and
+   * nothing needs migrating.
+   */
+  expire?: string;
 }
 
 /**
@@ -266,4 +273,50 @@ export class LedgerTypeChecks {
   ): object is LedgerAuthSignatures {
     return typeof object === "object";
   }
+}
+
+/**
+ * Has this authority passed its expiry, as of the given time?
+ *
+ * Takes the comparison time as an argument and never reads a clock. The
+ * only safe value to pass is the transaction's own $datetime: it is set
+ * once at ingress (endpoints.ts sets it and rejects a preset one) and
+ * travels with the transaction, so every node evaluating this reaches
+ * the same verdict. Passing a node's own Date.now() would let two nodes
+ * whose clocks straddle the boundary vote differently on one signature.
+ *
+ * The boundary is inclusive - expire equal to the compare time is
+ * expired.
+ *
+ * `at` is deliberately `string | Date`. $datetime is declared Date and is
+ * a Date on the node that set it, but every other node receives the
+ * transaction as JSON, where it has become a string - so both are real at
+ * runtime and typing it as only one of them is a lie that happens to
+ * compile on the origin node.
+ */
+export function isAuthorityExpired(
+  authority: ILedgerAuthority,
+  at: string | Date
+): boolean {
+  if (authority.expire === undefined) return false;
+  return new Date(authority.expire) <= new Date(at);
+}
+
+/**
+ * Does this stream keep at least one key that can never expire?
+ *
+ * Deliberately "has no expire field", not "is not currently expired" - a
+ * distant expiry still becomes a dead stream on the day it passes, and
+ * nothing would be able to sign the transaction needed to fix it.
+ *
+ * A stream with no authorities at all satisfies this vacuously. Many
+ * streams have none (a contract's own data streams, anything created
+ * without setAuthority), and demanding a permanent key on those would
+ * reject ordinary transactions right across the ledger.
+ */
+export function hasNonExpiringAuthority(
+  authorities: ILedgerAuthority[] | undefined
+): boolean {
+  if (!authorities || !authorities.length) return true;
+  return authorities.some((a) => a.expire === undefined);
 }

@@ -188,6 +188,31 @@ export class StreamUpdater {
   private async processStreams() {
     this.docs = [];
 
+    // Every stream that has authorities must keep at least one that can
+    // never expire. The setter guards in stream.ts throw earlier and
+    // give a better message, but they are bypassable: getAuthorities()
+    // returns the live array and setState() sets updatedMeta, so an
+    // in-place mutation reaches here without any setter having run.
+    //
+    // Runs before buildReferenceStreams() and before anything is pushed
+    // to this.docs, so a refused transaction writes nothing at all.
+    //
+    // A stream with no authorities is fine - most streams have none, and
+    // demanding a permanent key on those would reject ordinary
+    // transactions across the whole ledger.
+    for (let i = this.streams.length; i--; ) {
+      const meta = this.streams[i].meta;
+      if (!meta) continue;
+      if (!ActiveDefinitions.hasNonExpiringAuthority(meta.authorities)) {
+        return this.shared.raiseLedgerError(
+          1236,
+          new Error(
+            `Stream ${this.streams[i].state._id} would have no permanent authority`
+          )
+        );
+      }
+    }
+
     this.buildReferenceStreams();
 
     // Any inputs left (Means not modified, Unmodified outputs can be ignored)

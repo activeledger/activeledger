@@ -38,9 +38,19 @@ export interface NetworkHarnessOptions {
   basePort?: number;
   portSpacing?: number;
   readyTimeoutMs?: number;
+  /**
+   * Values merged into every instance's config.json after --merge and
+   * before the nodes are spawned.
+   *
+   * Needed for build-gated features: a node reads `build` at startup, and
+   * something like authority expiry must not be half-enabled across a
+   * network or the test measures a rollout bug rather than the feature.
+   */
+  config?: Record<string, unknown>;
 }
 
 const DEFAULTS: Required<NetworkHarnessOptions> = {
+  config: undefined as any,
   nodeCount: 4,
   // Not the literal default (5260) - see cli.md's --port gotcha, a
   // non-default port keeps every instance's autostart behaviour identical
@@ -217,6 +227,18 @@ export class NetworkHarness {
         dataDirs.flatMap((dataDir) => ["--merge", path.join(dataDir, "config.json")]),
         this.rootDir
       );
+    }
+
+    // Apply any config overrides - after --merge (which rewrites each
+    // config.json wholesale) and before the nodes read them at startup.
+    // This window is the only place they can go.
+    if (this.opts.config) {
+      for (const dataDir of dataDirs) {
+        const configPath = path.join(dataDir, "config.json");
+        const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+        Object.assign(config, this.opts.config);
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      }
     }
 
     // Start every node for real.
