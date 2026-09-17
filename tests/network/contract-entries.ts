@@ -215,7 +215,10 @@ async function verifyVersionsAcrossNodes(
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  const harness = new NetworkHarness({ nodeCount: 4 });
+  // Contract references are gated behind build >= 40100 - see
+  // contract.ts's REFERENCE_BUILD. Set on every node before any start:
+  // half-enabled is a rollout bug, and this must measure the feature.
+  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 40100 } });
   let passed = true;
   const check = (ok: boolean, message: string) => {
     passed = assert(report, ok, message) && passed;
