@@ -1,5 +1,80 @@
 # Activeledger Changelog
 
+## [4.8.0]
+
+Two protocol features, both inert until `build` is raised to **40100**. A node
+upgraded to 4.8.0 with the default configuration behaves exactly as 4.7.1 did,
+so a network can be upgraded a node at a time and then opt in once every node
+is on it.
+
+### Added
+* **Contracts / Protocol** : An authority on a stream can carry an optional
+  `expire` (ISO date). Past it, that key can no longer authorise anything -
+  it is excluded from both signature paths and the transaction is rejected
+  with **1235 Signature Expired**, deliberately distinct from 1220 Signature
+  Incorrect so that "right key, too late" does not read as "wrong key".
+
+  Absent `expire` means the key never expires, so every existing stream is
+  already full of permanent keys and nothing migrates.
+
+  Expiry is evaluated against the transaction's own `$datetime`, never a
+  node's clock. `$datetime` is set once at ingress and travels with the
+  transaction, so every node reaches the same verdict; a local clock would
+  let two nodes whose clocks straddle an expiry boundary vote differently on
+  the same signature, splitting consensus on a timer.
+
+  A stream must always keep at least one authority with **no** `expire` -
+  meaning the field is absent, not merely distant, since a far-future expiry
+  still kills the stream on the day it passes and nothing could then sign the
+  fix. Enforced in `setAuthorities`/`deleteAuthorities` for a clear error at
+  the call site, and again when the transaction's streams are collected,
+  raising **1236**, because `getAuthorities()` returns the live array and a
+  contract can mutate an authority in place without any setter running.
+
+  Streams with no authorities at all are unaffected.
+
+* **Default Contract** : A contract stream no longer carries a copy of its own
+  base64 TypeScript source for every version it has ever had. It stores the
+  umid of the transaction that carried the source, plus a sha256 of the
+  decoded source bytes.
+
+  The source was already in the ledger once - `compactTxEntry` writes `$tx`
+  verbatim into the `:umid` document - so the per-version copy was duplication
+  that grew without bound, in exactly the documents SPI arbitrates and restore
+  copies whole. A 40KB contract was roughly 54KB of base64 per version.
+
+  Updating a contract also converts any inline source already in the stream to
+  a hash reference. Those older versions keep their identity and lose their
+  recoverability from the ledger; only versions deployed before this change
+  can be affected, and never the newest one.
+
+  `state.identity` is new and records which transaction input carried the
+  source, without which it cannot be read back.
+
+### Fix
+* **Contracts** : Re-adding a public key that is already an authority updates
+  it, rather than being silently discarded. The uniqueness filter kept the
+  *first* entry for a key while `setAuthorities` appends, so an update to an
+  existing authority's `stake`, `label`, `metadata` - or now `expire` - was
+  dropped while the transaction still committed and reported success. The
+  comment above it claimed the newest won the whole time.
+
+  This affects contracts calling `setAuthorities`; nothing in the default
+  contracts did.
+
+### Known Limits
+* **Contract rebuild is unchanged and still only runs under
+  `activerestore --full`.** Nothing automatic rebuilds a contract's `.js` from
+  the ledger - the normal restore path backfills `:umid` documents only, and
+  SPI never writes contract files. This is not a regression, but with contract
+  source no longer duplicated in the stream there is one fewer place to
+  recover it from once `build` is raised. A real rebuild path is outstanding
+  work.
+
+* **Consumers reading `state.contract[version]` as base64 will break once
+  `build` reaches 40100**, since the entry becomes `{umid, hash}`. Anything
+  fetching contract source from a stream needs updating to resolve the umid.
+
 ## [4.7.1]
 
 ### Fix
