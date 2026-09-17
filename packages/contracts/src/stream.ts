@@ -834,14 +834,26 @@ export class Activity {
           this.meta.authorities = authority;
         }
 
-        // Enforce Unique Public Keys (Newest duplicated selected)
-        this.meta.authorities = this.meta.authorities.filter(
-          (
-            value: ActiveDefinitions.ILedgerAuthority,
-            i: number,
-            self: Array<ActiveDefinitions.ILedgerAuthority>
-          ) => self.map((x) => x.hash).indexOf(value.hash) == i
-        );
+        // Enforce Unique Public Keys - the LAST entry for a key wins.
+        //
+        // This used to be a filter on indexOf() == i, which keeps the
+        // FIRST match. setAuthorities pushes new entries onto the end, so
+        // it kept the original and silently discarded the update, while
+        // still setting updatedMeta below - the transaction committed,
+        // reported success, and changed nothing. The comment claimed
+        // "Newest duplicated selected" the whole time; it now is.
+        //
+        // Keeping the newest is what makes renewal possible: re-adding a
+        // key with a different expire (or none, to make it permanent
+        // again) updates it in place. Map preserves insertion order and
+        // set() on an existing key overwrites the value while keeping its
+        // original position, so an updated key stays where it was rather
+        // than jumping to the end.
+        const byHash = new Map<string, ActiveDefinitions.ILedgerAuthority>();
+        for (const auth of this.meta.authorities) {
+          byHash.set(auth.hash as string, auth);
+        }
+        this.meta.authorities = Array.from(byHash.values());
 
         // Set Update Flag
         this.updatedMeta = this.updated = true;
