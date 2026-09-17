@@ -21,13 +21,29 @@ export interface Identity {
   publicKey?: string;
 }
 
-export async function onboard(baseUrl: string): Promise<Identity> {
-  const keyPair = new ActiveCrypto.KeyPair("rsa");
+/**
+ * Onboards a new identity.
+ *
+ * `type` defaults to "rsa" so every existing caller is unaffected, but the
+ * post-quantum types work here unchanged - KeyPair.generate() ignores its
+ * arguments on the PQ branch and returns base64 raw key bytes. Until this
+ * parameter existed, nothing in the repo exercised a PQ identity end to end
+ * on a real network, despite the feature having shipped.
+ */
+export async function onboard(
+  baseUrl: string,
+  type: string = "rsa"
+): Promise<Identity> {
+  const keyPair = new ActiveCrypto.KeyPair(type);
   const keys = keyPair.generate();
   const txBody = {
     $namespace: "default",
     $contract: "onboard",
-    $i: { identity: { type: "rsa", publicKey: keys.pub.pkcs8pem } },
+    // The type is always sent explicitly. Omitting it makes the engine
+    // default to "rsa" and attempt RSA verification against a base64 PQ
+    // blob, which comes back as 1220 "Signature Incorrect" rather than
+    // anything mentioning the key type.
+    $i: { identity: { type, publicKey: keys.pub.pkcs8pem } },
     $o: {},
   };
   const tx = {
