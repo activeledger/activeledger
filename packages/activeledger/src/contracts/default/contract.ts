@@ -25,6 +25,7 @@ import * as fs from "fs";
 import * as ts from "typescript";
 import { Standard, Activity } from "@activeledger/activecontracts";
 import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveCrypto } from "@activeledger/activecrypto";
 
 // Read-only security denylists used by securityScan() below. Unlike
 // allowedModules/policy (which get extended per-call from namespace
@@ -381,6 +382,27 @@ export default class Contract extends Standard {
           break;
       }
     });
+  }
+
+  /**
+   * Hash a contract's source for storage against its version.
+   *
+   * Hashes the DECODED source bytes, deliberately. The base64 envelope is
+   * not canonical (padding and line breaks vary with whoever encoded it),
+   * and the transpiled output depends on the TypeScript version the node
+   * ships - hashing either would let two honest nodes disagree about the
+   * same deploy.
+   *
+   * @private
+   * @static
+   * @param {string} base64
+   * @returns {string}
+   */
+  private static hashContractSource(base64: string): string {
+    return ActiveCrypto.Hash.getHash(
+      Buffer.from(base64, "base64").toString(),
+      "sha256"
+    );
   }
 
   /**
