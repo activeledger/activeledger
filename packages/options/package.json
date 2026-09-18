@@ -36,7 +36,7 @@
   "license": "MIT",
   "devDependencies": {
     "@activeledger/activedefinitions": "4.8.0",
-    "@types/minimist": "1.2.2",
+    "@types/minimist": "1.2.5",
     "@types/node": "24.10.1",
     "typescript": "5.6.3"
   },
@@ -50,6 +50,6 @@
   "dependencies": {
     "@activeledger/activelogger": "4.8.0",
     "@activeledger/activeutilities": "4.8.0",
-    "minimist": "1.2.6"
+    "minimist": "1.2.8"
   }
 }
