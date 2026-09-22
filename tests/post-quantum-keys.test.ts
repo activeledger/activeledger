@@ -106,7 +106,12 @@ describe("ActiveCrypto.KeyPair - post-quantum signatures", () => {
     }
     expect(sizes["ml-dsa-65"].size).to.equal(1);
     expect(sizes["falcon-512"].size).to.be.greaterThan(1);
-  });
+    // 80 post-quantum signatures is around 2.4s of real work (ml-dsa-65
+    // ~1.3s, falcon-512 ~1.0s for 40 each), so mocha's 2s default fails
+    // this outright rather than intermittently - it is the sample size that
+    // gives the Falcon assertion its meaning, not flakiness. 10s matches the
+    // ceiling crypto.test.ts already uses for the same reason.
+  }).timeout(10000);
 
   it("signs even when the crypto global has been replaced", () => {
     // The contract VM gives contracts an Activeledger `crypto` object under
