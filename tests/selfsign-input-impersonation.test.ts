@@ -159,10 +159,164 @@ function impersonatingEntry(
   } as any;
 }
 
+/**
+ * The same intent WITHOUT `$stream`: the victim's stream id used as the `$i`
+ * key itself, which is how an unlabelled input names a stream.
+ *
+ * The gate below does not catch this one and deliberately cannot - deciding
+ * that a key is a real stream id needs the lookup the self-signed path exists
+ * to avoid. So this is the shape that still reaches the branch, and the
+ * structural protection (`this.process([], ...)`) is the only thing standing
+ * in front of it. Every test about that protection uses this entry, so none
+ * of them can be satisfied by the gate instead.
+ */
+function unlabelledImpersonatingEntry(
+  { signer = attacker, publicKey = attacker.pub, $o = {} as Record<string, unknown> } = {}
+) {
+  const $tx = {
+    $namespace: "test",
+    $contract: "anything",
+    // No $stream anywhere - the key IS the stream id.
+    $i: { [VICTIM]: { publicKey, type: "rsa", amount: 1 } },
+    $o,
+  };
+  return {
+    $umid: "umid-impersonation-unlabelled",
+    $tx,
+    $sigs: { [VICTIM]: signer.kp.sign($tx) },
+    $revs: { $i: {}, $o: {} },
+    $nodes: { self: {} },
+    $selfsign: true,
+  } as any;
+}
+
 describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream", () => {
+  describe("a self-signed input declaring a $stream is refused outright", () => {
+    // The explicit gate. Everything below it is the structural protection
+    // that was always there; this is the one that says so.
+    //
+    // A self-signed input naming a stream is a contradiction: the only
+    // signature this branch can check is the key the input carries about
+    // itself, so the named identity is one nothing has authenticated or
+    // could. An honest self-signed transaction has no reason to name one.
+
+    it("raises 1265 rather than quietly ignoring the field", async () => {
+      const { raised, handedToContract } = await runSelfSigned(impersonatingEntry());
+
+      expect(handedToContract, "the contract must never run").to.equal(undefined);
+      expect(raised.map((r) => r.code)).to.contain(1265);
+      expect(String(raised[0].reason)).to.contain("potential impersonation");
+      expect(
+        String(raised[0].reason),
+        "the message should name the offending label, not just the rule"
+      ).to.contain("spoof");
+    });
+
+    it("refuses before any signature work is done", async () => {
+      // Ordering matters: a valid self-signature on this shape is not a
+      // near-miss to be reported, it is a transaction that should never
+      // have been assembled. Checking it first would also mean an attacker
+      // could spend a node's crypto budget on transactions it was always
+      // going to refuse.
+      const { signatureChecks, permissionCalls } = await runSelfSigned(impersonatingEntry());
+
+      expect(signatureChecks, "no signature should have been checked").to.have.length(0);
+      expect(permissionCalls, "and nothing should have been fetched").to.have.length(0);
+    });
+
+    it("refuses even when the $stream names the transaction's own output", async () => {
+      // No carve-out for "but it is my own stream". sdk-core's
+      // labelledTransaction() stamps $stream into $i even when self-signing
+      // and names the signer's own identity, which is the shape this rejects
+      // in practice - see the PR. A self-signed input still has no authority
+      // to name anything, and an exception here would be one an attacker
+      // could construct as easily as the owner.
+      const { raised } = await runSelfSigned(
+        impersonatingEntry({ $o: { [VICTIM]: {} } })
+      );
+
+      expect(raised.map((r) => r.code)).to.contain(1265);
+    });
+
+    it("refuses a $stream on ANY input, not just the first", async () => {
+      // labelOrKey() decides labelled-ness from the first entry alone, so a
+      // mixed container is exactly where a first-entry-only check would let
+      // one through.
+      const $tx = {
+        $namespace: "test",
+        $contract: "anything",
+        $i: {
+          plain: { publicKey: attacker.pub, type: "rsa" },
+          spoof: { $stream: VICTIM, publicKey: attacker.pub, type: "rsa" },
+        },
+        $o: {},
+      };
+      const entry: any = {
+        $umid: "umid-mixed",
+        $tx,
+        $sigs: { plain: attacker.kp.sign($tx), spoof: attacker.kp.sign($tx) },
+        $revs: { $i: {}, $o: {} },
+        $nodes: { self: {} },
+        $selfsign: true,
+      };
+
+      const { raised, handedToContract } = await runSelfSigned(entry);
+
+      expect(handedToContract).to.equal(undefined);
+      expect(raised.map((r) => r.code)).to.contain(1265);
+    });
+
+    it("leaves an ordinary self-signed onboarding alone", async () => {
+      // The shape this must not break: buildOnboardKeyTx() writes
+      // $i[key.name] = { publicKey, type } and no $stream anywhere. If this
+      // test fails, onboarding is broken and so is the whole network.
+      //
+      // Deliberately not $namespace "default": that takes the separate
+      // default-contract path, which resolves against the node's own
+      // default_contracts directory and has nothing to do with the gate.
+      // What is under test is the $i shape.
+      const $tx = {
+        $namespace: "test",
+        $contract: "anything",
+        $i: { "my-key": { publicKey: attacker.pub, type: "rsa" } },
+        $o: {},
+      };
+      const entry: any = {
+        $umid: "umid-onboard",
+        $tx,
+        $sigs: { "my-key": attacker.kp.sign($tx) },
+        $revs: { $i: {}, $o: {} },
+        $nodes: { self: {} },
+        $selfsign: true,
+      };
+
+      const { raised, handedToContract } = await runSelfSigned(entry);
+
+      expect(raised, `onboarding must not be refused: ${JSON.stringify(raised)}`).to.have.length(0);
+      expect(handedToContract).to.deep.equal([]);
+    });
+
+    it("does not touch an ordinary transaction that labels its input", async () => {
+      // $stream in $i is the normal, correct way to label an input. The gate
+      // is about $selfsign specifically, where there is no authority to
+      // check it against.
+      const entry = impersonatingEntry();
+      delete entry.$selfsign;
+      // Signed as the stream it names, the way the ordinary path expects.
+      entry.$sigs = { [VICTIM]: victim.kp.sign(entry.$tx) };
+
+      const { raised } = await runSelfSigned(entry);
+
+      expect(
+        raised.map((r) => r.code),
+        "the non-self-signed path must be untouched by this"
+      ).to.not.contain(1265);
+    });
+  });
+
   describe("the engine hands the contract no input streams at all", () => {
     it("runs the contract with an empty input list, whatever $i names", async () => {
-      const { handedToContract } = await runSelfSigned(impersonatingEntry());
+      const { handedToContract } = await runSelfSigned(unlabelledImpersonatingEntry());
 
       expect(handedToContract, "the contract must be reached at all").to.not.equal(undefined);
       expect(
@@ -172,7 +326,7 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
     });
 
     it("never asks the permission checker about the victim's stream", async () => {
-      const { permissionCalls } = await runSelfSigned(impersonatingEntry());
+      const { permissionCalls } = await runSelfSigned(unlabelledImpersonatingEntry());
 
       // Outputs only, and explicitly as outputs. An input call here would
       // mean the victim's stream had been fetched and revision-checked,
@@ -191,7 +345,7 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
       // Outputs ARE fetched on this branch. The assertion is specifically
       // that a stream named only by $i does not join them.
       const { permissionCalls, handedToContract } = await runSelfSigned(
-        impersonatingEntry({ $o: { someOtherStream: {} } })
+        unlabelledImpersonatingEntry({ $o: { someOtherStream: {} } })
       );
 
       expect(handedToContract).to.deep.equal([]);
@@ -207,7 +361,7 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
       // not weak by accident - it has nothing to check against - and the
       // safety comes entirely from the test above, not from this one.
       const { signatureChecks, handedToContract, raised } = await runSelfSigned(
-        impersonatingEntry()
+        unlabelledImpersonatingEntry()
       );
 
       expect(raised, `the transaction should not have been rejected: ${JSON.stringify(raised)}`)
@@ -226,7 +380,7 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
       // the public key they wrote in - otherwise this test would pass against
       // an engine that had stopped checking anything.
       const { raised, handedToContract } = await runSelfSigned(
-        impersonatingEntry({ publicKey: victim.pub })
+        unlabelledImpersonatingEntry({ publicKey: victim.pub })
       );
 
       expect(handedToContract, "the contract must not run").to.equal(undefined);
@@ -234,11 +388,11 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
     });
 
     it("rejects an input carrying no publicKey at all", async () => {
-      const entry = impersonatingEntry();
-      delete entry.$tx.$i.spoof.publicKey;
+      const entry = unlabelledImpersonatingEntry();
+      delete entry.$tx.$i[VICTIM].publicKey;
       // Re-signed, so this fails on the missing key rather than on a
       // signature that no longer covers the payload.
-      entry.$sigs.spoof = attacker.kp.sign(entry.$tx);
+      entry.$sigs[VICTIM] = attacker.kp.sign(entry.$tx);
 
       const { raised, handedToContract } = await runSelfSigned(entry);
 
@@ -247,20 +401,18 @@ describe("$selfsign cannot impersonate the identity named in $i.<label>.$stream"
     });
   });
 
-  describe("labelOrKey() still resolves $i - the protection is that nothing reads it", () => {
-    it("rewrites this.inputs to the victim's stream id, and it is used anyway", async () => {
+  describe("this.inputs still names the victim - the protection is that nothing reads it", () => {
+    it("reads [victim] by the time the branch is taken, and is used anyway", async () => {
       // Deliberately asserting the trap, not just the safe outcome.
       //
-      // labelOrKey() runs before the $selfsign branch is chosen, so by the
-      // time the branch is taken, `this.inputs` reads ["<victim>"] and
-      // `shared.ioLabelMap.i` maps the victim to the attacker's label. Both
-      // look exactly like a resolved, authorised input and neither has been
-      // checked against anything. Anything that starts consuming them on
-      // this path is the bug; this test is what notices.
-      const { proc, handedToContract } = await runSelfSigned(impersonatingEntry());
+      // `this.inputs` is set from the raw `$i` keys before the self-signed
+      // branch is chosen, so by the time it runs it reads ["<victim>"] -
+      // indistinguishable from a resolved, authorised input, and checked
+      // against nothing. Anything that starts consuming it on this path is
+      // the bug; this test is what notices.
+      const { proc, handedToContract } = await runSelfSigned(unlabelledImpersonatingEntry());
 
-      expect(proc.inputs, "labelOrKey() does resolve it").to.deep.equal([VICTIM]);
-      expect(proc.shared.ioLabelMap.i[VICTIM]).to.equal("spoof");
+      expect(proc.inputs, "the victim's id really is sitting there").to.deep.equal([VICTIM]);
       expect(
         handedToContract,
         "...and it must still not reach the contract"

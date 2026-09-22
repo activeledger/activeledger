@@ -666,6 +666,47 @@ export class Process extends EventEmitter {
         // If there are sigs we can enforce for the developer
         const inputs = Object.keys(this.entry.$tx.$i);
 
+        // A self-signed input may not name a stream.
+        //
+        // The only signature this branch can check is the one in the input
+        // itself - `input.publicKey`, a key the transaction supplies ABOUT
+        // ITSELF - because self-signing exists precisely for the case where
+        // there is no stream to fetch an authority from yet. A `$stream`
+        // alongside it therefore names an identity that nothing here has
+        // authenticated, or ever could: it is not fetched, not
+        // authority-checked, and not handed to the contract, because this
+        // branch runs the contract with a hard-coded empty input list.
+        //
+        // That made the field inert rather than dangerous, which is a quiet
+        // kind of safe. It reads as a declared, authorised input - and
+        // labelOrKey() has already rewritten `this.inputs` to it and mapped
+        // it in `shared.ioLabelMap.i` by the time we get here, so it reads
+        // that way in the engine's own state too. Anything downstream that
+        // starts trusting either one hands whoever generated a keypair a
+        // minute ago a writable handle on someone else's stream. A
+        // re-implementation of this engine did exactly that.
+        //
+        // So it is refused outright rather than ignored. Self-signing is
+        // for onboarding, and for skipping the stream locking that costs
+        // performance; it has no business anywhere near an authority, and
+        // an honest self-signed transaction has no reason to name one.
+        //
+        // Deliberately NOT a claim that a self-signed transaction cannot
+        // name an existing stream at all - an unlabelled `$i` keyed by a
+        // real stream id says the same thing without `$stream`, and
+        // establishing that would need the very lookup this path exists to
+        // avoid. The guarantee is still `this.process([], ...)` below; this
+        // gate removes the shape that lies about it.
+        const labelled = inputs.filter((label) => this.entry.$tx.$i[label]?.$stream);
+        if (labelled.length) {
+          return this.shared.raiseLedgerError(
+            1265,
+            new Error(
+              `Self signed potential impersonation - $i.${labelled[0]} cannot declare a $stream`
+            )
+          );
+        }
+
         if (inputs.length > 0) {
           // Loop Signatures and match against inputs
           let i = inputs.length;

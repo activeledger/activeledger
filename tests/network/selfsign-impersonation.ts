@@ -76,7 +76,10 @@ async function main(): Promise<boolean> {
 
     report.phase("A victim identity, with a contract it controls");
     const victim: Identity = await onboard(origin.baseUrl, "rsa");
-    check(!!victim.streamId, `victim onboarded as ${victim.streamId.substring(0, 12)}...`);
+    // Onboarding is itself a self-signed transaction, so this line doubles
+    // as the proof that the gate has not broken the case $selfsign exists
+    // for: buildOnboardKeyTx() writes no $stream anywhere.
+    check(!!victim.streamId, `victim onboarded as ${victim.streamId.substring(0, 12)}... (self-signed, and still accepted)`);
 
     await registerNamespace(origin.baseUrl, victim, NAMESPACE);
     const contractId = await deployContract(
@@ -140,10 +143,20 @@ async function main(): Promise<boolean> {
     });
     report.info(`ledger answered: ${JSON.stringify(spoof.$summary ?? {})}`);
 
-    // Whether the ledger accepts or rejects it is not the assertion. A
-    // self-signed transaction creating a stream of its own is ordinary and
-    // harmless. What must be true either way is that the victim's stream did
-    // not move.
+    // Refused at the gate. A self-signed input has no authority to name a
+    // stream - the only key this branch can check is the one the input
+    // carries about itself - so the shape is rejected rather than quietly
+    // ignored.
+    const spoofErrors = JSON.stringify(spoof.$summary?.errors ?? []);
+    check(!!spoof.$summary?.errors, `refused, not committed: ${spoofErrors}`);
+    check(
+      spoofErrors.includes("potential impersonation"),
+      `refused for the right reason: ${spoofErrors}`
+    );
+
+    // And the assertion that would still have to hold even if the gate were
+    // removed: nothing moved. The structural protection is that this branch
+    // resolves no input streams at all.
     const afterSpoof = await readEverywhere(nodes, victim.streamId);
     check(
       JSON.stringify(afterSpoof.states.map((s) => s?._rev)) === JSON.stringify(beforeRevs),
@@ -164,16 +177,10 @@ async function main(): Promise<boolean> {
       "the attacker's key is on none of the victim's authority lists"
     );
 
-    // If it did commit, it committed somewhere else. Worth stating, because
-    // "the transaction was accepted" is the part that looks alarming in a log
-    // and the part that does not matter.
-    const wroteTo = spoof.$responses?.[0]?.wroteTo;
-    if (wroteTo) {
-      check(
-        wroteTo !== victim.streamId,
-        `the contract wrote to ${String(wroteTo).substring(0, 12)}..., a stream of its own, not the victim`
-      );
-    }
+    check(
+      !spoof.$responses?.[0]?.wroteTo,
+      "the contract never ran, so it wrote nowhere at all"
+    );
 
     // Arm 2 - the same intent without $selfsign, labelled exactly as the
     // report described. This one must be refused outright: the ordinary path
@@ -209,15 +216,55 @@ async function main(): Promise<boolean> {
       `rejected: ${JSON.stringify(unlabelled.$summary?.errors ?? "ACCEPTED")}`
     );
 
+    // Arm 4 - the shape the gate deliberately does NOT catch. An unlabelled
+    // $i keyed by the victim's real stream id says the same thing without
+    // ever writing $stream, and refusing it would need the lookup the
+    // self-signed path exists to avoid. So this one still reaches the
+    // branch, and the structural protection is the only thing in front of
+    // it. It is here because a gate that moved the risk somewhere unwatched
+    // would be worse than no gate.
+    report.phase("Arm 4: $selfsign with the victim's stream id as the $i key");
+    const unlabelledSpoofBody = {
+      $namespace: NAMESPACE,
+      $contract: contractId,
+      $i: {
+        [victim.streamId]: {
+          publicKey: attackerKeys.pub.pkcs8pem,
+          type: "rsa",
+          marker: "hijacked",
+        },
+      },
+    };
+    const unlabelledSpoof = await submit(origin.baseUrl, {
+      $tx: unlabelledSpoofBody,
+      $selfsign: true,
+      $sigs: { [victim.streamId]: attackerKey.sign(unlabelledSpoofBody) },
+    });
+    report.info(`ledger answered: ${JSON.stringify(unlabelledSpoof.$summary ?? {})}`);
+
+    const afterUnlabelled = await readEverywhere(nodes, victim.streamId);
+    check(
+      JSON.stringify(afterUnlabelled.states.map((s) => s?._rev)) === JSON.stringify(beforeRevs),
+      "not gated, and still harmless - the victim's revision is unchanged on every node"
+    );
+    check(
+      afterUnlabelled.states.every((s) => s?.marker === "written-by-owner"),
+      "the victim's state is still the owner's"
+    );
+    check(
+      JSON.stringify(afterUnlabelled.metas.map((m) => m?.authorities)) === beforeAuthorities,
+      "the victim's authorities are untouched"
+    );
+
     report.phase("Final state of the victim's stream");
     const final = await readEverywhere(nodes, victim.streamId);
     check(
       JSON.stringify(final.states.map((s) => s?._rev)) === JSON.stringify(beforeRevs),
-      "after all three attempts, still at the revision the owner left it at"
+      "after all four attempts, still at the revision the owner left it at"
     );
     check(
       final.states.every((s) => s?.marker === "written-by-owner"),
-      "after all three attempts, still holding only the owner's write"
+      "after all four attempts, still holding only the owner's write"
     );
 
     // And the owner still controls it. A stream that became unwritable would
