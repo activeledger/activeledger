@@ -1,9 +1,9 @@
 # Activeledger Changelog
 
-## [4.9.0]
+## [4.10.0]
 
 Contracts compile to ES2025 once `build` is raised to **40200**. Below that a
-node compiles exactly as 4.8.0 did, so a network upgrades a node at a time and
+node compiles exactly as 4.9.0 did, so a network upgrades a node at a time and
 opts in once every node is on this release.
 
 ### Upgrading
@@ -62,6 +62,15 @@ its `build` set to match that network before it joins.
   consensus. Restore and hybrid only test `compiled` for presence, which still
   holds.
 
+### Known Limits
+* **Contract rebuild must honour `target`.** `activerestore --full` and
+  hybrid still read a version entry as base64 source, and cannot rebuild a
+  reference entry at all - unchanged from 4.8.0. When rebuild learns to
+  resolve references, it has to compile each version to its recorded
+  `target`, defaulting to ES2017.
+
+## [4.9.0]
+
 ### Build
 * **Build** : TypeScript 5.6.3 -> 7.0.2, the native compiler. It builds every
   package; it does not make the ledger faster. The target was already
@@ -99,13 +108,6 @@ its `build` set to match that network before it joins.
 * **Tests** : `ts-node` needs the TypeScript API too, so the suite and the
   network scripts run under `tsx` instead, with the same results as under
   ts-node.
-
-### Known Limits
-* **Contract rebuild must honour `target`.** `activerestore --full` and
-  hybrid still read a version entry as base64 source, and cannot rebuild a
-  reference entry at all - unchanged from 4.8.0. When rebuild learns to
-  resolve references, it has to compile each version to its recorded
-  `target`, defaulting to ES2017.
 
 ## [4.8.1]
 

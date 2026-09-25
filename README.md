@@ -71,7 +71,7 @@ touches diverge.
 | `build` | Enables | Since |
 |---|---|---|
 | 40100 | Contract streams store a `{umid, hash}` reference instead of the source; authority keys can carry an `expire` date | 4.8.0 |
-| 40200 | New contract versions compile to ES2025 (see the 4.9.0 changelog for the one breaking case) | 4.9.0 |
+| 40200 | New contract versions compile to ES2025 (see the 4.10.0 changelog for the one breaking case) | 4.10.0 |
 
 A new node gets **40200**: its `config.json` is generated from the default the
 first time it starts. An existing `config.json` is never changed by an upgrade.
