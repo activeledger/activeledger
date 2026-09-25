@@ -6,6 +6,23 @@ Contracts compile to ES2025 once `build` is raised to **40200**. Below that a
 node compiles exactly as 4.8.0 did, so a network upgrades a node at a time and
 opts in once every node is on this release.
 
+### Upgrading
+**Existing networks must set `build` themselves.** An upgrade never edits a
+node's `config.json`, so a node keeps the level it had.
+
+1. Upgrade every node to this release, with `build` unchanged.
+2. Then set `"build": 40200` in every node's `config.json` and restart it, or
+   call `/a/admin-reload` where `remote` is enabled.
+
+Raising it on some nodes before all of them are upgraded splits the network.
+Networks still below 40100 get 4.8.0's contract references and authority
+expiry in the same step.
+
+**New nodes default to 40200.** `default.config.json` - copied only when a
+node has no `config.json` - moves from 40000, so a new network has every
+protocol feature from the start. A node added to an existing network must have
+its `build` set to match that network before it joins.
+
 ### Breaking
 * **Contracts** : From `build` 40200, newly deployed contracts and contract
   updates compile to **ES2025** instead of ES2017, and the edition is recorded
