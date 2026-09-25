@@ -231,6 +231,12 @@ const BANNED_PROPERTIES = [
 const BANNED_PROPERTIES_SET = new Set(BANNED_PROPERTIES);
 
 /**
+ * ES edition a contract version is compiled to. Recorded on the version
+ * entry from ES2025_BUILD; absent means es2017.
+ */
+type ContractTarget = "es2017" | "es2025";
+
+/**
  * Default Onboarding (New Account) contract
  *
  * @export
@@ -431,6 +437,43 @@ export default class Contract extends Standard {
     );
   }
 
+  /**
+   * Build level from which new contract versions compile to ES2025.
+   *
+   * The compiled .js is written once, at deploy, by each node from its own
+   * compiler, and run from then on. So the target is decided per contract
+   * VERSION and recorded in that version's entry, never re-derived from a
+   * node's current build: a node that rebuilt an old version under a newer
+   * target would run different code from every node that did not.
+   *
+   * Gated for the same reason as references - a half-upgraded network would
+   * compile one deploy two ways. Must be above REFERENCE_BUILD, because the
+   * target is recorded on the reference object and a base64 entry has
+   * nowhere to carry it.
+   *
+   * Not only syntax. From ES2022 class fields have [[Define]] semantics: a
+   * field a contract redeclares without `declare` is reset to undefined
+   * after super() returns, wiping what Stream's constructor set.
+   *
+   * @private
+   * @static
+   */
+  private static readonly ES2025_BUILD = 40200;
+
+  /**
+   * Which ES edition a version deployed now is compiled to. Absent from a
+   * version entry means es2017, which is what every version written before
+   * ES2025_BUILD was compiled to.
+   *
+   * @private
+   * @returns {ContractTarget}
+   */
+  private contractTarget(): ContractTarget {
+    return ActiveOptions.get<number>("build", 0) >= Contract.ES2025_BUILD
+      ? "es2025"
+      : "es2017";
+  }
+
   private static hashContractSource(base64: string): string {
     return ActiveCrypto.Hash.getHash(
       Buffer.from(base64, "base64").toString(),
@@ -478,9 +521,10 @@ export default class Contract extends Standard {
    * Transpile Typescript to Javascript
    *
    * @private
+   * @param {ContractTarget} target
    * @returns {string}
    */
-  private transpile(): string {
+  private transpile(target: ContractTarget): string {
     // Base64 Decode & Transpile to javascript
     return ts.transpileModule(
       Buffer.from(
@@ -495,11 +539,17 @@ export default class Contract extends Standard {
           removeComments: true,
           module: ts.ModuleKind.CommonJS,
           moduleResolution: ts.ModuleResolutionKind.Classic,
-          target: ts.ScriptTarget.ES2017,
+          // Pinned editions, never ScriptTarget.Latest - a compiler upgrade
+          // must not move the target of a contract under anyone.
+          target:
+            target === "es2025"
+              ? ts.ScriptTarget.ES2025
+              : ts.ScriptTarget.ES2017,
           // TypeScript 6 defaults esModuleInterop on, which rewrites `import *`
-          // and default imports in contract code. Off, the output is byte-identical
-          // to 5.6.3 across every .ts in this repo; a contract must not change
-          // behaviour because the node that compiles it was upgraded.
+          // and default imports in contract code. Off, the es2017 output is
+          // byte-identical to 5.6.3 across every .ts in this repo; a contract
+          // must not change behaviour because the node that compiles it was
+          // upgraded.
           esModuleInterop: false,
           ignoreDeprecations: "6.0",
         },
@@ -1287,7 +1337,8 @@ export default class Contract extends Standard {
     let txi = this.transactions.$i[this.identity.getName()];
 
     // Get Executable contract code
-    let code = this.transpile();
+    const target = this.contractTarget();
+    let code = this.transpile(target);
 
     // Get new stream to hold this contract
     let stream = this.newActivityStream(
@@ -1316,6 +1367,8 @@ export default class Contract extends Standard {
       ? {
           umid: this.umid,
           hash: Contract.hashContractSource(txi.contract as string),
+          // Only once raised, so the entry is unchanged below ES2025_BUILD.
+          ...(target === "es2017" ? {} : { target }),
         }
       : txi.contract;
 
@@ -1418,7 +1471,8 @@ export default class Contract extends Standard {
     let stream = this.getActivityStreams(output);
 
     // Get Executable contract code
-    let code = this.transpile();
+    const target = this.contractTarget();
+    let code = this.transpile(target);
 
     // Get Stream state to manipulate
     let state = stream.getState();
@@ -1436,6 +1490,8 @@ export default class Contract extends Standard {
       ? {
           umid: this.umid,
           hash: Contract.hashContractSource(txi.contract as string),
+          // Only once raised, so the entry is unchanged below ES2025_BUILD.
+          ...(target === "es2017" ? {} : { target }),
         }
       : txi.contract;
 

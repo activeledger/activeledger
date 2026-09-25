@@ -97,6 +97,12 @@ export interface IContractRef {
   hash: string;
   /** The transaction whose $tx.$i[<identity>].contract holds the source. */
   umid?: string;
+  /**
+   * ES edition this version was compiled to. Written from build 40200;
+   * absent means es2017. Rebuilding a version must use it, or the rebuilt
+   * .js differs from what every other node runs.
+   */
+  target?: "es2025";
 }
 
 export type TContractEntry = string | IContractRef;
