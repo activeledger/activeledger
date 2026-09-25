@@ -474,6 +474,34 @@ export default class Contract extends Standard {
       : "es2017";
   }
 
+  /**
+   * What `compiled[version]` holds.
+   *
+   * Below ES2025_BUILD it is the stream name, the same for every version -
+   * which is what it has always been, and what a node on 4.8.0 writes. From
+   * ES2025_BUILD it is the sha256 of the version's source, so it says which
+   * code the version is, as the name always suggested.
+   *
+   * The SOURCE, not the compiled output. Compiled bytes depend on the
+   * compiler, and this is ledger state every node must agree on: hashing
+   * them would make the TypeScript version part of consensus, and a rolling
+   * upgrade across a compiler bump would write two values for one deploy.
+   * The source is the transaction's own bytes, the same on every node.
+   *
+   * Gated with ES2025_BUILD rather than on its own - same release, same
+   * reason, one level for operators to raise.
+   *
+   * @private
+   * @param {string} base64
+   * @param {string} streamName
+   * @returns {string}
+   */
+  private compiledEntry(base64: string, streamName: string): string {
+    return ActiveOptions.get<number>("build", 0) >= Contract.ES2025_BUILD
+      ? Contract.hashContractSource(base64)
+      : streamName;
+  }
+
   private static hashContractSource(base64: string): string {
     return ActiveCrypto.Hash.getHash(
       Buffer.from(base64, "base64").toString(),
@@ -1383,14 +1411,15 @@ export default class Contract extends Standard {
 
     // Compiled Management
     //
-    // Deprecated: this is stream.getName(), written identically for every
-    // version, and carries no per-version information despite looking
-    // like it does. It stays because quick-restore.ts's hasRequiredData
-    // and hybrid/server.ts's isContractStream both test `data.compiled`
-    // for truthiness to decide whether a document IS a contract stream.
-    // Removing it makes contract rebuild stop with nothing but a log line.
+    // quick-restore.ts's hasRequiredData and hybrid/server.ts's
+    // isContractStream both test `data.compiled` for truthiness to decide
+    // whether a document IS a contract stream, so it must never be empty -
+    // removing it makes contract rebuild stop with nothing but a log line.
     state.compiled = {};
-    state.compiled[txi.version] = stream.getName();
+    state.compiled[txi.version] = this.compiledEntry(
+      txi.contract as string,
+      stream.getName()
+    );
 
     // Write the contract to its location as latest (Using its stream name)
     fs.writeFileSync(
@@ -1500,8 +1529,11 @@ export default class Contract extends Standard {
       state.identity = this.identity.getName();
     }
 
-    // Compiled Management (deprecated - see commitAdd)
-    state.compiled[txi.version] = stream.getName();
+    // Compiled Management (see commitAdd and compiledEntry)
+    state.compiled[txi.version] = this.compiledEntry(
+      txi.contract as string,
+      stream.getName()
+    );
 
     // Write the contract to its location as latest (Using its stream name)
     fs.writeFileSync(

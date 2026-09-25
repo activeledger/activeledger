@@ -64,6 +64,7 @@ describe("Contract compile target (Activeledger)", () => {
       normaliseLegacyVersions: proto.normaliseLegacyVersions,
       useContractReferences: proto.useContractReferences,
       contractTarget: proto.contractTarget,
+      compiledEntry: proto.compiledEntry,
       // The real compiler, recording which edition it was asked for.
       transpile(target: string) {
         targets.push(target);
@@ -108,6 +109,11 @@ describe("Contract compile target (Activeledger)", () => {
       await add(context({}, "1.0.0"));
       expect(written.contract["1.0.0"]).to.have.all.keys("umid", "hash");
     });
+
+    it("keeps compiled as the stream name", async () => {
+      await add(context({}, "1.0.0"));
+      expect(written.compiled["1.0.0"]).to.equal(streamName);
+    });
   });
 
   describe("from 40200", () => {
@@ -136,6 +142,25 @@ describe("Contract compile target (Activeledger)", () => {
       );
       expect(written.contract["0.9.0"]).to.not.have.property("target");
       expect(written.contract["1.0.0"]).to.deep.equal(ref);
+    });
+
+    // compiled[version] used to be the stream name for every version. From
+    // 40200 it identifies the version's code - by its source, which is the
+    // same bytes on every node whatever compiler they run.
+    it("records the source hash as compiled", async () => {
+      await add(context({}, "1.0.0"));
+      expect(written.compiled["1.0.0"]).to.equal(written.contract["1.0.0"].hash);
+      expect(written.compiled["1.0.0"]).to.not.equal(streamName);
+    });
+
+    it("gives each version its own compiled value", async () => {
+      await update(
+        context({ contract: {}, compiled: { "1.0.0": streamName } }, "2.0.0",
+          "export default class Changed {}\n")
+      );
+      expect(written.compiled["2.0.0"]).to.equal(written.contract["2.0.0"].hash);
+      // Written before the gate: left as it was.
+      expect(written.compiled["1.0.0"]).to.equal(streamName);
     });
 
     it("is deterministic across runs", async () => {
