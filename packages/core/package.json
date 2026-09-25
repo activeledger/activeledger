@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activecore",
-  "version": "4.8.1",
+  "version": "4.9.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -40,14 +40,14 @@
   "author": "Activeledger",
   "license": "MIT",
   "dependencies": {
-    "@activeledger/activecrypto": "4.8.1",
-    "@activeledger/activelogger": "4.8.1",
-    "@activeledger/activenetwork": "4.8.1",
-    "@activeledger/activeoptions": "4.8.1",
-    "@activeledger/activequery": "4.8.1",
-    "@activeledger/activestorage": "4.8.1",
-    "@activeledger/activeutilities": "4.8.1",
-    "@activeledger/httpd": "4.8.1"
+    "@activeledger/activecrypto": "4.9.0",
+    "@activeledger/activelogger": "4.9.0",
+    "@activeledger/activenetwork": "4.9.0",
+    "@activeledger/activeoptions": "4.9.0",
+    "@activeledger/activequery": "4.9.0",
+    "@activeledger/activestorage": "4.9.0",
+    "@activeledger/activeutilities": "4.9.0",
+    "@activeledger/httpd": "4.9.0"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

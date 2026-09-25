@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activestorage",
-  "version": "4.8.1",
+  "version": "4.9.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -49,10 +49,10 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "@activeledger/activelogger": "4.8.1",
-    "@activeledger/activeoptions": "4.8.1",
-    "@activeledger/activeutilities": "4.8.1",
-    "@activeledger/httpd": "4.8.1",
+    "@activeledger/activelogger": "4.9.0",
+    "@activeledger/activeoptions": "4.9.0",
+    "@activeledger/activeutilities": "4.9.0",
+    "@activeledger/httpd": "4.9.0",
     "classic-level": "^3.0.0"
   }
 }

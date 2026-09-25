@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activequery",
-  "version": "4.8.1",
+  "version": "4.9.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -45,8 +45,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "4.8.1",
-    "@activeledger/activedefinitions": "4.8.1",
-    "@activeledger/activelogger": "4.8.1"
+    "@activeledger/activecrypto": "4.9.0",
+    "@activeledger/activedefinitions": "4.9.0",
+    "@activeledger/activelogger": "4.9.0"
   }
 }
