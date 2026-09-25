@@ -35,6 +35,16 @@ opts in once every node is on this release.
   node's current `build` at rebuild time would have one node running ES2025
   output for a version every other node runs as ES2017.
 
+### Changed
+* **Contracts** : From `build` 40200, `compiled[version]` in a contract stream
+  holds the sha256 of that version's source - the same value as the version
+  entry's `hash` - instead of the stream name, which it held for every version
+  alike. Entries written earlier keep the stream name. It is the source, not
+  the compiled output, on purpose: compiled bytes depend on the compiler, so
+  hashing them into ledger state would make the TypeScript version part of
+  consensus. Restore and hybrid only test `compiled` for presence, which still
+  holds.
+
 ### Build
 * **Build** : TypeScript 5.6.3 -> 7.0.2, the native compiler. It builds every
   package; it does not make the ledger faster. The target was already
