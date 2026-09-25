@@ -2,7 +2,7 @@
   "configVersion": 1,
   "debug": true,
   "remote": false,
-  "build": 40000,
+  "build": 40200,
   "security": {
     "signedConsensus": false,
     "encryptedConsensus": false,
