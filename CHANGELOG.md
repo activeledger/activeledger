@@ -82,6 +82,14 @@ opts in once every node is on this release.
 * **Tests** : `ts-node` needs the TypeScript API too, so the suite and the
   network scripts run under `tsx` instead, with the same results as under
   ts-node.
+
+### Known Limits
+* **Contract rebuild must honour `target`.** `activerestore --full` and
+  hybrid still read a version entry as base64 source, and cannot rebuild a
+  reference entry at all - unchanged from 4.8.0. When rebuild learns to
+  resolve references, it has to compile each version to its recorded
+  `target`, defaulting to ES2017.
+
 ## [4.8.1]
 
 ### Security Fix
@@ -109,13 +117,6 @@ opts in once every node is on this release.
   reachable through a spoofed peer copy rejected as "Bad Neighbour Payload".
   `release()` now takes the entry being cleaned up and leaves the locks alone
   when the pending entry under that umid belongs to another submission.
-
-### Known Limits
-* **Contract rebuild must honour `target`.** `activerestore --full` and
-  hybrid still read a version entry as base64 source, and cannot rebuild a
-  reference entry at all - unchanged from 4.8.0. When rebuild learns to
-  resolve references, it has to compile each version to its recorded
-  `target`, defaulting to ES2017.
 
 ## [4.8.0]
 
