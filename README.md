@@ -61,6 +61,29 @@ activeledger
 ```
 ![Activeledger Launch Testnet](docs/assets/testnet-run.png)
 
+## Protocol level (`build`)
+
+`build` in a node's `config.json` switches on protocol features that change
+what nodes write to the ledger. Every node on a network must run at the same
+level: a node above its peers writes state they do not, and the streams it
+touches diverge.
+
+| `build` | Enables | Since |
+|---|---|---|
+| 40100 | Contract streams store a `{umid, hash}` reference instead of the source; authority keys can carry an `expire` date | 4.8.0 |
+| 40200 | New contract versions compile to ES2025 (see the 4.10.0 changelog for the one breaking case) | 4.10.0 |
+
+A new node gets **40200**: its `config.json` is generated from the default the
+first time it starts. An existing `config.json` is never changed by an upgrade.
+
+**Upgrading an existing network.** Upgrade every node first, leaving `build`
+alone. Once all of them run the new release, set `"build": 40200` in each
+node's `config.json` and restart it, or call `/a/admin-reload` on nodes with
+`remote` enabled. Raising it before every node is upgraded splits the network.
+
+**Adding a node to an existing network.** Its generated config says 40200. Set
+`build` to whatever the rest of the network runs before it joins.
+
 ## Installing from GitHub Packages
 
 Releases go to npmjs.com and are mirrored to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages), so the quickstart above installs without any authentication. The one gap is the start of the 4.x line: v4.0.0 through v4.3.2 were published to GitHub Packages only, and every release from v4.3.3 onward is on both.

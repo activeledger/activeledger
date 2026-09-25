@@ -1,5 +1,74 @@
 # Activeledger Changelog
 
+## [4.10.0]
+
+Contracts compile to ES2025 once `build` is raised to **40200**. Below that a
+node compiles exactly as 4.9.0 did, so a network upgrades a node at a time and
+opts in once every node is on this release.
+
+### Upgrading
+**Existing networks must set `build` themselves.** An upgrade never edits a
+node's `config.json`, so a node keeps the level it had.
+
+1. Upgrade every node to this release, with `build` unchanged.
+2. Then set `"build": 40200` in every node's `config.json` and restart it, or
+   call `/a/admin-reload` where `remote` is enabled.
+
+Raising it on some nodes before all of them are upgraded splits the network.
+Networks still below 40100 get 4.8.0's contract references and authority
+expiry in the same step.
+
+**New nodes default to 40200.** `default.config.json` - copied only when a
+node has no `config.json` - moves from 40000, so a new network has every
+protocol feature from the start. A node added to an existing network must have
+its `build` set to match that network before it joins.
+
+### Breaking
+* **Contracts** : From `build` 40200, newly deployed contracts and contract
+  updates compile to **ES2025** instead of ES2017, and the edition is recorded
+  on the version entry as `target: "es2025"`. Versions deployed before then
+  keep running what they were compiled to; an entry without `target` is
+  ES2017. Newer syntax - `?.`, `??`, `#private` fields - now runs natively
+  rather than being rewritten.
+
+  The break is class fields. ES2022 made a class field a real definition that
+  runs after `super()` returns, so a contract that redeclares a field only to
+  give it a type now resets it to `undefined`:
+
+  ```ts
+  export default class MyContract extends Standard {
+    protected transactions: LedgerTransaction;          // reset after super()
+    declare protected transactions: LedgerTransaction;  // type only, as before
+  }
+  ```
+
+  Stream's constructor sets `transactions`, `umid`, `cDate`, `remoteAddr`,
+  `inputs`, `outputs`, `reads`, `contractData`, `sigs`, `key`, `eventEmitter`
+  and `selfHost`. A contract redeclaring any of them needs `declare` before it
+  is redeployed at 40200. No contract in this repository does.
+
+  The edition is fixed per version, not per node, because each node compiles
+  a contract once at deploy and runs that file afterwards. Deciding it from a
+  node's current `build` at rebuild time would have one node running ES2025
+  output for a version every other node runs as ES2017.
+
+### Changed
+* **Contracts** : From `build` 40200, `compiled[version]` in a contract stream
+  holds the sha256 of that version's source - the same value as the version
+  entry's `hash` - instead of the stream name, which it held for every version
+  alike. Entries written earlier keep the stream name. It is the source, not
+  the compiled output, on purpose: compiled bytes depend on the compiler, so
+  hashing them into ledger state would make the TypeScript version part of
+  consensus. Restore and hybrid only test `compiled` for presence, which still
+  holds.
+
+### Known Limits
+* **Contract rebuild must honour `target`.** `activerestore --full` and
+  hybrid still read a version entry as base64 source, and cannot rebuild a
+  reference entry at all - unchanged from 4.8.0. When rebuild learns to
+  resolve references, it has to compile each version to its recorded
+  `target`, defaulting to ES2017.
+
 ## [4.9.0]
 
 ### Build
@@ -39,6 +108,7 @@
 * **Tests** : `ts-node` needs the TypeScript API too, so the suite and the
   network scripts run under `tsx` instead, with the same results as under
   ts-node.
+
 ## [4.8.1]
 
 ### Security Fix

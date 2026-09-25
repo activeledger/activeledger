@@ -211,9 +211,13 @@ jobs:
           for dir in $missing; do
             out="$( (cd "$dir" && npm publish --access public --registry https://registry.npmjs.org/) 2>&1 )" || true
             echo "$out"
+            # npm words "already have it" two ways depending on how far the
+            # first publish got: still staged, or fully published but not yet
+            # served. At v4.9.0 two packages answered with the second, which
+            # printed as `npm error` although the release was complete.
             case "$out" in
-              *"previously staged version"*)
-                echo "$dir was already staged - npm has it"
+              *"previously staged version"*|*"cannot publish over the previously published versions"*)
+                echo "$dir was already published - npm has it"
                 staged="$staged $dir" ;;
             esac
           done

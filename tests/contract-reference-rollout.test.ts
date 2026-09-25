@@ -60,6 +60,8 @@ describe("Contract reference rollout gate (Activeledger)", () => {
       identity: { getName: () => "identityStream" },
       normaliseLegacyVersions: (Contract as any).prototype.normaliseLegacyVersions,
       useContractReferences: (Contract as any).prototype.useContractReferences,
+      contractTarget: (Contract as any).prototype.contractTarget,
+      compiledEntry: (Contract as any).prototype.compiledEntry,
       transpile: () => "class Example {}",
       newActivityStream: () => ({
         getName: () => streamName,
