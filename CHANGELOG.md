@@ -2,6 +2,39 @@
 
 ## [Unreleased]
 
+Contracts compile to ES2025 once `build` is raised to **40200**. Below that a
+node compiles exactly as 4.8.0 did, so a network upgrades a node at a time and
+opts in once every node is on this release.
+
+### Breaking
+* **Contracts** : From `build` 40200, newly deployed contracts and contract
+  updates compile to **ES2025** instead of ES2017, and the edition is recorded
+  on the version entry as `target: "es2025"`. Versions deployed before then
+  keep running what they were compiled to; an entry without `target` is
+  ES2017. Newer syntax - `?.`, `??`, `#private` fields - now runs natively
+  rather than being rewritten.
+
+  The break is class fields. ES2022 made a class field a real definition that
+  runs after `super()` returns, so a contract that redeclares a field only to
+  give it a type now resets it to `undefined`:
+
+  ```ts
+  export default class MyContract extends Standard {
+    protected transactions: LedgerTransaction;          // reset after super()
+    declare protected transactions: LedgerTransaction;  // type only, as before
+  }
+  ```
+
+  Stream's constructor sets `transactions`, `umid`, `cDate`, `remoteAddr`,
+  `inputs`, `outputs`, `reads`, `contractData`, `sigs`, `key`, `eventEmitter`
+  and `selfHost`. A contract redeclaring any of them needs `declare` before it
+  is redeployed at 40200. No contract in this repository does.
+
+  The edition is fixed per version, not per node, because each node compiles
+  a contract once at deploy and runs that file afterwards. Deciding it from a
+  node's current `build` at rebuild time would have one node running ES2025
+  output for a version every other node runs as ES2017.
+
 ### Build
 * **Build** : TypeScript 5.6.3 -> 7.0.2, the native compiler. It builds every
   package; it does not make the ledger faster. The target was already
@@ -66,6 +99,13 @@
   reachable through a spoofed peer copy rejected as "Bad Neighbour Payload".
   `release()` now takes the entry being cleaned up and leaves the locks alone
   when the pending entry under that umid belongs to another submission.
+
+### Known Limits
+* **Contract rebuild must honour `target`.** `activerestore --full` and
+  hybrid still read a version entry as base64 source, and cannot rebuild a
+  reference entry at all - unchanged from 4.8.0. When rebuild learns to
+  resolve references, it has to compile each version to its recorded
+  `target`, defaulting to ES2017.
 
 ## [4.8.0]
 

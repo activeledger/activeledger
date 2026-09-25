@@ -80,6 +80,7 @@ describe("Contract commit writes references, not source (Activeledger)", () => {
       // is reached as Contract.hashContractSource - not needed here.
       normaliseLegacyVersions: (Contract as any).prototype.normaliseLegacyVersions,
       useContractReferences: (Contract as any).prototype.useContractReferences,
+      contractTarget: (Contract as any).prototype.contractTarget,
       transpile: () => "class Example {}",
       newActivityStream: () => ({
         getName: () => streamName,
