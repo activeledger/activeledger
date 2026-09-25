@@ -337,185 +337,202 @@ export class Host extends Home {
     isP2P = false
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
-
-      // This should only matter to broadcast
-      // non-broadcast are direct posts. May still need to add checks there
-      // but that occurs at a different location
-      if (entry.$broadcast && entry.$nodes) {
-        // Even though IP is checked, Nothing prevents them sending multiple payloads
-        const nodeSpoofCheck = Object.keys(entry.$nodes);
-        if (nodeSpoofCheck.length) {
-          for (let i = nodeSpoofCheck.length; i--;) {
-            const nodeCheck = nodeSpoofCheck[i];
-            if (!this.neighbourhood.checkFirewall(remoteAddr, nodeCheck)) {
-              return reject("Bad Neighbour Payload");
+      // An async executor turns a throw into an unhandled rejection, and an
+      // unhandled rejection exits the host. Reject instead, callers catch it.
+      try {
+        // This should only matter to broadcast
+        // non-broadcast are direct posts. May still need to add checks there
+        // but that occurs at a different location
+        //
+        // $nodes is what tells a peer broadcast from a client entry below: the
+        // endpoint sets $broadcast on client entries too, but only peers send
+        // $nodes. A client putting $nodes in its body gains nothing: its umid
+        // is hashed over the body so it can't land on another tx's pending
+        // entry, and it arrives with remoteAddr = Home.host ("host:port"),
+        // which the firewall (bare host <-> reference) never ties to a node,
+        // so this check rejects it.
+        if (entry.$broadcast && entry.$nodes) {
+          // Even though IP is checked, Nothing prevents them sending multiple payloads
+          const nodeSpoofCheck = Object.keys(entry.$nodes);
+          if (nodeSpoofCheck.length) {
+            for (let i = nodeSpoofCheck.length; i--;) {
+              const nodeCheck = nodeSpoofCheck[i];
+              if (!this.neighbourhood.checkFirewall(remoteAddr, nodeCheck)) {
+                return reject("Bad Neighbour Payload");
+              }
             }
           }
         }
-      }
 
-      if (forceRestart && this.processPending[entry.$umid]) {
-        this.destroy(entry.$umid, true);
-        delete this.processPending[entry.$umid];
-      }
-
-      // Broadcasting or Territoriality Mode
-      if (entry.$broadcast) {
-        // We may already have the $umid in memory
-        if (this.processPending[entry.$umid]) {
-          // ActiveLogger.debug(
-          //   this.processPending[entry.$umid],
-          //   "Broadcast Recieved : " + entry.$umid
-          // );
-          // Process Assigned?
-          if (
-            !this.processPending[entry.$umid]?.finished &&
-            this.processPending[entry.$umid]?.pid &&
-            // If a lead/er we don't need to let sub processor know. This node's
-            // own key may not exist in $nodes yet (we haven't voted/committed
-            // in this entry), which optional-chains to undefined here and
-            // correctly falls through to "let the sub processor know".
-            !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
-              ?.leader
-          ) {
-            //here needs to output inbound
-            ActiveLogger.debug(
-              //this.processPending[entry.$umid],
-              //entry,
-              `Broadcast Recieved [${isP2P ? "P2P" : "HTTP"}] : ` + entry.$umid
-            );
-            // Find Processor to send in the broadcast message
-            const processor = this.findProcessor(
-              this.processPending[entry.$umid].pid
-            );
-            if (processor) {
-              processor.send({
-                type: "broadcast",
-                data: {
-                  umid: entry.$umid,
-                  nodes: entry.$nodes,
-                },
-              });
-            } else {
-              // Not found, Lets just return the umid anyway it may confirm or will timeout
-            }
-          } else {
-            // Add Vote information into current object!
-            const pendingEntry = this.processPending[entry.$umid]?.entry;
-            if (pendingEntry) {
-              // Don't overwrite self from a broadcast
-              delete entry.$nodes[this.reference];
-              // Merge new node data into existing entry
-              pendingEntry.$nodes = { ...pendingEntry.$nodes, ...entry.$nodes };
-            }
-
-          }
-          if (!entry.$$noreply) {
-            this.broadcast(entry.$umid, false, true);
-          }
-          // maybe pass something so the data isn't sent twice?
-          return resolve({
-            status: 200,
-            //data: { ok: true },
-            // SPI uses this to know if the non sending entry node needs fixing
-            data: this.processPending[entry.$umid].entry,
-            dontRelease: true,
-          });
+        if (forceRestart && this.processPending[entry.$umid]) {
+          this.destroy(entry.$umid, true);
+          delete this.processPending[entry.$umid];
         }
-      }
 
-      // Check we don't have it, Process finding may have failed.
-      if (!this.processPending[entry.$umid]) {
-        ActiveTiming.mark(entry.$umid, "host.pending");
-        // Add to pending (Using Promises instead of http request)
-        this.processPending[entry.$umid] = {
-          entry,
-          resolve: (response: any) => {
-            //this.release(entry);
-
-            // Internal transaction if well replies early so need to release
-            // if it has SPI error it should return via here anyway
-            if (internal && this.processPending[entry.$umid]?.responded) {
-              this.release(entry.$umid);
-            }
-
-            if (this.processPending[entry.$umid]) {
-              this.processPending[entry.$umid].finished = true;
-            }
-            if (!this.processPending[entry.$umid]?.responded) {
-              ActiveTiming.mark(entry.$umid, "host.resolve");
-              resolve(response);
-
-              try {
-                this.processPending[entry.$umid].responded = true;
-                ActiveLogger.debug("Client Response TX : " + entry.$umid);
-              } catch { }
-            }
-          },
-          reject: (response: any) => {
-            //setTimeout(() => {
-            //this.release(entry);
-            if (this.processPending[entry.$umid]) {
-              this.processPending[entry.$umid].finished = true;
-            }
-            if (!this.processPending[entry.$umid]?.responded) {
-              reject(response);
-              try {
-                this.processPending[entry.$umid].responded = true;
-              } catch { }
-            }
-            //}, 10);
-          },
-          pid: 0,
-          finished: false,
-          responded: false,
-        };
-        // Need to check it doesn't exist
-        // If this was the entry node it already chhecked so filter
-        if (entry.$tx.$expire && remoteAddr !== this.host) {
-          if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
-            if (entry.$nodes) {
-              entry.$nodes[this.reference] = {
-                vote: false,
-                commit: false,
-                error: `Transaction Exists : ${entry.$umid}`,
-              };
+        // Broadcasting or Territoriality Mode
+        if (entry.$broadcast) {
+          // We may already have the $umid in memory
+          if (this.processPending[entry.$umid]) {
+            // ActiveLogger.debug(
+            //   this.processPending[entry.$umid],
+            //   "Broadcast Recieved : " + entry.$umid
+            // );
+            // Process Assigned?
+            if (
+              !this.processPending[entry.$umid]?.finished &&
+              this.processPending[entry.$umid]?.pid &&
+              // If a lead/er we don't need to let sub processor know. This node's
+              // own key may not exist in $nodes yet (we haven't voted/committed
+              // in this entry), which optional-chains to undefined here and
+              // correctly falls through to "let the sub processor know".
+              !this.processPending[entry.$umid]?.entry?.$nodes?.[this.reference]
+                ?.leader
+            ) {
+              //here needs to output inbound
+              ActiveLogger.debug(
+                //this.processPending[entry.$umid],
+                //entry,
+                `Broadcast Recieved [${isP2P ? "P2P" : "HTTP"}] : ` + entry.$umid
+              );
+              // Find Processor to send in the broadcast message
+              const processor = this.findProcessor(
+                this.processPending[entry.$umid].pid
+              );
+              // A client resubmission has no $nodes, it isn't a peer broadcast
+              if (processor && entry.$nodes) {
+                processor.send({
+                  type: "broadcast",
+                  data: {
+                    umid: entry.$umid,
+                    nodes: entry.$nodes,
+                  },
+                });
+              } else {
+                // Not found, Lets just return the umid anyway it may confirm or will timeout
+              }
             } else {
-              entry.$nodes = {
-                [this.reference]: {
-                  vote: false,
-                  commit: false,
-                  error: `Transaction Exists : ${entry.$umid}`,
-                },
-              };
+              // Add Vote information into current object!
+              const pendingEntry = this.processPending[entry.$umid]?.entry;
+              // A client resubmitting the same bytes also lands here (it has
+              // $broadcast set by the endpoint) but carries no $nodes to merge.
+              if (pendingEntry && entry.$nodes) {
+                // Don't overwrite self from a broadcast
+                delete entry.$nodes[this.reference];
+                // Merge new node data into existing entry
+                pendingEntry.$nodes = { ...pendingEntry.$nodes, ...entry.$nodes };
+              }
+
             }
-            return this.processPending[entry.$umid].resolve({
+            if (!entry.$$noreply) {
+              this.broadcast(entry.$umid, false, true);
+            }
+            // maybe pass something so the data isn't sent twice?
+            return resolve({
               status: 200,
-              data: entry,
+              //data: { ok: true },
+              // SPI uses this to know if the non sending entry node needs fixing
+              data: this.processPending[entry.$umid].entry,
+              dontRelease: true,
             });
           }
         }
 
-        this.processQueue(entry, internal);
+        // Check we don't have it, Process finding may have failed.
+        if (!this.processPending[entry.$umid]) {
+          ActiveTiming.mark(entry.$umid, "host.pending");
+          // Add to pending (Using Promises instead of http request)
+          this.processPending[entry.$umid] = {
+            entry,
+            resolve: (response: any) => {
+              //this.release(entry);
 
-        // If this is internal and broadcast should just resolve? Why hold it open for the first one.
-        if (internal && entry.$broadcast) {
-          this.processPending[entry.$umid].responded = true;
+              // Internal transaction if well replies early so need to release
+              // if it has SPI error it should return via here anyway
+              if (internal && this.processPending[entry.$umid]?.responded) {
+                this.release(entry.$umid);
+              }
+
+              if (this.processPending[entry.$umid]) {
+                this.processPending[entry.$umid].finished = true;
+              }
+              if (!this.processPending[entry.$umid]?.responded) {
+                ActiveTiming.mark(entry.$umid, "host.resolve");
+                resolve(response);
+
+                try {
+                  this.processPending[entry.$umid].responded = true;
+                  ActiveLogger.debug("Client Response TX : " + entry.$umid);
+                } catch { }
+              }
+            },
+            reject: (response: any) => {
+              //setTimeout(() => {
+              //this.release(entry);
+              if (this.processPending[entry.$umid]) {
+                this.processPending[entry.$umid].finished = true;
+              }
+              if (!this.processPending[entry.$umid]?.responded) {
+                reject(response);
+                try {
+                  this.processPending[entry.$umid].responded = true;
+                } catch { }
+              }
+              //}, 10);
+            },
+            pid: 0,
+            finished: false,
+            responded: false,
+          };
+          // Need to check it doesn't exist
+          // If this was the entry node it already chhecked so filter
+          if (entry.$tx.$expire && remoteAddr !== this.host) {
+            if (await this.dbConnection.exists(`${entry.$umid}:umid`)) {
+              if (entry.$nodes) {
+                entry.$nodes[this.reference] = {
+                  vote: false,
+                  commit: false,
+                  error: `Transaction Exists : ${entry.$umid}`,
+                };
+              } else {
+                entry.$nodes = {
+                  [this.reference]: {
+                    vote: false,
+                    commit: false,
+                    error: `Transaction Exists : ${entry.$umid}`,
+                  },
+                };
+              }
+              return this.processPending[entry.$umid].resolve({
+                status: 200,
+                data: entry,
+              });
+            }
+          }
+
+          this.processQueue(entry, internal);
+
+          // If this is internal and broadcast should just resolve? Why hold it open for the first one.
+          if (internal && entry.$broadcast) {
+            this.processPending[entry.$umid].responded = true;
+            return resolve({
+              status: 200,
+              data: { ok: true },
+              dontRelease: true,
+            });
+          }
+        } else {
+          // If we have it and didn't find it, Lets return this request, However
+          // do we need to manage the existing one? Possibly stuck? play safe
+          // resolve with what we know
           return resolve({
             status: 200,
-            data: { ok: true },
+            data: this.processPending[entry.$umid].entry,
             dontRelease: true,
           });
         }
-      } else {
-        // If we have it and didn't find it, Lets return this request, However
-        // do we need to manage the existing one? Possibly stuck? play safe
-        // resolve with what we know
-        return resolve({
-          status: 200,
-          data: this.processPending[entry.$umid].entry,
-          dontRelease: true,
-        });
+      } catch (error) {
+        ActiveLogger.error(error, "Host pending failed : " + entry?.$umid);
+        reject(error);
       }
     });
   }
@@ -1820,7 +1837,15 @@ export class Host extends Home {
    * @param {boolean} noWait Don't wait to release
    */
   //private release(entry: ActiveDefinitions.LedgerEntry) {
-  public release(umid: string) {
+  public release(umid: string, owner?: ActiveDefinitions.LedgerEntry) {
+    // A caller cleaning up after its own failed pending() passes the entry it
+    // submitted. If the pending entry under this umid isn't that object, it
+    // belongs to another submission (e.g. the original a replay collided with,
+    // possibly mid-commit) and its locks aren't ours to free.
+    if (owner && this.processPending[umid] && this.processPending[umid].entry !== owner) {
+      ActiveLogger.warn(umid, "Not releasing, pending entry belongs to another submission");
+      return;
+    }
     if (this.processPending[umid]) {
       const entry = this.processPending[umid].entry;
       // Ask for releases - hold() already computed and cached this on the
