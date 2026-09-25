@@ -1,5 +1,33 @@
 # Activeledger Changelog
 
+## [4.8.1]
+
+### Security Fix
+* **Network** : Resubmitting the byte-identical body of a rejected transaction
+  crashed the node. The client entry path marks a transaction `$broadcast` but
+  never gives it `$nodes`, and for about three minutes after a rejection the
+  finished entry is still held in memory. A resubmission within that window
+  took the path written for neighbour broadcasts, which always carry `$nodes`,
+  and threw on `delete entry.$nodes[...]` inside an async Promise executor.
+  That became an unhandled rejection and the host process exited. No
+  authentication was needed, only the bytes of a rejected transaction that set
+  `$tx.$expire` (without it the umid differs on each submission). It hit the
+  entry node and any node that took part in the original broadcast.
+
+  A client resubmission now gets the recorded outcome back. The whole of
+  `Host.pending` is wrapped so that anything else it throws rejects the
+  request rather than killing the host.
+
+* **Network / Protocol** : Two further paths from the same replay, found while
+  fixing it. If the original was still in flight, the replay reached the
+  processor as a broadcast with no node data, and
+  `Process.updatedFromBroadcast` threw in the processor child. And if the
+  replay was rejected, the endpoint released the umid unconditionally, freeing
+  the in-flight original's stream locks, possibly mid-commit. The same was
+  reachable through a spoofed peer copy rejected as "Bad Neighbour Payload".
+  `release()` now takes the entry being cleaned up and leaves the locks alone
+  when the pending entry under that umid belongs to another submission.
+
 ## [4.8.0]
 
 Two protocol features, both inert until `build` is raised to **40100**. A node
