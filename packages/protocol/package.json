@@ -21,7 +21,7 @@
     "start": "node lib/index.js",
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
-    "build:es": "tsc --outDir es --module es6",
+    "build:es": "tsc --outDir es --module es2022",
     "build": "npm run build:commonjs && npm run build:es",
     "prepublishOnly": "npm run build"
   },
@@ -50,6 +50,6 @@
     "@activeledger/activequery": "4.8.1",
     "@activeledger/activetoolkits": "4.8.1",
     "@types/node": "24.10.1",
-    "typescript": "5.6.3"
+    "typescript": "7.0.2"
   }
 }

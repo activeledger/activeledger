@@ -1,5 +1,44 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Build
+* **Build** : TypeScript 5.6.3 -> 7.0.2, the native compiler. It builds every
+  package; it does not make the ledger faster. The target was already
+  `es2022`, so nothing was being downlevelled for Node 24, and the `es/`
+  output is unchanged. The gain is a supported compiler - 5.6 is two majors
+  behind - and far faster type checking in an editor.
+
+  The shared tsconfig targets `es2025`, the newest finished edition, all of
+  which Node 24 runs natively. `moduleResolution: "node"` is gone in 7 and is
+  now `"bundler"`. TypeScript 6 changed two defaults, and both are pinned back
+  to what the code was written against: `types: ["node"]`, since @types are no
+  longer included automatically, and `strict: false` beside the strict flags
+  this repo has always set individually. The `es/` build emits `es2022`
+  modules rather than `es6`.
+
+  `esModuleInterop` cannot be turned off any more, so `lib/` files with an
+  `import * as` now carry `__importStar` helpers. Behaviour is unchanged - the
+  suite passes as before - but the CommonJS output is a little larger, not
+  neater. Named imports would drop the helpers; that is separate work.
+
+* **Contracts** : The node compiles contracts at runtime with TypeScript's
+  JavaScript API, and TypeScript 7 does not ship one. `activeledger`,
+  `restore` and `hybrid` now depend on TypeScript 6.0.3, the last release that
+  does, as `typescript-api` so it cannot collide with the build's `tsc`.
+  `activeledger` had been importing `typescript` at runtime while declaring it
+  only as a devDependency; it is now a real dependency.
+
+  6.0 also defaults `esModuleInterop` on, which rewrites `import *` and default
+  imports in contract code - enough to break a deployed contract that calls a
+  namespace import. It is switched off for contract compilation, and with it
+  off every `.ts` file in this repository transpiles byte-identically on 5.6.3
+  and 6.0.3 with the contract compiler options. A contract must not behave
+  differently because the node that compiled it was upgraded.
+
+* **Tests** : `ts-node` needs the TypeScript API too, so the suite and the
+  network scripts run under `tsx` instead, with the same results as under
+  ts-node.
 ## [4.8.1]
 
 ### Security Fix

@@ -22,8 +22,8 @@
     "test": "cd ../../ && npm test",
     "build:commonjs": "tsc --outDir lib --module commonjs",
     "build:commonjs:dist": "tsc --outDir lib --module commonjs -d --emitDeclarationOnly --allowJs false",
-    "build:es": "tsc --outDir es --module es6",
-    "build:es:dist": "tsc --outDir es --module es6 -d --emitDeclarationOnly --allowJs false",
+    "build:es": "tsc --outDir es --module es2022",
+    "build:es:dist": "tsc --outDir es --module es2022 -d --emitDeclarationOnly --allowJs false",
     "build": "npm run build:commonjs && npm run build:commonjs:dist && npm run build:es && npm run build:es:dist",
     "prepublishOnly": "npm run build"
   },
@@ -39,7 +39,7 @@
   "devDependencies": {
     "@activeledger/activedefinitions": "4.8.1",
     "@types/node": "24.10.1",
-    "typescript": "5.6.3"
+    "typescript": "7.0.2"
   },
   "files": [
     "es",
