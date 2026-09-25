@@ -1,6 +1,6 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [4.9.0]
 
 ### Build
 * **Build** : TypeScript 5.6.3 -> 7.0.2, the native compiler. It builds every
