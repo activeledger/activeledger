@@ -243,7 +243,9 @@ export class Endpoints {
                         if (
                           Endpoints.shouldTriggerSpiLookup(
                             summary.errors,
-                            tx.$nodes[Home.reference].error
+                            // A replay can get a pending entry back before
+                            // this node has its own record in it
+                            tx.$nodes[Home.reference]?.error
                           )
                         ) {
                           ActiveLogger.warn(
@@ -566,7 +568,8 @@ export class Endpoints {
                 })
                 .catch((error) => {
                   // Safe to release right now (dnr shouldn't be here to check)
-                  host.release(initTx.$umid);
+                  // Only if the pending entry is ours, not an original we replayed
+                  host.release(initTx.$umid, initTx);
                   if (error?.status == 100 && error.error) {
                     if (
                       counter <= MAX_COUNTERS &&
@@ -1491,7 +1494,8 @@ export class Endpoints {
           ActiveLogger.error(tx, "Transaction error");
           ActiveLogger.error(error, "Sent 500 Response (1600)");
           // DNR shouldn't be here
-          host.release(tx.$umid);
+          // Only if the pending entry is ours, not an original we replayed
+          host.release(tx.$umid, tx);
           return reject({
             statusCode: 500,
             content: error,
@@ -1569,7 +1573,8 @@ export class Endpoints {
           ActiveLogger.fatal(tx, "last tx sent in");
           ActiveLogger.fatal(error, "error that is bubbling");
           // DNR shouldn't be here
-          host.release(tx.$umid);
+          // Only if the pending entry is ours, not an original we replayed
+          host.release(tx.$umid, tx);
           reject(error);
         });
     });

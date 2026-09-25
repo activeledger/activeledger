@@ -343,6 +343,14 @@ export class Host extends Home {
         // This should only matter to broadcast
         // non-broadcast are direct posts. May still need to add checks there
         // but that occurs at a different location
+        //
+        // $nodes is what tells a peer broadcast from a client entry below: the
+        // endpoint sets $broadcast on client entries too, but only peers send
+        // $nodes. A client putting $nodes in its body gains nothing: its umid
+        // is hashed over the body so it can't land on another tx's pending
+        // entry, and it arrives with remoteAddr = Home.host ("host:port"),
+        // which the firewall (bare host <-> reference) never ties to a node,
+        // so this check rejects it.
         if (entry.$broadcast && entry.$nodes) {
           // Even though IP is checked, Nothing prevents them sending multiple payloads
           const nodeSpoofCheck = Object.keys(entry.$nodes);
@@ -1829,7 +1837,15 @@ export class Host extends Home {
    * @param {boolean} noWait Don't wait to release
    */
   //private release(entry: ActiveDefinitions.LedgerEntry) {
-  public release(umid: string) {
+  public release(umid: string, owner?: ActiveDefinitions.LedgerEntry) {
+    // A caller cleaning up after its own failed pending() passes the entry it
+    // submitted. If the pending entry under this umid isn't that object, it
+    // belongs to another submission (e.g. the original a replay collided with,
+    // possibly mid-commit) and its locks aren't ours to free.
+    if (owner && this.processPending[umid] && this.processPending[umid].entry !== owner) {
+      ActiveLogger.warn(umid, "Not releasing, pending entry belongs to another submission");
+      return;
+    }
     if (this.processPending[umid]) {
       const entry = this.processPending[umid].entry;
       // Ask for releases - hold() already computed and cached this on the
