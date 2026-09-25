@@ -3,7 +3,10 @@
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 
 
-<img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/Asset-23-dark.png">
+  <img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
+</picture>
 
 Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus — each node reaching its own conclusion by watching the same traffic, rather than waiting on a single leader. Application logic lives in smart contracts (TypeScript, executed in a per-transaction worker process and checked by a security scan at deploy time), and consensus is tracked per-stream rather than globally, so unrelated transactions can be voted on and committed concurrently.
 
