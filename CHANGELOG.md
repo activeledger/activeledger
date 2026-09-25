@@ -37,7 +37,8 @@
   differently because the node that compiled it was upgraded.
 
 * **Tests** : `ts-node` needs the TypeScript API too, so the suite and the
-  network scripts run under `tsx` instead. Same 469 tests, same result.
+  network scripts run under `tsx` instead, with the same results as under
+  ts-node.
 ## [4.8.1]
 
 ### Security Fix
