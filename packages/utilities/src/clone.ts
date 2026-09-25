@@ -124,7 +124,7 @@ export class ActiveClone {
 
     // 2. Handle Binary Data (Flagged)
     if (buffer.length > 0 && (buffer[0] === SerializationType.Uncompressed || buffer[0] === SerializationType.Gzip)) {
-        let data = buffer.slice(1);
+        let data: Buffer = buffer.slice(1);
         
         // Decompress if flag SerializationType.Gzip
         if (buffer[0] === SerializationType.Gzip) {

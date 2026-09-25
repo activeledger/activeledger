@@ -25,7 +25,7 @@
   "scripts": {
     "start": "node lib/index.js",
     "build:commonjs": "tsc --outDir lib --module commonjs && copyfiles -f ./src/default.config.json ./lib",
-    "build:es": "tsc --outDir es --module es6 && copyfiles -f ./src/default.config.json ./es",
+    "build:es": "tsc --outDir es --module es2022 && copyfiles -f ./src/default.config.json ./es",
     "build": "npm run build:commonjs && npm run build:es",
     "test": "tsc --noEmit",
     "prepublishOnly": "npm run build"
@@ -56,6 +56,6 @@
     "@activeledger/activelogger": "4.8.1",
     "@activeledger/activeoptions": "4.8.1",
     "@activeledger/httpd": "4.8.1",
-    "typescript": "5.6.3"
+    "typescript": "7.0.2"
   }
 }

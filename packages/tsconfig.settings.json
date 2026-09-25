@@ -5,7 +5,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "lib": [
-      "es2022"
+      "es2025"
     ],
     // Do not type check third party .d.ts files. "lib" is es2022 with no
     // "dom" on purpose - this is server code - but undici's published types
@@ -17,11 +17,13 @@
     // Adding "dom" to lib would fix the symptom by letting browser globals
     // leak into every file in the repository, which is worse.
     "skipLibCheck": true,
-    "target": "es2022",
+    "target": "es2025",
+    "strict": false,
     "alwaysStrict": true,
+    "types": ["node"],
     "strictNullChecks": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "removeComments": true
   },
   "exclude": [

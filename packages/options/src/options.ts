@@ -22,7 +22,7 @@
  */
 
 import * as fs from "fs";
-import * as minimist from "minimist";
+import minimist from "minimist";
 import { ActiveDSConnect } from "./dsconnect";
 import { ActiveLogger } from "@activeledger/activelogger";
 

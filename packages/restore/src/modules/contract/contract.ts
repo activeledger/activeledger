@@ -22,7 +22,7 @@
  */
 
 import * as fs from "fs";
-import * as ts from "typescript";
+import * as ts from "typescript-api";
 
 /**
  * Manages contract file caching
@@ -86,7 +86,13 @@ export class Contract {
         removeComments: true,
         module: ts.ModuleKind.CommonJS,
         moduleResolution: ts.ModuleResolutionKind.Classic,
-        target: ts.ScriptTarget.ES2017
+        target: ts.ScriptTarget.ES2017,
+        // TypeScript 6 defaults esModuleInterop on, which rewrites `import *`
+        // and default imports in contract code. Off, the output is byte-identical
+        // to 5.6.3 across every .ts in this repo; a contract must not change
+        // behaviour because the node that compiles it was upgraded.
+        esModuleInterop: false,
+        ignoreDeprecations: "6.0"
       }
     }).outputText;
   }
