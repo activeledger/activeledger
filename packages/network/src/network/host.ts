@@ -390,7 +390,8 @@ export class Host extends Home {
               const processor = this.findProcessor(
                 this.processPending[entry.$umid].pid
               );
-              if (processor) {
+              // A client resubmission has no $nodes, it isn't a peer broadcast
+              if (processor && entry.$nodes) {
                 processor.send({
                   type: "broadcast",
                   data: {

@@ -767,7 +767,8 @@ export class Process extends EventEmitter {
    * @returns {void}
    */
   public updatedFromBroadcast(node?: any): void {
-    if (this.isCommiting()) {
+    // Nothing to merge (and node[this.reference] below would throw)
+    if (!node || this.isCommiting()) {
       return;
     }
 

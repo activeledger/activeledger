@@ -1,4 +1,5 @@
 import { Host } from "../packages/network/src/network/host";
+import { Process } from "../packages/protocol/src/protocol/process";
 import { expect } from "chai";
 import "mocha";
 
@@ -92,5 +93,61 @@ describe("Host.pending - resubmitting a finished transaction (Activenetwork)", (
 
     expect(caught).to.be.an("error");
     expect(caught.message).to.equal("boom");
+  });
+
+  it("doesn't forward a mid-flight client resubmission to the processor", async () => {
+    const sent: any[] = [];
+    const host = fakeHost({
+      findProcessor: () => ({ send: (m: any) => sent.push(m) }),
+    });
+    // Original is still being processed on this node
+    host.processPending[UMID].finished = false;
+    host.processPending[UMID].entry.$nodes = {};
+
+    const response = await Host.prototype.pending.call(
+      host,
+      clientEntry(),
+      "10.0.0.9",
+      true
+    );
+
+    expect(response.status).to.equal(200);
+    expect(sent).to.deep.equal([]);
+  });
+
+  it("still forwards a mid-flight neighbour broadcast to the processor", async () => {
+    const sent: any[] = [];
+    const host = fakeHost({
+      findProcessor: () => ({ send: (m: any) => sent.push(m) }),
+    });
+    host.processPending[UMID].finished = false;
+    host.processPending[UMID].entry.$nodes = {};
+
+    await Host.prototype.pending.call(
+      host,
+      { ...clientEntry(), $$noreply: true, $nodes: { other: { vote: true } } },
+      "10.0.0.9",
+      true
+    );
+
+    expect(sent).to.have.length(1);
+    expect(sent[0].data.nodes).to.deep.equal({ other: { vote: true } });
+  });
+});
+
+// The processor side of the same replay: whatever reaches it, a broadcast
+// with no node data must not throw in the processor child.
+describe("Process.updatedFromBroadcast - no node data (Activeprotocol)", () => {
+  it("ignores an undefined nodes payload", () => {
+    const fake: any = {
+      reference: "me",
+      isCommiting: () => false,
+      entry: { $nodes: { me: { vote: false } } },
+    };
+
+    expect(() =>
+      Process.prototype.updatedFromBroadcast.call(fake, undefined)
+    ).to.not.throw();
+    expect(fake.entry.$nodes).to.deep.equal({ me: { vote: false } });
   });
 });
