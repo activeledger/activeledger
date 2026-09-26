@@ -288,14 +288,19 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    *
    * @param {any[]} docs
    * @param {*} [options={}]
+   * @param {number} [timeout] seconds, undici's 300 when not given
    * @returns
    */
-  public bulkDocs(docs: any[], options: any = {}): Promise<any> {
+  public bulkDocs(docs: any[], options: any = {}, timeout?: number): Promise<any> {
     return new Promise((resolve, reject) => {
-      ActiveRequest.send(`${this.location}/_bulk_docs`, "POST", undefined, {
-        docs,
-        options,
-      })
+      ActiveRequest.send(
+        `${this.location}/_bulk_docs`,
+        "POST",
+        undefined,
+        { docs, options },
+        false,
+        timeout
+      )
         .then((response: any) => {
           resolve(response.data);
           // Update cache

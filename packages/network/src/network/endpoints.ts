@@ -705,8 +705,10 @@ export class Endpoints {
    *  - ActiveRequest.send() resolves { data: null } for every transport
    *    fault, so a node that could not be reached at all also looks like a
    *    successful call;
-   *  - CouchDB answers _bulk_docs with an array of per document results,
-   *    where a rejected document carries an "error" property.
+   *  - an exception inside the store arrives as {}, because httpd
+   *    serialises the Error for its 500 and ActiveRequest ignores status.
+   *
+   * So only { ok: true } is a write.
    *
    * @static
    * @param {*} response
@@ -1022,15 +1024,11 @@ export class Endpoints {
   }
 
   public static bulkWriteFailed(response: any): boolean {
-    if (response === false || response === null || response === undefined) {
-      return true;
-    }
-
-    if (Array.isArray(response)) {
-      return response.some((result) => result && result.error);
-    }
-
-    return response.ok === false;
+    // Only the store's own confirmation counts. An exception inside the
+    // store reaches us as {} - httpd serialises the Error, and
+    // ActiveRequest does not look at the 500 status - and that used to
+    // read as a repair that landed.
+    return response?.ok !== true;
   }
 
   public static shouldTriggerSpiLookup(

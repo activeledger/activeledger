@@ -206,17 +206,15 @@ describe("Endpoints.bulkWriteFailed (Activenetwork)", () => {
     expect(Endpoints.bulkWriteFailed(undefined)).to.equal(true);
   });
 
-  it("treats a CouchDB per document error as a failure", () => {
-    expect(
-      Endpoints.bulkWriteFailed([{ id: "stream-a", error: "conflict" }])
-    ).to.equal(true);
+  it("treats an exception inside the store as a failure", () => {
+    // httpd answers a thrown Error as a 500 whose body is {}, and
+    // ActiveRequest ignores the status
+    expect(Endpoints.bulkWriteFailed({})).to.equal(true);
+    expect(Endpoints.bulkWriteFailed({ error: "x" })).to.equal(true);
   });
 
-  it("accepts a successful write in either shape", () => {
+  it("accepts only the store's confirmation", () => {
     expect(Endpoints.bulkWriteFailed({ ok: true })).to.equal(false);
-    expect(
-      Endpoints.bulkWriteFailed([{ ok: true, id: "stream-a", rev: "39-abc" }])
-    ).to.equal(false);
   });
 });
 

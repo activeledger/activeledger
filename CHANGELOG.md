@@ -1,5 +1,25 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fix
+* **Commit** : A node that saw consensus and then failed to save its streams
+  raised 1510 at once and fell behind the nodes that did save. With two of four
+  failing together the network split 2-2, which SPI cannot resolve. The save is
+  now tried 4 times (pauses of 100, 400 and 1000 ms), each attempt limited to
+  30 seconds instead of 300, and every failed attempt is logged at error level
+  with the store's answer rather than at debug.
+* **Commit, SPI** : An exception inside the self hosted store reached the
+  caller as `{}` (a 500 whose serialised Error is empty, with the status
+  ignored) and counted as a successful write, recording a commit or an SPI
+  repair with nothing on disk. Only `{ ok: true }` now counts as a write.
+* **Storage** : A commit resent after its first attempt landed is accepted as
+  already written when the stored document is one revision on from the one
+  sent and holds the same content, instead of failing as a revision mismatch.
+  It is not announced as a change twice. A stale write with different content,
+  or from an older revision, is still refused. A failed batch write now logs
+  its cause instead of returning `false` silently.
+
 ## [4.10.0]
 
 Contracts compile to ES2025 once `build` is raised to **40200**. Below that a
