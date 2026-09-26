@@ -1,6 +1,6 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [4.10.1]
 
 ### Fix
 * **Commit** : A node that saw consensus and then failed to save its streams
