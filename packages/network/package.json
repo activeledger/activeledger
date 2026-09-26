@@ -53,7 +53,7 @@
     "@activeledger/activeprotocol": "4.10.1",
     "@activeledger/activequery": "4.10.1",
     "@activeledger/activeutilities": "4.10.1",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
 }
