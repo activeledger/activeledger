@@ -671,7 +671,11 @@ export class LevelMe {
     for (let i = docs.length; i--;) {
       const writer = await this.prepareForWrite(docs[i], batch, options);
       batch = writer.chain; // Do I need do do this, Reference kept?
-      changes.push(writer.changes);
+      // A resend of a write that already landed changed nothing, so it is
+      // neither cached nor announced a second time
+      if (!writer.unchanged) {
+        changes.push(writer.changes);
+      }
     }
 
     try {
@@ -686,6 +690,12 @@ export class LevelMe {
         }
       }
     } catch (e) {
+      // The caller only sees false (streamUpdater raises 1510 from it), so
+      // this is the one place the store's own reason survives
+      ActiveLogger.error(
+        { error: e, ids: docs.map((doc) => doc._id) },
+        "Bulk write failed"
+      );
       return false;
     }
 
@@ -736,6 +746,7 @@ export class LevelMe {
   ): Promise<{
     chain: LevelUpChain<any, any>;
     rev: string;
+    unchanged?: boolean;
     changes: {
       id: string;
       changes: { rev: string }[];
@@ -762,6 +773,31 @@ export class LevelMe {
       ) as schema;
 
       if (doc._rev !== currentDocRoot._rev && !options.new_edits) {
+        // Already holding exactly this content means this write already
+        // landed - a resend after its answer was lost (streamUpdater
+        // retries a save it could not confirm). Writing it again would
+        // change nothing, so it is not a conflict. Different content at a
+        // stale revision still is.
+        //
+        // Only from the revision that write started at, one position
+        // behind the stored one (or none, for a document it created), so a
+        // second transaction working from the same older revision is still
+        // refused even when it happens to produce the same content.
+        const [storedPos, storedMd5] = currentDocRoot._rev.split("-");
+        const fromPos = doc._rev ? parseInt(doc._rev.split("-")[0]) : 0;
+        if (storedMd5 === md5 && parseInt(storedPos) === fromPos + 1) {
+          return {
+            chain,
+            rev: currentDocRoot._rev,
+            unchanged: true,
+            changes: {
+              id: doc._id,
+              changes: [{ rev: currentDocRoot._rev }],
+              doc: currentDocRoot as document,
+              seq: Date.now(),
+            },
+          };
+        }
         throw new Error(`Revision Mismatch: ${doc._id} @ ${doc._rev} !== ${currentDocRoot._rev}`);
       }
 

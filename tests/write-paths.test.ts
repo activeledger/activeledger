@@ -13,6 +13,16 @@ import "mocha";
 // silently behind the network, which is the state every SPI and restore
 // path exists to clean up afterwards.
 
+// Retries keep their real attempt count but not their real pauses
+let retryDelays: number[];
+before(() => {
+  retryDelays = (StreamUpdater as any).SAVE_RETRY_DELAYS_MS;
+  (StreamUpdater as any).SAVE_RETRY_DELAYS_MS = [0, 0, 0];
+});
+after(() => {
+  (StreamUpdater as any).SAVE_RETRY_DELAYS_MS = retryDelays;
+});
+
 describe("StreamUpdater.append - a failed write must not read as a commit", () => {
   let raised: { code: number; reason: any }[];
   let eventsWritten: any[];
@@ -75,15 +85,6 @@ describe("StreamUpdater.append - a failed write must not read as a commit", () =
     expect(raised.map((r) => r.code)).to.deep.equal([1510]);
   });
 
-  it("raises 1510 when a per document result carries an error", async () => {
-    // CouchDB's shape
-    const updater = build([{ id: "streamA", error: "conflict" }]);
-
-    await (updater as any).append();
-
-    expect(raised.map((r) => r.code)).to.deep.equal([1510]);
-  });
-
   it("does not record the transaction in the event stream when the write failed", async () => {
     // The part that makes a silent failure durable: an event written for a
     // transaction whose streams never landed tells every subscriber the
@@ -103,6 +104,124 @@ describe("StreamUpdater.append - a failed write must not read as a commit", () =
     expect(raised).to.have.length(0);
     expect(eventsWritten).to.have.length(1);
     expect(eventsWritten[0]._id).to.contain("umid-1");
+  });
+});
+
+// A node that voted yes and then failed only to save leaves the network
+// split - twice on a loaded 4 node testnet, 2-2, which SPI cannot resolve
+// because neither side is a majority. The save is retried before 1510 is
+// raised, so a moment of store pressure does not cost the node the round.
+describe("StreamUpdater.append - a failed save is retried before 1510", () => {
+  let raised: { code: number; reason: any }[];
+  let eventsWritten: any[];
+  let calls: any[][];
+
+  // Each attempt takes the next answer in turn; an Error is thrown
+  const build = (answers: any[]) => {
+    raised = [];
+    eventsWritten = [];
+    calls = [];
+
+    const updater = Object.create(StreamUpdater.prototype);
+    (updater as any).docs = [
+      { _id: "streamA", _rev: "1-abc" },
+      { _id: "streamA:stream", _rev: "1-def" },
+    ];
+    (updater as any).entry = {
+      $umid: "umid-1",
+      $datetime: new Date(),
+      $territoriality: "",
+    };
+    (updater as any).nodeResponse = {};
+    (updater as any).db = {
+      bulkDocs: async (docs: any[]) => {
+        calls.push(docs.map((d) => d._id));
+        const answer = answers[calls.length - 1];
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    };
+    (updater as any).dbev = {
+      post: async (doc: any) => {
+        eventsWritten.push(doc);
+      },
+    };
+    (updater as any).shared = {
+      raiseLedgerError: (code: number, reason: any) => {
+        raised.push({ code, reason });
+      },
+    };
+    (updater as any).reference = "self";
+    (updater as any).contractId = "contract";
+    (updater as any).refStreams = { new: [], updated: [] };
+    (updater as any).virtualMachine = {
+      getReturnContractData: () => undefined,
+      getNewContractData: () => undefined,
+      postProcess: async () => undefined,
+    };
+    (updater as any).emitter = { emit: () => true };
+    return updater;
+  };
+
+  it("commits when a failed batch write succeeds on retry", async () => {
+    const updater = build([{ ok: false }, { ok: true }]);
+
+    await (updater as any).append();
+
+    expect(raised).to.have.length(0);
+    expect(calls).to.have.length(2);
+    expect(eventsWritten).to.have.length(1);
+  });
+
+  it("commits when a transport failure succeeds on retry", async () => {
+    // ActiveRequest.send() reports a dead socket as a null body
+    const updater = build([null, { ok: true }]);
+
+    await (updater as any).append();
+
+    expect(raised).to.have.length(0);
+    expect(calls).to.have.length(2);
+  });
+
+  it("commits when a thrown store error succeeds on retry", async () => {
+    const updater = build([new Error("ECONNRESET"), { ok: true }]);
+
+    await (updater as any).append();
+
+    expect(raised).to.have.length(0);
+    expect(calls).to.have.length(2);
+  });
+
+  it("raises 1510 once every attempt has failed", async () => {
+    const updater = build([{ ok: false }, false, null, {}]);
+
+    await (updater as any).append();
+
+    expect(calls).to.have.length(4);
+    expect(raised.map((r) => r.code)).to.deep.equal([1510]);
+    expect(eventsWritten).to.have.length(0);
+  });
+
+  it("does not take an exception inside the store for a save", async () => {
+    // httpd answers a thrown Error as a 500 whose body is JSON.stringify
+    // of it - {} - and ActiveRequest ignores the status, so {} is what
+    // bulkDocs resolves. It used to read as a commit.
+    const updater = build([{}, {}, {}, {}]);
+
+    await (updater as any).append();
+
+    expect(calls).to.have.length(4);
+    expect(raised.map((r) => r.code)).to.deep.equal([1510]);
+    expect(eventsWritten).to.have.length(0);
+  });
+
+  it("does not take an error answer for a save", async () => {
+    const updater = build([{ error: "x", reason: "y" }, { ok: true }]);
+
+    await (updater as any).append();
+
+    expect(calls).to.have.length(2);
+    expect(raised).to.have.length(0);
   });
 });
 

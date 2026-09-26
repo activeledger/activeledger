@@ -85,6 +85,92 @@ describe("LevelMe read/write and cache behaviour (Activestorage)", () => {
   });
 
   describe("revisions", () => {
+    // A commit sends no options (dsconnect defaults them to {}), so the
+    // revision must match. streamUpdater resends a save whose answer was
+    // lost, and by then the first send may have landed.
+    describe("a commit resent after it already landed", () => {
+      const commit = (docs: any[]) => db.bulkDocs(docs, {} as any);
+
+      it("is accepted and writes nothing new", async () => {
+        await write([{ _id: "s1", value: "first" }]);
+        const before = (await db.get("s1"))._rev;
+
+        const update = { _id: "s1", _rev: before, value: "second" };
+        expect(await commit([{ ...update }])).to.equal(true);
+        const landed = (await db.get("s1"))._rev;
+
+        expect(await commit([{ ...update }])).to.equal(true);
+        expect((await db.get("s1"))._rev).to.equal(landed);
+        expect((await db.get("s1")).value).to.equal("second");
+      });
+
+      it("is accepted for a document it created", async () => {
+        // The :umid document is new on every commit, so it carries no
+        // revision at all
+        const created = { _id: "u1:umid", umid: { $umid: "u1" } };
+        expect(await commit([{ ...created }])).to.equal(true);
+        const landed = (await db.get("u1:umid"))._rev;
+
+        expect(await commit([{ ...created }])).to.equal(true);
+        expect((await db.get("u1:umid"))._rev).to.equal(landed);
+      });
+
+      it("is not announced as a change a second time", async () => {
+        await write([{ _id: "s1", value: "first" }]);
+        const update = {
+          _id: "s1",
+          _rev: (await db.get("s1"))._rev,
+          value: "second",
+        };
+        await commit([{ ...update }]);
+
+        const seen: any[] = [];
+        const listener = (change: any) => seen.push(change);
+        db.changes().on("change", listener);
+        await commit([{ ...update }]);
+        db.changes().off("change", listener);
+
+        expect(seen).to.have.length(0);
+      });
+
+      it("is refused from any older revision than the one it started at", async () => {
+        // Same content, but written from two revisions back - that is not
+        // a lost answer, it is a transaction working on a stale stream
+        await write([{ _id: "s1", value: "first" }]);
+        const oldest = (await db.get("s1"))._rev;
+        await write([{ _id: "s1", value: "middle" }]);
+        await write([{ _id: "s1", value: "second" }]);
+
+        let refused = false;
+        try {
+          refused = !(await commit([
+            { _id: "s1", _rev: oldest, value: "second" },
+          ]));
+        } catch {
+          refused = true;
+        }
+
+        expect(refused).to.equal(true);
+      });
+
+      it("is still refused when its content differs", async () => {
+        await write([{ _id: "s1", value: "first" }]);
+        const before = (await db.get("s1"))._rev;
+        await commit([{ _id: "s1", _rev: before, value: "second" }]);
+
+        const stale = { _id: "s1", _rev: before, value: "other" };
+        let refused = false;
+        try {
+          refused = !(await commit([stale]));
+        } catch {
+          refused = true;
+        }
+
+        expect(refused).to.equal(true);
+        expect((await db.get("s1")).value).to.equal("second");
+      });
+    });
+
     it("advances position and changes the hash when content changes", async () => {
       await write([{ _id: "s1", value: "first" }]);
       const first = (await db.get("s1"))._rev;

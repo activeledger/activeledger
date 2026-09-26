@@ -402,27 +402,76 @@ export class StreamUpdater {
     }
   }
 
+  /**
+   * Pause before each retry of a failed stream save. One entry per retry,
+   * so the save is attempted length + 1 times.
+   *
+   * This node has already seen consensus when it saves, so the rest of the
+   * network is committing. Failing here leaves it behind them, and when two
+   * of four nodes fail together the network splits 2-2, which SPI cannot
+   * resolve because neither side is a majority. The stream locks are held
+   * throughout, so the pauses are kept short.
+   */
+  public static SAVE_RETRY_DELAYS_MS = [100, 400, 1000];
+
+  /**
+   * Seconds one save attempt may take before it counts as failed. Without
+   * it a store that never answers holds the stream locks for undici's 300
+   * second default, once per attempt.
+   */
+  public static SAVE_TIMEOUT_S = 30;
+
+  /**
+   * Saves the documents, retrying the whole batch until the store confirms.
+   *
+   * Only { ok: true } is a save. The store answers { ok: false } when its
+   * batch write fails, a transport fault arrives as null, and an exception
+   * inside the store arrives as {} - httpd serialises the Error, and
+   * ActiveRequest does not look at the 500 status. That last one used to
+   * pass as a commit with nothing written.
+   *
+   * Resending is safe because the batch is one atomic write, and a document
+   * the store already holds with identical content is accepted as written
+   * rather than refused for its old revision (see LevelMe.prepareForWrite).
+   * So a batch that landed but whose answer was lost confirms on the resend.
+   *
+   * @private
+   * @returns {Promise<void>} Rejects once every attempt has failed
+   */
+  private async saveDocs(): Promise<void> {
+    const delays = StreamUpdater.SAVE_RETRY_DELAYS_MS;
+
+    for (let attempt = 0; ; attempt++) {
+      let failure: unknown;
+      try {
+        failure = await this.db.bulkDocs(
+          this.docs,
+          undefined,
+          StreamUpdater.SAVE_TIMEOUT_S
+        );
+        if ((failure as any)?.ok === true) {
+          return;
+        }
+      } catch (error) {
+        failure = error;
+      }
+
+      ActiveLogger.error(
+        { umid: this.entry.$umid, attempt: attempt + 1, failure },
+        "Datastore Failure"
+      );
+      if (attempt >= delays.length) {
+        throw new Error("Bulk Doc Insert Failed");
+      }
+      await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+    }
+  }
+
   private async append() {
     try {
       ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
-      const bulkWriteResult = await this.db.bulkDocs(this.docs);
+      await this.saveDocs();
       ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
-      // A write that failed does not come back falsy. The self hosted store
-      // answers HTTP 200 with { ok: false } when its batch write fails, and
-      // that object is truthy, so it sailed through this check and the
-      // transaction was recorded as committed with nothing on disk. Only a
-      // transport fault - which ActiveRequest.send() reports as a null body -
-      // was ever caught here.
-      if (
-        !bulkWriteResult ||
-        bulkWriteResult.ok === false ||
-        // CouchDB answers with one result per document instead, where a
-        // rejected document carries an "error" property
-        (Array.isArray(bulkWriteResult) &&
-          bulkWriteResult.some((result: any) => result && result.error))
-      ) {
-        throw new Error("Bulk Doc Insert Failed");
-      }
 
       // Only post to event db if bulk write was successful
       await this.dbev.post({
@@ -430,7 +479,7 @@ export class StreamUpdater {
           }`,
       });
     } catch (error) {
-      ActiveLogger.debug(error, "Datastore Failure");
+      ActiveLogger.error(error, "Datastore Failure");
       this.shared.raiseLedgerError(1510, new Error("Failed to save streams"));
       return; // Stop processing on DB failure
     }
