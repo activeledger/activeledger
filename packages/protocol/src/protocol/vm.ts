@@ -36,6 +36,7 @@ import {
   IVMDataPayload,
   IVMContractReferences,
   IVirtualMachine,
+  IContractIsolateBackend,
 } from "./interfaces/vm.interface";
 import { createInterface } from "readline";
 //import { ContractControl } from "./vmscript";
@@ -55,6 +56,26 @@ export class VirtualMachine
    * @private
    * @type {IVMInternalCache}
    */
+  /**
+   * Optional pluggable backend that runs untrusted contracts outside this
+   * process. Unset by default (in-process execution behind securityScan()).
+   * When security.contractIsolation is "isolate", a backend MUST be
+   * registered or initialise() refuses to load a non-privileged contract
+   * (fail-closed) - a public node never silently degrades to in-process
+   * execution of untrusted code. See IContractIsolateBackend.
+   */
+  private static isolateBackend: IContractIsolateBackend | null = null;
+
+  /**
+   * Register (or clear, with null) the process-wide contract isolation
+   * backend. Intended to be called once at node start by an isolate add-on.
+   */
+  public static registerIsolateBackend(
+    backend: IContractIsolateBackend | null
+  ): void {
+    VirtualMachine.isolateBackend = backend;
+  }
+
   private smartContracts: { [umid: string]: any } = {};
 
   /**
@@ -405,30 +426,65 @@ export class VirtualMachine
     this.events[payload.umid] = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
 
     return Promise.resolve()
-      .then(() => {
+      .then(async () => {
         // Initialise Contract into VM
         const contractData = payload.contractData?.data ? payload.contractData : {};
 
-        // Fetch Contract Constructable 
-        if (!this.contracts[payload.contractLocation]) {
-          this.contracts[payload.contractLocation] = require(payload.contractLocation).default;
-        }
+        // Contract-isolation policy. "inprocess" (default) preserves the
+        // historical behaviour: source is admitted by securityScan() and the
+        // contract is require()d and constructed in this process. "isolate"
+        // is for a node open to untrusted deployers - every non-privileged
+        // contract must run behind a registered isolate backend, and if none
+        // is registered we refuse rather than run untrusted code in-process.
+        const security = ActiveOptions.get<any>("security", {}) || {};
+        const isolation: string = security.contractIsolation || "inprocess";
+        // System ("default") namespace contracts are the node's own and are
+        // always trusted - mirrors securityScan()'s privileged-namespace skip.
+        const isPrivileged = payload.transaction.$namespace === "default";
 
-        this.smartContracts[payload.umid] =
-          new this.contracts[payload.contractLocation](
-            payload.date,
-            payload.remoteAddress,
-            payload.umid,
-            payload.transaction,
-            payload.inputs,
-            payload.outputs,
-            payload.readonly,
-            contractData,
-            payload.signatures,
-            payload.key,
-            this.emitter,
-            this.selfHost
-          );
+        const constructorArgs = [
+          payload.date,
+          payload.remoteAddress,
+          payload.umid,
+          payload.transaction,
+          payload.inputs,
+          payload.outputs,
+          payload.readonly,
+          contractData,
+          payload.signatures,
+          payload.key,
+          this.emitter,
+          this.selfHost,
+        ];
+
+        if (isolation === "isolate" && !isPrivileged) {
+          const backend = VirtualMachine.isolateBackend;
+          if (!backend) {
+            // Fail-closed: never fall back to in-process for a public node.
+            throw new Error(
+              "security.contractIsolation is 'isolate' but no isolate backend is registered - refusing to run contract '" +
+                contractName +
+                "' in-process. Register an isolate backend (VirtualMachine.registerIsolateBackend) or set contractIsolation to 'inprocess' for permissioned deployment."
+            );
+          }
+          if (!this.contracts[payload.contractLocation]) {
+            this.contracts[payload.contractLocation] = await backend.load(
+              payload.contractLocation
+            );
+          }
+          this.smartContracts[payload.umid] = await this.contracts[
+            payload.contractLocation
+          ].instantiate(constructorArgs);
+        } else {
+          // Fetch Contract Constructable
+          if (!this.contracts[payload.contractLocation]) {
+            this.contracts[payload.contractLocation] = require(payload.contractLocation).default;
+          }
+
+          this.smartContracts[payload.umid] = new this.contracts[
+            payload.contractLocation
+          ](...constructorArgs);
+        }
 
         if ("setEvent" in this.smartContracts[payload.umid]) {
           (this.smartContracts[payload.umid] as PostProcessEvent).setEvent(
