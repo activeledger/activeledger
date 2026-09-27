@@ -364,3 +364,39 @@ describe("Contract.securityScan() - a this-chain that walks off this", () => {
     ).to.be.null;
   });
 });
+
+describe("Contract.securityScan() - additional escape hardening", () => {
+  it("blocks `with` statements (they defeat identifier-scope resolution)", () => {
+    const r = scan("export default class F { v(){ with(this.a){ return 1 } } }");
+    expect(r).to.not.be.null;
+    expect(r).to.include("with statements");
+  });
+
+  it("blocks the queueMicrotask global identifier", () => {
+    const r = scan("export default class F { v(){ return queueMicrotask(()=>{}) } }");
+    expect(r).to.not.be.null;
+    expect(r).to.include("queueMicrotask");
+  });
+
+  it("blocks scheduling/network globals reached in property form", () => {
+    for (const prop of ["setTimeout", "setInterval", "setImmediate", "queueMicrotask", "fetch", "atob", "btoa"]) {
+      const r = scan(`export default class F { v(){ return this.a.${prop} } }`);
+      expect(r, prop).to.not.be.null;
+      expect(r, prop).to.include(prop);
+    }
+  });
+
+  it("still permits a contract's own members of the same name via this", () => {
+    expect(scan("export default class F { v(){ return this.setTimeout } }")).to.be.null;
+  });
+
+  it("still scans the body of a static block", () => {
+    const r = scan("export default class F { static { eval(\"x\") } v(){ return 1 } }");
+    expect(r).to.not.be.null;
+    expect(r).to.include("eval");
+  });
+
+  it("does not regress ordinary contracts (labeled loops, Date/Math/JSON, static fields)", () => {
+    expect(scan("export default class F { static x = 1; v(){ outer: for(let i=0;i<2;i++){break outer}; return JSON.stringify({t:Date.now(),m:Math.max(1,2)}) } }")).to.be.null;
+  });
+});
