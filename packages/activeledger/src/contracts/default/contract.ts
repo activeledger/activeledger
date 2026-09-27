@@ -50,6 +50,7 @@ const BANNED_IDENTIFIERS = [
   "setTimeout",
   "setInterval",
   "setImmediate",
+  "queueMicrotask",
   "atob",
   "btoa",
   "Reflect",
@@ -174,6 +175,18 @@ const BANNED_PROPERTIES = [
   "execSync",
   "execFileSync",
   "spawnSync",
+  // Execution-scheduling and network globals. These are banned
+  // identifiers already, but were reachable in property form
+  // (someObj.setTimeout(...)) because they were not also banned
+  // properties - the same dual-listing process/Function/eval/require
+  // already have. `this.*` stays exempt via rules 2 and 3.
+  "setTimeout",
+  "setInterval",
+  "setImmediate",
+  "queueMicrotask",
+  "fetch",
+  "atob",
+  "btoa",
   "constructor",
   "__proto__",
   "prototype",
@@ -952,6 +965,9 @@ export default class Contract extends Standard {
         if (!policy.allowComputedProperties && !ts.isStringLiteral(node.expression) && !ts.isNumericLiteral(node.expression)) {
           report(node, `Dynamic computed property names are forbidden`);
         }
+      }
+      if (ts.isWithStatement(node)) {
+        report(node, `with statements are forbidden`);
       }
       if (ts.isDecorator(node)) {
         report(node, `Decorators are forbidden`);
