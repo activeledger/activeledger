@@ -93,8 +93,11 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
    * @returns
    */
   const getDB = (name: string): LevelMe => {
-    // Must start with activeledger (will cause problem with config need to resolve)
-    if (!name.startsWith("activeledger")) {
+    // Must start with activeledger (will cause problem with config need to resolve).
+    // And nothing but a plain name after it: every distinct name opens (and
+    // creates) its own LevelDB directory, so an unchecked suffix let any
+    // request create databases on disk without limit.
+    if (!/^activeledger[A-Za-z0-9_-]{0,64}$/.test(name)) {
       throw new Error(`invalid database - ${name}`);
     }
     if (!dbCache[name]) {

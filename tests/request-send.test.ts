@@ -83,8 +83,8 @@ describe("ActiveRequest.send", () => {
 
   it("gzips a request body once it is worth compressing", async () => {
     respond = json({ ok: true });
-    // Comfortably over GZIP_MIN_BYTES (1024), and compressible.
-    const big = { blob: "a".repeat(4096) };
+    // Comfortably over GZIP_MIN_BYTES (16384), and compressible.
+    const big = { blob: "a".repeat(32768) };
     await ActiveRequest.send(`${base}/x`, "POST", undefined, big, true);
     expect(lastRequest.headers["content-encoding"]).to.equal("gzip");
     expect(JSON.parse(zlib.gunzipSync(lastRequest.body).toString())).to.deep.equal(big);

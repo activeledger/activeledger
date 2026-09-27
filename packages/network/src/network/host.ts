@@ -50,6 +50,16 @@ import {
   us_listen_socket,
   us_listen_socket_close,
 } from "uWebSockets.js";
+import { promisify } from "util";
+import { gunzip } from "zlib";
+
+/**
+ * Responses smaller than this are sent uncompressed. Matches ActiveRequest's
+ * GZIP_MIN_BYTES for requests - see writeResponse().
+ */
+const GZIP_MIN_RESPONSE_BYTES = 16384;
+
+const gunzipAsync = promisify(gunzip);
 
 const RELEASE_SHUTDOWN_TIMEOUT = 1 * 60 * 1000;
 const RELEASE_DELETE_TIMEOUT = 2 * 60 * 1000;
@@ -842,8 +852,14 @@ export class Host extends Home {
       }
 
       if (method === "POST") {
-        // Read from Buffer
-        let body = await this.readBuffer(res);
+        // Read from Buffer - bounded, so one request cannot exhaust memory.
+        let body: Buffer;
+        try {
+          body = await this.readBuffer(res, Host.maxRequestBytes);
+        } catch {
+          // readBuffer has already answered 413, or the client went away.
+          return;
+        }
 
         // res.onAborted(()=>{
         //   ActiveLogger.fatal("ABORTED?!?!?");
@@ -859,8 +875,15 @@ export class Host extends Home {
           (body[0] == 0x1f && body[1] == 0x8b)
         ) {
           try {
-            body = await ActiveGZip.ungzip(body);
-          } catch (e) {
+            // Bounded by the same limit as the raw body: a few KB of gzip
+            // can inflate to gigabytes, and zlib would allocate all of it.
+            body = await gunzipAsync(body, {
+              maxOutputLength: Host.maxRequestBytes,
+            });
+          } catch (e: any) {
+            if (e?.code === "ERR_BUFFER_TOO_LARGE") {
+              return this.rejectTooLarge(res);
+            }
             // Just incase the magic number still invalid gzip
             // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
             // with the original non-gzip compliant data
@@ -990,13 +1013,53 @@ export class Host extends Home {
     this.timerQueue();
   }
 
-  private readBuffer(res: HttpResponse): Promise<Buffer> {
+  /**
+   * The largest request body, compressed or inflated, this node accepts:
+   * `security.maxRequestBytes`, 16MB by default. Generous for contract
+   * deploys, which are the largest legitimate transactions.
+   */
+  private static get maxRequestBytes(): number {
+    const limit = Number(
+      ActiveOptions.get<any>("security", {})?.maxRequestBytes ?? 16 * 1024 * 1024
+    );
+    return Number.isFinite(limit) && limit > 0 ? limit : 16 * 1024 * 1024;
+  }
+
+  /** Answers 413 and closes, for a request over maxRequestBytes. */
+  private rejectTooLarge(res: HttpResponse): void {
+    if (!res.writable) return;
+    res.writable = false;
+    res.cork(() => {
+      res.writeStatus("413 Payload Too Large");
+      res.writeHeader("Content-Type", "application/json");
+      res.writeHeader("Connection", "close");
+      res.end(JSON.stringify({ error: "Request too large" }), true);
+    });
+  }
+
+  private readBuffer(res: HttpResponse, maxBytes = Infinity): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
+      let received = 0;
+      let refused = false;
 
       res.onData((ab, isLast) => {
+        if (refused) {
+          return;
+        }
         if (res.aborted) {
           reject(new Error("Request aborted"));
+          return;
+        }
+
+        received += ab.byteLength;
+        if (received > maxBytes) {
+          // Stop buffering at once rather than after the whole body has
+          // been held in memory.
+          refused = true;
+          chunks.length = 0;
+          this.rejectTooLarge(res);
+          reject(new Error("Request too large"));
           return;
         }
 
@@ -1057,14 +1120,14 @@ export class Host extends Home {
       // so probably writer converting but It isn't everytime?
       //ActiveLogger.error(tmp, "Buffer Found");
       if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {
-        return (await ActiveGZip.ungzip(Buffer.from(obj.data))).toString();
+        return (await gunzipAsync(Buffer.from(obj.data), { maxOutputLength: Host.maxRequestBytes })).toString();
       }
       return Buffer.from(obj.data).toString();
     }
 
     if (Buffer.isBuffer(obj)) {
       if (obj[0] == 0x1f && obj[1] == 0x8b) {
-        return (await ActiveGZip.ungzip(obj)).toString();
+        return (await gunzipAsync(obj, { maxOutputLength: Host.maxRequestBytes })).toString();
       }
       const tmp = obj.toString();
 
@@ -1073,7 +1136,7 @@ export class Host extends Home {
 
         if (asBufferObj.data[0] == 0x1f && asBufferObj.data[1] == 0x8b) {
           return (
-            await ActiveGZip.ungzip(Buffer.from(asBufferObj.data))
+            await gunzipAsync(Buffer.from(asBufferObj.data), { maxOutputLength: Host.maxRequestBytes })
           ).toString();
         }
         return Buffer.from(asBufferObj.data).toString();
@@ -2230,6 +2293,16 @@ export class Host extends Home {
           //   const hAuth = req.headers["x-activeledger"] as string;
           //   break;
           case "/a/admin-reload":
+            // Enabling "remote" allows the reload; it does not make the
+            // endpoint public. Only this node's own host or a neighbour in
+            // the network may trigger it.
+            if (
+              ActiveOptions.get<boolean>("remote", false) &&
+              !this.isLoopback(req.connection.remoteAddress) &&
+              !this.firewallCheck(requester, req.connection.remoteAddress)
+            ) {
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
             if(!ActiveOptions.get<boolean>("remote", false)) {
               return this.writeResponse(
                 res,
@@ -2422,6 +2495,15 @@ export class Host extends Home {
       return;
     }
 
+    // Small responses go out uncompressed even when gzip is accepted. Async
+    // zlib runs on libuv's thread pool, shared with LevelDB, so compressing
+    // a 1-2KB consensus reply cost more in queueing than it saved on the
+    // wire - and the receiving node then paid the same again to inflate it.
+    // Clients read Content-Encoding, so either form is understood.
+    if (content && encoding == "gzip" && content.length < GZIP_MIN_RESPONSE_BYTES) {
+      encoding = "";
+    }
+
     if (content) {
       if (encoding == "gzip") {
         content = await ActiveGZip.gzip(content);
@@ -2460,6 +2542,14 @@ export class Host extends Home {
    * @param {IncomingMessage} req
    * @returns {boolean}
    */
+  private isLoopback(remoteAddr?: string): boolean {
+    if (!remoteAddr) return false;
+    const addr = remoteAddr.startsWith("::ffff:") ? remoteAddr.slice(7) : remoteAddr;
+    // The listener folds IPv6 into dotted form before this runs, and "::1"
+    // comes out of that as 0.0.0.1.
+    return addr === "::1" || addr === "0.0.0.1" || addr.startsWith("127.");
+  }
+
   private firewallCheck(requester: string, remoteAddr: string): boolean {
     // x-forward coulkd be spoofed for now lets not support
     return this.neighbourhood.checkFirewall(remoteAddr, requester)
