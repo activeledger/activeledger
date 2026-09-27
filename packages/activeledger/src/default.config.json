@@ -24,19 +24,10 @@
     "reached": 60
   },
   "autostart": {
-    "core": false,
     "restore": true
   },
   "hybrid": [],
   "experimental": {},
-  "api": {
-    "port": 5261
-  },
-  "rate": {
-    "minutes": 10,
-    "limit": 20,
-    "delay": 0
-  },
   "CORS": [
     "*"
   ],

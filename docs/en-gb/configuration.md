@@ -1,6 +1,6 @@
 # Configuration File
 
-Activeledger does have a single configuration file which is used by the 3 running instances ([activeledger](ledger.md), [activecore](core.md) & [activerestore](restore.md))
+Activeledger does have a single configuration file which is used by both running instances ([activeledger](ledger.md) & [activerestore](restore.md))
 
 The configuration allows for each Activeledger instance to be customised and who has the ability to join this network as a fully permissive participant.
 
@@ -29,13 +29,7 @@ The configuration allows for each Activeledger instance to be customised and who
     "reached": 60
   },
   "autostart": {
-    "core": true,
     "restore": true
-  },
-  "rate": {
-    "minutes": 10,
-    "limit": 20,
-    "delay": 0
   },
   "CORS": ["http://example.com", "http://*.example.net"],
   "neighbourhood": [
@@ -122,11 +116,9 @@ Allows you to set in percentage how much of the network has to be in agreement o
 
 ## Autostart
 
-Enables Activeledger to auto startup the additional services.
+Enables Activeledger to auto startup the additional services. `restore` starts [activerestore](restore.md).
 
-## Rate
-
-Activecore request rate limiter settings.
+`core` and `rate` configured ActiveCore, which was removed in 5.0.0. A node that still has `autostart.core` set logs a warning and ignores it; `rate` is ignored.
 
 ## CORS
 

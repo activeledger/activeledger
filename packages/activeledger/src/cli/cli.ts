@@ -157,9 +157,16 @@ export class CLIHandler {
         ? process.kill(pids.activestorage)
         : ActiveLogger.warn("No PID for Activestorage process");
 
-      pids.activecore && pids.activecore !== 0
-        ? process.kill(pids.activecore)
-        : ActiveLogger.warn("No PID for Activecore process");
+      // ActiveCore was removed in 5.0.0, but a node upgraded while it was
+      // running still has its PID recorded. Stop it rather than leave an
+      // orphaned process holding its port.
+      if (pids.activecore) {
+        try {
+          process.kill(pids.activecore);
+        } catch {
+          // Already gone.
+        }
+      }
 
       pids.activerestore && pids.activerestore !== 0
         ? process.kill(pids.activerestore)
@@ -679,26 +686,14 @@ export class CLIHandler {
       }
 
       if (ActiveOptions.get<any>("autostart", {})) {
-        // Auto starting Core API?
+        // ActiveCore was removed in 5.0.0. Said once, at startup, so a
+        // config still asking for it is noticed rather than silently ignored.
         if (ActiveOptions.get<any>("autostart", {}).core) {
-          ActiveLogger.info("Auto starting - Core API");
-          // Launch & Listen for launch error
-          const activecoreChild = child
-            .spawn(
-              /^win/.test(process.platform) ? "activecore.cmd" : "activecore",
-              [],
-              {
-                cwd: "./",
-                stdio: "inherit",
-              }
-            )
-            .on("error", (error) => {
-              ActiveLogger.error(error, "Core API Failed to start");
-            });
-
-          await CLIHandler.pidHandler.addPid(
-            EPIDChild.CORE,
-            activecoreChild.pid || 0
+          ActiveLogger.warn(
+            "autostart.core is set, but ActiveCore was removed in Activeledger 5.0.0 " +
+              "and will not be started. Remove it from config.json. Contract events " +
+              "are served by this node's storage at /activeledgerevents/events, " +
+              "reachable from this host only."
           );
         }
 
@@ -782,14 +777,10 @@ export class CLIHandler {
           parseInt(ActiveOptions.get<string>("port", 5260)) - 1
         ).toString();
 
-        // activecore genuinely does have its own port setting, and it
-        // would collide with a node that has moved off the default, so it
-        // stays disabled here.
-        //
-        // activerestore does NOT. It binds no port and reads no port
-        // config - it reads config.json from its working directory and
-        // talks to this node's own storage. It was swept in alongside
-        // activecore to stop --testnet's generated instances each running
+        // activerestore is NOT disabled here. It binds no port and reads no
+        // port config - it reads config.json from its working directory and
+        // talks to this node's own storage. It was once disabled here to
+        // stop --testnet's generated instances each running
         // a restore engine, which was a real performance concern on one
         // machine, but the cost landed somewhere else entirely: ANY node
         // set up on a non-default port had its restore engine silently
@@ -806,14 +797,12 @@ export class CLIHandler {
         // The testnet case is now handled where it belongs, by testnet
         // passing --disable-autostart explicitly, rather than inferred from a
         // port number that cannot tell the two situations apart.
-        defConfig.autostart.core = false;
       }
 
       // An explicit opt out, for a generator standing up many instances on
       // one machine that does not want a full set of background processes
       // per node.
       if (ActiveOptions.get<boolean>("disable-autostart", false)) {
-        defConfig.autostart.core = false;
         defConfig.autostart.restore = false;
       }
 

@@ -1,5 +1,40 @@
 # Activeledger Changelog
 
+## [5.0.0]
+
+ActiveCore is removed. It was off by default, and its event streams could not
+work on the uWebSockets server the ledger has used since 4.x. Contract events
+come from each node's own storage instead, reachable from the node's host only.
+
+### Upgrading
+Nothing to do unless a node still has `autostart.core` set. It now logs a
+warning at startup and starts nothing; remove it from `config.json`. `rate` and
+`api.port` configured ActiveCore only and are ignored. `activeledger --stop`
+still stops an ActiveCore process left running from before the upgrade.
+
+Applications that read events or activity from ActiveCore should run a
+server-sent events listener on the node's host, at
+`http://localhost:<storage port>/activeledgerevents/events`, and relay what
+they need through their own backend. The storage port is one below the node's
+by default.
+
+### Removed
+* **ActiveCore** : `@activeledger/activecore` (`packages/core`) is no longer
+  built or published, and the node no longer starts it. `autostart.core`,
+  `rate` and `api` are gone from the default configuration, and
+  `docs/*/core.md` from the documentation. Published versions remain
+  installable from npm.
+
+### Fix
+* **Storage** : Resuming an event stream with `Last-Event-ID` skipped the
+  first row of the replay unconditionally, assuming it was the event the
+  client already had. Resuming from an id that was not itself a stored event
+  lost the first event actually missed. Every event after the id is now sent.
+* **Storage** : The live feed was attached only after a resume's replay had
+  been read, so an event committed during the read was in neither and never
+  reached the client. The feed is now attached first, and events arriving
+  during the replay are sent after it, once each.
+
 ## [4.10.1]
 
 ### Fix

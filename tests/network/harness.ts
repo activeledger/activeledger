@@ -80,7 +80,7 @@ function runOnce(args: string[], cwd: string): Promise<void> {
 
 /**
  * `activeledger --stop` does its actual job (killing the tracked
- * activeledger/activestorage/activecore/activerestore PIDs) but then never
+ * activeledger/activestorage/activerestore PIDs) but then never
  * calls process.exit() itself, unlike --backup/--restore - confirmed as a
  * real, standalone bug (reproduced directly outside this harness, not an
  * artifact of how this harness spawns it). Don't wait for its own exit;
@@ -151,7 +151,7 @@ function isProcessAlive(pid: number): boolean {
  * network-internals.md) that survives a direct kill of just the main
  * process: Node doesn't kill children automatically on a parent's exit,
  * and these workers aren't tracked in the .PID file the way
- * activestorage/activecore/activerestore are - confirmed directly (ps aux
+ * activestorage/activerestore are - confirmed directly (ps aux
  * still showed a full set of network/process.js instances after --stop
  * completed and the main process had already exited). This is the same
  * gap documented in cli.md's --stop section; harmless for a human running
@@ -306,7 +306,7 @@ export class NetworkHarness {
    * to children Node didn't fork itself - see cli.md's --stop gotcha).
    * `--stop` reads each instance's own .PID file (main process +
    * activestorage, written directly by datastore.ts's storePid() - plus
-   * activecore/activerestore if running) and kills all of them. Also not a
+   * activerestore if running) and kills all of them. Also not a
    * pattern-matched pkill, which repeatedly proved unreliable during
    * hpe-13/hpe-14's manual testing (command lines don't include any
    * distinguishing scratch-dir name, so loose patterns miss processes or
@@ -356,7 +356,7 @@ export class NetworkHarness {
       try {
         const pidPath = path.join(node.dataDir, ".PID");
         const pidData = JSON.parse(fs.readFileSync(pidPath, "utf8"));
-        for (const key of ["activeledger", "activestorage", "activecore", "activerestore"]) {
+        for (const key of ["activeledger", "activestorage", "activerestore"]) {
           const pid = pidData[key];
           if (pid && pid !== 0 && isProcessAlive(pid)) {
             try {
@@ -427,7 +427,7 @@ export class NetworkHarness {
     try {
       const pidPath = path.join(node.dataDir, ".PID");
       const pidData = JSON.parse(fs.readFileSync(pidPath, "utf8"));
-      for (const key of ["activeledger", "activestorage", "activecore", "activerestore"]) {
+      for (const key of ["activeledger", "activestorage", "activerestore"]) {
         const pid = pidData[key];
         if (pid && pid !== 0 && isProcessAlive(pid)) {
           try {
