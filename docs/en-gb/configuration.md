@@ -114,6 +114,17 @@ When a contract raises an event this is where the event is stored for processing
 
 Allows you to set in percentage how much of the network has to be in agreement of a transaction (the voting phase) before it can be considered a valid transaction.
 
+## P2P consensus transport
+
+`p2pStream` and `p2pStreamServer` (both default `true`) make nodes exchange consensus over a persistent TCP connection instead of a fresh HTTP request per hop, which is significantly faster on the node-to-node round trip. Each node listens on a second port, **one above its main port** (5261 for a 5260 node); open it between your nodes' hosts alongside the main port.
+
+Behaviour is safe by design:
+
+- If the P2P port is unreachable, or a peer has not upgraded, that link falls back to HTTP on the main port automatically - the network keeps working, just without the speed-up for that link.
+- When `security.signedConsensus` or `security.encryptedConsensus` is enabled, consensus uses the signed/encrypted HTTP path regardless, so the P2P transport never bypasses those protections.
+
+Set both to `false` for the previous HTTP-only behaviour. The P2P path is fire-and-forget, so a client response can arrive fractionally before every node in the majority has durably written; the majority still commits. If your application needs a durability guarantee, confirm with a read rather than relying on response timing.
+
 ## Autostart
 
 Enables Activeledger to auto startup the additional services. `restore` starts [activerestore](restore.md).

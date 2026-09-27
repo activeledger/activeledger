@@ -40,6 +40,11 @@ export class P2PClient extends EventEmitter {
     }
 
     this.socket = net.createConnection(this.port, this.host);
+    // Disable Nagle: consensus messages are small and latency-sensitive, and
+    // each is a single write. With Nagle on, a write waits ~40ms to coalesce
+    // with data that never comes, so every hop paid a round of delayed-ACK
+    // latency - measured at ~80ms per transaction vs ~31ms over HTTP.
+    this.socket.setNoDelay(true);
     this.socket.on("connect", () => {
       this.isConnected = true;
       this.hasEverConnected = true;

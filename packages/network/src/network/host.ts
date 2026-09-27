@@ -556,6 +556,8 @@ export class Host extends Home {
     if (ActiveOptions.get<boolean>("p2pStreamServer", false)) {
       // Start P2P TCP Server
       this.p2pServer = net.createServer((socket: net.Socket) => {
+        // See P2PClient: without this every framed reply waits on Nagle.
+        socket.setNoDelay(true);
         ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
         let chunks: Buffer[] = [];
         let bufferLength = 0;
