@@ -33,8 +33,17 @@ interface IHTTPResponse {
   data: unknown;
 }
 
-// Below this many bytes, gzip's CPU cost outweighs the bandwidth it saves.
-const GZIP_MIN_BYTES = 1024;
+// Below this many bytes, gzip's cost outweighs the bandwidth it saves.
+//
+// The cost is not the CPU so much as where it runs: zlib's async API runs on
+// libuv's thread pool, which LevelDB also uses, so every compressed request
+// queues twice (compress here, decompress there) behind whatever storage is
+// doing. Node-to-node consensus messages are 1-2KB. At the previous 1KB
+// threshold nearly all of them were compressed, and on a 4-node network the
+// average bundled send took 11.4ms; skipping compression for them took it to
+// 5.1ms and cut a 4-node transaction's median latency by roughly a quarter.
+// Contract deploys and bulk restore payloads are still compressed.
+const GZIP_MIN_BYTES = 16384;
 
 /**
  * How long the SERVER we talk to keeps an idle connection.

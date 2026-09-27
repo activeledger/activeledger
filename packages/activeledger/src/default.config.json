@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "debug": true,
+  "debug": false,
   "remote": false,
   "build": 40200,
   "security": {
