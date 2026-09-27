@@ -18,12 +18,61 @@ server-sent events listener on the node's host, at
 they need through their own backend. The storage port is one below the node's
 by default.
 
+Consensus now uses a persistent TCP transport between nodes by default (see
+Performance). Each node opens a second listening port, **one above its main
+port** (5261 for a 5260 node). Open that port between your nodes' hosts, the
+same way the main port is opened. If it is blocked or a peer has not upgraded,
+that peer's consensus simply falls back to HTTP on the main port - the network
+keeps working, only without the speed-up for that link. To keep the previous
+HTTP-only behaviour, set `"p2pStream": false` and `"p2pStreamServer": false`.
+
 ### Removed
 * **ActiveCore** : `@activeledger/activecore` (`packages/core`) is no longer
   built or published, and the node no longer starts it. `autostart.core`,
   `rate` and `api` are gone from the default configuration, and
   `docs/*/core.md` from the documentation. Published versions remain
   installable from npm.
+
+### Performance
+* **Consensus transport** : nodes now broadcast consensus over a persistent
+  TCP connection (`p2pStream` / `p2pStreamServer`, both **on by default**)
+  instead of a fresh HTTP request per hop. In a 4-node benchmark (a contract
+  write, 16 in flight) this took committed throughput from ~27 to ~52 tx/s -
+  about **1.9x, ~94% higher** - and sequential latency from ~33ms to ~24ms
+  p50. Real figures depend on workload, contract cost and network; the gain is
+  in the node-to-node round trip, so larger networks benefit most.
+
+  It is **gated by security posture**: when `signedConsensus` or
+  `encryptedConsensus` is enabled (network-wide or per message), consensus
+  uses the signed/encrypted HTTP path instead, because the TCP frame carries
+  the raw entry rather than the signed `$neighbour`/`$packet` envelope. The
+  speed-up therefore applies to the default, firewall-gated posture.
+
+  One behavioural note: the TCP path is fire-and-forget, so a client's
+  response can arrive slightly before every peer in the majority has durably
+  written - the majority still commits (consensus and recovery are unchanged),
+  just not always before the origin has replied. Applications that need "the
+  network has durably stored this" should confirm via a read, not infer it
+  from response timing.
+* **Networking** : consensus and other node-to-node messages below 16KB are no
+  longer gzipped. Async zlib shares libuv's thread pool with the storage
+  engine, so compressing small messages queued behind storage on both ends;
+  skipping it roughly halved the per-hop round trip. Contract deploys and bulk
+  restore payloads are still compressed.
+* **Logging** : `debug` now defaults to `false`. A new install was logging
+  around 22 lines per transaction per node.
+
+### Security
+* **Request limits** : request bodies, and their gunzipped size, are bounded
+  (`security.maxRequestBytes`, 16MB default) and refused with 413 as they
+  stream in - a few KB of gzip can no longer inflate to gigabytes and exhaust
+  memory.
+* **Admin API** : `/a/admin-reload` is restricted to loopback or a known
+  neighbour even when `remote` is enabled; turning `remote` on no longer makes
+  it public.
+* **Storage** : database names are validated (`activeledger` plus up to 64
+  `[A-Za-z0-9_-]`); an unchecked suffix previously created arbitrary on-disk
+  databases per request.
 
 ### Fix
 * **Storage** : Resuming an event stream with `Last-Event-ID` skipped the

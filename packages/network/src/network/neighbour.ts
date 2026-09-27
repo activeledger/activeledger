@@ -186,10 +186,26 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         setTimeout(resolve, Neighbour.simulatedRttMs / 2)
       );
     }
-    // Persistent P2P Broadcast Path
+    // Persistent P2P Broadcast Path.
+    //
+    // Only when the HTTP path would have sent an UNSIGNED, UNENCRYPTED
+    // payload. The p2p frame carries the raw entry, not the $neighbour /
+    // $packet envelope, and the p2p receive path does not run the
+    // signature/decrypt checks in endpoints.ts. So using it while
+    // signedConsensus or encryptedConsensus (or a per-message $signed /
+    // $encrypt) is in force would silently bypass that protection. In those
+    // configurations consensus falls back to the signed/encrypted HTTP path;
+    // the speed-up applies to the default (firewall-gated) posture.
+    const security = ActiveOptions.get<any>("security", {}) || {};
+    const secured =
+      params?.$signed ||
+      params?.$encrypt ||
+      security.signedConsensus ||
+      security.encryptedConsensus;
     if (
       params &&
       !external &&
+      !secured &&
       this.p2pClient &&
       this.p2pClient.ready &&
       ActiveOptions.get<boolean>("p2pStream", false) &&
