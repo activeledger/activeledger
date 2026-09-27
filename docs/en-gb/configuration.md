@@ -125,6 +125,15 @@ Behaviour is safe by design:
 
 Set both to `false` for the previous HTTP-only behaviour. The P2P path is fire-and-forget, so a client response can arrive fractionally before every node in the majority has durably written; the majority still commits. If your application needs a durability guarantee, confirm with a read rather than relying on response timing.
 
+## Contract isolation
+
+`security.contractIsolation` chooses how a node runs the smart-contract code deployed to it. It has two values:
+
+- `inprocess` (default) - contract source is admitted by the static `securityScan()` denylist and the contract then runs in the node's own process. This is appropriate for a **permissioned** network, where only known identities may deploy into a namespace and the deployer set is trusted.
+- `isolate` - for a node open to **untrusted deployers** ("fully public"). Every non-privileged contract must run behind a registered isolation backend, and if none is registered the node **refuses** to load the contract rather than run untrusted code in-process (fail-closed). System (`default` namespace) contracts are the node's own and always run in-process.
+
+The static scanner is a denylist over contract source. It is careful and hardened, but a source scanner cannot in general prove what an expression refers to at runtime, so it is the right boundary only when the deployer set is already trusted. A node accepting contracts from anyone should run each contract behind a structural isolate and treat the scanner as defence-in-depth. `isolate` mode is that switch; the isolate backend is registered by an add-on via `VirtualMachine.registerIsolateBackend()`. No backend ships in the core node yet, so setting `isolate` without one will fail-closed by design.
+
 ## Autostart
 
 Enables Activeledger to auto startup the additional services. `restore` starts [activerestore](restore.md).

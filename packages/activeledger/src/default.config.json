@@ -8,7 +8,8 @@
   "security": {
     "signedConsensus": false,
     "encryptedConsensus": false,
-    "hardenedKeys": false
+    "hardenedKeys": false,
+    "contractIsolation": "inprocess"
   },
   "host": "127.0.0.1:5260",
   "db": {
