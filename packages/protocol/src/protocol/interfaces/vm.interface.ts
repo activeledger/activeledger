@@ -133,3 +133,35 @@ export interface IVirtualMachine {
 
   reconcile(nodes: ActiveDefinitions.INodes, umid: string): Promise<any>;
 }
+
+/**
+ * A contract-isolation backend. Registered on the VirtualMachine to run
+ * untrusted contracts outside the node's own process when the node is
+ * configured for public deployment (security.contractIsolation === "isolate").
+ *
+ * The default node ships no backend: contract source is admitted by the
+ * static securityScan() denylist and then run in-process. That boundary is
+ * appropriate for permissioned/trusted deployment, where only known
+ * identities may deploy into a namespace. A node that accepts contracts from
+ * arbitrary deployers should not rely on a source scanner alone - it should
+ * run each contract behind a structural isolate (e.g. isolated-vm) and demote
+ * the scanner to defence-in-depth. This is that seam.
+ *
+ * A backend's load() returns a factory whose instantiate() yields an object
+ * that is API-compatible with an in-process contract instance (the Standard /
+ * PostProcessEvent surface the VirtualMachine drives), so the rest of the VM
+ * is unchanged whether a contract runs in-process or isolated.
+ */
+export interface IContractIsolateBackend {
+  /** Identifier used in logs and errors, e.g. "isolated-vm". */
+  readonly name: string;
+  /** Load a contract's constructable from disk into the isolate. */
+  load(
+    contractLocation: string
+  ): Promise<IIsolatedContractFactory> | IIsolatedContractFactory;
+}
+
+/** Factory for a loaded, isolated contract - constructs an instance per umid. */
+export interface IIsolatedContractFactory {
+  instantiate(constructorArgs: unknown[]): Promise<unknown> | unknown;
+}
