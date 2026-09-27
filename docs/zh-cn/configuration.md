@@ -1,6 +1,6 @@
 # 配置文件
 
-Activeledger拥有一个被三个不同应用组建共享的配置文件 ([activeledger](ledger.md), [activecore](core.md) & [activerestore](restore.md))，这允许每个Activeledger节点拥有个性化设置并且自行决定参与者是否可以加入网络。
+Activeledger拥有一个被两个不同应用组建共享的配置文件 ([activeledger](ledger.md) & [activerestore](restore.md))，这允许每个Activeledger节点拥有个性化设置并且自行决定参与者是否可以加入网络。
 
 ```json
 {  
@@ -25,13 +25,7 @@ Activeledger拥有一个被三个不同应用组建共享的配置文件 ([activ
     "reached": 60
   },
   "autostart": {
-    "core": true,
     "restore": true
-  },
-  "rate": {
-    "minutes": 10,
-    "limit": 20,
-    "delay": 0
   },
   "CORS": ["http://example.com", "http://*.example.net"],
   "neighbourhood": [
@@ -100,9 +94,7 @@ Activeledger的主要信息都储存在这里，这里储存着合约导致的�
 
 允许Activeledger自动启动额外功能。
 
-## rate 通讯频率
-
-Activecore通讯频率设置。
+`core` 和 `rate` 用于配置 ActiveCore，ActiveCore 已在 5.0.0 中移除。仍设置 `autostart.core` 的节点会记录警告并忽略它；`rate` 会被忽略。
 
 ## CORS
 

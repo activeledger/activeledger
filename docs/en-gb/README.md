@@ -4,7 +4,6 @@ Activeledger is a protocol for distributed ledger technology (DLT). Activeledger
 
 * [configuration](configuration.md) - Activeledger network configuration.
 * [contracts](./contracts/README.md) - How to & Premade smart contracts to inherit from.
-* [core](core.md) - API to expose the ledger data, events and subscription to changes.*
 * [crypto](crypto.md) - Wrapper for managing multiple cryptographic options.
 * definitions - Specific TypeScript definition files to help with contract development.
 * [ledger](ledger.md) - This is the main Activeledger process.*
@@ -43,7 +42,7 @@ nvm i 10
 This will download the latest release of Node version 10. Then you just need to install Activeledger into the global scope of Node.
 
 ```bash
-npm i -g @activeledger/activeledger @activeledger/activerestore @activeledger/activecore
+npm i -g @activeledger/activeledger @activeledger/activerestore
 ```
 
 After this installation is complete you can start your Activeledger node by running the command :

@@ -172,7 +172,7 @@ export class ActiveDataStore {
     let pidData: {
       activeledger: number;
       activestorage: number;
-      activecore: number;
+      activecore?: number;
       activerestore: number;
     };
 

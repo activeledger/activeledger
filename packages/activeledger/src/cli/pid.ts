@@ -63,13 +63,6 @@ export class PIDHandler {
     }
 
     switch (child) {
-      case EPIDChild.CORE:
-        if (pidData?.activecore && pidData.activecore !== 0) {
-          return pidData.activecore;
-        } else {
-          throw new Error("Error finding Activecode PID");
-        }
-
       case EPIDChild.RESTORE:
         if (pidData?.activerestore && pidData.activerestore !== 0) {
           return pidData.activerestore;
@@ -189,7 +182,6 @@ export class PIDHandler {
       data = {
         activeledger: 0,
         activestorage: 0,
-        activecore: 0,
         activerestore: 0,
       };
     }
@@ -227,13 +219,13 @@ export class PIDHandler {
 export enum EPIDChild {
   LEDGER = "activeledger",
   STORAGE = "activestorage",
-  CORE = "activecore",
   RESTORE = "activerestore",
 }
 
 interface IPID {
   activeledger: number;
   activestorage: number;
-  activecore: number;
+  /** Only in PID files written before 5.0.0, which removed ActiveCore. */
+  activecore?: number;
   activerestore: number;
 }

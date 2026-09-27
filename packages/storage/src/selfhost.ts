@@ -28,6 +28,7 @@ import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
+import { EVENT_PREFIX, eventsSince } from "./events";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
@@ -677,33 +678,35 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       let db = getDB(incoming.url[0]);
 
       const sse = new SSE(res);
-      const lastEventId = req.headers["Last-Event-ID"];
+      const lastEventId = req.headers["Last-Event-ID"] as string | undefined;
 
-      // Fetch anything newer since then and push
-      if (lastEventId) {
-        // Merge with getTransactionUmids as there is little difference
-        const events = (await db.allDocs(
-          prepareAllDocs({
-            startkey: `event:${lastEventId}`,
-            endkey: `event:`,
-            include_docs: true,
-          })
-        )) as any;
-        // Start at 1 to skip the event that was already sent
-        for (let i = 1; i < events.rows.length; i++) {
-          const id = events.rows[i]._id.replace("event:", "");
-          delete events.rows[i]._id;
-          delete events.rows[i]._rev;
-          sse.write(id, events.rows[i]);
+      // Ids the replay sent, so a live event that raced it is not sent twice.
+      // Matched exactly: event ids do not sort by time as strings (the
+      // counter is not zero-padded), so "anything before the last one sent"
+      // would drop real events.
+      let replayed: Set<string> | null = null;
+
+      const send = (id: string, event: unknown): boolean => {
+        if (replayed && replayed.has(id)) {
+          return true;
         }
-      }
+        return sse.write(id, event);
+      };
+
+      // Live events that arrive while a replay is still being read. Held
+      // back and sent after it, in order, so the client never sees an event
+      // before the ones it missed.
+      let pending: Array<[string, unknown]> | null = lastEventId ? [] : null;
 
       // Listener Process event (to turn off)
       const listener = (change: any) => {
-        if (change.id.startsWith("event:")) {
+        if (change.id.startsWith(EVENT_PREFIX)) {
+          const id = change.id.slice(EVENT_PREFIX.length);
           delete change.doc._id;
           delete change.doc._rev;
-          if (!sse.write(change.id.replace("event:", ""), change.doc)) {
+          if (pending) {
+            pending.push([id, change.doc]);
+          } else if (!send(id, change.doc)) {
             cancelChanges();
           }
         }
@@ -720,8 +723,29 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       // time (or never) after the client actually disconnects.
       sse.onDisconnect(cancelChanges);
 
-      // Listening for changes
+      // Listening for changes. Attached BEFORE the replay is read: attached
+      // after, an event committed during the read was in neither.
       let changes = db.changes().on("change", listener);
+
+      // Resuming: send everything after the client's last event, then
+      // whatever arrived meanwhile.
+      if (lastEventId) {
+        const missed = await eventsSince(db, lastEventId);
+        for (const [id, event] of missed) {
+          sse.write(id, event);
+        }
+        replayed = new Set(missed.map(([id]) => id));
+        const held = pending || [];
+        pending = null;
+        for (const [id, event] of held) {
+          if (!send(id, event)) {
+            cancelChanges();
+            break;
+          }
+        }
+        // Only a live event that raced the replay can be a duplicate.
+        replayed = null;
+      }
 
       return "handled";
     }

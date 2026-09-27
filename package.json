@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "setup": "npm install && npm run build",
-    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:core && npm run build:hybrid",
+    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:hybrid",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
     "build:logger": "cd ./packages/logger/ && npm run build",
@@ -23,7 +23,6 @@
     "build:network": "cd ./packages/network/ && npm run build",
     "build:ledger": "cd ./packages/activeledger/ && npm run build",
     "build:restore": "cd ./packages/restore/ && npm run build",
-    "build:core": "cd ./packages/core/ && npm run build",
     "test": "mocha --node-option import=tsx tests/*.ts --exit -- --no-warnings",
     "test:network": "tsx tests/network/run.ts",
     "test:network:serve": "tsx tests/network/serve.ts",
