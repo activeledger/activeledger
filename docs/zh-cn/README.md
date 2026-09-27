@@ -8,7 +8,6 @@ Activeledger 提供了一种基于分布式账本技术的区块链解决方案�
 
 * [配置](configuration.md) - Activeledger配置文件
 * [合约](./contracts/README.md) - 如何使用及创建智能合约
-* [核心](core.md) - API接口，更改数据，事件和提醒的设置
 * [加密](crypto.md) - 加密功能的集成包，支持多种加密方式
 * 定义 - 与合约开发有关的TypeScript定义文件
 * [账本](ledger.md) - Activeledger主程序
@@ -49,7 +48,7 @@ nvm i 10
 这个命令用来安装最新的10.X版本的node，在node安装完成之后用户就可以开始安装Activeledger的产品了。
 
 ```bash
-npm i -g @activeledger/activeledger @activeledger/activerestore @activeledger/activecore
+npm i -g @activeledger/activeledger @activeledger/activerestore
 ```
 
 以上命令安装了Activeledger的核心组件，在安装完成后用户可以使用以下命令来启动Activeledger：

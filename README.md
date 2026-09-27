@@ -26,7 +26,7 @@ Please see our documentation for detailed instructions. We currently have 2 lang
 
 ## Quickstart Guide
 
-Use NPM to install Activeledger. `@activeledger/activerestore` is recommended alongside it (heals a node that falls behind or comes up empty); `@activeledger/activecore`'s REST API is optional and off by default (`autostart.core: false`) — install it too only if you specifically want it, see the documentation above.
+Use NPM to install Activeledger. `@activeledger/activerestore` is recommended alongside it (heals a node that falls behind or comes up empty). ActiveCore (`@activeledger/activecore`) was removed in 5.0.0; contract events are served by the node's own storage at `/activeledgerevents/events`, reachable from the node's host only.
 
 ```bash
 npm i -g --allow-scripts=classic-level,msgpackr-extract @activeledger/activeledger @activeledger/activerestore
