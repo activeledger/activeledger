@@ -418,6 +418,27 @@ export class Process extends EventEmitter {
     ActiveTiming.mark(this.entry.$umid, "proto.start");
     ActiveLogger.debug(`New TX : ${this.entry.$umid}`);
 
+    // Reject path traversal in the transaction's $contract / $namespace before
+    // either is used to build a filesystem path (see setupDefaultLocation and
+    // setupLocation below). Legitimate values are identifiers, labels or an
+    // id@version - never a path - so a separator, "..", or NUL is always an
+    // attempt to escape the contract directories (e.g. running an uploaded
+    // contract through the privileged default path). A single "." is allowed
+    // because version strings contain them; ".." never legitimately appears.
+    const rejectTraversal = (value: unknown, field: string): void => {
+      if (typeof value !== "string") return;
+      if (
+        value.includes("/") ||
+        value.includes("\\") ||
+        value.includes("..") ||
+        value.includes("\0")
+      ) {
+        throw new Error(`Invalid ${field}`);
+      }
+    };
+    rejectTraversal(this.entry.$tx.$contract, "$contract");
+    rejectTraversal(this.entry.$tx.$namespace, "$namespace");
+
     // Compiled Contracts sit in another location
     const setupDefaultLocation = async () => {
       // Set isDefault flag to true
