@@ -1082,6 +1082,13 @@ export default class Contract extends Standard {
         "@" + (this.transactions.$i[stream].version as string).toLowerCase();
     }
 
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
+    }
+
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       // Does the Contract File exist?
@@ -1137,6 +1144,13 @@ export default class Contract extends Standard {
     if (this.transactions.$i[stream].version) {
       this.version =
         "@" + (this.transactions.$i[stream].version as string).toLowerCase();
+    }
+
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
     }
 
     // Does this identity have access to namespace (Maybe use ACL?)
@@ -1224,6 +1238,13 @@ export default class Contract extends Standard {
     // Get Link Name
     this.link = (this.transactions.$i[stream].link as string).toLowerCase();
 
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
+    }
+
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       // Does the Contract File exist?
@@ -1274,6 +1295,13 @@ export default class Contract extends Standard {
     // Get Link Name
     this.link = (this.transactions.$i[stream].link as string).toLowerCase();
 
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
+    }
+
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       // Does the Link file exist!
@@ -1323,6 +1351,28 @@ export default class Contract extends Standard {
   }
 
   /**
+   * Closed-network deploy control. When `security.deploy.allowlist` is
+   * configured (a non-empty array of identity stream ids) only those
+   * identities may add or update contracts; anyone else is refused. Absent or
+   * empty, deployment is unrestricted - the historical behaviour - so public
+   * networks are unaffected. Lets an operator run a network where only known
+   * identities put code on a node. Keyed on the stream id (getId), which is
+   * fixed at onboarding, not on any contract-writable state.
+   *
+   * @private
+   * @throws when a configured allowlist does not include the signer
+   */
+  private assertDeployerAllowed(): void {
+    const deploy = (ActiveOptions.get<any>("security", {}) || {}).deploy || {};
+    const allowlist = deploy.allowlist;
+    if (Array.isArray(allowlist) && allowlist.length > 0) {
+      if (allowlist.indexOf(this.identity.getId()) === -1) {
+        throw new Error("Deployer not permitted");
+      }
+    }
+  }
+
+  /**
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
@@ -1343,6 +1393,13 @@ export default class Contract extends Standard {
 
     // Get name as lowercase
     this.name = (this.transactions.$i[stream].name as string).toLowerCase();
+
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
+    }
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
@@ -1476,6 +1533,13 @@ export default class Contract extends Standard {
 
     // Get name as lowercase
     this.name = (this.transactions.$i[stream].name as string).toLowerCase();
+
+    // Closed-network deploy control (default off; see assertDeployerAllowed)
+    try {
+      this.assertDeployerAllowed();
+    } catch (e) {
+      return reject(e.message);
+    }
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {

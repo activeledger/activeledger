@@ -23,6 +23,7 @@
 
 import * as fs from "fs";
 import { Standard, Activity } from "@activeledger/activecontracts";
+import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
  * Default Onboarding (New Account) contract
@@ -87,6 +88,18 @@ export default class Namespace extends Standard {
       // Get namespace and set to lowercase
       this.namespace = (this.transactions.$i[stream]
         .namespace as string).toLowerCase();
+
+      // Closed-network deploy control (default off): when
+      // security.deploy.allowlist is set, only listed identities may claim a
+      // namespace. Keyed on the stream id, not on contract-writable state.
+      const deploy = (ActiveOptions.get<any>("security", {}) || {}).deploy || {};
+      if (
+        Array.isArray(deploy.allowlist) &&
+        deploy.allowlist.length > 0 &&
+        deploy.allowlist.indexOf(this.identity.getId()) === -1
+      ) {
+        return reject("Deployer not permitted");
+      }
 
       // Default already protected
       if (this.namespace == "default") return reject("Namespace Reserved");
