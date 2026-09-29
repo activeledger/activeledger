@@ -49,7 +49,7 @@
     "@activeledger/activeoptions": "5.0.1",
     "@activeledger/activequery": "5.0.1",
     "@activeledger/activetoolkits": "5.0.1",
-    "@types/node": "24.10.1",
+    "@types/node": "26.6.3",
     "typescript": "7.0.2"
   }
 }
