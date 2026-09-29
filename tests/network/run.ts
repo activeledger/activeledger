@@ -199,6 +199,8 @@ async function main(): Promise<boolean> {
 
     await runNegativeTests(report, nodes, returnerId);
 
+    await runNamespaceOwnershipTests(report, nodes);
+
     await runDeterministicStreamTests(report, nodes);
 
     await runMetaGrowthTest(report, nodes, identity, NAMESPACE, returnerId);
@@ -318,6 +320,92 @@ async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId
     } else {
       report.fail(`Expected a rejected result with "Stream contract locked", got: ${JSON.stringify(result.$summary)}`);
     }
+  }
+}
+
+/**
+ * Namespace ownership cannot be forged from a contract. The field
+ * default/contract reads to authorize a deploy - an identity's `namespace`
+ * state - must be settable only by the node's own default-namespace contracts.
+ * A contract running in the attacker's own namespace tries to write
+ * `namespace` onto its own identity to claim a namespace someone else owns;
+ * the engine must strip that write, so the attacker's identity keeps its real
+ * namespace and cannot deploy into the victim's. Exercises the fix end to end
+ * on a live network, not just the unit-level strip.
+ */
+async function runNamespaceOwnershipTests(report: Report, nodes: NetworkNode[]): Promise<void> {
+  report.phase("Namespace ownership cannot be forged from a contract");
+
+  // A victim owns a namespace.
+  const victim = await onboard(nodes[0].baseUrl);
+  const victimNs = "victim-owned-ns";
+  await registerNamespace(nodes[0].baseUrl, victim, victimNs);
+
+  // The attacker owns their own namespace and deploys the poison contract there.
+  const attacker = await onboard(nodes[1].baseUrl);
+  const attackerNs = "attacker-owned-ns";
+  await registerNamespace(nodes[1].baseUrl, attacker, attackerNs);
+  const poisonId = await deployContract(
+    nodes[1].baseUrl, attacker, attackerNs, "poison",
+    path.join(__dirname, "contracts", "namespace-poison-contract.ts")
+  );
+
+  // The attack: run the poison contract, trying to write namespace=victimNs
+  // onto the attacker's own identity.
+  const { result: poisonRun, ms: poisonMs } = await timed(() =>
+    runContract(nodes[1].baseUrl, attacker, attackerNs, poisonId, { namespace: victimNs })
+  );
+  const poisonCommitted =
+    poisonRun.$summary?.commit >= 1 && !(poisonRun.$summary?.errors || []).length;
+
+  // 1) The contract ran (poisoned marker written) but the namespace write was
+  //    stripped - the attacker's identity still holds its real namespace.
+  const identityDoc: any = await storageGet(nodes[1].storageUrl, attacker.streamId);
+  const strippedOk =
+    poisonCommitted &&
+    identityDoc?.poisoned === true &&
+    identityDoc?.namespace === attackerNs;
+  report.record("namespace-write-stripped", strippedOk, poisonMs);
+  if (strippedOk) {
+    report.ok(`Contract's namespace write stripped; identity still owns "${attackerNs}" (${poisonMs}ms)`);
+  } else {
+    report.fail(`Identity state after poison attempt: ${JSON.stringify(identityDoc)}`);
+  }
+
+  // 2) The attacker therefore cannot deploy into the victim's namespace.
+  let crossDeployRejected = false;
+  try {
+    await deployContract(
+      nodes[1].baseUrl, attacker, victimNs, "evil",
+      path.join(__dirname, "contracts", "returner-contract.ts")
+    );
+  } catch {
+    crossDeployRejected = true;
+  }
+  report.record("cross-namespace-deploy-rejected", crossDeployRejected, 0);
+  if (crossDeployRejected) {
+    report.ok(`Attacker cannot deploy into the victim's namespace`);
+  } else {
+    report.fail(`Attacker deployed into "${victimNs}" - namespace ownership was forged`);
+  }
+
+  // 3) Positive control: the attacker CAN still deploy into its own namespace,
+  //    so the fix has not broken legitimate deployment.
+  let ownDeployOk = false;
+  try {
+    await deployContract(
+      nodes[1].baseUrl, attacker, attackerNs, "legit",
+      path.join(__dirname, "contracts", "returner-contract.ts")
+    );
+    ownDeployOk = true;
+  } catch {
+    ownDeployOk = false;
+  }
+  report.record("own-namespace-deploy-allowed", ownDeployOk, 0);
+  if (ownDeployOk) {
+    report.ok(`Legitimate deploy into the attacker's own namespace still works`);
+  } else {
+    report.fail(`Legitimate deploy into "${attackerNs}" was rejected`);
   }
 }
 
