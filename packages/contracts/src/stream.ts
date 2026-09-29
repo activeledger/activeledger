@@ -139,6 +139,12 @@ export class Stream {
     private eventEmitter: EventEmitter,
     private selfHost: string
   ) {
+    // A contract running in the `default` namespace is the node's own trusted
+    // code (mirrors vm.ts isPrivileged and securityScan's privileged skip).
+    // Only such a contract may write engine-managed authority state like an
+    // identity's `namespace` - see Activity.setState.
+    const privileged = this.transactions?.$namespace === "default";
+
     // Input Steam Activities
     let i: number = this.inputs.length;
     while (i--) {
@@ -148,7 +154,9 @@ export class Stream {
         (this.inputs[i].state._id as string) in this.sigs,
         this.eventEmitter,
         this.inputs[i].meta,
-        this.inputs[i].state
+        this.inputs[i].state,
+        umid,
+        privileged
       );
 
       // Set Secret Key
@@ -164,7 +172,9 @@ export class Stream {
         false,
         this.eventEmitter,
         this.outputs[i].meta,
-        this.outputs[i].state
+        this.outputs[i].state,
+        umid,
+        privileged
       );
 
       // Set Secret Key
@@ -253,7 +263,10 @@ export class Stream {
         undefined,
         undefined,
         // ...but the transaction is always the transaction
-        this.umid
+        this.umid,
+        // A new stream created by a default-namespace contract is privileged,
+        // so its first setState may set engine-managed authority state.
+        this.transactions?.$namespace === "default"
       );
 
       // Set Secret Key
@@ -594,6 +607,17 @@ export class Activity {
   private safeMode: boolean = false;
 
   /**
+   * True when this Activity was created by a privileged contract - one running
+   * in the `default` namespace, which is the node's own trusted code. Only such
+   * a contract may write engine-managed authority state (see setState's handling
+   * of `namespace`).
+   *
+   * @private
+   * @type {boolean}
+   */
+  private privileged: boolean = false;
+
+  /**
    * Holds volatile data if it exists
    *
    * @private
@@ -624,9 +648,13 @@ export class Activity {
     // was given, and everything that records "which transaction did this"
     // needs the real one. Defaults to the seed so the two call sites that
     // pass a real umid are completely unaffected.
-    txUmid?: string
+    txUmid?: string,
+    // True only when the creating contract runs in the `default` namespace.
+    // Threaded from the base Stream, which knows it from the transaction.
+    privileged: boolean = false
   ) {
     this.txUmid = txUmid || umid;
+    this.privileged = privileged;
 
     // Only if name is defined (Quick solution)
     if (umid && name) {
@@ -1088,6 +1116,17 @@ export class Activity {
       // Remove _id & _rev
       delete fState._id;
       delete fState._rev;
+
+      // `namespace` on an identity stream is engine-managed authority state:
+      // default/contract reads it to decide who may deploy into a namespace.
+      // Only a privileged (default-namespace) contract - the node's own
+      // namespace claim - may set it. Strip it from any other contract's
+      // write so an untrusted contract cannot grant itself, overwrite, or
+      // lock anyone out of namespace ownership by writing to an identity it
+      // references. Deterministic, so every node strips identically.
+      if (!this.privileged) {
+        delete (fState as { namespace?: unknown }).namespace;
+      }
 
       // Merge Objects
       this.state = Object.assign(

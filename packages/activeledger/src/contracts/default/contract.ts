@@ -1373,6 +1373,32 @@ export default class Contract extends Standard {
   }
 
   /**
+   * Contract-ownership enforcement for updates (opt-in). When
+   * `security.deploy.enforceContractOwnership` is true, replacing a contract
+   * requires the signer to be the identity that deployed it - the authority
+   * recorded on the contract stream at add (setAuthority in commitAdd) - not
+   * merely an owner of the namespace. That authority is replicated ledger
+   * state (the output stream is prefetched before vote), so the check is
+   * consensus-safe. Default off, so existing networks are unchanged. Note this
+   * does not depend on the mutable identity `namespace` state behind the
+   * separate namespace-ownership concern; it authorises against the contract
+   * stream's own authority.
+   *
+   * @private
+   * @throws when enforcement is on and the signer is not the contract's deployer
+   */
+  private assertContractOwner(): void {
+    const deploy = (ActiveOptions.get<any>("security", {}) || {}).deploy || {};
+    if (!deploy.enforceContractOwnership) return;
+    const output = Object.keys(this.transactions.$o || {})[0];
+    const target = output ? this.getActivityStreams(output) : undefined;
+    const owner = target ? target.getAuthority() : undefined;
+    if (!owner || owner !== this.identity.getId()) {
+      throw new Error("Not contract owner");
+    }
+  }
+
+  /**
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
@@ -1544,6 +1570,8 @@ export default class Contract extends Standard {
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
       try {
+        // Only the contract's deployer may replace it, when enforced (opt-in)
+        this.assertContractOwner();
         // Security Scan
         this.securityScan(
           Buffer.from(
