@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activetoolkits",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -37,7 +37,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "5.0.0",
+    "@activeledger/activedefinitions": "5.0.1",
     "@types/node": "24.10.1",
     "typescript": "7.0.2"
   },
@@ -49,6 +49,6 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeutilities": "5.0.0"
+    "@activeledger/activeutilities": "5.0.1"
   }
 }

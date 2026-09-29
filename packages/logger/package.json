@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activelogger",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "engines": {
     "node": ">=24.0.0"
   },
