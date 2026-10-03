@@ -113,6 +113,21 @@ Constraints:
 
 - `isSupernode()` is added to the contract base classes. This is the intended way for contracts to handle supernode-only work: they wrap external calls (keygen, signing, chain RPC, health checks) and volatile writes in `if (this.isSupernode())`. Calling it marks the execution supernode-dependent, so a hybrid adopts the attested outputs instead of reporting a divergence (section 2).
 - On a hybrid it returns `false`. `setVolatile` still writes locally there.
+- `adoptFromSupernode(description)` on an activity stream is the **adopt safety net**. Contract developers are advised to call it in the `else` branch of every `isSupernode()` check, describing exactly what the supernode branch writes:
+
+  ```ts
+  if (this.isSupernode()) {
+    const sig = await signWithCvm(tx);            // external call, supernodes only
+    wallet.setState({ ...state, signature: sig, status: "signed" });
+  } else {
+    wallet.adoptFromSupernode({ signature: "string", status: "string" });
+  }
+  ```
+
+  - The description maps property names to `"string" | "number" | "boolean" | "object" | "array" | "any"`. A nested object describes nested properties.
+  - On a supernode the call does nothing. On a hybrid it records the declaration for adopt mode (section 2).
+  - When the supernode branch creates a stream, the `else` branch creates the same stream with placeholder values and declares its properties. Adopt mode rejects documents that have no local counterpart.
+  - The same pattern covers inter-node comms: declare whatever properties the inter-node comms round writes.
 - `shareVolatile()` sets `volatileShared: true` in the stream's `:stream` meta during commit. Meta is part of consensus, so every node agrees on whether that stream's volatile may be served. Without it, volatile never leaves the node, whatever the supernode config lists. Volatile is per-node by design; contracts that keep secrets in it, such as key shares, simply never call this.
 - Contracts always see the transaction's consensus time: `cDate` is `entry.$datetime`, the entry node's stamp (`process.ts` passes `date: this.entry.$datetime` to the VM). A hybrid never uses its own clock for contract execution.
 
@@ -192,11 +207,17 @@ The feed starts only after the node is ready.
 3. **Committed.**
    - Execute locally, without writing, then compare the outputs with the signed `revsOut` and the `:umid` doc with `umidDocHash`.
    - **Match:** save the outputs, and save the received `:umid` doc byte-for-byte. Local vote: **yes**.
-   - **Mismatch, and the execution was supernode-dependent:** this is expected, because the contract behaves differently off a supernode. Switch to **adopt mode**:
+   - **Mismatch, and the execution was supernode-dependent:** this is expected, because the contract behaves differently off a supernode. Switch to **adopt mode**, which is a narrow, declared SPI rewrite:
      - gather `consensus.reached` matching commit attestations (feed item plus `GET /h/attest/:umid`);
      - fetch each output by `{id, rev}` from hybrid peers first, then supernodes;
-     - check each fetched document's sha256 against `revsOut` and save it.
-     - No divergence record. Local vote: **verified yes**.
+     - check each fetched document's sha256 against `revsOut`;
+     - **safety-net check**, for documents with `adoptFromSupernode` declarations:
+       - remove the declared properties from both the signed document and the local result; what remains must be identical;
+       - each declared property in the signed document must have its declared type;
+       - a signed document with no local counterpart is rejected;
+       - if any of these fail, it is a real divergence: run SPI and write a divergence record;
+     - **undeclared**: a supernode-dependent execution with no declaration adopts the whole signed document and emits an `adopt.undeclared` warning event naming the contract and entry, so missing safety nets are visible;
+     - save the documents. No divergence record. Local vote: **verified yes**.
    - **Mismatch, not supernode-dependent:** run SPI (section 3), adopt the attested state and write a divergence record. Local vote: **yes** once repaired.
 4. **Failed.**
    - Do a dry run with no writes.
@@ -332,6 +353,7 @@ Each extraction is a move-and-import, and the existing tests must pass unchanged
 
 - vote and commit-attestation signing and verification, including `revsOut` sha256 and `umidDocHash`;
 - the sandbox blocks each egress module and marks the execution supernode-dependent;
+- safety-net comparison: declared properties removed, the rest must be equal, types checked, nested descriptions, no local counterpart;
 - holding buffer and ordering;
 - pruner window;
 - P2P handshake: success, wrong key, replay;
@@ -358,7 +380,10 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a user transaction that reaches `isSupernode()` gets a conditional yes and is forwarded;
 - a contract that uses inter-node comms in its vote is adopted on hybrids, with no divergence record;
 - volatile is not served for a stream without `volatileShared`, even when the stream is listed as required-volatile;
-- adopted output whose sha256 does not match `revsOut` is rejected.
+- adopted output whose sha256 does not match `revsOut` is rejected;
+- with `adoptFromSupernode` declared, a signed output that also differs in an undeclared property is treated as a divergence, not adopted;
+- a declared property of the wrong type is treated as a divergence;
+- a supernode-dependent contract without a declaration is adopted wholesale and emits `adopt.undeclared`.
 
 ### Docs
 
@@ -366,5 +391,5 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - Add `docs/en-gb/hybrid.md`, covering:
   - the operator guide;
   - the supernode `hybrid` config;
-  - for contract authors: `isSupernode()`, `shareVolatile()`, and that volatile is per-node by design;
+  - for contract authors: `isSupernode()`, the advised `adoptFromSupernode` safety net with worked examples, `shareVolatile()`, and that volatile is per-node by design;
   - that with open admission, hybrids replicate all non-volatile state.
