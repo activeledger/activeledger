@@ -104,7 +104,12 @@ Constraints:
   - checks that `key` belongs to a registered, non-retired hybrid;
   - checks that `sig` is valid;
   - drops `$relay` silently if either check fails. The transaction itself is unaffected.
-- `$relay` is stored in the compact `:umid` entry next to `$origin`, so it is permanent on supernodes. It is included in feed items.
+- `$relay` is saved inside the `<umid>:umid` document written to LevelDB. `compactTxEntry()` (`protocol/src/protocol/streamUpdater.ts`) adds `$relay: this.entry.$relay` next to `$origin` and `$remoteAddr`, and leaves it out when absent. It is therefore part of the transaction's permanent record on every node.
+- Every supernode must write exactly the same `:umid` doc, because umid recovery (`backfillUmid`, restore) takes the majority by content hash. That is why `$nodes` is already kept out of the doc. To keep `$relay` identical everywhere:
+  - only the entry supernode verifies `$relay`; it either drops it or keeps it, before the transaction is broadcast or forwarded on the ring;
+  - from then on `$relay` travels inside the entry, like `$origin`, and no other node adds, changes or removes it.
+- Hybrids store the same `:umid` doc they receive in the feed, unchanged, so it hashes the same on a hybrid as on a supernode.
+- Feed items carry it as part of `tx`.
 
 ### Fixes and removals
 
@@ -310,7 +315,7 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a forged item causes that peer to be dropped;
 - allowlist admission rejects an unknown key;
 - a user transaction submitted to a hybrid that votes no locally is rejected there and never reaches a supernode;
-- a user transaction submitted to a hybrid that votes yes commits, with the same `$umid` as a direct submission and `$relay` recorded in the supernode `:umid` doc;
+- a user transaction submitted to a hybrid that votes yes commits, with the same `$umid` as a direct submission. Its `$relay` is in the `:umid` doc on every supernode and every hybrid, and the doc hashes the same on all of them, so a `backfillUmid` majority still forms;
 - a forged or unregistered `$relay` is dropped while the transaction still commits;
 - a supernode-failed item is not relayed between hybrids.
 
