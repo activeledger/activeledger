@@ -151,7 +151,10 @@ The hybrid is one process: no worker forks and no separate storage process. Modu
 - `store`: embedded LevelMe with the same document shapes and the same `_rev` scheme, so revisions match the supernodes'.
 - `bootstrap`.
 - `feed`.
-- `executor`: `ActiveProtocol.Process` in hybrid mode — a single local node, no votes, no broadcast. Contracts run in a sandbox where `http`, `https`, `net`, `tls`, `dgram` and `fetch` throw `SupernodeOnly`. Contracts load modules with plain `require`, so the block has to be enforced by the sandbox; it cannot rely on each contract. The VM marks an execution **supernode-dependent** when the contract calls `isSupernode()` or when a blocked call throws.
+- `executor`: `ActiveProtocol.Process` in hybrid mode — a single local node, no votes, no broadcast. Contracts run in a sandbox where `http`, `https`, `net`, `tls`, `dgram` and `fetch` throw `SupernodeOnly`. Contracts load modules with plain `require`, so the block has to be enforced by the sandbox; it cannot rely on each contract. The VM marks an execution **supernode-dependent** when any of these happen:
+  - the contract calls `isSupernode()`;
+  - a blocked call throws;
+  - the contract uses inter-node comms: `getInterNodeComms()`, `setThisInterNodeComms()` or `clearAllInterNodeComms()` (`contracts/src/stream.ts`). Inter-node comms data comes from the supernodes' `$nodes` exchange during voting, which a hybrid never sees.
 - `lookup`.
 - `mesh`.
 - `api`.
@@ -353,6 +356,7 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a contract that wraps an external call in `isSupernode()` commits on supernodes and is adopted on hybrids with verified outputs: no divergence record, and the service is never called from a hybrid;
 - a contract that calls out without the wrap is blocked by the hybrid sandbox and adopted the same way;
 - a user transaction that reaches `isSupernode()` gets a conditional yes and is forwarded;
+- a contract that uses inter-node comms in its vote is adopted on hybrids, with no divergence record;
 - volatile is not served for a stream without `volatileShared`, even when the stream is listed as required-volatile;
 - adopted output whose sha256 does not match `revsOut` is rejected.
 
