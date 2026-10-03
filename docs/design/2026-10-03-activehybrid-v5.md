@@ -37,6 +37,11 @@ Constraints:
 | User transactions | Hybrids accept transactions from users. A hybrid casts a local yes vote before forwarding a transaction, and is recorded as its `$relay`. |
 | Relaying rule | A hybrid relays nothing without its own yes vote. That covers forwarding user transactions to supernodes and gossiping committed items to other hybrids. |
 | Code reuse | No duplicated logic. Code shared between supernode, restore, hybrid and nano-gateway moves into packages (see "Packages"). |
+| External calls | On a hybrid, contracts cannot make outbound network calls. A contract that tries switches the hybrid to **adopt mode**: it saves the supernodes' signed outputs instead of computing them. |
+| Verified yes | A yes vote can be **verified** (an adopted item whose outputs match the signed `revsOut`) or **conditional** (a user transaction that passed every check before its first external call). Both count as yes for relaying. |
+| `:umid` doc | Byte-identical on every supernode and hybrid. Its hash is signed in the commit attestation, so the stored transaction record, `$relay` included, is itself agreed by consensus. |
+| Volatile | Per-node by design. Never served over `/h/*` unless the owning contract marks that stream's volatile shareable. |
+| History | Supernodes keep full history. Only hybrids use a rolling window, and `/h/umid` always serves old umids. |
 
 ## Sub-projects and build order
 
@@ -74,6 +79,17 @@ Constraints:
 - When it votes, each supernode signs `H(umid | vote | $revs)` with its node key.
 - The signature goes in `$nodes[ref].sig`. That entry already travels in both broadcast and ring mode, so this adds no new network round.
 - A hybrid verifies the signatures against the node keys in the setup stream. It derives the outcome from the vote tally and `consensus.reached`.
+- Vote signatures are all a `failed` item has.
+
+### Commit attestations (build 40300)
+
+- After a supernode commits, it signs:
+  `H(umid | outcome | $revs | revsOut | umidDocHash)`.
+  - `revsOut` is `{streamId: {rev, sha256}}` for every output document: state, `:stream` meta, and `<contractId>:data`. The sha256 is taken over the stored document. It is needed because LevelMe `_rev` is only md5 and a fetched document must be verifiable against the attestation.
+  - `umidDocHash` is the sha256 of the `<umid>:umid` doc that was written to LevelDB.
+- Each supernode keeps its own attestation in the events DB, beside the `umid:` index, and serves it from `GET /h/attest/:umid`.
+- A `committed` feed item carries the serving supernode's attestation. When a hybrid needs a quorum (adopt mode, or a mismatch), it fetches more from other supernodes until it holds `consensus.reached` matching attestations.
+- Attestations cost no extra consensus round: they are produced after commit and fetched only on demand.
 
 ### `/h/*` endpoints, all authenticated
 
@@ -81,19 +97,24 @@ Constraints:
 - Endpoints:
   - `GET /h/bootstrap`: the setup stream, the required list, the contract list and the current cursor.
   - `GET /h/feed?from=<cursor>`: an SSE stream of feed items:
-    `{umid, outcome, tx, $revs, revsOut, streams:{new,updated}, nodes:{ref:{vote,sig}}}`.
+    `{umid, outcome, umidDoc, $revs, revsOut, streams:{new,updated}, nodes:{ref:{vote,sig}}, attestation}`.
+    - `umidDoc` is the exact `:umid` doc as stored, containing `tx`, `$relay` and events. A failed item carries `tx` instead, because nothing was stored for it.
     - The cursor is the events-DB key, `umid:<ms>,<umid>`.
     - Failed transactions get a new `fail:<ms>,<umid>` index.
-    - `revsOut` is an unsigned hint, used only to trigger checks.
-  - `POST /h/streams`: state and meta for the requested streams, plus volatile for required-volatile streams only. Accepts `{id, rev}` pairs.
-  - `GET /h/umid/:umid`.
+  - `POST /h/streams`: state and meta for the requested streams. Accepts `{id, rev}` pairs. Volatile is included only when both of these hold:
+    - the stream is listed as required-volatile;
+    - its `:stream` meta has `volatileShared: true`.
+  - `GET /h/umid/:umid`: always served. Supernodes keep full history.
+  - `GET /h/attest/:umid`: this supernode's commit attestation.
   - `GET /h/peers`: the registered hybrids.
 - The same message set is also served over the hybrid P2P channel (section 3).
 
 ### Contract API
 
-- `isSupernode()` is added to the contract base classes, so contracts can wrap supernode-only operations such as volatile writes.
+- `isSupernode()` is added to the contract base classes. This is the intended way for contracts to handle supernode-only work: they wrap external calls (keygen, signing, chain RPC, health checks) and volatile writes in `if (this.isSupernode())`. Calling it marks the execution supernode-dependent, so a hybrid adopts the attested outputs instead of reporting a divergence (section 2).
 - On a hybrid it returns `false`. `setVolatile` still writes locally there.
+- `shareVolatile()` sets `volatileShared: true` in the stream's `:stream` meta during commit. Meta is part of consensus, so every node agrees on whether that stream's volatile may be served. Without it, volatile never leaves the node, whatever the supernode config lists. Volatile is per-node by design; contracts that keep secrets in it, such as key shares, simply never call this.
+- Contracts always see the transaction's consensus time: `cDate` is `entry.$datetime`, the entry node's stamp (`process.ts` passes `date: this.entry.$datetime` to the VM). A hybrid never uses its own clock for contract execution.
 
 ### Relayed transactions (`$relay`)
 
@@ -108,8 +129,8 @@ Constraints:
 - Every supernode must write exactly the same `:umid` doc, because umid recovery (`backfillUmid`, restore) takes the majority by content hash. That is why `$nodes` is already kept out of the doc. To keep `$relay` identical everywhere:
   - only the entry supernode verifies `$relay`; it either drops it or keeps it, before the transaction is broadcast or forwarded on the ring;
   - from then on `$relay` travels inside the entry, like `$origin`, and no other node adds, changes or removes it.
-- Hybrids store the same `:umid` doc they receive in the feed, unchanged, so it hashes the same on a hybrid as on a supernode.
-- Feed items carry it as part of `tx`.
+- Hybrids store the `:umid` doc they receive in the feed byte-for-byte, after checking its sha256 against `umidDocHash` in the commit attestation. A hybrid never builds its own `:umid` doc; when it executes locally, it compares its result to the received doc instead. The transaction record, `$relay` included, is therefore identical across every supernode and hybrid, and consensus-verified.
+- A hybrid keeps this doc in its rolling window like any other `:umid`. Docs whose `$relay` is the hybrid itself are kept permanently. A pruned doc can be fetched again from `/h/umid` and checked against the same attestation.
 
 ### Fixes and removals
 
@@ -130,7 +151,7 @@ The hybrid is one process: no worker forks and no separate storage process. Modu
 - `store`: embedded LevelMe with the same document shapes and the same `_rev` scheme, so revisions match the supernodes'.
 - `bootstrap`.
 - `feed`.
-- `executor`: `ActiveProtocol.Process` in hybrid mode — a single local node, no votes, no broadcast.
+- `executor`: `ActiveProtocol.Process` in hybrid mode — a single local node, no votes, no broadcast. Contracts run in a sandbox where `http`, `https`, `net`, `tls`, `dgram` and `fetch` throw `SupernodeOnly`. Contracts load modules with plain `require`, so the block has to be enforced by the sandbox; it cannot rely on each contract. The VM marks an execution **supernode-dependent** when the contract calls `isSupernode()` or when a blocked call throws.
 - `lookup`.
 - `mesh`.
 - `api`.
@@ -166,11 +187,17 @@ The feed starts only after the node is ready.
 2. **Prepare inputs.** Every input and output stream must be at exactly the item's `$revs`.
    - If a stream is unknown or behind, `lookup` fetches it at that revision. This is how the node lazily learns streams it doesn't know.
 3. **Committed.**
-   - Execute and commit locally, then compare the result with `revsOut`.
-   - If they don't match, run SPI (section 3), adopt the agreed state and write a divergence record.
+   - Execute locally, without writing, then compare the outputs with the signed `revsOut` and the `:umid` doc with `umidDocHash`.
+   - **Match:** save the outputs, and save the received `:umid` doc byte-for-byte. Local vote: **yes**.
+   - **Mismatch, and the execution was supernode-dependent:** this is expected, because the contract behaves differently off a supernode. Switch to **adopt mode**:
+     - gather `consensus.reached` matching commit attestations (feed item plus `GET /h/attest/:umid`);
+     - fetch each output by `{id, rev}` from hybrid peers first, then supernodes;
+     - check each fetched document's sha256 against `revsOut` and save it.
+     - No divergence record. Local vote: **verified yes**.
+   - **Mismatch, not supernode-dependent:** run SPI (section 3), adopt the attested state and write a divergence record. Local vote: **yes** once repaired.
 4. **Failed.**
    - Do a dry run with no writes.
-   - If the dry run passes locally, write a divergence record.
+   - If it passes locally and was not supernode-dependent, write a divergence record. A supernode-dependent failure cannot be judged by a hybrid, so it writes nothing.
 5. **Ordering.**
    - Items that share streams apply in `$revs`-chain order. An out-of-order item waits in a holding buffer; after a timeout, `lookup` fetches what it is missing.
    - Items that share no streams run concurrently, up to a small cap.
@@ -179,7 +206,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 
 ### Storage window
 
-- Kept: current state, meta and volatile for every known stream, plus the `:umid` doc that each stream's `meta.umid` points to.
+- Kept: current state and meta for every known stream, its local volatile (or the shared volatile, where `volatileShared`), and the `:umid` doc that each stream's `meta.umid` points to.
 - Kept permanently: `:umid` docs whose `$relay` is this hybrid. These are its own users' transactions.
 - Kept only inside the window: other `:umid` docs and events.
 - Older history is fetched on demand through `/h/umid`.
@@ -199,9 +226,9 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 - `POST /` accepts a user transaction and handles it as follows:
   1. Compute the `$umid` and run basic checks: entry shape, signatures, `$expire`.
   2. Refresh the input and output streams to their current tips with `lookup`, so a stale local copy cannot cause a false "no".
-  3. Run a **local dry-run vote** with no writes.
+  3. Run a **local dry-run vote** with no writes. If the contract reaches an `isSupernode()` check, or a blocked external call, and everything before that point passed, the vote is a **conditional yes**. Examples of what has passed by then: signatures, permissions, inputs, and the contract's own checks.
   4. If the vote is no, return the contract's error to the user. Nothing is forwarded.
-  5. If the vote is yes, attach `$relay` and forward the transaction to a healthy upstream supernode. If no supernode is reachable, forward it to a mesh peer that has one; that peer sends it on as-is and keeps the original `$relay`.
+  5. If the vote is yes or conditional yes, attach `$relay` and forward the transaction to a healthy upstream supernode. If no supernode is reachable, forward it to a mesh peer that has one; that peer sends it on as-is and keeps the original `$relay`.
   6. Return the supernode's response to the user unchanged.
 - The committed transaction comes back through the feed like any other item.
 
@@ -227,7 +254,11 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 - Every hybrid serves `/h/feed`. An item goes on it only when both of these hold:
   - its supernode signatures verify;
   - this hybrid's local vote on the item was yes.
-- For `committed` items, a local yes means the item executed and committed locally, and its revisions match `revsOut` or were repaired by SPI.
+- For `committed` items, a local yes is one of:
+  - executed locally and matched the signed `revsOut`;
+  - adopted with verified outputs (verified yes);
+  - repaired by SPI.
+- A relayed item carries every commit attestation the relayer gathered, so a peer can adopt without going back to supernodes.
 - `failed` items are never relayed between hybrids in v1. A local yes on a supernode-failed item is a divergence, and divergences stay local in v1. As a consequence, hybrids that only consume from peers do not see failed items and cannot detect that kind of divergence; only hybrids with a supernode upstream can. Relaying them is part of the later evidence phase.
 - The supernode signatures stay on every item.
 - A hybrid consumes its supernode feeds and its peer feeds at the same time.
@@ -254,7 +285,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 ### SPI across hybrids
 
 1. Ask up to 5 peers for `{id, rev}`.
-2. Accept if a majority agrees, and the answer also matches `revsOut` when that hint is present.
+2. Accept if a majority agrees and the answer matches the signed `revsOut` (rev and sha256). A document matching a quorum-signed `revsOut` can be accepted from a single source.
 3. Otherwise escalate to the supernodes and take the majority by revision, as `restore` does.
 4. Write a divergence record in every case.
 
@@ -296,7 +327,8 @@ Each extraction is a move-and-import, and the existing tests must pass unchanged
 
 ### Unit tests
 
-- vote signing and verification;
+- vote and commit-attestation signing and verification, including `revsOut` sha256 and `umidDocHash`;
+- the sandbox blocks each egress module and marks the execution supernode-dependent;
 - holding buffer and ordering;
 - pruner window;
 - P2P handshake: success, wrong key, replay;
@@ -317,9 +349,18 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a user transaction submitted to a hybrid that votes no locally is rejected there and never reaches a supernode;
 - a user transaction submitted to a hybrid that votes yes commits, with the same `$umid` as a direct submission. Its `$relay` is in the `:umid` doc on every supernode and every hybrid, and the doc hashes the same on all of them, so a `backfillUmid` majority still forms;
 - a forged or unregistered `$relay` is dropped while the transaction still commits;
-- a supernode-failed item is not relayed between hybrids.
+- a supernode-failed item is not relayed between hybrids;
+- a contract that wraps an external call in `isSupernode()` commits on supernodes and is adopted on hybrids with verified outputs: no divergence record, and the service is never called from a hybrid;
+- a contract that calls out without the wrap is blocked by the hybrid sandbox and adopted the same way;
+- a user transaction that reaches `isSupernode()` gets a conditional yes and is forwarded;
+- volatile is not served for a stream without `volatileShared`, even when the stream is listed as required-volatile;
+- adopted output whose sha256 does not match `revsOut` is rejected.
 
 ### Docs
 
 - Rewrite `packages/hybrid/README.md`.
-- Add `docs/en-gb/hybrid.md`, covering the operator guide and the supernode `hybrid` config.
+- Add `docs/en-gb/hybrid.md`, covering:
+  - the operator guide;
+  - the supernode `hybrid` config;
+  - for contract authors: `isSupernode()`, `shareVolatile()`, and that volatile is per-node by design;
+  - that with open admission, hybrids replicate all non-volatile state.
