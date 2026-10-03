@@ -125,6 +125,12 @@ Constraints:
   ```
 
   - The description maps property names to `"string" | "number" | "boolean" | "object" | "array" | "any"`. A nested object describes nested properties.
+  - **Optional:** a `?` suffix (`"string?"`, `"object?"`) means the supernode branch may set the property, leave it absent, or delete it. Example: Broadcast writes `broadcastedAt` only when the chain accepts the transaction.
+  - **All-or-nothing:** `adoptFromSupernode(shape, { atomic: true })` requires that the declared properties differing from the local result are either none or all of them. Example: an inter-node comms redistribute that writes every field or commits nothing.
+  - **Candidate streams:** when supernode-only work decides *which* streams change, use the contract-level `this.adoptStreamsFromSupernode([ids], shape, opts?)`.
+    - Each listed stream may come back unchanged, or changed only within `shape`.
+    - The ids must be among the transaction's `$i`/`$o`, so the declaration can never widen what can be written.
+    - Example: Deposit, where a node-local "already deposited" check decides which balances update.
   - On a supernode the call does nothing. On a hybrid it records the declaration for adopt mode (section 2).
   - When the supernode branch creates a stream, the `else` branch creates the same stream with placeholder values and declares its properties. Adopt mode rejects documents that have no local counterpart.
   - The same pattern covers inter-node comms: declare whatever properties the inter-node comms round writes.
@@ -213,7 +219,9 @@ The feed starts only after the node is ready.
      - check each fetched document's sha256 against `revsOut`;
      - **safety-net check**, for documents with `adoptFromSupernode` declarations:
        - remove the declared properties from both the signed document and the local result; what remains must be identical;
-       - each declared property in the signed document must have its declared type;
+       - each declared property in the signed document must have its declared type; an optional (`?`) property may also be absent;
+       - `atomic`: the set of declared properties that differ from the local result must be empty or complete;
+       - `adoptStreamsFromSupernode`: every changed document must be a listed candidate and differ only within the shape; an unchanged candidate is valid;
        - a signed document with no local counterpart is rejected;
        - if any of these fail, it is a real divergence: run SPI and write a divergence record;
      - **undeclared**: a supernode-dependent execution with no declaration adopts the whole signed document and emits an `adopt.undeclared` warning event naming the contract and entry, so missing safety nets are visible;
@@ -323,6 +331,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 
 - Move supernode↔supernode P2P onto the same handshake.
 - Authenticate `/a/stream`.
+- A first-class node-local index API, so hybrids can rebuild indexes such as Varnir's `activeledger_wallets` and `activeledger_deposits` from adopted streams. Contracts that read node-local indexes in their vote always take the adopt path on hybrids until then.
 
 ## Packages (no duplicated code)
 
@@ -383,7 +392,10 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - adopted output whose sha256 does not match `revsOut` is rejected;
 - with `adoptFromSupernode` declared, a signed output that also differs in an undeclared property is treated as a divergence, not adopted;
 - a declared property of the wrong type is treated as a divergence;
-- a supernode-dependent contract without a declaration is adopted wholesale and emits `adopt.undeclared`.
+- a supernode-dependent contract without a declaration is adopted wholesale and emits `adopt.undeclared`;
+- optional properties: present, absent and deleted are all accepted; a wrong type is rejected;
+- `atomic`: a partial change is rejected; all-changed or none-changed is accepted;
+- `adoptStreamsFromSupernode`: a change to a non-listed stream is rejected; listed streams changed or unchanged are accepted.
 
 ### Docs
 
