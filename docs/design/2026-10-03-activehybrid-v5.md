@@ -229,7 +229,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 - `POST /` accepts a user transaction and handles it as follows:
   1. Compute the `$umid` and run basic checks: entry shape, signatures, `$expire`.
   2. Refresh the input and output streams to their current tips with `lookup`, so a stale local copy cannot cause a false "no".
-  3. Run a **local dry-run vote** with no writes. If the contract reaches an `isSupernode()` check, or a blocked external call, and everything before that point passed, the vote is a **conditional yes**. Examples of what has passed by then: signatures, permissions, inputs, and the contract's own checks.
+  3. Run a **local dry-run vote** with no writes. If the execution becomes supernode-dependent (an `isSupernode()` check, a blocked external call, or inter-node comms) and everything before that point passed, the vote is a **conditional yes**. Examples of what has passed by then: signatures, permissions, inputs, and the contract's own checks.
   4. If the vote is no, return the contract's error to the user. Nothing is forwarded.
   5. If the vote is yes or conditional yes, attach `$relay` and forward the transaction to a healthy upstream supernode. If no supernode is reachable, forward it to a mesh peer that has one; that peer sends it on as-is and keeps the original `$relay`.
   6. Return the supernode's response to the user unchanged.
