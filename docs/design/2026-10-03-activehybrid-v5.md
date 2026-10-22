@@ -202,7 +202,7 @@ The schema is flat and documented, so an operator can template it from a single 
   "port": 5260,
   "token": "<bearer token>",
   "window": {"days": 30},
-  "maxLagSeconds": 30,
+  "maxLagSeconds": null,
   "refuseOnboard": true,
   "events": {"contracts": ["<contract>"], "where": {"<field>": "<value>"}},
   "submit": {"contracts": ["<contract>"]}
@@ -211,7 +211,7 @@ The schema is flat and documented, so an operator can template it from a single 
 
 - `token`: a static bearer token the local API requires. Absent means the API is open to whoever can reach `bind`, which is why `bind` defaults to localhost. Signed-request keys, as nano-gateway uses, are a later option.
 - `refuseOnboard`: defaults to `true`. While it is true, `default/onboard` transactions are refused like the other built-in refusals. Set it to `false` for an operator that onboards identities through the engine-native contract.
-- `maxLagSeconds`: `/health` returns 503 beyond this lag.
+- `maxLagSeconds`: optional, absent by default. When set, `/health` also returns 503 beyond this lag, for an operator who wants a load balancer to take a lagging hybrid out of rotation. Without it, lag never changes the status code and the consumer decides from `lagSeconds`.
 - `events`: the pinned event filter (see "Events"). Absent means no filter.
 - `submit.contracts`: optional. If set, `POST /` accepts only these contracts.
 
@@ -285,9 +285,9 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
 ### API
 
 - `GET /stream/:id` returns the same document the supernode console returns for a stream: state and the `:stream` meta, including authorities. Reading volatile through the hybrid API is out of scope for v1. `GET /umid/:umid`. An unknown stream is fetched lazily and cached.
-- `GET /health` returns `{ready, lagSeconds, cursor, upstreams:[{host, ok}]}`.
+- `GET /health` returns `{ready, version, lagSeconds, cursor, upstreams:[{host, ok}]}`. `ready` is a boolean that is false until bootstrap completes. `version` is the hybrid's package version, so a consumer can tell which release it is talking to.
   - `lagSeconds` is the time since the hybrid last confirmed it was at the upstream head, by a head poll or a feed heartbeat. It is not the age of the newest item, so a quiet ledger does not read as lagging.
-  - It returns 503 when `ready` is false or `lagSeconds` exceeds `maxLagSeconds`.
+  - It returns 503 when `ready` is false, and returns 200 otherwise with `lagSeconds` in the body, so a consumer with a stricter limit than the operator's can apply its own. Only when the operator sets `maxLagSeconds` does a lag beyond it also return 503.
 - **Staleness.** A read serves the hybrid's local copy, so it can trail the supernodes by the reported lag. A consumer that cannot tolerate that (a fee quote, for example) should gate on `/health`. `POST /` always refreshes its streams to the current tip before voting (step 2 below).
 - `POST /` accepts a user transaction and handles it as follows:
   0. **Refuse** before anything else if the transaction is a contract deploy, a namespace claim or a setup or fund transaction (`default/contract`, `default/namespace`, `default/setup`, `default/fund`), or an onboard transaction (`default/onboard`) while `refuseOnboard` is true, or if `submit.contracts` is set and the contract is not listed. Only the `default/onboard` refusal is configurable. The refusal applies whatever key signs, and applies equally to transactions arriving through `tx-forward` from a mesh peer. Supernodes still enforce `security.deploy` and contract ownership independently.
@@ -297,6 +297,15 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
   4. If the vote is no, return the contract's error to the user. Nothing is forwarded.
   5. If the vote is yes or conditional yes, attach `$relay` and forward the transaction to a healthy upstream supernode. If no supernode is reachable, forward it to a mesh peer that has one; that peer sends it on as-is and keeps the original `$relay`.
   6. Return the supernode's response to the user unchanged.
+- **Outcomes of `POST /`.** A client must be able to tell where an outcome came from.
+  - A response the supernode produced (accepted with `$umid` and `$summary`, refused by the vote with the contract's reason, or a commit failure) is passed through unchanged and carries no `$hybrid` field.
+  - A response the hybrid produced carries `$hybrid` naming why. The values are a fixed enum, exactly `refused`, `denied`, `unavailable` and `unanswered`, so a client can switch on it; a new value would be a breaking change and is listed in the CHANGELOG:
+    - `"refused"`: the local vote was no. The body has the contract's error text. Nothing was forwarded.
+    - `"denied"`: step 0 refused it (deploy, namespace claim, setup, fund, onboard while `refuseOnboard`, or an unlisted contract).
+    - `"unavailable"`: no supernode and no mesh peer was reachable. Nothing was forwarded.
+    - `"unanswered"`: the transaction was forwarded but no answer came back in time. The body carries the `$umid`, which the hybrid computed before forwarding.
+  - The hybrid never retries a forwarded transaction itself. After `"unanswered"` the client should look the `$umid` up (`GET /umid/:umid` on the hybrid once its feed has caught up, or on a supernode) before sending the transaction again.
+  - A local "no" is judged against the hybrid's copy refreshed to the tip in step 2, but it can still be stale. A client that is told `"refused"` and believes the transaction should pass can send it to a supernode directly.
 - The committed transaction comes back through the feed like any other item.
 
 ### Failure handling
@@ -434,8 +443,9 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - the API rejects a request without the bearer `token` when one is configured;
 - a contract that reads volatile it does not hold is marked supernode-dependent: a user transaction gets a conditional yes instead of a false no, and a committed item is adopted, with `adopt.undeclared` when nothing is declared;
 - `submit.contracts` rejects an unlisted contract;
+- `POST /` marks every hybrid-produced outcome with `$hybrid` (`refused`, `denied`, `unavailable`, `unanswered`) and passes supernode responses through without it; `unanswered` carries the `$umid`;
 - a pinned `events` filter serves only matching events, excludes events missing the pinned field and `tx.*` events, cannot be widened by a client, and applies on `Last-Event-ID` resume;
-- `/health` reports lag against the upstream head, not the newest item, and returns 503 beyond `maxLagSeconds`;
+- `/health` reports lag against the upstream head, not the newest item, and returns 503 only when not ready, returning 200 with `lagSeconds` however large the lag, unless `maxLagSeconds` is set;
 - `GET /stream/:id` returns the :stream meta with authorities;
 - volatile is not served for a stream without `volatileShared`, even when the stream is listed as required-volatile;
 - adopted output whose sha256 does not match `revsOut` is rejected;
