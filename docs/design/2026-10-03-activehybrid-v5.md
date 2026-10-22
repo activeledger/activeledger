@@ -42,6 +42,9 @@ Constraints:
 | `:umid` doc | Byte-identical on every supernode and hybrid. Its hash is signed in the commit attestation, so the stored transaction record, `$relay` included, is itself agreed by consensus. |
 | Volatile | Per-node by design. Never served over `/h/*` unless the owning contract marks that stream's volatile shareable. |
 | History | Supernodes keep full history. Only hybrids use a rolling window, and `/h/umid` always serves old umids. |
+| Event scope | An operator can pin a filter (contracts, and equality on payload fields) onto a hybrid's `/events`. It limits what the API serves; it does not limit what the hybrid stores (see "Events"). |
+| Deploy refusal | A hybrid never forwards contract deploys, namespace claims, setup or fund transactions, whatever key signs them. Fail closed, not configurable. `default/onboard` is refused by default, behind a config switch. |
+| Health | `GET /health` reports sync lag in seconds, so consumers can refuse to act on a stale hybrid. |
 
 ## Sub-projects and build order
 
@@ -134,8 +137,13 @@ Constraints:
   - On a supernode the call does nothing. On a hybrid it records the declaration for adopt mode (section 2).
   - When the supernode branch creates a stream, the `else` branch creates the same stream with placeholder values and declares its properties. Adopt mode rejects documents that have no local counterpart.
   - The same pattern covers inter-node comms: declare whatever properties the inter-node comms round writes.
+- **Volatile and adopt mode.**
+  - `revsOut` covers state, `:stream` meta and `<contractId>:data`, not volatile. A volatile write by a supernode is therefore never adopted; it stays on that supernode unless `shareVolatile()` is used.
+  - What adopt mode can express is the state that depends on volatile. A vote or output derived from volatile is handled by wrapping the volatile read in `isSupernode()` and declaring the dependent properties in the `else` branch with `adoptFromSupernode`. The hybrid then adopts the attested state, not the volatile.
+  - A contract that reads volatile without the wrap still ends up adopted, because the read marks the execution supernode-dependent (section 2). It is adopted whole and emits `adopt.undeclared`, which is the prompt to add the declaration.
+  - A volatile write left unwrapped writes to the hybrid's own local volatile. That copy can differ from the supernodes' and nothing reads it through the hybrid API in v1.
 - `shareVolatile()` sets `volatileShared: true` in the stream's `:stream` meta during commit. Meta is part of consensus, so every node agrees on whether that stream's volatile may be served. Without it, volatile never leaves the node, whatever the supernode config lists. Volatile is per-node by design; contracts that keep secrets in it, such as key shares, simply never call this.
-- Contracts always see the transaction's consensus time: `cDate` is `entry.$datetime`, the entry node's stamp (`process.ts` passes `date: this.entry.$datetime` to the VM). A hybrid never uses its own clock for contract execution.
+- Contracts always see the transaction's consensus time: `cDate` is `entry.$datetime`, the entry node's stamp (`process.ts` passes `date: this.entry.$datetime` to the VM). A hybrid never uses its own clock for contract execution. This is a stated guarantee: a contract that takes its time only from `cDate` behaves identically on a hybrid and a supernode, and needs no `isSupernode()` wrap.
 
 ### Relayed transactions (`$relay`)
 
@@ -175,6 +183,7 @@ The hybrid is one process: no worker forks and no separate storage process. Modu
 - `executor`: `ActiveProtocol.Process` in hybrid mode — a single local node, no votes, no broadcast. Contracts run in a sandbox where `http`, `https`, `net`, `tls`, `dgram` and `fetch` throw `SupernodeOnly`. Contracts load modules with plain `require`, so the block has to be enforced by the sandbox; it cannot rely on each contract. The VM marks an execution **supernode-dependent** when any of these happen:
   - the contract calls `isSupernode()`;
   - a blocked call throws;
+  - the contract reads the volatile of a stream whose volatile this hybrid does not hold (that is, one not listed as required-volatile with `volatileShared`). Volatile is per-node and is not covered by `revsOut`, so the hybrid's empty volatile would otherwise change the vote or the outputs;
   - the contract uses inter-node comms: `getInterNodeComms()`, `setThisInterNodeComms()` or `clearAllInterNodeComms()` (`contracts/src/stream.ts`). Inter-node comms data comes from the supernodes' `$nodes` exchange during voting, which a hybrid never sees.
 - `lookup`.
 - `mesh`.
@@ -183,14 +192,28 @@ The hybrid is one process: no worker forks and no separate storage process. Modu
 
 ### Config
 
+The schema is flat and documented, so an operator can template it from a single tenant config file:
+
 ```json
 {
   "upstreams": [{"host": "", "port": 0, "transport": "p2p|http"}],
   "peers": [],
-  "api": {"bind": "127.0.0.1", "port": 5260},
-  "window": {"days": 30}
+  "bind": "127.0.0.1",
+  "port": 5260,
+  "token": "<bearer token>",
+  "window": {"days": 30},
+  "maxLagSeconds": 30,
+  "refuseOnboard": true,
+  "events": {"contracts": ["<contract>"], "where": {"<field>": "<value>"}},
+  "submit": {"contracts": ["<contract>"]}
 }
 ```
+
+- `token`: a static bearer token the local API requires. Absent means the API is open to whoever can reach `bind`, which is why `bind` defaults to localhost. Signed-request keys, as nano-gateway uses, are a later option.
+- `refuseOnboard`: defaults to `true`. While it is true, `default/onboard` transactions are refused like the other built-in refusals. Set it to `false` for an operator that onboards identities through the engine-native contract.
+- `maxLagSeconds`: `/health` returns 503 beyond this lag.
+- `events`: the pinned event filter (see "Events"). Absent means no filter.
+- `submit.contracts`: optional. If set, `POST /` accepts only these contracts.
 
 ### Bootstrap
 
@@ -250,12 +273,24 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
   - the contract's own events;
   - `tx.committed`, `tx.failed` and `divergence`.
 - `GET /events` is SSE with `Last-Event-ID`. It reads by events key range, not by sequence entries, because those are no longer written.
-- Binds to localhost by default. It can optionally be exposed with signed auth.
+- Binds to localhost by default. It can optionally be exposed behind a bearer `token`.
+- **Filtering.**
+  - Clients may filter with `?contract=<id>` (repeatable) and `?where=<field>:<value>`. A `where` is an equality test on a top-level payload field.
+  - The operator can pin a filter in config (`events`). A pinned filter applies to every client; clients may narrow it but never widen it.
+  - An event that lacks a pinned `where` field is excluded (fail closed).
+  - When a `where` filter is pinned, `tx.committed`, `tx.failed` and `divergence` events are not served, because they carry no payload fields to match. Only contract events are.
+  - Resume with `Last-Event-ID` applies the same filter, so a gap replays only the events the client is allowed to see.
+- **What the filter is not.** On-ledger data is not secret. The filter exists so that a tenant's feed does not carry other tenants' activity. It limits what the API serves, nothing more: the hybrid still stores everything it replicates, `GET /stream/:id` is not filtered, and whoever operates a hybrid can read their own copy. It is isolation between API consumers, not confidentiality.
 
 ### API
 
-- `GET /stream/:id` and `GET /umid/:umid`. An unknown stream is fetched lazily and cached.
+- `GET /stream/:id` returns the same document the supernode console returns for a stream: state and the `:stream` meta, including authorities. Reading volatile through the hybrid API is out of scope for v1. `GET /umid/:umid`. An unknown stream is fetched lazily and cached.
+- `GET /health` returns `{ready, lagSeconds, cursor, upstreams:[{host, ok}]}`.
+  - `lagSeconds` is the time since the hybrid last confirmed it was at the upstream head, by a head poll or a feed heartbeat. It is not the age of the newest item, so a quiet ledger does not read as lagging.
+  - It returns 503 when `ready` is false or `lagSeconds` exceeds `maxLagSeconds`.
+- **Staleness.** A read serves the hybrid's local copy, so it can trail the supernodes by the reported lag. A consumer that cannot tolerate that (a fee quote, for example) should gate on `/health`. `POST /` always refreshes its streams to the current tip before voting (step 2 below).
 - `POST /` accepts a user transaction and handles it as follows:
+  0. **Refuse** before anything else if the transaction is a contract deploy, a namespace claim or a setup or fund transaction (`default/contract`, `default/namespace`, `default/setup`, `default/fund`), or an onboard transaction (`default/onboard`) while `refuseOnboard` is true, or if `submit.contracts` is set and the contract is not listed. Only the `default/onboard` refusal is configurable. The refusal applies whatever key signs, and applies equally to transactions arriving through `tx-forward` from a mesh peer. Supernodes still enforce `security.deploy` and contract ownership independently.
   1. Compute the `$umid` and run basic checks: entry shape, signatures, `$expire`.
   2. Refresh the input and output streams to their current tips with `lookup`, so a stale local copy cannot cause a false "no".
   3. Run a **local dry-run vote** with no writes. If the execution becomes supernode-dependent (an `isSupernode()` check, a blocked external call, or inter-node comms) and everything before that point passed, the vote is a **conditional yes**. Examples of what has passed by then: signatures, permissions, inputs, and the contract's own checks.
@@ -351,6 +386,12 @@ Each extraction is a move-and-import, and the existing tests must pass unchanged
 
 ## 4. Versioning, testing, rollout
 
+### Packaging
+
+- A pinned image tag per release, matching the npm version, so a deploy script can pin it.
+- The flat config schema above is the contract between the hybrid and whatever templates it. Changes to it are listed in the CHANGELOG.
+- Footprint is a target to be measured, not a promise: idle and catch-up memory figures are recorded in the operator guide once the hybrid exists.
+
 ### Versioning
 
 - Ship as v5.1.0.
@@ -388,6 +429,14 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a contract that calls out without the wrap is blocked by the hybrid sandbox and adopted the same way;
 - a user transaction that reaches `isSupernode()` gets a conditional yes and is forwarded;
 - a contract that uses inter-node comms in its vote is adopted on hybrids, with no divergence record;
+- a contract deploy, namespace claim, setup or fund transaction submitted to a hybrid is refused, whatever key signs it, and a `tx-forward` from a peer is refused the same way;
+- `default/onboard` is refused by default and accepted when `refuseOnboard` is false;
+- the API rejects a request without the bearer `token` when one is configured;
+- a contract that reads volatile it does not hold is marked supernode-dependent: a user transaction gets a conditional yes instead of a false no, and a committed item is adopted, with `adopt.undeclared` when nothing is declared;
+- `submit.contracts` rejects an unlisted contract;
+- a pinned `events` filter serves only matching events, excludes events missing the pinned field and `tx.*` events, cannot be widened by a client, and applies on `Last-Event-ID` resume;
+- `/health` reports lag against the upstream head, not the newest item, and returns 503 beyond `maxLagSeconds`;
+- `GET /stream/:id` returns the :stream meta with authorities;
 - volatile is not served for a stream without `volatileShared`, even when the stream is listed as required-volatile;
 - adopted output whose sha256 does not match `revsOut` is rejected;
 - with `adoptFromSupernode` declared, a signed output that also differs in an undeclared property is treated as a divergence, not adopted;
