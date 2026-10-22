@@ -1543,6 +1543,14 @@ export class Process extends EventEmitter {
           if (earlyCommit) earlyCommit();
           ActiveLogger.debug(error, "VM Commit Failure");
 
+          // The caller only gets a generic message outside debug mode, so the
+          // reason has to be in the node log or it is lost
+          ActiveLogger.error(
+            `Commit failed for ${this.entry.$umid} (${this.contractId}) - ${
+              error?.message || error
+            }`
+          );
+
           // If debug mode forward full error
           ActiveOptions.get<boolean>("debug", false)
             ? this.shared.raiseLedgerError(
