@@ -31,6 +31,7 @@ import { ActiveClone } from "@activeledger/activeutilities";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import * as Sync from "@activeledger/activesync";
 import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
@@ -782,160 +783,8 @@ export class Endpoints {
   public static spiConsensus(
     networkStreams: any[],
     consensusReached: number
-  ): {
-    winners: { [id: string]: { rev: string; votes: number; doc: any } };
-    abstained: { [id: string]: string };
-  } {
-    const tally: {
-      [id: string]: { [rev: string]: { votes: number; doc: any } };
-    } = {};
-    // Nodes that hold the stream but could not report it this round
-    const unreported: { [id: string]: number } = {};
-
-    for (let i = networkStreams.length; i--; ) {
-      const nodeStreams = networkStreams[i];
-      // A node that failed to answer at all resolves to { error: true }
-      if (!nodeStreams || !nodeStreams.length) {
-        continue;
-      }
-
-      // One vote per node per stream. A node answers with a flat array
-      // built from the requested id list, so anything that puts an id in
-      // that list twice - or any future caller that does - would have had
-      // a single node's answer counted twice and could carry a revision
-      // on its own.
-      const voted: { [id: string]: boolean } = {};
-
-      for (let ii = nodeStreams.length; ii--; ) {
-        const streamDoc = nodeStreams[ii];
-        if (!streamDoc || !streamDoc._id) {
-          continue;
-        }
-
-        if (streamDoc.locked) {
-          if (!voted[streamDoc._id]) {
-            voted[streamDoc._id] = true;
-            unreported[streamDoc._id] = (unreported[streamDoc._id] || 0) + 1;
-          }
-          continue;
-        }
-
-        if (!streamDoc._rev || voted[streamDoc._id]) {
-          continue;
-        }
-        voted[streamDoc._id] = true;
-
-        if (!tally[streamDoc._id]) {
-          tally[streamDoc._id] = {};
-        }
-        tally[streamDoc._id][streamDoc._rev]
-          ? tally[streamDoc._id][streamDoc._rev].votes++
-          : (tally[streamDoc._id][streamDoc._rev] = {
-              votes: 1,
-              doc: streamDoc,
-            });
-      }
-    }
-
-    const winners: {
-      [id: string]: { rev: string; votes: number; doc: any };
-    } = {};
-    const abstained: { [id: string]: string } = {};
-
-    // Every id anyone mentioned, reported or not
-    const ids = Object.keys(tally);
-    const lockedIds = Object.keys(unreported);
-    for (let i = lockedIds.length; i--; ) {
-      if (ids.indexOf(lockedIds[i]) === -1) {
-        ids.push(lockedIds[i]);
-      }
-    }
-
-    for (let g = ids.length; g--; ) {
-      const id = ids[g];
-
-      // A node that could not report does not vote - but it does not get to
-      // veto the ones that could, either.
-      //
-      // This used to abstain the whole stream the moment ANY node answered
-      // with the locked marker, however many others had agreed. On a hot
-      // stream some node is nearly always mid-transaction, so a stream that
-      // all four nodes held byte-identically still logged NOWINNER on every
-      // single round - 218 times in two hours on one production stream,
-      // against a copy nothing disagreed about. Worse, the same veto is why
-      // a genuinely diverged busy stream never healed: the one condition
-      // that has to clear for repair to happen is the condition traffic
-      // guarantees will not.
-      //
-      // Every vote still comes from a node that is provably not moving, so
-      // nothing unstable enters the tally. The only change is that silence
-      // now counts as absence rather than as an objection, which is what
-      // consensusReached already exists to handle. If the nodes that could
-      // answer do not reach it between them, this still abstains.
-      const silent = unreported[id] || 0;
-
-      const revisions = tally[id] || {};
-      let winner = "";
-      let max = 0;
-      let forked = false;
-
-      const candidates = Object.keys(revisions);
-      for (let x = candidates.length; x--; ) {
-        const rev = candidates[x];
-        if (revisions[rev].votes < consensusReached) {
-          continue;
-        }
-
-        if (revisions[rev].votes > max) {
-          max = revisions[rev].votes;
-          winner = rev;
-        } else if (revisions[rev].votes === max) {
-          // Same support. A later position means the other side simply
-          // applied something this one has not yet - adopting it loses
-          // nothing, because the lagging copy has no history of its own.
-          if (Endpoints.revPosition(rev) > Endpoints.revPosition(winner)) {
-            winner = rev;
-          } else if (
-            Endpoints.revPosition(rev) === Endpoints.revPosition(winner) &&
-            rev !== winner
-          ) {
-            // Same position, different content: not a lag, a genuine fork.
-            // Each side committed something the other did not, at the same
-            // point in the stream's history, so whichever is picked
-            // silently destroys the other's transaction. Revisions are
-            // content addressed (position-md5), so there is nothing here
-            // to tell them apart on merit and no safe automatic answer.
-            forked = true;
-          }
-        }
-      }
-
-      if (forked) {
-        abstained[id] =
-          "forked - two revisions at the same position, needs a human";
-      } else if (winner && max <= silent) {
-        // Enough nodes agreed to clear the threshold, but not enough to
-        // outnumber the ones that said nothing. Silence is not evidence
-        // either way, and a rewrite is destructive - force_rev overwrites
-        // whatever is here - so a winner that could be overturned by the
-        // nodes we could not see is not a winner worth acting on.
-        //
-        // Two agreeing with two silent is the case this catches: if both
-        // silent nodes hold something else the real picture is a 2-2 split,
-        // which is a fork and needs a human, not a coin toss. Three
-        // agreeing with one silent is decided, because nothing the silent
-        // node holds can change the answer.
-        abstained[id] = `inconclusive - ${max} agreed on ${winner} but ${silent} node(s) could not report`;
-      } else if (winner) {
-        winners[id] = { rev: winner, votes: max, doc: revisions[winner].doc };
-      } else if (silent) {
-        abstained[id] = `no revision reached consensus, ${silent} node(s) could not report`;
-      } else {
-        abstained[id] = "no revision reached consensus";
-      }
-    }
-
-    return { winners, abstained };
+  ) {
+    return Sync.spiConsensus(networkStreams, consensusReached);
   }
 
   /**
@@ -946,8 +795,7 @@ export class Endpoints {
    * @returns {number}
    */
   public static revPosition(rev: string): number {
-    const position = parseInt((rev || "").split("-")[0], 10);
-    return isNaN(position) ? 0 : position;
+    return Sync.revPosition(rev);
   }
 
   /**
@@ -1024,29 +872,14 @@ export class Endpoints {
   }
 
   public static bulkWriteFailed(response: any): boolean {
-    // Only the store's own confirmation counts. An exception inside the
-    // store reaches us as {} - httpd serialises the Error, and
-    // ActiveRequest does not look at the 500 status - and that used to
-    // read as a repair that landed.
-    return response?.ok !== true;
+    return Sync.bulkWriteFailed(response);
   }
 
   public static shouldTriggerSpiLookup(
     errors: string[] | undefined,
     selfError?: string
   ): boolean {
-    const spiErrorCount =
-      errors?.filter((e) => e.indexOf("Stream Position Incorrect") !== -1)
-        .length || 0;
-    return (
-      // Other nodes telling me I am wrong (as I am origin) - the majority
-      // disagreed
-      (spiErrorCount > 0 &&
-        spiErrorCount >= Math.floor((errors?.length || 0) / 3)) ||
-      // However what about I am the only one that is wrong (As they may send via me)
-      (selfError !== undefined &&
-        selfError.indexOf("Stream Position Incorrect") !== -1)
-    );
+    return Sync.shouldTriggerSpiLookup(errors, selfError);
   }
 
   public static labelOrKey(txIO: any): string[] {
@@ -1939,82 +1772,7 @@ export class Endpoints {
    * @returns {Promise<boolean>} true if the umid is now present locally
    */
   public static async backfillUmid(host: Host, umid: string): Promise<boolean> {
-    if (!umid) {
-      return false;
-    }
-
-    // Already have the umid? Still replay its events before returning.
-    //
-    // Holding the umid does NOT imply holding its events: they are separate
-    // documents written by separate paths, and EventEngine.emit() is
-    // fire-and-forget, so an event write can fail silently while the umid
-    // lands. An earlier version of this returned here, and a node was
-    // observed holding umid=true with events=0/1 - correct history, empty
-    // feed, and no error anywhere to say so.
-    //
-    // Safe to repeat, because each event keeps its original _id, so this is
-    // idempotent by construction. That is also what makes running both this
-    // and restore over the same 950 harmless.
-    try {
-      const local = await host.dbConnection.get(`${umid}:umid`);
-      if (local && local._id) {
-        await Endpoints.replaySpiEvents(host, local);
-        return true;
-      }
-    } catch {
-      // Not found is the normal path here
-    }
-
-    let responses: any[];
-    try {
-      responses = await host.neighbourhood.knockAll(`umid/${umid}`, null, true);
-    } catch {
-      ActiveLogger.warn(`SPI UMID ${umid} - could not reach the network`);
-      return false;
-    }
-
-    // Group identical answers and take the most supported, rather than
-    // trusting whichever node replied first. Hashing the whole document
-    // means two nodes only agree if they agree on the events too.
-    const grouped: { [hash: string]: { count: number; doc: any } } = {};
-    for (let i = responses.length; i--; ) {
-      const response = responses[i];
-      if (!response?.umid?.$umid) {
-        continue;
-      }
-      const hash = ActiveCrypto.Hash.getHash(JSON.stringify(response));
-      grouped[hash]
-        ? grouped[hash].count++
-        : (grouped[hash] = { count: 1, doc: response });
-    }
-
-    const hashes = Object.keys(grouped);
-    if (!hashes.length) {
-      ActiveLogger.warn(`SPI UMID ${umid} - no node could supply it`);
-      return false;
-    }
-
-    const winner =
-      grouped[hashes.sort((a, b) => grouped[b].count - grouped[a].count)[0]].doc;
-
-    try {
-      // new_edits:false only ever ADDS a document we do not have, keeping
-      // the network's revision. It cannot overwrite anything.
-      const written = await host.dbConnection.bulkDocs([winner], {
-        new_edits: false,
-      });
-      if (Endpoints.bulkWriteFailed(written)) {
-        ActiveLogger.error(`SPI UMID ${umid} - write failed, left for restore`);
-        return false;
-      }
-    } catch (error) {
-      ActiveLogger.error(error, `SPI UMID ${umid} - write threw, left for restore`);
-      return false;
-    }
-
-    ActiveLogger.warn(`SPI UMID ADDED ${umid}`);
-    await Endpoints.replaySpiEvents(host, winner);
-    return true;
+    return Sync.backfillUmid(Endpoints.syncContext(host), umid);
   }
 
   /**
@@ -2033,26 +1791,7 @@ export class Endpoints {
    * @static
    */
   private static async replaySpiEvents(host: Host, umidDoc: any): Promise<void> {
-    const events = umidDoc?.events;
-    if (!Array.isArray(events) || !events.length) {
-      return;
-    }
-
-    await Promise.all(
-      events.map(async (event: any) => {
-        try {
-          await host.dbEventConnection.post(event);
-        } catch (error) {
-          ActiveLogger.error(
-            error,
-            `SPI UMID ${umidDoc?.umid?.$umid} - failed to replay event ${event?._id}`
-          );
-        }
-      })
-    );
-    ActiveLogger.warn(
-      `SPI UMID ${umidDoc?.umid?.$umid} - replayed ${events.length} event(s)`
-    );
+    return Sync.replaySpiEvents(Endpoints.syncContext(host), umidDoc);
   }
 
   /**
@@ -2126,89 +1865,31 @@ export class Endpoints {
     host: Host,
     streamId: string,
     fromUmid: string
-  ): Promise<{
-    recovered: string[];
-    stoppedAt: string;
-    /**
-     * True when the walk ran out of history to recover rather than out of
-     * road - it reached a umid already held, or the creation of the stream.
-     * Anything else left history behind, and the caller has to decide what
-     * to do about that. Returned as a flag rather than left for the caller
-     * to match on stoppedAt's prose, which is written for humans.
-     */
-    complete: boolean;
-    /** The umid it could not get past, when it did not finish. */
-    frontier?: string;
-  }> {
-    const recovered: string[] = [];
-    const seen = new Set<string>();
-    let cursor: string | undefined = fromUmid;
+  ) {
+    return Sync.walkUmidHistory(
+      Endpoints.syncContext(host),
+      streamId,
+      fromUmid
+    );
+  }
 
-    while (cursor) {
-      if (seen.has(cursor)) {
-        // A chain should never loop. If one does, stop rather than spin -
-        // and say so, because it means something upstream is wrong.
-        return { recovered, stoppedAt: "loop detected", complete: false, frontier: cursor };
-      }
-      seen.add(cursor);
-
-      if (recovered.length >= Endpoints.UMID_WALK_LIMIT) {
-        ActiveLogger.warn(
-          `SPI WALK ${streamId} - stopped at ${Endpoints.UMID_WALK_LIMIT}, a full restore is the right tool from here`
-        );
-        return { recovered, stoppedAt: "limit reached", complete: false, frontier: cursor };
-      }
-
-      // Do we already have it? Everything before it is here too, because a
-      // node only gains umids by walking this same chain or by committing
-      // in order - so this is where the walk stops, and it is what keeps
-      // the common case cheap.
-      let held = false;
-      try {
-        const local = await host.dbConnection.get(`${cursor}:umid`);
-        held = !!(local && local._id);
-      } catch {
-        held = false;
-      }
-
-      // Call backfillUmid even when held, and stop afterwards rather than
-      // before. Holding the umid does NOT imply holding its events - they
-      // are separate documents and EventEngine.emit() is fire-and-forget,
-      // so an event can be missing under a umid that is present. An earlier
-      // version of this returned on `held` without calling through, which
-      // silently removed the replay that ran before the walk existed.
-      // Replaying is idempotent (events keep their original _id), so the
-      // one extra pass at the terminus costs nothing but closes that hole.
-      const ok = await Endpoints.backfillUmid(host, cursor);
-      if (!ok) {
-        return { recovered, stoppedAt: `could not recover ${cursor}`, complete: false, frontier: cursor };
-      }
-      if (held) {
-        return { recovered, stoppedAt: "reached a umid already held", complete: true };
-      }
-      recovered.push(cursor);
-
-      // Read the hop we just adopted to find the one before it.
-      let doc: any;
-      try {
-        doc = await host.dbConnection.get(`${cursor}:umid`);
-      } catch {
-        return { recovered, stoppedAt: "adopted umid could not be read back", complete: false, frontier: cursor };
-      }
-
-      cursor = Endpoints.previousUmidFor(doc, streamId);
-
-      // Deliberately after a successful hop, not before the first one: a
-      // walk with nothing to do costs nothing at all, and the common case
-      // is exactly that.
-      if (cursor) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, Endpoints.UMID_WALK_HOP_DELAY_MS)
-        );
-      }
-    }
-
-    return { recovered, stoppedAt: "start of stream", complete: true };
+  /**
+   * Adapts the host's connections to what the shared sync logic needs.
+   * The limits are read here on every call, because tests move them.
+   *
+   * @private
+   * @static
+   */
+  private static syncContext(host: Host): Sync.SyncContext {
+    return {
+      store: host.dbConnection,
+      events: host.dbEventConnection,
+      peers: {
+        umid: (umid) => host.neighbourhood.knockAll(`umid/${umid}`, null, true),
+      },
+      walkLimit: Endpoints.UMID_WALK_LIMIT,
+      hopDelayMs: Endpoints.UMID_WALK_HOP_DELAY_MS,
+    };
   }
 
   /** Walks running right now, so the same one never runs twice at once. */
@@ -2582,19 +2263,7 @@ export class Endpoints {
     umidDoc: any,
     streamId: string
   ): string | undefined {
-    const updated = umidDoc?.streams?.updated;
-    if (!Array.isArray(updated)) {
-      return undefined;
-    }
-    for (const entry of updated) {
-      if (!entry) continue;
-      // Ids may carry a virtual prefix depending on where they were built.
-      const id: string = entry.id || "";
-      if (id === streamId || id.endsWith(streamId) || streamId.endsWith(id)) {
-        return entry.prev || undefined;
-      }
-    }
-    return undefined;
+    return Sync.previousUmidFor(umidDoc, streamId);
   }
 
   /**
