@@ -409,3 +409,27 @@ describe("hybrid verify", () => {
     });
   });
 });
+
+import { checkPin, neighbourhoodHash } from "../packages/hybrid/src/verify";
+
+describe("hybrid setup pin", () => {
+  const setup = { neighbourhood: [{ host: "a", port: 1, identity: { type: "rsa", public: "k" } }], neighbourhoodRemap: {} };
+
+  it("has nothing to check without a pin", () => {
+    expect(checkPin(setup).ok).to.equal(true);
+  });
+
+  it("accepts the pinned neighbourhood regardless of key order", () => {
+    const pin = { neighbourhoodSha256: neighbourhoodHash(setup) };
+    const reordered = { neighbourhoodRemap: {}, neighbourhood: [{ identity: { public: "k", type: "rsa" }, port: 1, host: "a" }] };
+    expect(checkPin(reordered, pin).ok).to.equal(true);
+  });
+
+  it("refuses a setup whose voting keys differ", () => {
+    const pin = { neighbourhoodSha256: neighbourhoodHash(setup) };
+    const swapped = { ...setup, neighbourhood: [{ host: "a", port: 1, identity: { type: "rsa", public: "evil" } }] };
+    const r = checkPin(swapped, pin);
+    expect(r.ok).to.equal(false);
+    expect(r.reason).to.match(/does not match the pin/);
+  });
+});

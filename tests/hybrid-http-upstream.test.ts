@@ -609,3 +609,17 @@ describe("HttpUpstream", function () {
     expect(() => identityFrom({ prv: {} })).to.throw(/identity/);
   });
 });
+
+describe("SseParser limits", () => {
+  it("counts an event's accumulated data lines against the cap", () => {
+    const p = new SseParser(1000);
+    expect(() => {
+      for (let i = 0; i < 50; i++) p.push("data: " + "x".repeat(100) + "\n");
+    }).to.throw(/too long/);
+  });
+
+  it("does not count completed events", () => {
+    const p = new SseParser(1000);
+    for (let i = 0; i < 50; i++) expect(p.push("data: " + "x".repeat(100) + "\n\n")).to.have.length(1);
+  });
+});

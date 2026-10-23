@@ -56,6 +56,7 @@ const TOP_KEYS = [
   "refuseOnboard",
   "events",
   "submit",
+  "pin",
 ];
 const TRANSPORTS = ["p2p", "http"];
 
@@ -90,7 +91,7 @@ const checkEndpoint = (
     errors.push(`${path}: expected an object {host, port, transport}, got ${describe(v)}`);
     return;
   }
-  unknownKeys(v, ["host", "port", "transport"], path, errors);
+  unknownKeys(v, ["host", "port", "transport", "tls"], path, errors);
   const before = errors.length;
   if (typeof v.host !== "string" || !v.host.trim()) {
     errors.push(`${path}.host: expected a non-empty string`);
@@ -102,8 +103,11 @@ const checkEndpoint = (
   if (!TRANSPORTS.includes(transport)) {
     errors.push(`${path}.transport: expected "p2p" or "http", got ${JSON.stringify(v.transport)}`);
   }
+  if (v.tls !== undefined && typeof v.tls !== "boolean") {
+    errors.push(`${path}.tls: expected true or false, got ${describe(v.tls)}`);
+  }
   if (errors.length > before) return;
-  return { host: v.host, port: v.port, transport };
+  return { host: v.host, port: v.port, transport, ...(v.tls ? { tls: true } : {}) };
 };
 
 const checkEndpoints = (
@@ -234,6 +238,20 @@ export function validateConfig(raw: unknown): IHybridConfig {
         if (c) submit.contracts = c;
       }
       cfg.submit = submit;
+    }
+  }
+
+  if (raw.pin !== undefined) {
+    if (!isObject(raw.pin)) {
+      errors.push(`pin: expected an object {neighbourhoodSha256}, got ${describe(raw.pin)}`);
+    } else {
+      unknownKeys(raw.pin, ["neighbourhoodSha256"], "pin", errors);
+      const h = raw.pin.neighbourhoodSha256;
+      if (typeof h !== "string" || !/^[0-9a-f]{64}$/.test(h)) {
+        errors.push("pin.neighbourhoodSha256: expected 64 lowercase hex characters");
+      } else {
+        cfg.pin = { neighbourhoodSha256: h };
+      }
     }
   }
 

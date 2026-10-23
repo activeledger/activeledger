@@ -34,6 +34,8 @@ export interface IHybridEndpoint {
   transport: HybridTransport;
   host: string;
   port: number;
+  /** Use https for the http transport. Recommended: /h requests are only signed, not encrypted. */
+  tls?: boolean;
 }
 
 /** What the `default/hybrid` registry contract stores, one stream per key */
@@ -133,4 +135,11 @@ export interface IHybridConfig {
   refuseOnboard: boolean;
   events?: { contracts?: string[]; where?: { [field: string]: string } };
   submit?: { contracts?: string[] };
+  /**
+   * Out-of-band trust anchor. The node keys a hybrid verifies votes against
+   * come from the upstream it is pointed at, so a man in the middle could
+   * hand it keys of their own. With `neighbourhoodSha256` set, bootstrap
+   * refuses a setup stream whose neighbourhood does not hash to it.
+   */
+  pin?: { neighbourhoodSha256: string };
 }

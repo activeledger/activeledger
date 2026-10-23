@@ -80,7 +80,7 @@ describe("hybrid config", () => {
             window: { days: 1, hours: 2 },
             events: { contract: [] },
             submit: { where: {} },
-            upstreams: [{ host: "a", port: 1, tls: true }],
+            upstreams: [{ host: "a", port: 1, secure: true }],
           })
         )
       ).to.have.members([
@@ -88,7 +88,7 @@ describe("hybrid config", () => {
         "window.hours: unknown key",
         "events.contract: unknown key",
         "submit.where: unknown key",
-        "upstreams[0].tls: unknown key",
+        "upstreams[0].secure: unknown key",
       ]);
     });
 
@@ -267,5 +267,25 @@ describe("hybrid config", () => {
       // A parsed but out of range value is caught by validation
       expect(errorsOf(() => mergeFlags(base(), { port: "70000" }))[0]).to.match(/^port: expected an integer/);
     });
+  });
+});
+
+describe("config pin and tls", () => {
+  it("accepts a valid pin and an endpoint with tls", () => {
+    const hash = "a".repeat(64);
+    const cfg = validateConfig({ pin: { neighbourhoodSha256: hash }, upstreams: [{ host: "h", port: 1, tls: true }] });
+    expect(cfg.pin).to.deep.equal({ neighbourhoodSha256: hash });
+    expect(cfg.upstreams[0]).to.deep.equal({ host: "h", port: 1, transport: "http", tls: true });
+  });
+
+  it("rejects a malformed pin, an unknown pin key and a non-boolean tls", () => {
+    for (const bad of [
+      { pin: { neighbourhoodSha256: "abc" } },
+      { pin: { neighbourhoodSha256: "A".repeat(64) } },
+      { pin: { other: 1 } },
+      { upstreams: [{ host: "h", port: 1, tls: "yes" }] },
+    ]) {
+      expect(() => validateConfig(bad)).to.throw();
+    }
   });
 });

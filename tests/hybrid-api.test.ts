@@ -283,26 +283,52 @@ describe("LedgerHybridRegistry", () => {
     ...over,
   });
 
+  /** A registry stream as `default/hybrid` leaves it: state, meta and the deploying umid doc */
+  const registered = (db: MemDb, publicPem: string, over: any = {}, tx: any = { $namespace: "default", $contract: "hybrid" }) => {
+    const id = ActiveCrypto.hybridStreamId(publicPem);
+    return db
+      .put(stateFor(publicPem, over))
+      .put({ _id: `${id}:stream`, origin: `reg-${id}` })
+      .put({ _id: `reg-${id}:umid`, umid: { $tx: tx } });
+  };
+
   it("finds a hybrid by the hash of its key", async () => {
-    const db = new MemDb().put(stateFor(pem, { label: "mine" }));
+    const db = registered(new MemDb(), pem, { label: "mine" });
     const found = await new LedgerHybridRegistry(db).lookup(keyHash);
     expect(found).to.include({ key: pem, type: "rsa", label: "mine", retired: false });
   });
 
   it("reports retired, and refuses anything that is not a registry stream for that hash", async () => {
-    const reg = (doc: any) => new LedgerHybridRegistry(new MemDb().put(doc));
-    expect((await reg(stateFor(pem, { retired: true })).lookup(keyHash))?.retired).to.equal(true);
-    expect(await reg(stateFor(pem, { type: "other" })).lookup(keyHash)).to.equal(undefined);
+    const reg = (db: MemDb) => new LedgerHybridRegistry(db);
+    expect((await reg(registered(new MemDb(), pem, { retired: true })).lookup(keyHash))?.retired).to.equal(true);
+    expect(await reg(registered(new MemDb(), pem, { type: "other" })).lookup(keyHash)).to.equal(undefined);
     // A document at the right id that holds a different key
     const other = new ActiveCrypto.KeyPair("rsa");
     const otherPem = other.generate().pub.pkcs8pem;
-    expect(await reg({ ...stateFor(otherPem), _id: ActiveCrypto.hybridStreamId(pem) }).lookup(keyHash)).to.equal(undefined);
-    expect(await new LedgerHybridRegistry(new MemDb()).lookup(keyHash)).to.equal(undefined);
-    expect(await new LedgerHybridRegistry(new MemDb()).lookup("not-a-hash")).to.equal(undefined);
+    const wrongKey = new MemDb().put({ ...stateFor(otherPem), _id: ActiveCrypto.hybridStreamId(pem) });
+    expect(await reg(wrongKey).lookup(keyHash)).to.equal(undefined);
+    expect(await reg(new MemDb()).lookup(keyHash)).to.equal(undefined);
+    expect(await reg(new MemDb()).lookup("not-a-hash")).to.equal(undefined);
+  });
+
+  it("refuses a stream another contract created at the derived id", async () => {
+    // Any contract can seed a stream with this id and write the state it likes
+    const squatted = registered(new MemDb(), pem, {}, { $namespace: "evil", $contract: "hybrid" });
+    expect(await new LedgerHybridRegistry(squatted).lookup(keyHash)).to.equal(undefined);
+    const wrongContract = registered(new MemDb(), pem, {}, { $namespace: "default", $contract: "namespace" });
+    expect(await new LedgerHybridRegistry(wrongContract).lookup(keyHash)).to.equal(undefined);
+    // No meta or no origin umid doc held: not provable, so refused
+    const noMeta = new MemDb().put(stateFor(pem));
+    expect(await new LedgerHybridRegistry(noMeta).lookup(keyHash)).to.equal(undefined);
+    const id = ActiveCrypto.hybridStreamId(pem);
+    const noOrigin = new MemDb().put(stateFor(pem)).put({ _id: `${id}:stream`, origin: "gone" });
+    expect(await new LedgerHybridRegistry(noOrigin).lookup(keyHash)).to.equal(undefined);
   });
 
   it("lists registry streams and nothing else, and caches the scan", async () => {
-    const db = new MemDb().put(stateFor(pem)).put({ _id: "plain", x: 1 }).put({ ...stateFor(pem), _id: "forged" });
+    const db = registered(new MemDb(), pem).put({ _id: "plain", x: 1 }).put({ ...stateFor(pem), _id: "forged" });
+    const other = new ActiveCrypto.KeyPair("rsa");
+    registered(db, other.generate().pub.pkcs8pem, {}, { $namespace: "evil", $contract: "hybrid" });
     const reg = new LedgerHybridRegistry(db, 60_000);
     const list = await reg.list();
     expect(list.map((h) => h.keyHash)).to.deep.equal([keyHash]);

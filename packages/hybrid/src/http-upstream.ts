@@ -101,6 +101,7 @@ export class SseParser {
   private started = false;
   private event = "";
   private data: string[] = [];
+  private dataBytes = 0;
   private id?: string;
 
   constructor(private maxBuffer = 64 * 1024 * 1024) {}
@@ -124,7 +125,8 @@ export class SseParser {
       this.line(line, events);
     }
     this.buf = this.buf.slice(start);
-    if (this.buf.length > this.maxBuffer) {
+    // An event of many short data lines is held in `data`, not `buf`
+    if (this.buf.length + this.dataBytes > this.maxBuffer) {
       throw new UpstreamError("feed line too long", "protocol");
     }
     return events;
@@ -149,6 +151,7 @@ export class SseParser {
       }
       this.event = "";
       this.data = [];
+      this.dataBytes = 0;
       this.id = undefined;
       return;
     }
@@ -163,6 +166,7 @@ export class SseParser {
         break;
       case "data":
         this.data.push(value);
+        this.dataBytes += value.length;
         break;
       case "id":
         if (!value.includes("\0")) this.id = value;
@@ -180,6 +184,10 @@ export interface HttpUpstreamOptions {
   timeoutMs?: number;
   /** Feed: longest silence before the connection is treated as dead. Default 35s (heartbeats are about every 10s). */
   idleTimeoutMs?: number;
+  /** https instead of http. /h requests are signed, not encrypted: use this over any network you do not own. */
+  tls?: boolean;
+  /** Largest response body accepted for a unary request. Default 64MB. */
+  maxResponseBytes?: number;
 }
 
 const isObject = (v: unknown): v is Record<string, any> =>
@@ -194,16 +202,47 @@ export class HttpUpstream implements Upstream {
 
   constructor(private opts: HttpUpstreamOptions) {
     const host = opts.host.includes(":") ? `[${opts.host}]` : opts.host;
-    this.base = `http://${host}:${opts.port}`;
+    this.base = `${opts.tls ? "https" : "http"}://${host}:${opts.port}`;
     this.id = `${host}:${opts.port}:http`;
     this.timeoutMs = opts.timeoutMs ?? 15000;
     this.idleTimeoutMs = opts.idleTimeoutMs ?? 35000;
+    this.maxResponseBytes = opts.maxResponseBytes ?? 64 * 1024 * 1024;
+  }
+
+  private readonly maxResponseBytes: number;
+  private lastStamp = 0;
+
+  /** The body as text, refusing more than maxResponseBytes */
+  private async readBody(res: Response): Promise<string> {
+    const declared = Number(res.headers.get("content-length"));
+    if (declared > this.maxResponseBytes) {
+      await res.body?.cancel().catch(() => undefined);
+      throw new UpstreamError(`${this.id}: response too large`, "protocol", res.status);
+    }
+    if (!res.body) return "";
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > this.maxResponseBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new UpstreamError(`${this.id}: response too large`, "protocol", res.status);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
   }
 
   /** Fresh signed headers; every request carries them */
   private auth(extra: Record<string, string> = {}): Record<string, string> {
     const { keyHash, pair } = this.opts.identity;
-    const r = ActiveCrypto.signRequest(pair, keyHash);
+    // The supernode accepts one request per key per timestamp, so every
+    // request gets a millisecond of its own
+    this.lastStamp = Math.max(Date.now(), this.lastStamp + 1);
+    const r = ActiveCrypto.signRequest(pair, keyHash, this.lastStamp);
     return {
       "x-hybrid-key": r.key,
       "x-hybrid-timestamp": String(r.timestamp),
@@ -226,7 +265,7 @@ export class HttpUpstream implements Upstream {
     let body: any;
     let text = "";
     try {
-      text = await res.text();
+      text = await this.readBody(res);
       body = JSON.parse(text);
     } catch {
       body = text || undefined;
@@ -267,7 +306,7 @@ export class HttpUpstream implements Upstream {
         return undefined;
       }
       if (!res.ok) throw await this.statusError(res, what);
-      const text = await res.text();
+      const text = await this.readBody(res);
       try {
         return JSON.parse(text);
       } catch {

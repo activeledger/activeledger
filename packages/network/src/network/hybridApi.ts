@@ -461,12 +461,27 @@ export class LedgerHybridRegistry implements HybridRegistry {
     };
   }
 
+  /**
+   * Was this stream created by `default/hybrid`? Any contract can create a
+   * stream with this deterministic id and write whatever state it likes, so
+   * the state alone proves nothing: the transaction that created the stream
+   * (named by its meta) must be a `default/hybrid` one.
+   */
+  private async createdByRegistry(id: string): Promise<boolean> {
+    const meta = await safeGet(this.db, `${id}:stream`);
+    if (!meta?.origin) return false;
+    const origin = await safeGet(this.db, `${meta.origin}:umid`);
+    const tx = origin?.umid?.$tx;
+    return tx?.$namespace === "default" && tx?.$contract === "hybrid";
+  }
+
   public async lookup(hash: string): Promise<RegisteredHybrid | undefined> {
     if (!/^[0-9a-f]{64}$/.test(hash)) return undefined;
-    const state = await safeGet(this.db, ActiveCrypto.hybridStreamIdFromKeyHash(hash));
-    const entry = LedgerHybridRegistry.fromState(state);
+    const id = ActiveCrypto.hybridStreamIdFromKeyHash(hash);
+    const entry = LedgerHybridRegistry.fromState(await safeGet(this.db, id));
     // The stream id is derived from the hash, so it must hold that key
-    return entry && ActiveCrypto.keyHash(entry.key) === hash ? entry : undefined;
+    if (!entry || ActiveCrypto.keyHash(entry.key) !== hash) return undefined;
+    return (await this.createdByRegistry(id)) ? entry : undefined;
   }
 
   public async list(): Promise<(RegisteredHybrid & { keyHash: string })[]> {
@@ -486,7 +501,11 @@ export class LedgerHybridRegistry implements HybridRegistry {
         const doc = row.doc ?? row;
         if (doc?._id === start) continue;
         const entry = LedgerHybridRegistry.fromState(doc);
-        if (entry && ActiveCrypto.hybridStreamId(entry.key) === doc._id) {
+        if (
+          entry &&
+          ActiveCrypto.hybridStreamId(entry.key) === doc._id &&
+          (await this.createdByRegistry(doc._id))
+        ) {
           list.push({ ...entry, keyHash: ActiveCrypto.keyHash(entry.key) });
         }
       }

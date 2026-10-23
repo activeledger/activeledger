@@ -314,3 +314,34 @@ export function verifyFeedItem(item: IFeedItem, ctx: VerifyContext): FeedItemChe
   }
   return out(attestationOk, yes, no);
 }
+
+
+/**
+ * What a pin hashes: the setup stream's neighbourhood (hosts, ports and
+ * identity keys) and its remap, which together decide whose votes count.
+ * Hashed canonically so the operator can compute it from any node.
+ */
+export function neighbourhoodHash(setupDoc: any): string {
+  return ActiveCrypto.Hash.getHash(
+    ActiveCrypto.canonicalJson({
+      neighbourhood: setupDoc?.neighbourhood ?? [],
+      neighbourhoodRemap: setupDoc?.neighbourhoodRemap ?? {},
+    })
+  );
+}
+
+/**
+ * Check a bootstrap setup document against the operator's pin. Without a
+ * pin there is nothing to check; with one, a mismatch means the upstream
+ * (or something in front of it) is offering a different set of voting keys.
+ */
+export function checkPin(
+  setupDoc: any,
+  pin?: { neighbourhoodSha256: string }
+): { ok: boolean; reason?: string } {
+  if (!pin) return { ok: true };
+  const actual = neighbourhoodHash(setupDoc);
+  return actual === pin.neighbourhoodSha256
+    ? { ok: true }
+    : { ok: false, reason: `setup neighbourhood hash ${actual} does not match the pin` };
+}
