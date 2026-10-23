@@ -123,7 +123,7 @@ export class QuickRestore {
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
           const streamDataPromise = await streamData(activity);
           ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
-          const networkData: INetworkData = this.handleNetworkData(
+          const networkData: INetworkData = await this.handleNetworkData(
             streamDataPromise
           );
           await this.uploadData(networkData);
@@ -245,7 +245,7 @@ export class QuickRestore {
    * @param {Promise<unknown>[]} promises
    * @returns {Promise<INetworkData>}
    */
-  private handleNetworkData(activityData: any): INetworkData {
+  private async handleNetworkData(activityData: any): Promise<INetworkData> {
     const hasNotErrored = (data: IBaseData) => (!data.error);
 
     const isNotStreamOrUmid = (data: IBaseData) =>
@@ -269,7 +269,7 @@ export class QuickRestore {
           volatile.push({ _id: `${data._id}:volatile` });
 
           hasRequiredData(data)
-            ? Contract.rebuild(data)
+            ? await Contract.rebuild(data)
             : Helper.output("Data does not have required fields", data);
         }
         // Only need to find one non-erroring stream

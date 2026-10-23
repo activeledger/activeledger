@@ -49,6 +49,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
+    "@activeledger/activecontracts": "5.0.2",
     "@activeledger/activecrypto": "5.0.2",
     "@activeledger/activelogger": "5.0.2",
     "@activeledger/activenetwork": "5.0.2",

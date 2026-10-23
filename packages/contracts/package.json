@@ -50,6 +50,7 @@
     "@activeledger/activedefinitions": "5.0.2",
     "@activeledger/activelogger": "5.0.2",
     "@activeledger/activequery": "5.0.2",
-    "@activeledger/activeutilities": "5.0.2"
+    "@activeledger/activeutilities": "5.0.2",
+    "typescript-api": "npm:typescript@6.0.3"
   }
 }

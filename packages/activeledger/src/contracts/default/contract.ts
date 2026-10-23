@@ -23,6 +23,10 @@
 
 import * as fs from "fs";
 import * as ts from "typescript-api";
+import {
+  ContractFiles,
+  ContractSource,
+} from "@activeledger/activecontracts/lib/source";
 import { Standard, Activity } from "@activeledger/activecontracts";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -516,10 +520,7 @@ export default class Contract extends Standard {
   }
 
   private static hashContractSource(base64: string): string {
-    return ActiveCrypto.Hash.getHash(
-      Buffer.from(base64, "base64").toString(),
-      "sha256"
-    );
+    return ContractSource.hash(base64);
   }
 
   /**
@@ -567,35 +568,10 @@ export default class Contract extends Standard {
    */
   private transpile(target: ContractTarget): string {
     // Base64 Decode & Transpile to javascript
-    return ts.transpileModule(
-      Buffer.from(
-        this.transactions.$i[this.identity.getName()].contract as string,
-        "base64"
-      ).toString(),
-      {
-        compilerOptions: {
-          alwaysStrict: true,
-          strictNullChecks: true,
-          noImplicitAny: true,
-          removeComments: true,
-          module: ts.ModuleKind.CommonJS,
-          moduleResolution: ts.ModuleResolutionKind.Classic,
-          // Pinned editions, never ScriptTarget.Latest - a compiler upgrade
-          // must not move the target of a contract under anyone.
-          target:
-            target === "es2025"
-              ? ts.ScriptTarget.ES2025
-              : ts.ScriptTarget.ES2017,
-          // TypeScript 6 defaults esModuleInterop on, which rewrites `import *`
-          // and default imports in contract code. Off, the es2017 output is
-          // byte-identical to 5.6.3 across every .ts in this repo; a contract
-          // must not change behaviour because the node that compiles it was
-          // upgraded.
-          esModuleInterop: false,
-          ignoreDeprecations: "6.0",
-        },
-      }
-    ).outputText;
+    return ContractSource.transpile(
+      this.transactions.$i[this.identity.getName()].contract as string,
+      target
+    );
   }
 
   /**
@@ -1183,15 +1159,10 @@ export default class Contract extends Standard {
     reject: (reason?: any) => void
   ): void {
     // Create File
-    fs.closeSync(
-      fs.openSync(
-        this.rootDir +
-          this.namespace +
-          "/_LOCK." +
-          this.contract +
-          this.version,
-        "w"
-      )
+    new ContractFiles(this.rootDir).lock(
+      this.namespace,
+      this.contract,
+      this.version
     );
     resolve(true);
   }
@@ -1206,8 +1177,10 @@ export default class Contract extends Standard {
     reject: (reason?: any) => void
   ): void {
     // Remove File
-    fs.unlinkSync(
-      this.rootDir + this.namespace + "/_LOCK." + this.contract + this.version
+    new ContractFiles(this.rootDir).unlock(
+      this.namespace,
+      this.contract,
+      this.version
     );
 
     resolve(true);
@@ -1521,14 +1494,10 @@ export default class Contract extends Standard {
     );
 
     // Write the contract to its location as latest (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
-      code
-    );
-
-    // Write the contract to its location as a version (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}@${txi.version}.js`,
+    new ContractFiles(this.rootDir).write(
+      this.namespace,
+      stream.getName(),
+      txi.version,
       code
     );
 
@@ -1644,14 +1613,10 @@ export default class Contract extends Standard {
     );
 
     // Write the contract to its location as latest (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
-      code
-    );
-
-    // Write the contract to its location (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}@${txi.version}.js`,
+    new ContractFiles(this.rootDir).write(
+      this.namespace,
+      stream.getName(),
+      txi.version,
       code
     );
 
