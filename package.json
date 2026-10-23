@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "setup": "npm install && npm run build",
-    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:activesync && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:hybrid",
+    "build": "npm run build:definitions && npm run build:logger && npm run build:utilities && npm run build:httpd && npm run build:options && npm run build:storage && npm run build:crypto && npm run build:activesync && npm run build:activep2p && npm run build:query && npm run build:contracts && npm run build:protocol && npm run build:network && npm run build:toolkits && npm run build:ledger && npm run build:restore && npm run build:hybrid",
     "build:utilities": "cd ./packages/utilities/ && npm run build",
     "build:options": "cd ./packages/options/ && npm run build",
     "build:logger": "cd ./packages/logger/ && npm run build",
@@ -16,6 +16,7 @@
     "build:definitions": "cd ./packages/definitions/ && npm run build",
     "build:activesync": "cd ./packages/activesync/ && npm run build",
     "build:crypto": "cd ./packages/crypto/ && npm run build",
+    "build:activep2p": "cd ./packages/activep2p/ && npm run build",
     "build:query": "cd ./packages/query/ && npm run build",
     "build:contracts": "cd ./packages/contracts/ && npm run build",
     "build:toolkits": "cd ./packages/toolkits/ && npm run build",
