@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import "mocha";
 import { ActiveCrypto } from "../packages/crypto/src";
-import { HybridApi, HybridDb, RegisteredHybrid, recordFailed } from "../packages/network/src/network/hybridApi";
+import { HybridApi, HybridDb, LedgerHybridRegistry, RegisteredHybrid, recordFailed } from "../packages/network/src/network/hybridApi";
 
 // An in-memory store with the allDocs range rules of LevelMe: startkey
 // inclusive, endkey exclusive, ordered by key.
@@ -270,5 +270,43 @@ describe("recordFailed", () => {
     const s = store();
     const bad = { post: async () => { throw new Error("down"); } };
     expect(await recordFailed(bad, s.db, entry({ a: { vote: true } }), 40300)).to.equal(false);
+  });
+});
+
+describe("LedgerHybridRegistry", () => {
+  const stateFor = (publicPem: string, over: any = {}) => ({
+    _id: ActiveCrypto.hybridStreamId(publicPem),
+    type: "default.activeledger.hybrid",
+    key: publicPem,
+    keyType: "rsa",
+    endpoints: [{ transport: "http", host: "h", port: 1 }],
+    ...over,
+  });
+
+  it("finds a hybrid by the hash of its key", async () => {
+    const db = new MemDb().put(stateFor(pem, { label: "mine" }));
+    const found = await new LedgerHybridRegistry(db).lookup(keyHash);
+    expect(found).to.include({ key: pem, type: "rsa", label: "mine", retired: false });
+  });
+
+  it("reports retired, and refuses anything that is not a registry stream for that hash", async () => {
+    const reg = (doc: any) => new LedgerHybridRegistry(new MemDb().put(doc));
+    expect((await reg(stateFor(pem, { retired: true })).lookup(keyHash))?.retired).to.equal(true);
+    expect(await reg(stateFor(pem, { type: "other" })).lookup(keyHash)).to.equal(undefined);
+    // A document at the right id that holds a different key
+    const other = new ActiveCrypto.KeyPair("rsa");
+    const otherPem = other.generate().pub.pkcs8pem;
+    expect(await reg({ ...stateFor(otherPem), _id: ActiveCrypto.hybridStreamId(pem) }).lookup(keyHash)).to.equal(undefined);
+    expect(await new LedgerHybridRegistry(new MemDb()).lookup(keyHash)).to.equal(undefined);
+    expect(await new LedgerHybridRegistry(new MemDb()).lookup("not-a-hash")).to.equal(undefined);
+  });
+
+  it("lists registry streams and nothing else, and caches the scan", async () => {
+    const db = new MemDb().put(stateFor(pem)).put({ _id: "plain", x: 1 }).put({ ...stateFor(pem), _id: "forged" });
+    const reg = new LedgerHybridRegistry(db, 60_000);
+    const list = await reg.list();
+    expect(list.map((h) => h.keyHash)).to.deep.equal([keyHash]);
+    db.docs.clear();
+    expect(await reg.list()).to.have.length(1);
   });
 });

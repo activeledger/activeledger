@@ -34,7 +34,8 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
-import { recordFailed } from "./hybridApi";
+import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
+import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
@@ -188,6 +189,12 @@ interface BusyLockQueue {
  * @extends {Home}
  */
 export class Host extends Home {
+  /** Hybrid key hashes refused on this supernode only (`hybrid ban`) */
+  public static hybridBans = new Set<string>();
+
+  /** Hybrid feeds connected right now */
+  public hybridFeeds: Set<FeedClient> = new Set();
+
   /**
    * Called once the API is listening. Lets the CLI report real progress.
    */
@@ -797,6 +804,29 @@ export class Host extends Home {
     // });
 
     this.api = App();
+
+    // Hybrid nodes follow the ledger through /h/* (build 40300 and later)
+    const hybridApi = new HybridApi({
+      db: this.dbConnection,
+      events: this.dbEventConnection,
+      registry: new LedgerHybridRegistry(this.dbConnection),
+      ledgerConfig: () => {
+        const section = ActiveOptions.get<any>("hybrid", {});
+        return section && typeof section === "object" && !Array.isArray(section)
+          ? section
+          : {};
+      },
+      setupStreamId: () =>
+        ActiveOptions.get<string>("network", "").split("@")[0],
+      banned: () => Host.hybridBans,
+    });
+    this.hybridFeeds = registerHybridRoutes(this.api, hybridApi, {
+      maxFeeds: () =>
+        Number(
+          ActiveOptions.get<any>("hybrid-max-feeds", null) ??
+            ActiveOptions.get<any>("hybridMaxFeeds", 32)
+        ) || 32,
+    });
 
     this.api.any("/*", async (res, req) => {
       /* Can't return or yield from here without responding or attaching an abort handler */

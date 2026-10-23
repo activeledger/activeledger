@@ -436,3 +436,64 @@ export async function recordFailed(
     return false;
   }
 }
+
+/**
+ * Registered hybrids, read from their registry streams (`default/hybrid`).
+ * There is no shared index stream, so `list` scans for registry-typed state
+ * documents and keeps the answer briefly.
+ */
+export class LedgerHybridRegistry implements HybridRegistry {
+  private cached?: { at: number; list: (RegisteredHybrid & { keyHash: string })[] };
+
+  constructor(
+    private db: HybridDb,
+    private listTtlMs = 30_000
+  ) {}
+
+  private static fromState(state: any): RegisteredHybrid | undefined {
+    if (state?.type !== "default.activeledger.hybrid" || !state.key) return undefined;
+    return {
+      key: state.key,
+      type: state.keyType ?? "rsa",
+      endpoints: state.endpoints ?? [],
+      label: state.label,
+      retired: !!state.retired,
+    };
+  }
+
+  public async lookup(hash: string): Promise<RegisteredHybrid | undefined> {
+    if (!/^[0-9a-f]{64}$/.test(hash)) return undefined;
+    const state = await safeGet(this.db, ActiveCrypto.hybridStreamIdFromKeyHash(hash));
+    const entry = LedgerHybridRegistry.fromState(state);
+    // The stream id is derived from the hash, so it must hold that key
+    return entry && ActiveCrypto.keyHash(entry.key) === hash ? entry : undefined;
+  }
+
+  public async list(): Promise<(RegisteredHybrid & { keyHash: string })[]> {
+    if (this.cached && Date.now() - this.cached.at < this.listTtlMs) {
+      return this.cached.list;
+    }
+    const list: (RegisteredHybrid & { keyHash: string })[] = [];
+    let start: string | undefined;
+    for (;;) {
+      const r = await this.db.allDocs({
+        ...(start ? { startkey: start } : {}),
+        limit: 500,
+        include_docs: true,
+      });
+      const rows: any[] = r?.rows ?? [];
+      for (const row of rows) {
+        const doc = row.doc ?? row;
+        if (doc?._id === start) continue;
+        const entry = LedgerHybridRegistry.fromState(doc);
+        if (entry && ActiveCrypto.hybridStreamId(entry.key) === doc._id) {
+          list.push({ ...entry, keyHash: ActiveCrypto.keyHash(entry.key) });
+        }
+      }
+      if (rows.length < 500) break;
+      start = rows[rows.length - 1]._id ?? rows[rows.length - 1].id;
+    }
+    this.cached = { at: Date.now(), list };
+    return list;
+  }
+}

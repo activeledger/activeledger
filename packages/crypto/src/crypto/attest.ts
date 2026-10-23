@@ -56,7 +56,14 @@ export const hybridStreamName = (publicPem: string): string =>
  * sha256(seed + name), so any node or hybrid can derive it from the key alone.
  */
 export const hybridStreamId = (publicPem: string): string =>
-  Hash.getHash(keyHash(publicPem) + hybridStreamName(publicPem), "sha256");
+  hybridStreamIdFromKeyHash(keyHash(publicPem));
+
+/**
+ * The same id from the key hash alone, for a supernode that is handed the
+ * hash in a signed request and looks the stream up before it has the key.
+ */
+export const hybridStreamIdFromKeyHash = (hash: string): string =>
+  Hash.getHash(hash + `activeledger.default.hybrid.${hash}`, "sha256");
 
 /**
  * Signed requests: a signature over `${key}:${timestamp}` made with the
