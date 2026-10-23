@@ -221,6 +221,13 @@ export class HybridApi {
     const docs: any[] = [];
     const missing: { id: string; rev?: string }[] = [];
     for (const req of requests) {
+      // A stream id only. A suffix (":volatile", ":stream", ":umid") would
+      // read a different document straight past the volatile gate below, and
+      // a leading "_" reaches the database's own documents.
+      if (!HybridApi.isStreamId(req.id)) {
+        missing.push(req);
+        continue;
+      }
       const state = await safeGet(this.deps.db, req.id);
       if (!state || (req.rev && state._rev !== req.rev)) {
         missing.push(req);
@@ -237,13 +244,25 @@ export class HybridApi {
     return { docs, missing };
   }
 
+  /** Stream ids are hashes or 0x addresses: no ":" suffix, no "_" internals */
+  public static isStreamId(id: unknown): id is string {
+    return (
+      typeof id === "string" &&
+      id.length > 0 &&
+      id.length <= 128 &&
+      /^[A-Za-z0-9.@-][A-Za-z0-9._@-]*$/.test(id)
+    );
+  }
+
   /** `GET /h/umid/:umid` */
-  public umid(umid: string): Promise<any | undefined> {
+  public async umid(umid: string): Promise<any | undefined> {
+    if (!HybridApi.isStreamId(umid)) return undefined;
     return safeGet(this.deps.db, `${umid}:umid`);
   }
 
   /** `GET /h/attest/:umid`: this supernode's commit attestation */
   public async attest(umid: string): Promise<any | undefined> {
+    if (!HybridApi.isStreamId(umid)) return undefined;
     const doc = await safeGet(this.deps.events, `attest:${umid}`);
     if (!doc) return undefined;
     const { _id, _rev, nodes, ...attestation } = doc;

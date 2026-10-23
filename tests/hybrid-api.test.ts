@@ -92,6 +92,18 @@ describe("HybridApi", () => {
       expect(r.missing).to.deep.equal([{ id: "a", rev: "9-z" }, { id: "nope" }]);
     });
 
+    it("refuses ids that name another document of the stream or an internal one", async () => {
+      const { api, db } = make();
+      db.put({ _id: "vol1", _rev: "1-a" }).put({ _id: "vol1:volatile", v: 1, _rev: "1-b" });
+      db.put({ _id: "_design/x", _rev: "1-c" }).put({ _id: "u1:umid", _rev: "1-d" });
+      const ids = ["vol1:volatile", "vol1:stream", "u1:umid", "_design/x", "", "a".repeat(129), "x/y"];
+      const r = await api.streams(ids.map((id) => ({ id })));
+      expect(r.docs).to.deep.equal([]);
+      expect(r.missing).to.have.length(ids.length);
+      expect(await api.umid("vol1:volatile")).to.equal(undefined);
+      expect(await api.attest("../x")).to.equal(undefined);
+    });
+
     it("serves volatile only when required-volatile AND volatileShared", async () => {
       const { api, db } = make();
       db.put({ _id: "vol1", _rev: "1-a" }).put({ _id: "vol1:volatile", v: 1 });
