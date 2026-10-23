@@ -68,6 +68,9 @@ describe("HybridApi", () => {
       const again: any = await api.authenticate(headers);
       expect(again.ok).to.equal(false);
       expect(again.reason).to.match(/replayed/);
+      // The same request signed again for the same instant is a replay too
+      const sameInstant = signed(Number(headers.timestamp));
+      expect(((await api.authenticate(sameInstant)) as any).reason).to.match(/replayed/);
       // A fresh signature is fine
       expect((await api.authenticate(signed(Date.now() + 1))).ok).to.equal(true);
     });

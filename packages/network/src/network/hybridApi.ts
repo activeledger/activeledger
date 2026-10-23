@@ -100,7 +100,7 @@ export const cursorSuffix = (cursor: string): string =>
  * with `authenticate`, then calls one method per endpoint.
  */
 export class HybridApi {
-  /** Signatures already accepted, until their window closes, so none works twice */
+  /** `key:timestamp` already accepted, until its window closes, so none works twice */
   private used = new Map<string, number>();
 
   constructor(private deps: HybridApiDeps) {}
@@ -138,17 +138,28 @@ export class HybridApi {
       return { ok: false, status: 401, reason: "bad signature or timestamp" };
     }
     // Once only: a captured header replayed inside its window must not
-    // authenticate (it could otherwise evict the real owner's feed)
+    // authenticate (it could otherwise evict the real owner's feed).
+    //
+    // Keyed on what was signed, not on the signature: the same signature
+    // has more than one valid encoding (base64 variants, ECDSA high-S), so
+    // a re-encoded copy would slip past a check on the signature text.
+    // That makes one accepted request per key per timestamp, so a client
+    // must not sign two requests with the same millisecond.
+    //
+    // Held one tick past the last instant verifyRequest still accepts. This
+    // is per process: a replay sent to a different supernode is not seen
+    // here, which is what the timestamp window and TLS are for.
     const now = Date.now();
     const windowMs = (this.deps.authWindowSeconds ?? 60) * 1000;
-    for (const [sig, expiry] of this.used) {
-      if (expiry > now) break;
-      this.used.delete(sig);
+    for (const [id, expiry] of this.used) {
+      if (expiry >= now) break;
+      this.used.delete(id);
     }
-    if (this.used.has(signature)) {
+    const id = `${key}:${Number(timestamp)}`;
+    if (this.used.has(id)) {
       return { ok: false, status: 401, reason: "replayed request" };
     }
-    this.used.set(signature, Math.max(now, Number(timestamp)) + windowMs);
+    this.used.set(id, Math.max(now, Number(timestamp)) + windowMs + 1);
     return { ok: true, keyHash: key, hybrid };
   }
 
