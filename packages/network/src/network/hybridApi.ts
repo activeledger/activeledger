@@ -137,6 +137,13 @@ export class HybridApi {
     return { ok: true, keyHash: key, hybrid };
   }
 
+  /** Is this key still allowed? Checked while a long-lived feed is open. */
+  public async stillAllowed(keyHash: string): Promise<boolean> {
+    if (this.deps.banned().has(keyHash)) return false;
+    const hybrid = await this.deps.registry.lookup(keyHash);
+    return !!hybrid && !hybrid.retired;
+  }
+
   /** `GET /h/bootstrap` */
   public async bootstrap(): Promise<any> {
     const cfg = this.deps.ledgerConfig();

@@ -43,6 +43,7 @@ export class FeedSession {
   private timer?: NodeJS.Timeout;
   private busy = false;
   private lastBeat = 0;
+  private stopped = false;
   public cursor: string;
 
   constructor(
@@ -51,7 +52,11 @@ export class FeedSession {
     from: string,
     private pollMs = FEED_POLL_MS,
     private heartbeatMs = FEED_HEARTBEAT_MS,
-    private now: () => number = Date.now
+    private now: () => number = Date.now,
+    /** Asked on every heartbeat: a banned or retired key loses its feed */
+    private allowed: () => Promise<boolean> = async () => true,
+    /** Called once when the session ends, whatever the reason */
+    private onStop: () => void = () => {}
   ) {
     this.cursor = from;
   }
@@ -65,6 +70,10 @@ export class FeedSession {
   public stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    if (!this.stopped) {
+      this.stopped = true;
+      this.onStop();
+    }
   }
 
   /** Send everything ready after the cursor, then a heartbeat if one is due */
@@ -94,6 +103,10 @@ export class FeedSession {
 
   private async beat(): Promise<void> {
     this.lastBeat = this.now();
+    if (!(await this.allowed())) {
+      this.write(`event: error\ndata: {"error":"not authorised"}\n\n`);
+      return this.stop();
+    }
     const head = await this.api.head(this.now());
     if (!this.write(`event: heartbeat\ndata: ${JSON.stringify({ head, time: this.now() })}\n\n`)) {
       this.stop();
@@ -121,6 +134,7 @@ export const registerHybridRoutes = (
   options: HybridRouteOptions
 ): Set<FeedClient> => {
   const feeds = new Set<FeedClient>();
+  const closers = new Map<FeedClient, () => void>();
 
   const send = (res: HttpResponse, status: number, body: unknown) => {
     if (!(res as any).writable) return;
@@ -226,13 +240,21 @@ export const registerHybridRoutes = (
   });
 
   app.get("/h/feed", guard(async (res, c) => {
-    if (feeds.size >= options.maxFeeds()) {
-      return send(res, 503, { error: "feed limit reached" });
-    }
     const fromParam = new URLSearchParams(c.query).get("from") ?? "";
     // A reconnecting client's Last-Event-ID wins over its original ?from
     const from = c.lastEventId || fromParam;
     const client: FeedClient = { keyHash: c.keyHash, since: from, connectedAt: Date.now() };
+
+    // One feed per key: a reconnect replaces the old one, so a half-dead
+    // connection cannot hold the slot against its own owner
+    for (const [old, end] of closers) {
+      if (old.keyHash === c.keyHash) end();
+    }
+    // Checked after the replacement, which may have freed the slot
+    if (feeds.size >= options.maxFeeds()) {
+      return send(res, 503, { error: "feed limit reached" });
+    }
+
     feeds.add(client);
     options.onFeeds?.(feeds);
 
@@ -243,22 +265,40 @@ export const registerHybridRoutes = (
       res.write(": connected\n\n");
     });
 
-    const session = new FeedSession(api, (chunk) => {
-      if (!(res as any).writable) return false;
-      res.cork(() => res.write(chunk));
-      return true;
-    }, from);
-
-    const close = () => {
-      session.stop();
+    const finish = () => {
+      closers.delete(client);
       feeds.delete(client);
       options.onFeeds?.(feeds);
+      if ((res as any).writable) {
+        (res as any).writable = false;
+        res.cork(() => res.end());
+      }
     };
+    const session: FeedSession = new FeedSession(
+      api,
+      (chunk) => {
+        if (!(res as any).writable) return false;
+        res.cork(() => res.write(chunk));
+        return true;
+      },
+      from,
+      FEED_POLL_MS,
+      FEED_HEARTBEAT_MS,
+      Date.now,
+      () => api.stillAllowed(c.keyHash),
+      finish
+    );
+    closers.set(client, () => session.stop());
     res.onAborted(() => {
       (res as any).writable = false;
-      close();
+      session.stop();
     });
-    await session.start();
+    try {
+      await session.start();
+    } catch (e) {
+      ActiveLogger.error(e, "Hybrid feed failed to start");
+      session.stop();
+    }
   }));
 
   return feeds;

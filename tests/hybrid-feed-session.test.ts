@@ -76,4 +76,28 @@ describe("FeedSession", () => {
     await s.tick();
     expect(out.join("")).to.contain("event: error");
   });
+
+  it("ends the session when the key is no longer allowed, checked at each heartbeat", async () => {
+    let now = 0;
+    let allowed = true;
+    const out: string[] = [];
+    let stops = 0;
+    const s = new FeedSession(fakeApi([]), (c) => (out.push(c), true), "", 1000, 10_000, () => now, async () => allowed, () => stops++);
+    await s.start();
+    expect(stops).to.equal(0);
+    allowed = false;
+    now = 10_001;
+    await s.tick();
+    expect(out.join("")).to.contain("not authorised");
+    expect(stops).to.equal(1);
+  });
+
+  it("calls onStop once however it ends", async () => {
+    let stops = 0;
+    const s = new FeedSession(fakeApi([[item(1)]]), () => false, "", 1000, 10_000, Date.now, async () => true, () => stops++);
+    await s.tick();
+    s.stop();
+    s.stop();
+    expect(stops).to.equal(1);
+  });
 });
