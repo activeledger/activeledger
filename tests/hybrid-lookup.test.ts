@@ -75,11 +75,39 @@ describe("Hybrid lookup", () => {
 
   it("fetches an unknown stream at its revision, with its meta, keeping the network's revisions", async () => {
     const r = await lookup([new FakeUpstream("p1", [state, meta], log)], []).ensure([
-      { id: "st", rev: "3-meta:7-net", sha256: docHash(state) },
+      { id: "st", rev: "3-meta:7-net", sha256: docHash(state), metaSha256: docHash(meta) },
     ]);
     expect(r.missing).to.deep.equal([]);
     expect(await get("st")).to.deep.equal(state);
     expect(await get("st:stream")).to.deep.equal(meta);
+  });
+
+  it("never takes a stream from a peer unless state and meta both match signed hashes", async () => {
+    const peer = (): FakeUpstream => new FakeUpstream("p1", [state, meta], log);
+    // Nothing signed to check against (an input at its $revs): not from a peer
+    expect((await lookup([peer()], []).ensure([{ id: "st", rev: "3-meta:7-net" }])).missing).to.deep.equal(["st"]);
+    // State hash only: the meta (authorities!) would be unverified
+    expect((await lookup([peer()], []).ensure([{ id: "st", rev: "3-meta:7-net", sha256: docHash(state) }])).missing).to.deep.equal(["st"]);
+    // A forged meta fails its hash
+    const forged = new FakeUpstream("p1", [state, { ...meta, authorities: ["evil"] }], log);
+    expect((await lookup([forged], []).ensure([{ id: "st", rev: "3-meta:7-net", sha256: docHash(state), metaSha256: docHash(meta) }])).missing).to.deep.equal(["st"]);
+    expect(await get("st")).to.equal(undefined);
+    expect(await get("st:stream")).to.equal(undefined);
+  });
+
+  it("does not take volatile from a peer", async () => {
+    const volatile = { _id: "st:volatile", v: 1 };
+    await lookup([new FakeUpstream("p1", [state, meta, volatile], log)], []).ensure([
+      { id: "st", rev: "3-meta:7-net", sha256: docHash(state), metaSha256: docHash(meta) },
+    ]);
+    expect(await get("st")).to.deep.equal(state);
+    expect(await get("st:volatile")).to.equal(undefined);
+  });
+
+  it("takes volatile from a supernode", async () => {
+    const volatile = { _id: "st:volatile", _rev: "1-v", v: 1 };
+    await lookup([], [new FakeUpstream("sn1", [state, meta, volatile], log)]).ensure([{ id: "st", rev: "7-net" }]);
+    expect(await get("st:volatile")).to.not.equal(undefined);
   });
 
   it("overwrites a present but different copy with the network's revision", async () => {
@@ -114,14 +142,22 @@ describe("Hybrid lookup", () => {
     expect(await get("st")).to.deep.equal(state);
   });
 
-  it("asks peers before supernodes and tolerates a source that fails", async () => {
+  it("asks peers before supernodes for verifiable streams and tolerates a source that fails", async () => {
     const p1 = new FakeUpstream("p1", [state, meta], log);
     p1.down = true;
     const r = await lookup([p1, new FakeUpstream("p2", [], log)], [new FakeUpstream("sn1", [state, meta], log)]).ensure([
-      { id: "st", rev: "7-net" },
+      { id: "st", rev: "7-net", sha256: docHash(state), metaSha256: docHash(meta) },
     ]);
     expect(r.missing).to.deep.equal([]);
     expect(log).to.deep.equal(["p1", "p2", "sn1"]);
+  });
+
+  it("goes straight to a supernode for a stream no signed hash covers", async () => {
+    const r = await lookup([new FakeUpstream("p1", [state, meta], log)], [new FakeUpstream("sn1", [state, meta], log)]).ensure([
+      { id: "st", rev: "7-net" },
+    ]);
+    expect(r.missing).to.deep.equal([]);
+    expect(log).to.deep.equal(["sn1"]);
   });
 
   it("refuses a meta at another revision than $revs names", async () => {
@@ -132,14 +168,15 @@ describe("Hybrid lookup", () => {
     expect(await get("st")).to.equal(undefined);
   });
 
-  it("refreshes to the tip from supernodes first and never moves a stream backwards", async () => {
+  it("refreshes to the tip from supernodes only and never moves a stream backwards", async () => {
     await store.data.bulkDocs([{ _id: "ahead", _rev: "9-local" }], { new_edits: false });
     const r = await lookup(
       [new FakeUpstream("p1", [], log)],
       [new FakeUpstream("sn1", [state, meta, { _id: "ahead", _rev: "8-net" }], log)]
     ).refreshToTip(["st", "ahead", "nowhere"]);
     expect(r.missing).to.deep.equal(["nowhere"]);
-    expect(log).to.deep.equal(["sn1", "p1"]);
+    // Peers are never asked for a tip: there is no signed hash to check one against
+    expect(log).to.deep.equal(["sn1"]);
     expect(await get("st")).to.deep.equal(state);
     expect((await get("ahead"))._rev).to.equal("9-local");
   });
@@ -212,13 +249,14 @@ describe("Hybrid lookup", () => {
         compiled: { "1.0.0": "z" },
         identity: "idstream",
       });
-      const sn = new FakeUpstream("sn1", [s]);
+      const sn = new FakeUpstream("sn1", [s, { _id: "c0ffee:stream", _rev: "1-m", umid: "deploy1" }]);
       sn.umids.set("deploy1", { _id: "deploy1:umid", umid: { $umid: "deploy1", $tx: { $i: { idstream: { contract: base64 } } } } });
       const sources = { peers: [], supernodes: [sn as any] };
       const builder = new ContractBuilder({
         store: store as any,
         sources,
         lookup: new SourceLookup({ store: store as any, sources }),
+        verify: async () => true,
         rootDir: root,
       });
       await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@1.0.0" } });
@@ -226,6 +264,26 @@ describe("Hybrid lookup", () => {
       // Default contracts ship with the node
       await builder.ensureFor({ $tx: { $namespace: "default", $contract: "onboard" } });
       expect(fs.existsSync(`${root}default`)).to.equal(false);
+    });
+
+    it("compiles nothing it cannot verify: no verifier, or a verifier that says no", async () => {
+      const base64 = code(3);
+      const { ContractSource } = await import("@activeledger/activecontracts/lib/source");
+      const s = contractState({
+        contract: { "1.0.0": { umid: "deploy1", hash: ContractSource.hash(base64) } },
+        compiled: { "1.0.0": "z" },
+        identity: "idstream",
+      });
+      const sn = new FakeUpstream("sn1", [s, { _id: "c0ffee:stream", _rev: "1-m", umid: "deploy1" }]);
+      sn.umids.set("deploy1", { _id: "deploy1:umid", umid: { $umid: "deploy1", $tx: { $i: { idstream: { contract: base64 } } } } });
+      const sources = { peers: [], supernodes: [sn as any] };
+      for (const verify of [undefined, async () => false]) {
+        const builder = new ContractBuilder({ store: store as any, sources, verify, rootDir: root });
+        await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@1.0.0" } });
+        expect(fs.existsSync(`${root}acme/c0ffee@1.0.0.js`)).to.equal(false);
+        // And nothing unverified was kept in the store either
+        expect(await store.data.get("c0ffee")).to.not.have.property("contract");
+      }
     });
 
     it("applies the setup stream's security and at least build 40300", () => {

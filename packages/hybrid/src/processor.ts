@@ -102,8 +102,45 @@ export class Processor implements ItemProcessor {
       ((entry, db, opts) => ActiveProtocol.Process.dryRunHybrid(entry, db, opts));
     this.contracts =
       options.contracts === undefined
-        ? new ContractBuilder({ store: options.store, sources: options.sources, lookup: options.lookup })
+        ? new ContractBuilder({
+            store: options.store,
+            sources: options.sources,
+            lookup: options.lookup,
+            verify: (state, meta) => this.streamAttested(state, meta),
+          })
         : options.contracts;
+  }
+
+  /**
+   * Is this stream state the one the network agreed? Its last transaction
+   * (the meta's umid) must have a quorum of matching, signed commit
+   * attestations whose revsOut holds exactly this document's hash.
+   */
+  private async streamAttested(state: any, meta: any): Promise<boolean> {
+    const ctx = this.options.context();
+    const umid = meta?.umid;
+    if (!ctx || typeof umid !== "string" || !state?._id) return false;
+    const { supernodes } = this.sources();
+    let umidDoc: any;
+    const attestations: ActiveDefinitions.ICommitAttestation[] = [];
+    for (const up of supernodes) {
+      try {
+        umidDoc ??= await up.umid(umid);
+        const a = await up.attest(umid);
+        if (a) attestations.push(a);
+      } catch {
+        // Another supernode may answer
+      }
+    }
+    if (!umidDoc?.umid?.$revs) return false;
+    const q = quorum(attestations, umidDoc.umid.$revs, ctx.keys, ctx.reachedPercent, ctx.networkSize);
+    if (!q.reached) return false;
+    const agreed = q.agreed[0];
+    return (
+      docHash(umidDoc) === agreed.umidDocHash &&
+      agreed.revsOut?.[state._id]?.sha256 === docHash(state) &&
+      agreed.revsOut?.[`${state._id}:stream`]?.sha256 === docHash(meta)
+    );
   }
 
   private sources(): Sources {

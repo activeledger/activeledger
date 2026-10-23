@@ -29,7 +29,7 @@ import {
   ContractSource,
 } from "@activeledger/activecontracts/lib/source";
 import type { HybridStore, Sources, StreamLookup } from "./types";
-import { readDoc } from "./lookup";
+import { readDoc, writeAtRev } from "./lookup";
 
 /**
  * Keeps the compiled contract files Process runs (`contracts/<ns>/<id>.js`
@@ -64,8 +64,15 @@ const byVersion = (a: string, b: string) => {
 export interface ContractBuilderOptions {
   store: Pick<HybridStore, "data">;
   sources: Sources | (() => Sources);
-  /** Fetches a contract stream this hybrid does not hold yet */
+  /** Kept for callers; a stream this hybrid does not hold is fetched through `verify` instead */
   lookup?: StreamLookup;
+  /**
+   * Proves a fetched contract stream is what the network agreed (its state
+   * hash is in a quorum-signed commit attestation). Without it a contract
+   * this hybrid does not hold is not fetched at all: compiling code that
+   * nothing signed would let an upstream run its own code here.
+   */
+  verify?: (state: any, meta: any) => Promise<boolean>;
   /** Default `<cwd>/contracts/`, where Process looks */
   rootDir?: string;
 }
@@ -145,6 +152,30 @@ export class ContractBuilder {
    * is fetched (when a lookup is given) and built. Default contracts ship
    * with the node and need nothing.
    */
+  /** Fetch a contract stream from the supernodes and keep it only if it verifies */
+  private async fetchVerified(id: string): Promise<any | undefined> {
+    const verify = this.options.verify;
+    if (!verify) {
+      ActiveLogger.warn(`Contract ${id} is not held and no verifier is set; not fetched`);
+      return undefined;
+    }
+    const sources = this.options.sources;
+    const { supernodes } = typeof sources === "function" ? sources() : sources;
+    for (const up of supernodes) {
+      try {
+        const r = await up.streams([{ id }]);
+        const state = r.docs.find((d: any) => d?._id === id);
+        const meta = r.docs.find((d: any) => d?._id === `${id}:stream`);
+        if (!state || !meta || !(await verify(state, meta))) continue;
+        const db = this.options.store.data;
+        if ((await writeAtRev(db, meta)) && (await writeAtRev(db, state))) return state;
+      } catch (e) {
+        ActiveLogger.warn(`Contract ${id}: ${up.id}: ${(e as Error)?.message || e}`);
+      }
+    }
+    return undefined;
+  }
+
   public async ensureFor(entry: any): Promise<void> {
     const ns = entry?.$tx?.$namespace;
     const contract = entry?.$tx?.$contract;
@@ -153,10 +184,7 @@ export class ContractBuilder {
     if (!id || id.includes("/") || id.includes("..")) return;
     let state = await readDoc(this.options.store.data, id);
     if (state && this.files.exists(ns, id) && this.built.get(id) === state._rev) return;
-    if (!state && this.options.lookup) {
-      await this.options.lookup.ensure([{ id }]);
-      state = await readDoc(this.options.store.data, id);
-    }
+    if (!state) state = await this.fetchVerified(id);
     // A label (symlink) is not a stream; Process resolves it on disk
     if (state) await this.rebuild(state);
   }

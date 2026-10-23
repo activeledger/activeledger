@@ -529,7 +529,8 @@ describe("Hybrid processor", function () {
       await store.data.bulkDocs([{ ...BEFORE_STATE, _rev: "2-bbb" }], { new_edits: true, force_rev: "0-old" });
       const behind = await get(S);
       expect(behind._rev).to.equal("0-old");
-      peers = [new FakeUpstream("p1", [BEFORE_STATE, BEFORE_META])];
+      // No signed hash covers an input, so only a supernode is believed
+      supernodes = [new FakeUpstream("sn1", [BEFORE_STATE, BEFORE_META])];
       execute = async () => result({ documents: localDocs(umid, 2) });
       const out = await processor.apply(item, from());
       expect(out.action).to.equal("saved");

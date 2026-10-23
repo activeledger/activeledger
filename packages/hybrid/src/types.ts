@@ -131,7 +131,7 @@ export interface StreamLookup {
    * it is known. Resolves with the ids that could not be had.
    */
   ensure(
-    wanted: { id: string; rev?: string; sha256?: string }[]
+    wanted: { id: string; rev?: string; sha256?: string; metaSha256?: string }[]
   ): Promise<{ missing: string[] }>;
   /** Refresh these streams (and their :stream meta) to the upstream tip */
   refreshToTip(ids: string[]): Promise<{ missing: string[] }>;

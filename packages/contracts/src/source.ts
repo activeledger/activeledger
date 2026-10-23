@@ -157,6 +157,19 @@ export class ContractSource {
  * The compiled contract files a node runs: `<ns>/<name>.js` as latest,
  * `<ns>/<name>@<version>.js` per version, and `_LOCK.` files.
  */
+/**
+ * Namespace, contract and version become path segments. Anything but a plain
+ * label (letters, digits, `.`, `_`, `-`, `@`) is refused, as is ".." or a
+ * leading ".", so a name taken from ledger state can never leave the root.
+ */
+const SEGMENT = /^[A-Za-z0-9_@-][A-Za-z0-9._@-]*$/;
+export const safeSegment = (value: string, what: string): string => {
+  if (typeof value !== "string" || !SEGMENT.test(value) || value.includes("..")) {
+    throw new ContractSourceError(`Unsafe ${what} for a contract file: ${JSON.stringify(value)}`);
+  }
+  return value;
+};
+
 export class ContractFiles {
   /** Root directory with its trailing separator, e.g. "./contracts/" */
   constructor(private rootDir: string) {
@@ -164,6 +177,7 @@ export class ContractFiles {
   }
 
   private dir(namespace: string): string {
+    safeSegment(namespace, "namespace");
     if (!fs.existsSync(this.rootDir)) fs.mkdirSync(this.rootDir, { recursive: true });
     const dir = this.rootDir + namespace;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -172,6 +186,8 @@ export class ContractFiles {
 
   /** Write the code as latest and as the given version */
   public write(namespace: string, name: string, version: string, code: string): void {
+    safeSegment(name, "name");
+    safeSegment(version, "version");
     const dir = this.dir(namespace);
     fs.writeFileSync(`${dir}/${name}.js`, code);
     fs.writeFileSync(`${dir}/${name}@${version}.js`, code);
@@ -179,6 +195,10 @@ export class ContractFiles {
 
   /** Path of a lock file; `version` includes its leading "@", or is "" */
   public lockPath(namespace: string, contract: string, version = ""): string {
+    safeSegment(namespace, "namespace");
+    safeSegment(contract, "contract");
+    // A version here carries its leading "@"
+    if (version) safeSegment(version, "version");
     return `${this.rootDir}${namespace}/_LOCK.${contract}${version}`;
   }
 

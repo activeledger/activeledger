@@ -116,4 +116,21 @@ describe("ContractFiles", () => {
     expect(files.isLocked("ns", "name", "@1")).to.equal(false);
     expect(files.isLocked("ns", "name")).to.equal(true);
   });
+
+  it("refuses names that would leave the root", () => {
+    const files = new ContractFiles(dir());
+    for (const bad of ["..", "../x", "a/b", "a\\b", ".hidden", "", "a..b", "/abs", "a\0b"]) {
+      expect(() => files.write(bad, "name", "1", "c"), `ns ${bad}`).to.throw(/Unsafe/);
+      expect(() => files.write("ns", bad, "1", "c"), `name ${bad}`).to.throw(/Unsafe/);
+      expect(() => files.write("ns", "name", bad, "c"), `version ${bad}`).to.throw(/Unsafe/);
+    }
+    expect(() => files.lock("..", "c")).to.throw(/Unsafe/);
+    expect(() => files.isLocked("ns", "c/../x")).to.throw(/Unsafe/);
+  });
+
+  it("accepts the labels real contracts use", () => {
+    const files = new ContractFiles(dir());
+    files.write("my-ns", "contract.my-ns.name@1.2.3", "1.2.3", "c");
+    expect(files.exists("my-ns", "contract.my-ns.name@1.2.3")).to.equal(true);
+  });
 });

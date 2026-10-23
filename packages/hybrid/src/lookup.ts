@@ -92,6 +92,8 @@ interface Want {
   state?: string;
   meta?: string;
   sha256?: string;
+  /** sha256 of the `:stream` meta, from the signed revsOut */
+  metaSha256?: string;
 }
 
 /**
@@ -126,14 +128,14 @@ export class SourceLookup implements StreamLookup {
   }
 
   public async ensure(
-    wanted: { id: string; rev?: string; sha256?: string }[]
+    wanted: { id: string; rev?: string; sha256?: string; metaSha256?: string }[]
   ): Promise<{ missing: string[] }> {
     const need: Want[] = [];
     const seen = new Set<string>();
     for (const w of wanted) {
       if (!w || typeof w.id !== "string" || seen.has(w.id)) continue;
       seen.add(w.id);
-      const want: Want = { id: w.id, ...splitRev(w.rev), sha256: w.sha256 };
+      const want: Want = { id: w.id, ...splitRev(w.rev), sha256: w.sha256, metaSha256: w.metaSha256 };
       if (!(await this.held(want))) need.push(want);
     }
     if (!need.length) return { missing: [] };
@@ -142,7 +144,7 @@ export class SourceLookup implements StreamLookup {
     let remaining = need;
     for (const source of [...peers, ...supernodes]) {
       if (!remaining.length) break;
-      remaining = await this.fetchFrom(source, remaining);
+      remaining = await this.fetchFrom(source, remaining, peers.includes(source));
     }
     return { missing: remaining.map((w) => w.id) };
   }
@@ -151,7 +153,20 @@ export class SourceLookup implements StreamLookup {
    * Ask one source for the wanted streams at their revisions. Resolves with
    * those still not had.
    */
-  private async fetchFrom(source: Upstream, wants: Want[]): Promise<Want[]> {
+  private async fetchFrom(source: Upstream, wants: Want[], isPeer: boolean): Promise<Want[]> {
+    // A peer is not trusted: it may only supply a stream whose state AND meta
+    // can be checked against signed hashes. Anything else (inputs, which no
+    // signed hash covers) comes from a supernode.
+    if (isPeer) {
+      const checkable = wants.filter((w) => w.sha256 && w.metaSha256);
+      if (!checkable.length) return wants;
+      const rest = wants.filter((w) => !(w.sha256 && w.metaSha256));
+      return [...rest, ...(await this.fetchFrom0(source, checkable, true))];
+    }
+    return this.fetchFrom0(source, wants, false);
+  }
+
+  private async fetchFrom0(source: Upstream, wants: Want[], isPeer: boolean): Promise<Want[]> {
     let answer: { docs: any[] };
     try {
       answer = await source.streams(wants.map((w) => (w.state ? { id: w.id, rev: w.state } : { id: w.id })));
@@ -177,7 +192,9 @@ export class SourceLookup implements StreamLookup {
             ? "sha256 does not match"
             : w.meta && (!meta || meta._rev !== w.meta)
               ? `meta revision ${meta?._rev}, wanted ${w.meta}`
-              : "";
+              : isPeer && (!meta || docHash(meta) !== w.metaSha256)
+                ? "meta sha256 does not match"
+                : "";
       if (reason) {
         if (state) ActiveLogger.warn(`Lookup: ${source.id} ${w.id}: ${reason}`);
         left.push(w);
@@ -188,20 +205,22 @@ export class SourceLookup implements StreamLookup {
       for (const doc of [meta, state]) {
         if (doc && !(await writeAtRev(this.db, doc))) ok = false;
       }
-      if (ok && volatile) await writeAtRev(this.db, volatile);
+      // Volatile is per node and unsigned: only a supernode may supply it
+      if (ok && volatile && !isPeer) await writeAtRev(this.db, volatile);
       if (!ok) left.push(w);
     }
     return left;
   }
 
   /**
-   * Refresh to the upstream tip: supernodes first (they hold the tip), then
-   * peers. A tip behind the local copy never replaces it.
+   * Refresh to the upstream tip, from supernodes only: a tip has no signed
+   * hash to check a peer's copy against. A tip behind the local copy never
+   * replaces it.
    */
   public async refreshToTip(ids: string[]): Promise<{ missing: string[] }> {
-    const { peers, supernodes } = this.sources();
+    const { supernodes } = this.sources();
     let remaining = [...new Set(ids.filter((id) => typeof id === "string" && id))];
-    for (const source of [...supernodes, ...peers]) {
+    for (const source of supernodes) {
       if (!remaining.length) break;
       let answer: { docs: any[] };
       try {
