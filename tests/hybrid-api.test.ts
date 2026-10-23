@@ -118,6 +118,14 @@ describe("HybridApi", () => {
       expect(await api.attest("../x")).to.equal(undefined);
     });
 
+    it("serves a contract's :data document by id and revision, and nothing else with a suffix", async () => {
+      const { api, db } = make();
+      db.put({ _id: "c1:data", _rev: "3-d", v: 1 }).put({ _id: "c1:data:volatile", _rev: "1-x" });
+      const ok = await api.streams([{ id: "c1:data", rev: "3-d" }, { id: "c1:data", rev: "9-z" }, { id: "c1:data:volatile" }, { id: "c1:umid" }]);
+      expect(ok.docs.map((d) => d._id)).to.deep.equal(["c1:data"]);
+      expect(ok.missing).to.have.length(3);
+    });
+
     it("serves volatile only when required-volatile AND volatileShared", async () => {
       const { api, db } = make();
       db.put({ _id: "vol1", _rev: "1-a" }).put({ _id: "vol1:volatile", v: 1 });

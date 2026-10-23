@@ -257,7 +257,11 @@ export class HybridApi {
       // A stream id only. A suffix (":volatile", ":stream", ":umid") would
       // read a different document straight past the volatile gate below, and
       // a leading "_" reaches the database's own documents.
-      if (!HybridApi.isStreamId(req.id)) {
+      // The one suffix allowed is a contract's own data document, which is
+      // in revsOut and so has to be fetchable; it has no meta or volatile
+      const isData = typeof req.id === "string" && req.id.endsWith(":data");
+      const base = isData ? req.id.slice(0, -":data".length) : req.id;
+      if (!HybridApi.isStreamId(base)) {
         missing.push(req);
         continue;
       }
@@ -267,6 +271,7 @@ export class HybridApi {
         continue;
       }
       docs.push(state);
+      if (isData) continue;
       const meta = await safeGet(this.deps.db, `${req.id}:stream`);
       if (meta) docs.push(meta);
       if (volatileIds.has(req.id) && meta?.volatileShared === true) {

@@ -490,6 +490,19 @@ export class VirtualMachine
   }
 
   /**
+   * The consensus time for event ids, from build 40300. The events travel in
+   * the `:umid` document, which supernodes must write identically so a hybrid
+   * can check it against a signed hash; a local clock in the ids made every
+   * node's copy different. Below the build ids stay locally stamped, so a
+   * half-upgraded network does not disagree about them.
+   */
+  private eventStamp(payload: IVMDataPayload): number | undefined {
+    if (ActiveOptions.get<number>("build", 0) < 40300) return undefined;
+    const ms = new Date((payload as any).date).getTime();
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+
+  /**
    * Dynamically import the contract.
    *
    * @returns {Promise<void>}
@@ -522,7 +535,8 @@ export class VirtualMachine
     this.events[payload.umid] = new EventEngine(
       execution?.dryRun ? VirtualMachine.discardEvents : this.dbev,
       payload.transaction.$contract,
-      payload.umid
+      payload.umid,
+      this.eventStamp(payload)
     );
 
     return Promise.resolve()
