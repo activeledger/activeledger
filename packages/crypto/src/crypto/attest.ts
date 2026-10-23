@@ -45,6 +45,20 @@ export const canonicalJson = (value: unknown): string => {
 export const keyHash = (publicPem: string): string => Hash.getHash(publicPem);
 
 /**
+ * Name of a hybrid's registry stream, `activeledger.default.hybrid.<keyhash>`
+ */
+export const hybridStreamName = (publicPem: string): string =>
+  `activeledger.default.hybrid.${keyHash(publicPem)}`;
+
+/**
+ * Id of a hybrid's registry stream. `default/hybrid` creates it with the
+ * keyhash as the deterministic seed, and an Activity id is
+ * sha256(seed + name), so any node or hybrid can derive it from the key alone.
+ */
+export const hybridStreamId = (publicPem: string): string =>
+  Hash.getHash(keyHash(publicPem) + hybridStreamName(publicPem), "sha256");
+
+/**
  * Signed requests: a signature over `${key}:${timestamp}` made with the
  * caller's registered key. Used by /h/* and by nano-gateway.
  */

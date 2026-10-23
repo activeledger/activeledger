@@ -24,18 +24,6 @@
 import { LedgerRevs } from "./ledger";
 
 /**
- * Contains the data state of the ledger entry created by the contract
- * 
- * @export
- * @interface IState
- */
-export interface IHybridNodes {
-    active: boolean;
-    url: string;
-    auth: string;
-    docName?: string;
-}
-/**
  * Hybrid node types (v5.1). The hybrid is a lean, non-voting node that
  * re-runs contracts locally and commits only what the supernodes agreed.
  */
@@ -51,6 +39,8 @@ export interface IHybridEndpoint {
 /** What the `default/hybrid` registry contract stores, one stream per key */
 export interface IHybridRegistryEntry {
   key: string;
+  /** Key type, as KeyPair takes it ("rsa", "secp256k1", ...) */
+  keyType: string;
   endpoints: IHybridEndpoint[];
   label?: string;
   retired?: boolean;

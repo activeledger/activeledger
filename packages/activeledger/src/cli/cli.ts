@@ -32,6 +32,7 @@ import {
   ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
+  HybridConfig,
 } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
 import { Startup } from "./startup";
@@ -446,6 +447,7 @@ export class CLIHandler {
         "namespace.js",
         "onboard.js",
         "setup.js",
+        "hybrid.js",
       ];
       for (let i = 0; i < defaultFiles.length; i++) {
         const file = defaultFiles[i];
@@ -963,6 +965,10 @@ export class CLIHandler {
                 security: ActiveOptions.get<any>("security"),
                 consensus: ActiveOptions.get<any>("consensus"),
                 neighbourhood: ActiveOptions.get<any>("neighbourhood"),
+                // Hybrid rules, when configured (not the legacy URL list)
+                ...(HybridConfig.isSection(ActiveOptions.get<any>("hybrid"))
+                  ? { hybrid: ActiveOptions.get<any>("hybrid") }
+                  : {}),
               },
             },
           },
