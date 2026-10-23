@@ -29,6 +29,20 @@ import { HybridApi } from "./hybridApi";
 export const FEED_POLL_MS = 500;
 export const FEED_HEARTBEAT_MS = 10_000;
 
+/** What a feed sends, before a transport formats it */
+export type FeedEvent =
+  | { type: "item"; cursor: string; item: any }
+  | { type: "heartbeat"; head: string; time: number }
+  | { type: "error"; error: string };
+
+/** Server-Sent Events text for one feed event */
+export const toSse = (e: FeedEvent): string =>
+  e.type === "item"
+    ? `id: ${e.cursor}\ndata: ${JSON.stringify(e.item)}\n\n`
+    : e.type === "heartbeat"
+    ? `event: heartbeat\ndata: ${JSON.stringify({ head: e.head, time: e.time })}\n\n`
+    : `event: error\ndata: ${JSON.stringify({ error: e.error })}\n\n`;
+
 export interface FeedClient {
   keyHash: string;
   since: string;
@@ -38,7 +52,7 @@ export interface FeedClient {
 }
 
 /**
- * One connected hybrid's feed. Transport free: `write` sends SSE text and
+ * One connected hybrid's feed. Transport free: `write` sends one event and
  * returns false once the client has gone.
  */
 export class FeedSession {
@@ -50,7 +64,7 @@ export class FeedSession {
 
   constructor(
     private api: HybridApi,
-    private write: (chunk: string) => boolean,
+    private write: (event: FeedEvent) => boolean,
     from: string,
     private pollMs = FEED_POLL_MS,
     private heartbeatMs = FEED_HEARTBEAT_MS,
@@ -88,7 +102,7 @@ export class FeedSession {
       for (;;) {
         const items = await this.api.feedSince(this.cursor, 50);
         for (const { cursor, item } of items) {
-          if (!this.write(`id: ${cursor}\ndata: ${JSON.stringify(item)}\n\n`)) {
+          if (!this.write({ type: "item", cursor, item })) {
             return this.stop();
           }
           this.cursor = cursor;
@@ -99,7 +113,7 @@ export class FeedSession {
       if (this.now() - this.lastBeat >= this.heartbeatMs) await this.beat();
     } catch (e) {
       ActiveLogger.error(e, "Hybrid feed failed");
-      this.write(`event: error\ndata: {"error":"feed failed"}\n\n`);
+      this.write({ type: "error", error: "feed failed" });
       this.stop();
     } finally {
       this.busy = false;
@@ -109,11 +123,11 @@ export class FeedSession {
   private async beat(): Promise<void> {
     this.lastBeat = this.now();
     if (!(await this.allowed())) {
-      this.write(`event: error\ndata: {"error":"not authorised"}\n\n`);
+      this.write({ type: "error", error: "not authorised" });
       return this.stop();
     }
     const head = await this.api.head(this.now());
-    if (!this.write(`event: heartbeat\ndata: ${JSON.stringify({ head, time: this.now() })}\n\n`)) {
+    if (!this.write({ type: "heartbeat", head, time: this.now() })) {
       this.stop();
     }
   }
@@ -281,9 +295,9 @@ export const registerHybridRoutes = (
     };
     const session: FeedSession = new FeedSession(
       api,
-      (chunk) => {
+      (event) => {
         if (!(res as any).writable) return false;
-        res.cork(() => res.write(chunk));
+        res.cork(() => res.write(toSse(event)));
         return true;
       },
       from,

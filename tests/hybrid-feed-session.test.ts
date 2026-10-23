@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import "mocha";
-import { FeedSession } from "../packages/network/src/network/hybridRoutes";
+import { FeedSession, toSse } from "../packages/network/src/network/hybridRoutes";
 
 const fakeApi = (batches: { cursor: string; item: any }[][], head = "umid:1,a") => {
   const calls: string[] = [];
@@ -16,10 +16,17 @@ const fakeApi = (batches: { cursor: string; item: any }[][], head = "umid:1,a") 
 
 const item = (n: number) => ({ cursor: `umid:${n},u${n}`, item: { umid: `u${n}`, n } });
 
+// The tests below read the SSE text a feed produces
+class SseSession extends FeedSession {
+  constructor(api: any, write: (c: string) => boolean, ...rest: any[]) {
+    super(api, (e) => write(toSse(e)), ...(rest as [any]));
+  }
+}
+
 describe("FeedSession", () => {
   it("starts with a heartbeat, then sends items with their cursor as the id", async () => {
     const out: string[] = [];
-    const s = new FeedSession(fakeApi([[item(1), item(2)]]), (c) => (out.push(c), true), "", 1000, 10_000);
+    const s = new SseSession(fakeApi([[item(1), item(2)]]), (c) => (out.push(c), true), "", 1000, 10_000);
     await s.start();
     await s.tick();
     s.stop();
@@ -31,7 +38,7 @@ describe("FeedSession", () => {
 
   it("asks for items after the last one it sent", async () => {
     const api = fakeApi([[item(1)], []]);
-    const s = new FeedSession(api, () => true, "umid:0,u0", 1000, 10_000);
+    const s = new SseSession(api, () => true, "umid:0,u0", 1000, 10_000);
     await s.tick();
     await s.tick();
     expect(api.calls).to.deep.equal(["umid:0,u0", "umid:1,u1"]);
@@ -41,7 +48,7 @@ describe("FeedSession", () => {
     const full = Array.from({ length: 50 }, (_, i) => item(i + 1));
     const api = fakeApi([full, [item(51)]]);
     const out: string[] = [];
-    const s = new FeedSession(api, (c) => (out.push(c), true), "", 1000, 10_000);
+    const s = new SseSession(api, (c) => (out.push(c), true), "", 1000, 10_000);
     await s.tick();
     expect(out.filter((c) => c.startsWith("id:"))).to.have.length(51);
   });
@@ -49,7 +56,7 @@ describe("FeedSession", () => {
   it("sends another heartbeat once one is due", async () => {
     let now = 0;
     const out: string[] = [];
-    const s = new FeedSession(fakeApi([]), (c) => (out.push(c), true), "", 1000, 10_000, () => now);
+    const s = new SseSession(fakeApi([]), (c) => (out.push(c), true), "", 1000, 10_000, () => now);
     await s.start();
     now = 5_000;
     await s.tick();
@@ -62,7 +69,7 @@ describe("FeedSession", () => {
 
   it("stops when the client has gone", async () => {
     const api = fakeApi([[item(1), item(2)], [item(3)]]);
-    const s = new FeedSession(api, () => false, "", 1000, 10_000);
+    const s = new SseSession(api, () => false, "", 1000, 10_000);
     await s.tick();
     await s.tick();
     expect(s.cursor).to.equal("");
@@ -72,7 +79,7 @@ describe("FeedSession", () => {
   it("reports an error to the client and stops when the feed throws", async () => {
     const out: string[] = [];
     const api = { feedSince: async () => { throw new Error("db down"); }, head: async () => "" } as any;
-    const s = new FeedSession(api, (c) => (out.push(c), true), "", 1000, 10_000);
+    const s = new SseSession(api, (c) => (out.push(c), true), "", 1000, 10_000);
     await s.tick();
     expect(out.join("")).to.contain("event: error");
   });
@@ -82,7 +89,7 @@ describe("FeedSession", () => {
     let allowed = true;
     const out: string[] = [];
     let stops = 0;
-    const s = new FeedSession(fakeApi([]), (c) => (out.push(c), true), "", 1000, 10_000, () => now, async () => allowed, () => stops++);
+    const s = new SseSession(fakeApi([]), (c) => (out.push(c), true), "", 1000, 10_000, () => now, async () => allowed, () => stops++);
     await s.start();
     expect(stops).to.equal(0);
     allowed = false;
@@ -94,7 +101,7 @@ describe("FeedSession", () => {
 
   it("calls onStop once however it ends", async () => {
     let stops = 0;
-    const s = new FeedSession(fakeApi([[item(1)]]), () => false, "", 1000, 10_000, Date.now, async () => true, () => stops++);
+    const s = new SseSession(fakeApi([[item(1)]]), () => false, "", 1000, 10_000, Date.now, async () => true, () => stops++);
     await s.tick();
     s.stop();
     s.stop();

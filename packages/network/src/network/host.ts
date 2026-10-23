@@ -22,6 +22,7 @@
  */
 
 //import { Server, IncomingMessage, ServerResponse, createServer } from "http";
+import { readFileSync } from "fs";
 import { fork, ChildProcess } from "child_process";
 import * as net from "net";
 import {
@@ -36,6 +37,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
+import { startHybridP2P } from "./hybridP2P";
 import { HybridBans, feedsStatus, isLoopback, listHybrids } from "./hybridAdmin";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
@@ -838,6 +840,37 @@ export class Host extends Home {
     this.hybridFeeds = registerHybridRoutes(this.api, hybridApi, {
       maxFeeds: () => Host.hybridMaxFeeds(),
     });
+
+    // The same messages over P2P, when the operator opens a port for them
+    const hybridListen = Number(ActiveOptions.get<any>("hybrid-listen", 0));
+    if (hybridListen) {
+      const file = JSON.parse(
+        readFileSync(ActiveOptions.get("identity", "./.identity"), "utf8")
+      );
+      startHybridP2P(hybridApi, this.hybridFeeds, {
+        port: hybridListen,
+        host: ActiveInterfaces.getBindingDetails("host") as string,
+        identity: {
+          type: "rsa",
+          publicKey: file.pub.pkcs8pem,
+          privateKey: file.prv.pkcs8pem,
+        },
+        maxFeeds: () => Host.hybridMaxFeeds(),
+        forward: async (tx, relayer) => {
+          const r = await Endpoints.ExternalInitalise(
+            this,
+            tx,
+            `hybrid:${relayer.slice(0, 12)}`,
+            this.dbConnection
+          );
+          return r.content;
+        },
+      })
+        .then(() =>
+          ActiveLogger.info(`Hybrid P2P listener on port ${hybridListen}`)
+        )
+        .catch((e) => ActiveLogger.error(e, "Hybrid P2P listener failed"));
+    }
 
     this.api.any("/*", async (res, req) => {
       /* Can't return or yield from here without responding or attaching an abort handler */
