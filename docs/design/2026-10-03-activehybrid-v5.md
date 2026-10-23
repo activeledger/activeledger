@@ -48,10 +48,12 @@ Constraints:
 
 ## Sub-projects and build order
 
-1. Supernode side.
+1. Supernode side. Its first part is the package extractions, and the shared CLI layer in `options` (see "Command line") is built with them, because both programs depend on it.
 2. Hybrid core, over HTTP.
 3. Hybrid mesh, plus P2P.
 4. Later, out of scope: hybrids give supernodes evidence that they are wrong.
+
+The CLI work and the hybrid are one release, 5.1.0. The CLI layer is built first so the hybrid is written against it, but it is not released on its own: the strict unknown-flag change reaches operators in the same release as the new commands it supports.
 
 ## 1. Supernode side
 
@@ -490,6 +492,28 @@ New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-ma
 - **Plain output.** The banner and tagline are left out when output is not a terminal, when `NO_COLOR` is set, and with `--json` or `--quiet`, so scripts that parse help never see them.
 - Help for one command (`help hybrid`) prints no banner, only the usage.
 
+### Start-up display
+
+Both programs show the same start-up display, drawn by the shared `options` package. It reports real progress; it never adds delay.
+
+- **The chain builds as start-up proceeds.** Each start-up step is one block. A block is drawn empty, `[   ]`, while its step runs and filled, `[###]`, with a link `==` to the previous block when the step completes:
+
+  ```
+  activeledger 5.1.0
+  [###]==[###]==[###]==[   ]   database
+  ```
+
+  A step that is slow shows a small spinner inside its block. A step that fails stops the display at that block, draws `[ X ]`, and prints the reason on the next line, so the failure is where the eye already is.
+- **Steps** are the real ones in the start-up code, not decoration:
+  - supernode: config, identity, database, network, consensus, ready;
+  - hybrid: config, identity, store, bootstrap, catching up, ready.
+- **Catching up** shows the lag in seconds counting down and the cursor position, because for a hybrid that is the part that takes time. The last block fills as lag approaches zero, and `ready` appears when `/health` would report ready.
+- **The display stops when the node is ready**, and then ordinary log lines take over. Log lines raised during start-up are printed above the display, not through it, so they stay readable and in order.
+- **Where it shows.**
+  - On a terminal, `start` draws it. A node that detaches into the background (no `--foreground`) draws it in the launching terminal until the child reports ready, then returns; the child itself draws nothing.
+  - Not shown, and replaced by one plain line per step (`ok  database`), when output is not a terminal, with `NO_COLOR`, `--quiet` or `--json`, or when the node is started by a process manager. Logs and scripts never receive escape codes.
+- **Easter egg.** The same rare roll as in `help` can break the chain mid-build, `[###]=/=[###]`, and mend it a moment later. It is drawn only while a step is already running, so it never changes how long start-up takes.
+
 ### Open choices
 
 - Whether `activehybrid` also ships as `activeledger hybrid ...` for operators who install one package.
@@ -504,7 +528,7 @@ New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-ma
 
 ### Versioning
 
-- Ship as v5.1.0.
+- Ship as v5.1.0, with the CLI work and the hybrid together.
 - Signed votes are gated by build 40300.
 - Hybrids require 40300.
 - The CHANGELOG notes the removal of `config.hybrid[]` and the push flow.
@@ -547,6 +571,7 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a user transaction without `$expire` is refused as `denied`; one with it gets the same `$umid` from the hybrid and from the entry supernode, and a resend is detected as a duplicate;
 - a supernode refuses a new feed beyond `hybrid.maxFeeds`;
 - a hybrid below `hybrid.minVersion` stops applying items, writes no divergence record, reports `ready: false` with `reason: "outdated"`, answers `POST /` as `unavailable`, and resumes from its cursor after an upgrade; a raise of `minVersion` on a running network is noticed on the next head poll;
+- the start-up display: it reports each real step, stops at a failing step with the reason, adds no measurable start-up time, prints no escape codes to a pipe, a log file, `NO_COLOR`, `--quiet` or `--json`, and a detached node draws it in the launching terminal until ready;
 - the CLI: `--help` and `--json` work on every command in both programs; an unknown command or flag, including on the start-up path, exits 1 with a suggestion before anything starts; `help` lists every command, shows the banner on a terminal, and omits it with `--json`, `--quiet`, `NO_COLOR` or a pipe; `status` exits 2 when not ready; the existing flags still work;
 - `POST /` marks every hybrid-produced outcome with `$hybrid` (`refused`, `denied`, `unavailable`, `unanswered`) and passes supernode responses through without it; `unanswered` carries the `$umid`;
 - a pinned `events` filter serves only matching events, excludes events missing the pinned field and `tx.*` events, cannot be widened by a client, and applies on `Last-Event-ID` resume;
