@@ -190,6 +190,11 @@ interface BusyLockQueue {
  * @extends {Home}
  */
 export class Host extends Home {
+  /**
+   * Called once the API is listening. Lets the CLI report real progress.
+   */
+  public static onListening?: () => void;
+
   private p2pServer: net.Server;
 
   /**
@@ -1369,6 +1374,7 @@ export class Host extends Home {
                     "Activeledger listening on port " +
                     ActiveInterfaces.getBindingDetails("port")
                   );
+                  Host.onListening?.();
                 }
               );
               Maintain.healthTimer(true);

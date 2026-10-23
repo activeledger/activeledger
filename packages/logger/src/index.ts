@@ -56,6 +56,12 @@ export class ActiveLogger {
   public static WinstonLogger: any;
 
   /**
+   * When set, receives each formatted line instead of the console. The
+   * start-up display uses it to keep log lines above its own line.
+   */
+  public static sink?: (line: string) => void;
+
+  /**
    * Cached process string for performance
    *
    * @private
@@ -276,7 +282,11 @@ export class ActiveLogger {
     }
 
     // Output
-    logFn(out);
+    if (ActiveLogger.sink) {
+      ActiveLogger.sink(out);
+    } else {
+      logFn(out);
+    }
   }
 
   /**

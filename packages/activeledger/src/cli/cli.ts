@@ -34,6 +34,7 @@ import {
   ActiveRequest,
 } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
+import { Startup } from "./startup";
 import { PIDHandler, EPIDChild } from "./pid";
 import { StatsHandler } from "./stats";
 
@@ -391,11 +392,43 @@ export class CLIHandler {
    * @static
    */
   private static normalStart(): void {
-    // Continue Normal Boot
-    this.checkConfig();
+    // Only a real boot draws the start-up display, not assert, sign, public or setup-only
+    const booting = !(
+      ActiveOptions.get<boolean>("assert", false) ||
+      ActiveOptions.get<boolean>("assert-network", false) ||
+      ActiveOptions.get<boolean>("sign", false) ||
+      ActiveOptions.get<boolean>("public", false) ||
+      ActiveOptions.get<boolean>("setup-only", false) ||
+      ActiveOptions.get<boolean>("db-only", false)
+    );
+    if (booting) {
+      Startup.init(CLIHandler.version);
+      Startup.begin("config");
+    }
 
-    // Now we can parse configuration
-    ActiveOptions.parseConfig();
+    try {
+      // Continue Normal Boot
+      this.checkConfig();
+
+      // Now we can parse configuration
+      ActiveOptions.parseConfig();
+    } catch (e: any) {
+      Startup.fail(e.message, "config");
+      throw e;
+    }
+
+    if (booting) {
+      Startup.done("config");
+      Startup.begin("identity");
+      const identity = ActiveOptions.get<string>("identity", "./.identity");
+      if (fs.existsSync(identity)) {
+        Startup.done("identity");
+      } else {
+        Startup.fail(`${identity} not found`, "identity");
+        process.exit(1);
+      }
+      Startup.begin("database");
+    }
 
     // Check for local contracts folder
     if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
@@ -522,8 +555,12 @@ export class CLIHandler {
         datastore: ActiveDataStore
       ) => {
         ActiveOptions.extendConfig()
-          .then(() => boot(datastore))
+          .then(() => {
+            Startup.done("database");
+            return boot(datastore);
+          })
           .catch((e) => {
+            Startup.fail("Config Extension Issues", "database");
             ActiveLogger.fatal(e, "Config Extension Issues");
           });
       };
@@ -555,6 +592,7 @@ export class CLIHandler {
           // Lets check the database is running
           ActiveRequest.send(ActiveOptions.get<any>("db", {}).url, "GET").catch(
             () => {
+              Startup.fail("Database Not Running", "database");
               ActiveLogger.fatal(
                 `Database Not Running - ${ActiveOptions.get<any>("db", {}).url}`
               );
@@ -580,6 +618,7 @@ export class CLIHandler {
           );
         } else {
           // Continue
+          Startup.done("database");
           this.boot();
         }
       }
@@ -621,9 +660,26 @@ export class CLIHandler {
     try {
       // Set Base Path
       ActiveOptions.set("__base", __dirname + "/..");
+      Startup.begin("network");
       // Maintain Network Neighbourhood & Let Workers know
       const host = new ActiveNetwork.Host();
       ActiveNetwork.Maintain.init(host);
+
+      // The API is listening, then wait for the neighbourhood to pair
+      ActiveNetwork.Host.onListening = () => {
+        Startup.done("network");
+        Startup.begin("consensus");
+        const poll = setInterval(() => {
+          if (host.getStatus() === ActiveNetwork.NeighbourStatus.Stable) {
+            clearInterval(poll);
+            Startup.done("consensus");
+            Startup.begin("ready");
+            Startup.done("ready");
+            Startup.finish();
+          }
+        }, 300);
+        poll.unref();
+      };
 
       // Slightly more graceful shutdown
       process.on("SIGINT", () => {
