@@ -22,6 +22,7 @@
  */
 
 import { IFullState, IMeta, IVolatile } from "./document";
+import { IRelay } from "./hybrid";
 
 /**
  * The main transaction entry interface. All V2 transactions
@@ -43,6 +44,8 @@ export interface LedgerEntry {
   $nodes: INodes;
   $streams: IStreams;
   $remoteAddr: string;
+  /** Set only by the entry node, after verifying it (build 40300) */
+  $relay?: IRelay;
   $broadcast?: boolean;
   $territoriality?: string;
   $unanimous?: boolean;

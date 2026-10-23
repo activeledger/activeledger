@@ -57,6 +57,68 @@ export class Endpoints {
   public static rebaseThrottle: number = 0;
 
   /**
+   * Build level from which a verified `$relay` is kept. The same level as
+   * Attestation.BUILD, which writes it into the :umid doc.
+   *
+   * @static
+   */
+  public static readonly RELAY_BUILD = 40300;
+
+  /**
+   * Check a `$relay` claim: the key belongs to a registered hybrid that has
+   * not retired, and `sig` is that key's signature over `$umid`. Returns
+   * just {key, sig} when it holds, otherwise undefined. Never throws.
+   *
+   * @static
+   * @param {ActiveDSConnect} db
+   * @param {*} relay
+   * @param {string} umid
+   * @returns {(Promise<ActiveDefinitions.IRelay | undefined>)}
+   */
+  public static async verifyRelay(
+    db: ActiveDSConnect,
+    relay: any,
+    umid: string
+  ): Promise<ActiveDefinitions.IRelay | undefined> {
+    if (ActiveOptions.get<number>("build", 0) < Endpoints.RELAY_BUILD) return;
+    if (
+      !relay ||
+      typeof relay.key !== "string" ||
+      typeof relay.sig !== "string" ||
+      !relay.key ||
+      !relay.sig
+    ) {
+      return;
+    }
+
+    try {
+      // The registry stream id comes from the key alone
+      const id = ActiveCrypto.hybridStreamId(relay.key);
+      const entry: any = await db.get(id);
+      if (entry.key !== relay.key || entry.retired) return;
+
+      // Any contract can seed a stream to the same id, so make sure this
+      // one was created by default/hybrid
+      const meta: any = await db.get(`${id}:stream`);
+      const origin: any = await db.get(`${meta.origin}:umid`);
+      if (
+        origin?.umid?.$tx?.$namespace !== "default" ||
+        origin.umid.$tx.$contract !== "hybrid"
+      ) {
+        return;
+      }
+
+      if (!ActiveCrypto.verifyDigest(relay.key, entry.keyType, umid, relay.sig)) {
+        return;
+      }
+      return { key: relay.key, sig: relay.sig };
+    } catch {
+      // Not registered (or unreadable), same as invalid
+      return;
+    }
+  }
+
+  /**
    * Handles all external requests being submitted into the network
    * This means we can validate & verify and rate limit on only 1 exposed endpoint
    * This endpoint accepts url and body requests. Url is recommended for just http logging
@@ -80,6 +142,12 @@ export class Endpoints {
           if (body && ActiveDefinitions.LedgerTypeChecks.isEntry(body)) {
             let tx = body as ActiveDefinitions.LedgerEntry;
             const now = new Date();
+
+            // A hybrid that relayed this signs $umid, so $relay has to stay
+            // out of the hash: the umid is then the same whether or not the
+            // transaction came through a hybrid. Put back below, if valid.
+            const relay = tx.$relay;
+            delete tx.$relay;
 
             if (tx.$datetime) {
               this.successfulFailure(`$datetime cannot be preset`);
@@ -124,6 +192,15 @@ export class Endpoints {
 
             // Ip Address sending the transaction
             tx.$remoteAddr = ip;
+
+            // Only the entry node decides on $relay, before the transaction
+            // is broadcast or forwarded. From here it travels inside the
+            // entry like $origin and no other node touches it, so every node
+            // writes the same :umid doc. Dropped silently when invalid.
+            if (relay !== undefined) {
+              const verified = await Endpoints.verifyRelay(db, relay, tx.$umid);
+              if (verified) tx.$relay = verified;
+            }
 
             // Make broadcast default, Unless single node network
             // if (host.neighbourhood.count() < 4) {

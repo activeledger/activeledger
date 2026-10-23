@@ -263,6 +263,13 @@ export class StreamUpdater {
       //$nodes: this.entry.$nodes, // This is to different! Umid recovery not working
       $origin: this.entry.$origin,
       $remoteAddr: this.entry.$remoteAddr,
+      // The hybrid that relayed it, verified by the entry node. Left out
+      // entirely when absent, so every other umid doc stays byte-identical
+      // to what earlier releases wrote (and so does all of it below 40300).
+      ...(this.entry.$relay &&
+      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD
+        ? { $relay: this.entry.$relay }
+        : {}),
     };
   }
 
