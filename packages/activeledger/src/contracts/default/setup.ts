@@ -23,6 +23,7 @@
 
 import * as fs from "fs";
 import { PostProcess, ActiveCrypto } from "@activeledger/activecontracts";
+import { ActiveOptions, HybridConfig } from "@activeledger/activeoptions";
 
 /**
  * Default Onboarding (New Account) contract
@@ -57,6 +58,24 @@ export default class Setup extends PostProcess {
    * @type {boolean}
    */
   private reloadConfig: boolean = false;
+
+  /**
+   * Build level from which an assert also copies the `hybrid` section into
+   * the setup stream. Below it the asserted state stays byte-for-byte what
+   * earlier releases wrote, so a half-upgraded network cannot diverge on it.
+   *
+   * @private
+   * @static
+   */
+  private static readonly HYBRID_BUILD = 40300;
+
+  /**
+   * Was the hybrid section asserted to the ledger by this transaction
+   *
+   * @private
+   * @type {boolean}
+   */
+  private assertedHybrid: boolean = false;
 
   /**
    * Get System Configuration
@@ -195,6 +214,13 @@ export default class Setup extends PostProcess {
         this.transactions.$i.setup.consensus &&
         this.transactions.$i.setup.neighbourhood
       ) {
+        // Optional hybrid section, validated strictly once supported
+        if (this.assertsHybrid()) {
+          const invalid = HybridConfig.validate(
+            this.transactions.$i.setup.hybrid
+          );
+          if (invalid) return reject(invalid);
+        }
         resolve(true);
       } else {
         reject("Missing Assert Fields");
@@ -288,6 +314,12 @@ export default class Setup extends PostProcess {
     // Add Concensus
     if (this.transactions.$i.setup.consensus)
       state.consensus = this.transactions.$i.setup.consensus;
+
+    // Add Hybrid rules (validated in verify)
+    if (this.assertsHybrid()) {
+      state.hybrid = this.transactions.$i.setup.hybrid;
+      this.assertedHybrid = true;
+    }
 
     // Do not need to add debug, host, db, rate, experimental
     // as these are node specifics.
@@ -740,6 +772,7 @@ export default class Setup extends PostProcess {
         delete this.config.neighbourhood;
         delete this.config.consensus;
         delete this.config.security;
+        if (this.assertedHybrid) delete this.config.hybrid;
         // Cache then Remove Filename
         let config = this.config.__filename;
         delete this.config.__filename;
@@ -753,6 +786,21 @@ export default class Setup extends PostProcess {
   }
 
   //#region Helper functions
+
+  /**
+   * Does this assert carry a hybrid section to put on the ledger. The legacy
+   * `hybrid: []` URL list is not a section and is never asserted.
+   *
+   * @private
+   * @returns {boolean}
+   */
+  private assertsHybrid(): boolean {
+    return (
+      ActiveOptions.get<number>("build", 0) >= Setup.HYBRID_BUILD &&
+      this.transactions.$i.setup.hybrid !== undefined &&
+      !Array.isArray(this.transactions.$i.setup.hybrid)
+    );
+  }
 
   /**
    * Verify Signatures of Host Nodes
