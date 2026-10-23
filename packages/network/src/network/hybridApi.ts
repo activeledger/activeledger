@@ -100,6 +100,9 @@ export const cursorSuffix = (cursor: string): string =>
  * with `authenticate`, then calls one method per endpoint.
  */
 export class HybridApi {
+  /** Signatures already accepted, until their window closes, so none works twice */
+  private used = new Map<string, number>();
+
   constructor(private deps: HybridApiDeps) {}
 
   /**
@@ -134,6 +137,18 @@ export class HybridApi {
     if (!verified) {
       return { ok: false, status: 401, reason: "bad signature or timestamp" };
     }
+    // Once only: a captured header replayed inside its window must not
+    // authenticate (it could otherwise evict the real owner's feed)
+    const now = Date.now();
+    const windowMs = (this.deps.authWindowSeconds ?? 60) * 1000;
+    for (const [sig, expiry] of this.used) {
+      if (expiry > now) break;
+      this.used.delete(sig);
+    }
+    if (this.used.has(signature)) {
+      return { ok: false, status: 401, reason: "replayed request" };
+    }
+    this.used.set(signature, Math.max(now, Number(timestamp)) + windowMs);
     return { ok: true, keyHash: key, hybrid };
   }
 

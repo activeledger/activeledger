@@ -61,6 +61,17 @@ describe("HybridApi", () => {
       expect(r.ok).to.equal(true);
     });
 
+    it("accepts a signature once and refuses its replay", async () => {
+      const { api } = make();
+      const headers = signed();
+      expect((await api.authenticate(headers)).ok).to.equal(true);
+      const again: any = await api.authenticate(headers);
+      expect(again.ok).to.equal(false);
+      expect(again.reason).to.match(/replayed/);
+      // A fresh signature is fine
+      expect((await api.authenticate(signed(Date.now() + 1))).ok).to.equal(true);
+    });
+
     it("refuses each failure with its own status", async () => {
       const cases: [any, number, RegExp][] = [
         [{}, 401, /missing/],
