@@ -24,3 +24,4 @@
 export * from "./hash"
 export * from "./keypair"
 export * from "./secured"
+export * from "./attest"

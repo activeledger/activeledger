@@ -91,15 +91,19 @@ export async function verifyHandshake(
     return { ok: false, reason: "identity has no registered authorities on-ledger" };
   }
 
-  const payload = `${identity}:${timestamp}`;
+  // The shared signed-request check never throws, so a malformed key on one
+  // authority just fails that authority and the next one is tried.
+  const request = { key: identity, timestamp: ts, signature };
   for (const authority of authorities) {
-    try {
-      const key = new ActiveCrypto.KeyPair(authority.type, authority.public);
-      if (key.verify(payload, signature)) {
-        return { ok: true };
-      }
-    } catch {
-      // Try the next authority - a malformed key on one authority shouldn't fail every check.
+    if (
+      ActiveCrypto.verifyRequest(
+        authority.public,
+        authority.type,
+        request,
+        authWindowSeconds
+      )
+    ) {
+      return { ok: true };
     }
   }
 
