@@ -23,14 +23,11 @@
 
 //import { Server, IncomingMessage, ServerResponse, createServer } from "http";
 import { fork, ChildProcess } from "child_process";
-import { readlinkSync } from "fs";
-import { basename } from "path";
 import * as net from "net";
 import {
   ActiveDSConnect,
   ActiveOptions,
   ActiveGZip,
-  ActiveRequest,
   ActiveClone,
 } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -304,13 +301,6 @@ export class Host extends Home {
    * @private
    */
   private cpuReady = 0;
-
-  /**
-   * How many hybrid connected nodes
-   *
-   * @private
-   */
-  private hybridHosts: ActiveDefinitions.IHybridNodes[];
 
   /**
    * Holds transactions to be run as locks released.
@@ -639,20 +629,6 @@ export class Host extends Home {
     // Create connection string
     this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
     this.dbEventConnection.info();
-
-    // Build Hybrid Node List
-    this.hybridHosts = ActiveOptions.get<ActiveDefinitions.IHybridNodes[]>(
-      "hybrid",
-      []
-    );
-
-    // Set hybrid doc name
-    if (this.hybridHosts.length) {
-      for (let i = this.hybridHosts.length; i--;) {
-        const hybrid = this.hybridHosts[i];
-        hybrid.docName = ActiveCrypto.Hash.getHash(hybrid.url + hybrid.auth);
-      }
-    }
 
     // this.api = createServer((socket) => {
     //   let dBuf: Buffer[] = [];
@@ -1333,11 +1309,6 @@ export class Host extends Home {
             ActiveOptions.get<number>("build", 0)
           );
 
-          // If we want to send AFTER this node has completed uncomment
-          // If Hybrid enabled, Send transaction on
-          // if (m.data && this.hybridHosts.length) {
-          //   this.processHybridNodes(pending.entry);
-          // }
           break;
         case "commited":
           if (!pending) return; // Fail safe, May happen when process being closed
@@ -1346,12 +1317,6 @@ export class Host extends Home {
             status: 200,
             data: { ...pending.entry, ...m.data.entry },
           });
-          // If we want to send AFTER this node has completed uncomment
-          // If Hybrid enabled, Send transaction on
-          if (this.hybridHosts.length) {
-            this.processHybridNodes(pending.entry, m.data.entry?.$streams);
-          }
-
           // The client has its answer (resolve above), so this costs it
           // nothing. A node that was behind can adopt the network's state
           // through an ordinary commit without SPI ever running - correct,
@@ -1760,11 +1725,6 @@ export class Host extends Home {
       // small scaling delay to put to back of stack
       //}, retries * 1);
 
-      // If we want to send BEFORE this node has processed uncomment
-      // if (this.hybridHosts.length) {
-      //   this.processHybridNodes(this.processPending[v.$umid].entry);
-      // }
-
       return true;
     } else {
       if (v.$nolock) {
@@ -2056,190 +2016,6 @@ export class Host extends Home {
   }
 
   /**
-   * Manage Hybrid Nodes
-   *
-   * @private
-   * @param {string} tx
-   * @param {ActiveDefinitions.IStreams} [activityStreams]
-   */
-  private processHybridNodes(
-    tx: ActiveDefinitions.LedgerEntry,
-    activityStreams?: ActiveDefinitions.IStreams
-  ) {
-    // Skip default/setup as it doesn't help hybrids
-    if (
-      tx.$tx.$namespace !== "default" ||
-      (tx.$tx.$namespace === "default" && tx.$tx.$contract !== "setup")
-    ) {
-      // Minmum data needed for hybrid to process
-      const txData = JSON.stringify({
-        $tx: tx.$tx,
-        $datatime: tx.$datetime,
-        $umid: tx.$umid,
-        $selfsign: tx.$selfsign,
-        $sigs: tx.$sigs,
-        $remoteAddr: tx.$remoteAddr,
-      });
-
-      // Loop all hybrids and send
-      this.hybridHosts.forEach((hybrid) => {
-        if (hybrid.active) {
-          ActiveRequest.send(
-            hybrid.url,
-            "POST",
-            ["Content-Type:application/json", "X-Activeledger:" + hybrid.auth],
-            txData,
-            true
-          )
-            .then((response) => {
-              // Hybrid Active, Has the node missed anything?
-              // The below may create a 404 error log.
-              this.dbErrorConnection
-                .exists(hybrid.docName as string)
-                .then((exists: any) => {
-                  if (exists && exists.q && exists.q.length) {
-                    // Send the queue (no need to wait being best effort)
-                    ActiveRequest.send(
-                      `${hybrid.url}/q`,
-                      "POST",
-                      ["X-Activeledger:" + hybrid.auth],
-                      exists.q
-                    ).catch();
-
-                    // Then delete!
-                    this.dbErrorConnection.purge(exists).catch();
-                  }
-
-                  // ok = do nothing
-                  // unhandledRejection, failed = send latest version
-                  const data = response.data as any;
-
-                  // Everything but ok, should see latest version
-                  if (data.status !== "ok") {
-                    // Get all New / Updated Docs
-                    const updated = [
-                      ...(activityStreams?.new || []),
-                      ...(activityStreams?.updated || []),
-                    ].map((stream) => stream.id);
-
-                    // Also need $i, $o and $r,  Can probably reuse the .keys
-                    const input = tx.$tx.$i ?
-                      this.hybridLabelKeyId(tx.$tx.$i) :
-                      [];
-                    const output = tx.$tx.$o
-                      ? this.hybridLabelKeyId(tx.$tx.$o)
-                      : [];
-
-                    // Dupes should be managed (If not switch to set)
-                    const keys = [...updated, ...input, ...output];
-
-                    // Missing Contract
-                    if (data.contract) {
-                      const path = `${process.cwd()}/contracts/${tx.$tx.$namespace
-                        }/${tx.$tx.$contract}.js`;
-                      // Maybe symlink?
-                      try {
-                        keys.push(basename(readlinkSync(path), ".js"));
-                      } catch (e) {
-                        // File is a stream id
-                        keys.push(basename(path, ".js"));
-                      }
-                    }
-
-                    // Loop all and append :stream to get meta data
-                    const tmp = [];
-                    for (const key of keys) {
-                      tmp.push(key + ":stream");
-                    }
-
-                    // Push tmp back into keys so we get everything
-                    keys.push(...tmp);
-
-                    // Fetch all docs (Dupes should be managed, If not use set)
-                    return this.dbConnection
-                      .allDocs({
-                        include_docs: true,
-                        keys,
-                      })
-                      .then((results) => {
-                        // Return the results with the error id
-                        if (results.rows.length) {
-                          // Can ignore responses
-                          return ActiveRequest.send(
-                            `${hybrid.url}/streamState/${data.streamState}`,
-                            "POST",
-                            ["X-Activeledger:" + hybrid.auth],
-                            {
-                              umid: tx.$umid,
-                              streams: results.rows,
-                            }
-                          );
-                        }
-                      });
-                  }
-                });
-            })
-            .catch(() => {
-              // Best Effort Approach
-              // Store all failed requests into a error document named after the node
-              // Node comes online and pings the mainnet to send this best effort list
-              // Whhy best effort?
-              // If the node has missed 1000 transactions and it takes 5 seconds a transaction there is a good chance that
-              // a new transaction will come in that later relies on one of the missed transactions which may not yet be processed
-              // This will tricker the trusted recovery, When that transaction does get caught up it will now also fail by being behind again triggering recovery
-              // This recovery will continue to happen until all transactions have finished and with best effort (and duplication) the data should be up to date.
-              // Error database can be deleted so this record would be lost and then it would be a slower recovery reason behind "best effort" naming
-
-              // Get Document if exists
-              this.dbErrorConnection
-                .createget(hybrid.docName as string)
-                .then((doc: any) => {
-                  // Add the tx to this nodes queue
-                  if (doc.q) {
-                    doc.q.push(txData);
-                  } else {
-                    doc.q = [txData];
-                  }
-
-                  // Write document back to the database
-                  return this.dbErrorConnection.post(doc);
-                })
-                .catch(() => {
-                  // Can Ignore catch for now
-                });
-            });
-        }
-      });
-    }
-  }
-
-  /**
-   * Extract stream id from transaction type
-   *
-   * @private
-   * @param {ActiveDefinitions.LedgerIORputs} txIO
-   * @returns {string[]}
-   */
-  private hybridLabelKeyId(txIO: ActiveDefinitions.LedgerIORputs): string[] {
-    // Get reference for input or output
-    const streams = Object.keys(txIO);
-
-    // Check the first one, If labelled then loop all.
-    // Means first has to be labelled but we don't want to loop when not needed
-    if (txIO[streams[0]].$stream) {
-      const streamMap: string[] = [];
-      for (let i = streams.length; i--;) {
-        // Stream label or self
-        let streamId = txIO[streams[i]].$stream || streams[i];
-        streamMap.push(streamId);
-      }
-      return streamMap;
-    } else {
-      return streams;
-    }
-  }
-
-  /**
    * Process Activeledger request endpoints
    *
    * @private
@@ -2304,11 +2080,6 @@ export class Host extends Home {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
-          // This opens up a dos style attack (loop on every request)
-          // case "/hybrid/online": // Hybrid Node starting up
-          //   // Loop Hybrids, Find matching auth
-          //   const hAuth = req.headers["x-activeledger"] as string;
-          //   break;
           case "/a/admin-reload":
             // Enabling "remote" allows the reload; it does not make the
             // endpoint public. Only this node's own host or a neighbour in
