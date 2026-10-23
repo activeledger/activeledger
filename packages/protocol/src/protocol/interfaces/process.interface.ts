@@ -21,6 +21,8 @@
  * SOFTWARE.
  */
 
+import { IAdoptDeclaration } from "@activeledger/activecontracts";
+
 interface ISecurityNamespaceData {
   std: string[];
   external: string[];
@@ -40,4 +42,56 @@ export interface ISecurityCache {
 export interface IReferenceStreams {
   new: any[];
   updated: any[];
+}
+
+export type TProcessMode = "supernode" | "hybrid";
+
+export interface IProcessOptions {
+  /**
+   * "supernode" (default) is the voting node, unchanged. "hybrid" is one
+   * local node: no vote broadcast, no ring knocks, contracts see
+   * isSupernode() false and run in the egress sandbox, and nothing is
+   * written - run it with dryRun().
+   */
+  mode?: TProcessMode;
+  /** Hybrid: true when this node holds the stream's (shared) volatile */
+  volatileHeld?: (streamId: string) => boolean;
+}
+
+export interface IDryRunOptions extends Omit<IProcessOptions, "mode"> {
+  /** This node's reference in $nodes. Default "hybrid". */
+  reference?: string;
+  /** host:port the contract sees as selfHost. Default "hybrid". */
+  selfHost?: string;
+  /** Run this exact contract version file (as Process.start) */
+  contractVersion?: string;
+}
+
+/**
+ * Outcome of a dry run: what this node would have voted and written
+ */
+export interface IExecutionResult {
+  umid: string;
+  /** This node's vote: verify and vote passed */
+  vote: boolean;
+  /** The commit phase ran and built its documents without error */
+  committed: boolean;
+  /** Why it did not, when it did not */
+  error?: string;
+  /** Documents the commit would write, by _id: state, `:stream` meta and `<contractId>:data` */
+  documents: { [id: string]: any };
+  /** `:volatile` documents the commit would write (per node, never attested) */
+  volatile: { [id: string]: any };
+  /** The `:umid` document the commit would write */
+  umidDoc?: any;
+  /** Data returned to the client */
+  return?: unknown;
+  /** Events the contract raised (none were written) */
+  events: any[];
+  /** isSupernode() called, egress blocked, unheld volatile read, or inter-node comms used */
+  supernodeDependent: boolean;
+  /** The reasons, e.g. "isSupernode", "blocked:https", "volatile:<streamId>" */
+  dependence: string[];
+  /** adoptFromSupernode / adoptStreamsFromSupernode declarations */
+  adopt: IAdoptDeclaration[];
 }

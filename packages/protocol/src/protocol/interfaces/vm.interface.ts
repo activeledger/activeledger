@@ -26,9 +26,34 @@ import {
   Standard,
   Activity,
   PostProcessEvent,
+  IAdoptDeclaration,
 } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { EventEmitter } from "events";
+
+/**
+ * Per-execution options. Omitted for an ordinary supernode execution.
+ */
+export interface IVMExecution {
+  /** What the contract's isSupernode() returns. False runs it in the egress sandbox. */
+  supernode: boolean;
+  /** Write nothing: events stay in memory and postProcess does not run */
+  dryRun?: boolean;
+  /** Database for the contract's reads during this execution */
+  db?: { get(id: string): Promise<any> };
+  /** Hybrid: true when this node holds the stream's (shared) volatile */
+  volatileHeld?: (streamId: string) => boolean;
+}
+
+/**
+ * What the contract and the host saw that a hybrid needs afterwards
+ */
+export interface IVMExecutionReport {
+  supernodeDependent: boolean;
+  /** isSupernode, getInterNodeComms, blocked:http, volatile:<streamId>, ... */
+  dependence: string[];
+  adopt: IAdoptDeclaration[];
+}
 
 export interface IVMObject {
   initialiseContract(
@@ -115,7 +140,13 @@ export interface IVirtualMachine {
 
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
 
-  initialise(payload: IVMDataPayload, contractName: string): Promise<void>;
+  initialise(
+    payload: IVMDataPayload,
+    contractName: string,
+    execution?: IVMExecution
+  ): Promise<void>;
+
+  getExecutionReport(umid: string): IVMExecutionReport;
 
   read(umid: string, readMethod: string): Promise<unknown>;
 

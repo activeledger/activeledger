@@ -28,6 +28,7 @@ import PostProcess from "./postprocess";
 import PostProcessEvent from "./postprocessevent";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
+export * from "./adopt";
 export {
   Activity,
   Stream,

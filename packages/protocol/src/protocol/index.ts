@@ -23,3 +23,11 @@
 
 export * from "./process"
 export * from "./attest"
+export * from "./adopt"
+export { SupernodeOnlyError } from "./sandbox"
+export type {
+  TProcessMode,
+  IProcessOptions,
+  IDryRunOptions,
+  IExecutionResult,
+} from "./interfaces/process.interface"

@@ -29,8 +29,17 @@ import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { IVMDataPayload, IVirtualMachine } from "./interfaces/vm.interface";
-import { ISecurityCache } from "./interfaces/process.interface";
+import {
+  IVMDataPayload,
+  IVirtualMachine,
+  IVMExecution,
+} from "./interfaces/vm.interface";
+import {
+  ISecurityCache,
+  IProcessOptions,
+  IDryRunOptions,
+  IExecutionResult,
+} from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
@@ -242,6 +251,28 @@ export class Process extends EventEmitter {
    */
   private willEmitData: { status: number; error: string | Error } | undefined;
 
+  /**
+   * Hybrid mode: one local node that votes and commits on its own, with no
+   * broadcast or knocks, and writes nothing (see dryRun)
+   *
+   * @private
+   */
+  private localOnly: boolean = false;
+
+  /**
+   * Per-execution VM options. Undefined for a supernode.
+   *
+   * @private
+   */
+  private execution: IVMExecution | undefined;
+
+  /**
+   * Hybrid mode: what the transaction would have written, by database
+   *
+   * @private
+   */
+  private written: { db: any[]; dbe: any[]; dbev: any[] } | undefined;
+
   // #endregion
 
   /**
@@ -264,9 +295,25 @@ export class Process extends EventEmitter {
     private db: ActiveDSConnect,
     private dbe: ActiveDSConnect,
     private dbev: ActiveDSConnect,
-    private secured: ActiveCrypto.Secured
+    private secured: ActiveCrypto.Secured,
+    options: IProcessOptions = {}
   ) {
     super();
+
+    if (options.mode === "hybrid") {
+      // Reads go to the real stores; every write is kept here instead
+      this.localOnly = true;
+      this.written = { db: [], dbe: [], dbev: [] };
+      this.db = Process.captureWrites(this.db, this.written.db);
+      this.dbe = Process.captureWrites(this.dbe, this.written.dbe);
+      this.dbev = Process.captureWrites(this.dbev, this.written.dbev);
+      this.execution = {
+        supernode: false,
+        dryRun: true,
+        db: this.db,
+        volatileHeld: options.volatileHeld,
+      };
+    }
 
     this.shared = new Shared(this.storeSingleError, this.entry, this.dbe, this);
 
@@ -334,7 +381,11 @@ export class Process extends EventEmitter {
     //   );
     // }
 
-    if (this.entry.$broadcast) {
+    if (this.localOnly) {
+      // Nothing waits on a dry run; phases still in flight after its
+      // answer keep the entry and find the contract gone
+      Process.generalContractVM.destroy(umid);
+    } else if (this.entry.$broadcast) {
       // Make sure broadcast timeout is cleared
       clearTimeout(this.broadcastTimeout);
 
@@ -359,6 +410,148 @@ export class Process extends EventEmitter {
         delete (this as any).entry;
       }, 60000);
     }
+  }
+
+  /**
+   * A database whose reads go to db and whose writes are only recorded
+   *
+   * @private
+   * @static
+   */
+  private static captureWrites(db: ActiveDSConnect, written: any[]): ActiveDSConnect {
+    const record = (...docs: any[]) => {
+      // Snapshot: the VM keeps mutating the objects it handed over
+      for (const doc of docs) written.push(JSON.parse(JSON.stringify(doc)));
+    };
+    const writes: { [method: string]: Function } = {
+      bulkDocs: (docs: any[]) => (record(...docs), Promise.resolve({ ok: true })),
+      post: (doc: any) => (record(doc), Promise.resolve({ ok: true })),
+      put: (doc: any) => (record(doc), Promise.resolve({ ok: true })),
+      purge: () => Promise.resolve({ ok: true }),
+      drop: () => Promise.resolve({ ok: true }),
+      createIndex: () => Promise.resolve({ ok: true }),
+    };
+    return new Proxy(db || ({} as ActiveDSConnect), {
+      get(target: any, prop: string | symbol) {
+        if (typeof prop === "string" && writes[prop]) return writes[prop];
+        const value = target[prop];
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  }
+
+  /**
+   * Hybrid mode: run verify, vote and commit on this node alone and report
+   * what it would have voted and written. Nothing is written: no documents,
+   * no events, no error records, and postProcess does not run.
+   *
+   * @param {string} [contractVersion]
+   * @param {ActiveDefinitions.IContractData} [contractData]
+   * @returns {Promise<IExecutionResult>}
+   */
+  public dryRun(
+    contractVersion?: string,
+    contractData?: ActiveDefinitions.IContractData | undefined | null
+  ): Promise<IExecutionResult> {
+    if (!this.localOnly) {
+      return Promise.reject(new Error("dryRun needs a Process in hybrid mode"));
+    }
+    const umid = this.entry.$umid;
+
+    return new Promise<IExecutionResult>((resolve) => {
+      let done = false;
+      const finish = (error?: unknown) => {
+        if (done) return;
+        done = true;
+        this.removeListener("commited", onCommited);
+        this.removeListener("failed", onFailed);
+
+        const vm = Process.generalContractVM;
+        const report = vm.getExecutionReport(umid);
+        const node = this.nodeResponse || ({} as ActiveDefinitions.INodeResponse);
+        const reason = error || node.error;
+
+        const documents: { [id: string]: any } = {};
+        const volatile: { [id: string]: any } = {};
+        let umidDoc: any;
+        for (const doc of (this.written as any).db) {
+          const id: string = doc?._id || "";
+          if (id.endsWith(":umid")) umidDoc = doc;
+          else if (id.endsWith(":volatile")) volatile[id] = doc;
+          else if (id) documents[id] = doc;
+        }
+
+        const result: IExecutionResult = {
+          umid,
+          vote: !!node.vote,
+          committed: !!node.commit && !reason,
+          documents,
+          volatile,
+          umidDoc,
+          return: node.return,
+          events: vm.getEvents(umid),
+          supernodeDependent: report.supernodeDependent,
+          dependence: report.dependence,
+          adopt: report.adopt,
+        };
+        if (reason) {
+          result.error =
+            (reason as Error).message || (reason as any).reason || String(reason);
+        }
+
+        this.destroy(umid);
+        resolve(result);
+      };
+      const onCommited = () => finish();
+      const onFailed = (data?: { error?: unknown }) =>
+        finish(data?.error || "Failed");
+
+      this.on("commited", onCommited);
+      this.on("failed", onFailed);
+      this.start(contractVersion, contractData).catch(finish);
+    });
+  }
+
+  /**
+   * Dry-run a transaction as a hybrid: build a hybrid mode Process for the
+   * entry and run dryRun(). The entry is not modified. For a committed feed
+   * item pass its `$revs`, so every stream must be at exactly the agreed
+   * revision; the contract sees the entry's `$datetime` as its date.
+   *
+   * @static
+   * @param {ActiveDefinitions.LedgerEntry} entry
+   * @param {ActiveDSConnect} db
+   * @param {IDryRunOptions} [options]
+   * @returns {Promise<IExecutionResult>}
+   */
+  public static dryRunHybrid(
+    entry: ActiveDefinitions.LedgerEntry,
+    db: ActiveDSConnect,
+    options: IDryRunOptions = {}
+  ): Promise<IExecutionResult> {
+    const reference = options.reference || "hybrid";
+    const local: ActiveDefinitions.LedgerEntry = {
+      ...entry,
+      $revs: entry.$revs ? JSON.parse(JSON.stringify(entry.$revs)) : entry.$revs,
+      $nodes: { [reference]: {} as ActiveDefinitions.INodeResponse },
+      $broadcast: false,
+      $instant: false,
+    };
+    delete (local as any).$territoriality;
+
+    const process = new Process(
+      local,
+      options.selfHost || "hybrid",
+      reference,
+      // No neighbours: hybrid mode never knocks
+      { reference: "", knock: () => Promise.reject(new Error("hybrid")) } as any,
+      db,
+      {} as ActiveDSConnect,
+      {} as ActiveDSConnect,
+      undefined as unknown as ActiveCrypto.Secured,
+      { mode: "hybrid", volatileHeld: options.volatileHeld }
+    );
+    return process.dryRun(options.contractVersion);
   }
 
   /**
@@ -990,7 +1183,7 @@ export class Process extends EventEmitter {
 
     // Initialise the contract in the VM
     try {
-      await virtualMachine.initialise(payload, contractName);
+      await virtualMachine.initialise(payload, contractName, this.execution);
     } catch (error) {
       // Contract not found / failed to start
       ActiveLogger.debug(error, "VM initialisation failed");
@@ -1109,7 +1302,7 @@ export class Process extends EventEmitter {
       // Transaction should be fully described now (revs etc)
       // we can now broadcast it before voting that way voting rounds will not lock up
       // if calling a 3rd party and awaiting multiple calls.
-      if (this.entry.$broadcast && !(this.entry as any).$wait) {
+      if (!this.localOnly && this.entry.$broadcast && !(this.entry as any).$wait) {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
         if (this.entry.$origin === this.reference) {
@@ -1190,6 +1383,20 @@ export class Process extends EventEmitter {
     if (!this.entry) {
       // Unhandled contract error issues
       ActiveLogger.debug(`postVote entry is missing?`);
+      return;
+    }
+
+    // Hybrid mode: this node is the whole network. A yes goes straight to
+    // commit, a no fails; nothing is signed, broadcast or knocked.
+    if (this.localOnly) {
+      if (error) {
+        this.entry.$nodes[this.reference].error = error.reason
+          ? error.reason
+          : error;
+        this.shared.raiseLedgerError(error.code || 1000, error.reason || error);
+      } else {
+        this.commit(virtualMachine);
+      }
       return;
     }
 
@@ -1488,7 +1695,7 @@ export class Process extends EventEmitter {
 
       if (
         this.nodeResponse.vote &&
-        (this.nodeResponse.leader || this.canCommit())
+        (this.nodeResponse.leader || this.localOnly || this.canCommit())
       ) {
         // Consensus reached commit phase
         ActiveTiming.mark(this.entry.$umid, "proto.commitBegin");

@@ -37,7 +37,10 @@ import {
   IVMContractReferences,
   IVirtualMachine,
   IContractIsolateBackend,
+  IVMExecution,
+  IVMExecutionReport,
 } from "./interfaces/vm.interface";
+import { runSandboxed, runUnsandboxed } from "./sandbox";
 import { createInterface } from "readline";
 //import { ContractControl } from "./vmscript";
 
@@ -150,6 +153,32 @@ export class VirtualMachine
   private timeoutTimers: { [umid: string]: NodeJS.Timeout } = {};
 
   /**
+   * Per-execution options from a hybrid (or any dry run). Absent for an
+   * ordinary supernode execution, which then runs exactly as before.
+   *
+   * @private
+   */
+  private executions: { [umid: string]: IVMExecution } = {};
+
+  /**
+   * Why each hybrid execution depends on the supernodes, as seen by the
+   * host: blocked egress and volatile it does not hold. The contract keeps
+   * its own reasons (isSupernode, inter-node comms).
+   *
+   * @private
+   */
+  private hostDependence: { [umid: string]: string[] } = {};
+
+  /**
+   * Events db for dry runs: nothing is written
+   *
+   * @private
+   */
+  private static readonly discardEvents = {
+    post: (): Promise<any> => Promise.resolve({ ok: true }),
+  };
+
+  /**
    * Creates an instance of VirtualMachine.
    * @param {string} contractPath
    * @param {string} selfHost
@@ -204,6 +233,56 @@ export class VirtualMachine
         return null;
     }
     return this.smartContracts[umid];
+  }
+
+  /**
+   * Run contract code. A hybrid execution runs inside the egress sandbox;
+   * anything else is called directly, as it always was.
+   *
+   * @private
+   */
+  private sandboxed<T>(umid: string, fn: () => T): T {
+    const execution = this.executions[umid];
+    if (!execution || execution.supernode) return fn();
+    return runSandboxed(
+      { onBlocked: (what) => this.markHostDependent(umid, `blocked:${what}`) },
+      fn
+    );
+  }
+
+  /**
+   * Record a reason a hybrid execution depends on the supernodes
+   *
+   * @private
+   */
+  private markHostDependent(umid: string, reason: string): void {
+    const reasons = (this.hostDependence[umid] ||= []);
+    if (reasons.indexOf(reason) === -1) reasons.push(reason);
+  }
+
+  /**
+   * What a hybrid needs to judge this execution: whether (and why) it
+   * depends on the supernodes, and the adopt declarations it recorded.
+   *
+   * @param {string} umid
+   * @returns {IVMExecutionReport}
+   */
+  public getExecutionReport(umid: string): IVMExecutionReport {
+    const contract = this.smartContracts[umid];
+    const reasons = (this.hostDependence[umid] || []).slice();
+    if (contract && typeof contract.getSupernodeDependence === "function") {
+      for (const reason of contract.getSupernodeDependence() as string[]) {
+        if (reasons.indexOf(reason) === -1) reasons.push(reason);
+      }
+    }
+    return {
+      supernodeDependent: reasons.length > 0,
+      dependence: reasons,
+      adopt:
+        contract && typeof contract.exportAdoptDeclarations === "function"
+          ? contract.exportAdoptDeclarations()
+          : [],
+    };
   }
 
   /**
@@ -328,7 +407,16 @@ export class VirtualMachine
         ActiveLogger.info(`[AC] - Calling Shutdown - ${umid}`);
         this.smartContracts[umid].shutdown!();
       }
+      const execution = this.executions[umid];
+      const instance = this.smartContracts[umid];
       setTimeout(() => {
+        if (execution) {
+          // A hybrid may run the same umid again (dry-run vote, then the
+          // committed item); leave a newer execution's state alone
+          if (this.smartContracts[umid] !== instance) return;
+          delete this.executions[umid];
+          delete this.hostDependence[umid];
+        }
         delete this.smartContracts[umid];
         delete this.events[umid];
         delete this.scriptFinishedExec[umid];
@@ -336,7 +424,7 @@ export class VirtualMachine
     } catch {
       // Already deleted?
     }
-    
+
     // Clear references here
     if (this.contractReferences && this.contractReferences[umid]) {
       delete this.contractReferences[umid];
@@ -408,7 +496,8 @@ export class VirtualMachine
    */
   public initialise(
     payload: IVMDataPayload,
-    contractName: string
+    contractName: string,
+    execution?: IVMExecution
   ): Promise<void> {
     if (!this.contractReferences) {
       this.contractReferences = {};
@@ -422,8 +511,19 @@ export class VirtualMachine
       key: payload.key,
     };
 
-    // Setup Event Engine
-    this.events[payload.umid] = new EventEngine(this.dbev, payload.transaction.$contract, payload.umid);
+    if (execution) {
+      this.executions[payload.umid] = execution;
+      this.hostDependence[payload.umid] = [];
+    } else {
+      delete this.executions[payload.umid];
+    }
+
+    // Setup Event Engine (a dry run keeps its events in memory only)
+    this.events[payload.umid] = new EventEngine(
+      execution?.dryRun ? VirtualMachine.discardEvents : this.dbev,
+      payload.transaction.$contract,
+      payload.umid
+    );
 
     return Promise.resolve()
       .then(async () => {
@@ -472,18 +572,32 @@ export class VirtualMachine
               payload.contractLocation
             );
           }
-          this.smartContracts[payload.umid] = await this.contracts[
-            payload.contractLocation
-          ].instantiate(constructorArgs);
+          this.smartContracts[payload.umid] = await this.sandboxed(
+            payload.umid,
+            () =>
+              this.contracts[payload.contractLocation].instantiate(
+                constructorArgs
+              )
+          );
         } else {
-          // Fetch Contract Constructable
-          if (!this.contracts[payload.contractLocation]) {
-            this.contracts[payload.contractLocation] = require(payload.contractLocation).default;
-          }
+          this.sandboxed(payload.umid, () => {
+            // Fetch Contract Constructable
+            if (!this.contracts[payload.contractLocation]) {
+              this.contracts[payload.contractLocation] = require(payload.contractLocation).default;
+            }
 
-          this.smartContracts[payload.umid] = new this.contracts[
-            payload.contractLocation
-          ](...constructorArgs);
+            this.smartContracts[payload.umid] = new this.contracts[
+              payload.contractLocation
+            ](...constructorArgs);
+          });
+        }
+
+        // Tell the contract where it runs (isSupernode)
+        if (
+          execution &&
+          typeof this.smartContracts[payload.umid].setHostMode === "function"
+        ) {
+          this.smartContracts[payload.umid].setHostMode(execution.supernode);
         }
 
         if ("setEvent" in this.smartContracts[payload.umid]) {
@@ -553,7 +667,7 @@ export class VirtualMachine
 
       try {
         // Get Commit
-        const contract = this.getContract(umid, "read"); if (!contract) return reject("VM Error : Contract not found"); const read = (contract as any)[readMethod]?.();
+        const contract = this.getContract(umid, "read"); if (!contract) return reject("VM Error : Contract not found"); const read = this.sandboxed(umid, () => (contract as any)[readMethod]?.());
         resolve(read ? read : false);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Read - Error`);
@@ -594,7 +708,7 @@ export class VirtualMachine
 
       try {
         // Run Verify Phase
-        const contract = this.getContract(umid, "verify"); if (!contract) return reject("VM Error : Contract not found"); const verify = contract.verify?.(sigless);
+        const contract = this.getContract(umid, "verify"); if (!contract) return reject("VM Error : Contract not found"); const verify = this.sandboxed(umid, () => contract.verify?.(sigless));
         resolve(verify ? verify : true);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Verify - Error`);
@@ -638,7 +752,7 @@ export class VirtualMachine
 
       try {
         // Run Vote Phase
-        const contract = this.getContract(umid, "vote"); if (!contract) return reject("VM Error : Contract not found"); resolve(await contract.vote());
+        const contract = this.getContract(umid, "vote"); if (!contract) return reject("VM Error : Contract not found"); resolve(await this.sandboxed(umid, () => contract.vote()));
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Vote - Error`);
         if (error instanceof Error) {
@@ -687,7 +801,7 @@ export class VirtualMachine
 
       try {
         // Get Commit
-        const contract = this.getContract(umid, "commit"); if (!contract) return reject("VM Error : Contract not found"); await contract.commit(possibleTerritoriality);
+        const contract = this.getContract(umid, "commit"); if (!contract) return reject("VM Error : Contract not found"); await this.sandboxed(umid, () => contract.commit(possibleTerritoriality));
         // Here we may update the database from the objects (commit should return)
         // Or just manipulate / check the outputs
         resolve(true);
@@ -738,7 +852,7 @@ export class VirtualMachine
         // Get Commit
         let result: any = Promise.resolve();
         const contract = this.getContract(umid, "reconcile"); if (contract && contract.reconcile) {
-          result = contract.reconcile!();
+          result = this.sandboxed(umid, () => contract.reconcile!());
         }
         
         // Here we may update the database from the objects (commit should return)
@@ -772,6 +886,9 @@ export class VirtualMachine
     who: string,
     umid: string
   ): Promise<any> {
+    // Post-commit side effects belong to the node that really committed
+    if (this.executions[umid]?.dryRun) return Promise.resolve(undefined);
+
     return new Promise(async (resolve, reject) => {
       // Script running flag
       this.scriptFinishedExec[umid] = false;
@@ -792,9 +909,8 @@ export class VirtualMachine
         // Run Post Process
         let result: any = Promise.resolve();
         const contract = this.getContract(umid, "postProcess"); if (contract && "postProcess" in contract) {
-          result = (contract as PostProcessEvent).postProcess(
-            territoriality,
-            who
+          result = this.sandboxed(umid, () =>
+            (contract as PostProcessEvent).postProcess(territoriality, who)
           );
         }
         
@@ -862,16 +978,30 @@ export class VirtualMachine
   // public getVolatile() {}
 
   private listenForVolatile(): void {
-    this.emitter.on("getVolatile", async (umid: string, streamId: string) => {
-      try {
-        const volatile: ActiveDefinitions.IVolatile = await this.db.get(
-          `${streamId}:volatile`
-        );
-        this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
-      } catch (error) {
-        this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
-      }
-    });
+    this.emitter.on("getVolatile", (umid: string, streamId: string) =>
+      // Host work: never inside the contract's egress sandbox
+      runUnsandboxed(async () => {
+        const execution = this.executions[umid];
+        // Volatile is per node and not covered by revsOut. A hybrid that
+        // does not hold this stream's (shared) volatile would read its own
+        // empty copy, so the result depends on the supernodes.
+        if (
+          execution &&
+          !execution.supernode &&
+          !execution.volatileHeld?.(streamId)
+        ) {
+          this.markHostDependent(umid, `volatile:${streamId}`);
+        }
+        try {
+          const volatile: ActiveDefinitions.IVolatile = await (
+            execution?.db || this.db
+          ).get(`${streamId}:volatile`);
+          this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
+        } catch (error) {
+          this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
+        }
+      })
+    );
   }
 
   /**
@@ -880,18 +1010,33 @@ export class VirtualMachine
    * @private
    */
   private listenForFetch(): void {
-    this.emitter.on("getStreamData", async (umid: string, streamId: string) => {
-      try {
-        const data: ActiveDefinitions.IStream = await this.db.get(streamId);
-        this.emitter.emit(
-          `getStreamDataFetched-${umid}${streamId}`,
-          null,
-          data
-        );
-      } catch (error) {
-        this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
-      }
-    });
+    this.emitter.on("getStreamData", (umid: string, streamId: string) =>
+      // Host work: never inside the contract's egress sandbox
+      runUnsandboxed(async () => {
+        // Same rule as getVolatile when a contract reads a volatile doc by id
+        const execution = this.executions[umid];
+        if (
+          execution &&
+          !execution.supernode &&
+          streamId.endsWith(":volatile") &&
+          !execution.volatileHeld?.(streamId.slice(0, -":volatile".length))
+        ) {
+          this.markHostDependent(umid, `volatile:${streamId.slice(0, -":volatile".length)}`);
+        }
+        try {
+          const data: ActiveDefinitions.IStream = await (
+            this.executions[umid]?.db || this.db
+          ).get(streamId);
+          this.emitter.emit(
+            `getStreamDataFetched-${umid}${streamId}`,
+            null,
+            data
+          );
+        } catch (error) {
+          this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
+        }
+      })
+    );
   }
 
   /**
