@@ -4,6 +4,7 @@ import { ActiveCrypto } from "../packages/crypto/src";
 import {
   P2PServer,
   P2PServerOptions,
+  addressGroup,
   P2PClient,
   P2PConnection,
   P2PIdentity,
@@ -204,16 +205,36 @@ describe("Peer to peer transport (Activep2p)", function () {
     );
   });
 
-  it("should cap unauthenticated sockets apart from established peers", async () => {
+  it("should cap unauthenticated sockets per address and evict the oldest when full", async () => {
     await start({ maxHandshaking: 2, maxHandshakingPerAddress: 2, handshakeTimeoutMs: 5000 });
     const net = await import("net");
     const idle = [1, 2].map(() => net.connect({ host: "127.0.0.1", port: server.port }));
     await new Promise((r) => setTimeout(r, 50));
+    // Same address already holds its two: refused
     const rejected = once<string>(server, "reject");
     const third = net.connect({ host: "127.0.0.1", port: server.port });
     expect((await rejected)[0]).to.equal("too many unauthenticated connections");
     third.destroy();
     idle.forEach((s) => s.destroy());
+  });
+
+  it("should let a real peer in when half-open sockets from other addresses fill the cap", async () => {
+    await start({ maxHandshaking: 1, maxHandshakingPerAddress: 4, handshakeTimeoutMs: 5000 });
+    const net = await import("net");
+    const idle = net.connect({ host: "127.0.0.1", port: server.port });
+    await new Promise((r) => setTimeout(r, 50));
+    const [client] = await pair();
+    expect(await client.request("echo", "in", 2000)).to.equal("in");
+    client.close();
+    idle.destroy();
+  });
+
+  it("should group addresses so IPv4-mapped and IPv6 /64 count together", () => {
+    expect(addressGroup("::ffff:10.1.2.3")).to.equal("10.1.2.3");
+    expect(addressGroup("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).to.equal("2001:db8:1:2");
+    expect(addressGroup("2001:db8:1:2:1:1:1:1")).to.equal(addressGroup("2001:db8:1:2:9:9:9:9"));
+    expect(addressGroup("10.0.0.1")).to.equal("10.0.0.1");
+    expect(addressGroup(undefined)).to.equal("unknown");
   });
 
   it("should time out a handshake that never completes", async () => {

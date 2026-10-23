@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-export { P2PServer, P2PServerOptions } from "./server";
+export { P2PServer, P2PServerOptions, addressGroup } from "./server";
 export { P2PClient, P2PClientOptions } from "./client";
 export { P2PConnection, ChannelHandler } from "./connection";
 export { P2PIdentity, KnownPeerCheck } from "./handshake";

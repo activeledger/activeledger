@@ -37,6 +37,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
+import { recordFailed } from "./hybridApi";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
@@ -1323,6 +1324,14 @@ export class Host extends Home {
               ? { ...pending.entry, ...m.data.entry }
               : pending.entry,
           });
+
+          // Keep it for hybrids when a supernode voted yes (build 40300)
+          recordFailed(
+            this.dbEventConnection,
+            this.dbConnection,
+            pending.entry,
+            ActiveOptions.get<number>("build", 0)
+          );
 
           // If we want to send AFTER this node has completed uncomment
           // If Hybrid enabled, Send transaction on

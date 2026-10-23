@@ -124,7 +124,16 @@ export class Attestation {
           digest
         ),
       };
-      await events.post({ _id: `attest:${entry.$umid}`, ...attestation });
+
+      // The signed votes, so a hybrid can count the tally from this node alone
+      const nodes: { [ref: string]: ActiveDefinitions.IFeedNodeVote } = {};
+      for (const ref of Object.keys(entry.$nodes || {})) {
+        const n = entry.$nodes[ref];
+        if (n && typeof n.vote === "boolean") {
+          nodes[ref] = { vote: n.vote, ...(n.sig ? { sig: n.sig } : {}) };
+        }
+      }
+      await events.post({ _id: `attest:${entry.$umid}`, ...attestation, nodes });
     } catch (e) {
       ActiveLogger.error(e, `Commit attestation failed for ${entry.$umid}`);
     }
