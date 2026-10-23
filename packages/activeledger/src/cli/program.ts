@@ -51,7 +51,10 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
   name: "activeledger",
   version,
   defaultCommand: "start",
-  commands: Cli.COMMON_COMMANDS,
+  commands: [
+    ...Cli.COMMON_COMMANDS,
+    { name: "hybrid", usage: "list|feeds|ban <keyhash>|unban <keyhash>", description: "Manage the hybrids that follow this node" },
+  ],
   flags: [
     ...Cli.COMMON_FLAGS.map((f) =>
       f.name === "config" ? { ...f, default: "./config.json" } : f
@@ -79,6 +82,9 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     { name: "setup-only", description: "Run setup then exit", group: "Setup" },
     { name: "db-only", description: "Start only the database", group: "Setup" },
     { name: "disable-autostart", description: "Do not start the helper processes", group: "Setup" },
+    { name: "hybrid-listen", arg: "<port>", description: "Port for the hybrid P2P listener", group: "Hybrid" },
+    { name: "hybrid-max-feeds", arg: "<n>", description: "Most hybrid feeds served at once (default 32)", group: "Hybrid" },
+    { name: "hybridMaxFeeds", hidden: true, description: "Config key for hybrid-max-feeds" },
     { name: "backup", arg: "[file]", description: "Back up the ledger", group: "Backup" },
     { name: "restore", arg: "<file>", description: "Restore the ledger from a backup", group: "Backup" },
     ...CONFIG_KEYS.map((name) => ({ name, hidden: true, description: "Config key override" })),

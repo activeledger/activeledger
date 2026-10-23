@@ -32,6 +32,8 @@ export const FEED_HEARTBEAT_MS = 10_000;
 export interface FeedClient {
   keyHash: string;
   since: string;
+  /** The last cursor sent, kept current by the session */
+  cursor?: string;
   connectedAt: number;
 }
 
@@ -56,7 +58,9 @@ export class FeedSession {
     /** Asked on every heartbeat: a banned or retired key loses its feed */
     private allowed: () => Promise<boolean> = async () => true,
     /** Called once when the session ends, whatever the reason */
-    private onStop: () => void = () => {}
+    private onStop: () => void = () => {},
+    /** Called with each cursor sent, for `hybrid feeds` */
+    private onCursor: (cursor: string) => void = () => {}
   ) {
     this.cursor = from;
   }
@@ -88,6 +92,7 @@ export class FeedSession {
             return this.stop();
           }
           this.cursor = cursor;
+          this.onCursor(cursor);
         }
         if (items.length < 50) break;
       }
@@ -286,7 +291,10 @@ export const registerHybridRoutes = (
       FEED_HEARTBEAT_MS,
       Date.now,
       () => api.stillAllowed(c.keyHash),
-      finish
+      finish,
+      (cursor) => {
+        client.cursor = cursor;
+      }
     );
     closers.set(client, () => session.stop());
     res.onAborted(() => {

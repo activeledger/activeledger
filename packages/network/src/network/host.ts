@@ -36,6 +36,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Home } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
+import { HybridBans, feedsStatus, isLoopback, listHybrids } from "./hybridAdmin";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
@@ -190,10 +191,23 @@ interface BusyLockQueue {
  */
 export class Host extends Home {
   /** Hybrid key hashes refused on this supernode only (`hybrid ban`) */
-  public static hybridBans = new Set<string>();
+  public static hybridBans = new HybridBans();
+
+  /** The registry of hybrids, read from the ledger */
+  public hybridRegistry: LedgerHybridRegistry;
 
   /** Hybrid feeds connected right now */
   public hybridFeeds: Set<FeedClient> = new Set();
+
+  /** `--hybrid-max-feeds`, or `hybridMaxFeeds` in config.json. Local to this supernode. */
+  public static hybridMaxFeeds(): number {
+    return (
+      Number(
+        ActiveOptions.get<any>("hybrid-max-feeds", null) ??
+          ActiveOptions.get<any>("hybridMaxFeeds", 32)
+      ) || 32
+    );
+  }
 
   /**
    * Called once the API is listening. Lets the CLI report real progress.
@@ -806,10 +820,11 @@ export class Host extends Home {
     this.api = App();
 
     // Hybrid nodes follow the ledger through /h/* (build 40300 and later)
+    this.hybridRegistry = new LedgerHybridRegistry(this.dbConnection);
     const hybridApi = new HybridApi({
       db: this.dbConnection,
       events: this.dbEventConnection,
-      registry: new LedgerHybridRegistry(this.dbConnection),
+      registry: this.hybridRegistry,
       ledgerConfig: () => {
         const section = ActiveOptions.get<any>("hybrid", {});
         return section && typeof section === "object" && !Array.isArray(section)
@@ -818,14 +833,10 @@ export class Host extends Home {
       },
       setupStreamId: () =>
         ActiveOptions.get<string>("network", "").split("@")[0],
-      banned: () => Host.hybridBans,
+      banned: () => Host.hybridBans.set(),
     });
     this.hybridFeeds = registerHybridRoutes(this.api, hybridApi, {
-      maxFeeds: () =>
-        Number(
-          ActiveOptions.get<any>("hybrid-max-feeds", null) ??
-            ActiveOptions.get<any>("hybridMaxFeeds", 32)
-        ) || 32,
+      maxFeeds: () => Host.hybridMaxFeeds(),
     });
 
     this.api.any("/*", async (res, req) => {
@@ -2103,6 +2114,23 @@ export class Host extends Home {
           case "/a/status": // Network Status Request
             response = Endpoints.status(this, requester);
             break;
+          case "/a/hybrid/list": // activeledger hybrid list
+          case "/a/hybrid/feeds": // activeledger hybrid feeds
+            if (!isLoopback(req.connection.remoteAddress)) {
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
+            response =
+              req.url === "/a/hybrid/list"
+                ? listHybrids(
+                    this.hybridRegistry,
+                    this.hybridFeeds,
+                    Host.hybridBans.set()
+                  ).then((content) => ({ statusCode: 200, content }))
+                : Promise.resolve({
+                    statusCode: 200,
+                    content: feedsStatus(this.hybridFeeds, Host.hybridMaxFeeds()),
+                  });
+            break;
           case "/a/all": // All Stream Management
             if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               response = Endpoints.all(this.dbConnection);
@@ -2230,6 +2258,22 @@ export class Host extends Home {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
             break;
+          case "/a/hybrid/ban": // activeledger hybrid ban|unban <keyhash>
+          case "/a/hybrid/unban": {
+            if (!isLoopback(req.connection.remoteAddress)) {
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
+            const hash = body?.keyHash;
+            const changed =
+              req.url === "/a/hybrid/ban"
+                ? Host.hybridBans.ban(hash)
+                : Host.hybridBans.unban(hash);
+            response = Promise.resolve({
+              statusCode: changed ? 200 : 400,
+              content: changed ? { ok: true } : { error: "unknown or invalid key hash" },
+            });
+            break;
+          }
           case "/a/stream": // Stream Data Management (Activerestore)
             response = Endpoints.streams(this.dbConnection, body, this);
             break;

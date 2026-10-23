@@ -30,6 +30,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { CLIHandler } from "./cli/cli";
 import { supernodeProgram } from "./cli/program";
 import { checkConfigFile, status, waitForExit } from "./cli/health";
+import { hybridCommand } from "./cli/hybrid";
 import { PIDHandler } from "./cli/pid";
 
 // Set during build
@@ -53,12 +54,19 @@ if (cli.command === "check-config") {
     )
   );
 }
+if (cli.command === "hybrid") {
+  hybridCommand(
+    cli.positionals[1],
+    cli.positionals[2],
+    !!cli.flags.json
+  ).then((code) => process.exit(code));
+}
 if (cli.command === "status") {
   status(!!cli.flags.json).then((code) => process.exit(code));
 }
 
 // Do we have an identity (Will always need, Can be shared)
-if (cli.command !== "status" && !fs.existsSync("./.identity")) {
+if (cli.command !== "status" && cli.command !== "hybrid" && !fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
   let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
   // 0600: this file contains the node's RSA PRIVATE key - KeyPair.pem is a
@@ -80,7 +88,11 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (ActiveOptions.get<boolean>("merge", false)) {
   // Merge Configs (Helps Build local net)
   CLIHandler.merge();
-} else if (cli.command === "status" || cli.command === "check-config") {
+} else if (
+  cli.command === "status" ||
+  cli.command === "check-config" ||
+  cli.command === "hybrid"
+) {
   // Handled above
 } else if (cli.command === "stop") {
   // The unconditional SIGTERM listener below holds the event loop open
