@@ -299,6 +299,29 @@ describe("Hybrid lookup", () => {
       expect(fs.existsSync(`${root2}acme/c0ffee.js`)).to.equal(false);
     });
 
+    it("does not reuse a built older revision for a transaction that needs a newer one, and keys trust on content", async () => {
+      await store.data.bulkDocs([{ ...contractState(), _rev: "2-old" }, { _id: "c0ffee:stream", _rev: "1-m" }], { new_edits: false });
+      const builder = new ContractBuilder({ store: store as any, sources: { peers: [], supernodes: [] }, verify: async () => true, rootDir: root });
+      await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@0.0.2" } });
+      expect(fs.existsSync(`${root}acme/c0ffee.js`)).to.equal(true);
+      fs.rmSync(`${root}acme/c0ffee.js`);
+      // Built at 2-old; a transaction needing 9-new must not be served by the cache
+      await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@0.0.2" }, $revs: { $i: { c0ffee: "1-m:9-new" }, $o: {} } });
+      expect(fs.existsSync(`${root}acme/c0ffee.js`)).to.equal(false);
+
+      // Same revision string, different content: trust does not carry over
+      let verified = 0;
+      const b2 = new ContractBuilder({ store: store as any, sources: { peers: [], supernodes: [] }, verify: async () => (verified++, true), rootDir: root });
+      const state = contractState();
+      await store.data.bulkDocs([{ ...state, _rev: "5-x" }], { new_edits: false });
+      await b2.rebuild({ ...state, _rev: "5-x" });
+      await b2.rebuild({ ...state, _rev: "5-x" });
+      expect(verified).to.equal(1);
+      const swapped = { ...state, _rev: "5-x", namespace: "acme", contract: { "0.0.2": Buffer.from("evil").toString("base64") } };
+      await b2.rebuild(swapped);
+      expect(verified).to.equal(2);
+    });
+
     it("compiles nothing it cannot verify: no verifier, or a verifier that says no", async () => {
       const base64 = code(3);
       const { ContractSource } = await import("@activeledger/activecontracts/lib/source");

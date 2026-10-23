@@ -31,6 +31,7 @@ import {
 import type { HybridStore, Sources, StreamLookup } from "./types";
 import { readDoc, splitRev, writeAtRev } from "./lookup";
 import { revPosition } from "@activeledger/activesync";
+import { docHash } from "./verify";
 
 /**
  * Keeps the compiled contract files Process runs (`contracts/<ns>/<id>.js`
@@ -80,9 +81,13 @@ export interface ContractBuilderOptions {
 
 export class ContractBuilder {
   private readonly files: ContractFiles;
-  /** Contract stream id -> state revision last built */
+  /** Contract stream id -> `<rev>:<content hash>` last built */
   private readonly built = new Map<string, string>();
-  /** Contract stream id -> state revision known to be what the network agreed */
+  /**
+   * Contract stream id -> `<rev>:<content hash>` known to be what the network
+   * agreed. The content is part of the key: a revision string alone could be
+   * kept while the document under it is swapped.
+   */
   private readonly trustedRev = new Map<string, string>();
 
   constructor(private readonly options: ContractBuilderOptions) {
@@ -120,7 +125,7 @@ export class ContractBuilder {
   public async rebuild(state: any): Promise<{ built: string[]; failed: { version: string; reason: string }[] }> {
     const out = { built: [] as string[], failed: [] as { version: string; reason: string }[] };
     if (!isContractStream(state)) return out;
-    if (state._rev && this.built.get(state._id) === state._rev) return out;
+    if (state._rev && this.built.get(state._id) === `${state._rev}:${docHash(state)}`) return out;
     // Whatever path put this state in the store, code is compiled only from
     // a revision the network is known to have agreed
     if (!(await this.trusted(state))) {
@@ -144,7 +149,7 @@ export class ContractBuilder {
         ActiveLogger.warn(`Cannot build contract ${state._id}@${version}: ${reason}`);
       }
     }
-    if (!out.failed.length && state._rev) this.built.set(state._id, state._rev);
+    if (!out.failed.length && state._rev) this.built.set(state._id, `${state._rev}:${docHash(state)}`);
     return out;
   }
 
@@ -154,12 +159,13 @@ export class ContractBuilder {
    * `verify`; otherwise it is checked now.
    */
   private async trusted(state: any): Promise<boolean> {
-    if (this.trustedRev.get(state._id) === state._rev) return true;
+    const mark = `${state._rev}:${docHash(state)}`;
+    if (this.trustedRev.get(state._id) === mark) return true;
     const verify = this.options.verify;
     if (!verify) return false;
     const meta = await readDoc(this.options.store.data, `${state._id}:stream`);
     if (!meta || !(await verify(state, meta))) return false;
-    this.trustedRev.set(state._id, state._rev);
+    this.trustedRev.set(state._id, mark);
     return true;
   }
 
@@ -173,7 +179,7 @@ export class ContractBuilder {
       if (!isContractStream(doc)) continue;
       // Build from what was stored, which carries the final revision
       const stored = (await readDoc(this.options.store.data, doc._id)) ?? doc;
-      if (stored._rev) this.trustedRev.set(stored._id, stored._rev);
+      if (stored._rev) this.trustedRev.set(stored._id, `${stored._rev}:${docHash(stored)}`);
       await this.rebuild(stored);
     }
   }
@@ -209,7 +215,7 @@ export class ContractBuilder {
     if (!best) return undefined;
     const db = this.options.store.data;
     if (!((await writeAtRev(db, best.meta)) && (await writeAtRev(db, best.state)))) return undefined;
-    this.trustedRev.set(id, best.state._rev);
+    this.trustedRev.set(id, `${best.state._rev}:${docHash(best.state)}`);
     return best.state;
   }
 
@@ -220,14 +226,16 @@ export class ContractBuilder {
     const id = contract.split("@")[0];
     if (!id || id.includes("/") || id.includes("..")) return;
     let state = await readDoc(this.options.store.data, id);
-    if (state && this.files.exists(ns, id) && this.built.get(id) === state._rev) return;
     // A transaction that names this contract stream in its signed $revs fixes
     // the revision it must run against; an older one is a rollback
     const named = entry?.$revs?.$i?.[id] ?? entry?.$revs?.$o?.[id];
     const expected = typeof named === "string" ? splitRev(named).state : undefined;
-    if (state && expected && revPosition(state._rev) < revPosition(expected)) state = undefined;
+    const behind = (doc: any) => !!expected && revPosition(doc._rev) < revPosition(expected);
+    // Already built at this revision, and not older than the transaction needs
+    if (state && !behind(state) && this.files.exists(ns, id) && this.built.get(id) === `${state._rev}:${docHash(state)}`) return;
+    if (state && behind(state)) state = undefined;
     if (!state) state = await this.fetchVerified(id);
-    if (state && expected && revPosition(state._rev) < revPosition(expected)) {
+    if (state && behind(state)) {
       ActiveLogger.warn(`Contract ${id} is at ${state._rev}, the transaction needs ${expected}; not built`);
       return;
     }
