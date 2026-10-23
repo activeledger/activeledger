@@ -94,6 +94,8 @@ export interface INodeResponse {
   error?: string;
   return?: unknown;
   early?: boolean;
+  /** Signature over H(umid | vote | $revs) with the node key, from build 40300 */
+  sig?: string;
 }
 
 export interface ICommunications {

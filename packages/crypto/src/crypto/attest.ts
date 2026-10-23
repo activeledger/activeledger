@@ -96,7 +96,7 @@ export const verifyRequest = (
 export const voteDigest = (
   umid: string,
   vote: boolean,
-  revs: Record<string, string>
+  revs: unknown
 ): string => Hash.getHash(`${umid}|${vote}|${canonicalJson(revs)}`);
 
 export interface RevOut {
@@ -111,7 +111,7 @@ export interface RevOut {
 export const commitDigest = (
   umid: string,
   outcome: string,
-  revs: Record<string, string>,
+  revs: unknown,
   revsOut: Record<string, RevOut>,
   umidDocHash: string
 ): string =>

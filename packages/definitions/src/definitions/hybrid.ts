@@ -21,6 +21,8 @@
  * SOFTWARE.
  */
 
+import { LedgerRevs } from "./ledger";
+
 /**
  * Contains the data state of the ledger entry created by the contract
  * 
@@ -32,4 +34,113 @@ export interface IHybridNodes {
     url: string;
     auth: string;
     docName?: string;
+}
+/**
+ * Hybrid node types (v5.1). The hybrid is a lean, non-voting node that
+ * re-runs contracts locally and commits only what the supernodes agreed.
+ */
+
+export type HybridTransport = "p2p" | "http";
+
+export interface IHybridEndpoint {
+  transport: HybridTransport;
+  host: string;
+  port: number;
+}
+
+/** What the `default/hybrid` registry contract stores, one stream per key */
+export interface IHybridRegistryEntry {
+  key: string;
+  endpoints: IHybridEndpoint[];
+  label?: string;
+  retired?: boolean;
+}
+
+/** `$relay`: a hybrid vouching for a transaction it forwarded. `sig` is over `$umid`. */
+export interface IRelay {
+  key: string;
+  sig: string;
+}
+
+/** `revsOut[streamId]`: the revision written and the sha256 of the stored document */
+export interface IRevOut {
+  rev: string;
+  sha256: string;
+}
+
+export type TFeedOutcome = "committed" | "failed";
+
+/** A supernode's vote and its signature over H(umid | vote | $revs) */
+export interface IFeedNodeVote {
+  vote: boolean;
+  sig?: string;
+}
+
+/** Signed by a supernode after commit over H(umid | outcome | $revs | revsOut | umidDocHash) */
+export interface ICommitAttestation {
+  /** Node reference (hash of the node's public key) */
+  node: string;
+  umid: string;
+  outcome: TFeedOutcome;
+  revsOut: { [streamId: string]: IRevOut };
+  umidDocHash: string;
+  sig: string;
+}
+
+/** One item on `/h/feed` */
+export interface IFeedItem {
+  umid: string;
+  outcome: TFeedOutcome;
+  /** The `:umid` doc exactly as stored. Present when committed. */
+  umidDoc?: any;
+  /** The transaction. Present when failed, because nothing was stored for it. */
+  tx?: any;
+  $revs: LedgerRevs;
+  revsOut?: { [streamId: string]: IRevOut };
+  streams?: { new: any[]; updated: any[] };
+  nodes: { [nodeRef: string]: IFeedNodeVote };
+  attestation?: ICommitAttestation;
+  /** Commit attestations a relaying hybrid gathered, so a peer can adopt without going back */
+  attestations?: ICommitAttestation[];
+}
+
+export type TDivergenceKind =
+  | "output-mismatch"
+  | "umid-doc-mismatch"
+  | "failed-but-passed"
+  | "execution-error"
+  | "adopt-rejected";
+
+/** Written locally when a hybrid's result differs from the supernodes' */
+export interface IDivergenceRecord {
+  umid: string;
+  kind: TDivergenceKind;
+  supernodeTally: { yes: number; no: number };
+  localResult: unknown;
+  $revs: LedgerRevs;
+  revsOut?: { [streamId: string]: IRevOut };
+  localRevs?: LedgerRevs;
+  at: string;
+}
+
+/** The `hybrid` section asserted on-ledger in the setup stream */
+export interface IHybridLedgerConfig {
+  admission: "open" | { allowlist: string[] };
+  required: (string | { id: string; volatile?: boolean })[];
+  window: { days: number };
+  minVersion: string;
+}
+
+/** The hybrid's own flat config file (`hybrid.json`) */
+export interface IHybridConfig {
+  upstreams: IHybridEndpoint[];
+  peers: IHybridEndpoint[];
+  bind: string;
+  port: number;
+  token?: string;
+  window: { days: number };
+  maxLagSeconds: number | null;
+  refuseOnboard: boolean;
+  events?: { contracts?: string[]; where?: { [field: string]: string } };
+  submit?: { contracts?: string[] };
 }

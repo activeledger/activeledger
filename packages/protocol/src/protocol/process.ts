@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { Attestation } from "./attest";
 import { promises as fs } from "fs";
 import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
@@ -1026,6 +1027,7 @@ export class Process extends EventEmitter {
 
         if (typeof vote !== "boolean" && vote.leader) {
           this.nodeResponse.vote = this.nodeResponse.leader = true;
+          Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
           // If leader we can run straight to the commit
           // The data still gets sent on as part of a broadcast commit
           this.commit(virtualMachine);
@@ -1190,6 +1192,9 @@ export class Process extends EventEmitter {
       ActiveLogger.debug(`postVote entry is missing?`);
       return;
     }
+
+    // Sign the vote (yes or no) so a hybrid can verify the tally
+    Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
 
     // Instant Transaction Return right away
     if (!error && this.entry.$instant) {

@@ -703,6 +703,9 @@ class Processor {
     if (neighbours) {
       this.neighbourhood = neighbours;
 
+      // Votes and commits are signed with the node key from build 40300
+      ActiveProtocol.Attestation.key = Home.identity;
+
       this.secured = new ActiveCrypto.Secured(this.db, this.neighbourhood, {
         reference: Home.reference,
         public: Home.publicPem,

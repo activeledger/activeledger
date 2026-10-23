@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { Attestation } from "./attest";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -478,6 +479,15 @@ export class StreamUpdater {
         _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
           }`,
       });
+
+      // Sign what was committed, for hybrids (build 40300 and later)
+      await Attestation.commit(
+        this.db,
+        this.dbev,
+        this.reference,
+        this.entry,
+        this.docs
+      );
     } catch (error) {
       ActiveLogger.error(error, "Datastore Failure");
       this.shared.raiseLedgerError(1510, new Error("Failed to save streams"));
