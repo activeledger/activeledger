@@ -394,18 +394,21 @@ export class Stream {
   ): Promise<ActiveDefinitions.IStream> {
     return new Promise((resolve, reject) => {
       const umid = this.umid;
-      this.eventEmitter.emit("getStreamData", umid, streamId);
-
-      this.eventEmitter.on(
+      // once: each request gets exactly one answer, and a listener left
+      // behind would also fire for a later read of the same stream
+      this.eventEmitter.once(
         `getStreamDataFetched-${umid}${streamId}`,
         (err: Error, data: ActiveDefinitions.IStream) => {
           if (err) {
             ActiveLogger.debug(err, "Event error");
-            reject(err);
+            return reject(err);
           }
           resolve(data);
         }
       );
+
+      // After the listener is in place, so an answer can never be missed
+      this.eventEmitter.emit("getStreamData", umid, streamId);
     });
   }
 
