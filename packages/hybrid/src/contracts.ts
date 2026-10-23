@@ -29,7 +29,8 @@ import {
   ContractSource,
 } from "@activeledger/activecontracts/lib/source";
 import type { HybridStore, Sources, StreamLookup } from "./types";
-import { readDoc, writeAtRev } from "./lookup";
+import { readDoc, splitRev, writeAtRev } from "./lookup";
+import { revPosition } from "@activeledger/activesync";
 
 /**
  * Keeps the compiled contract files Process runs (`contracts/<ns>/<id>.js`
@@ -81,6 +82,8 @@ export class ContractBuilder {
   private readonly files: ContractFiles;
   /** Contract stream id -> state revision last built */
   private readonly built = new Map<string, string>();
+  /** Contract stream id -> state revision known to be what the network agreed */
+  private readonly trustedRev = new Map<string, string>();
 
   constructor(private readonly options: ContractBuilderOptions) {
     this.files = new ContractFiles(
@@ -118,6 +121,13 @@ export class ContractBuilder {
     const out = { built: [] as string[], failed: [] as { version: string; reason: string }[] };
     if (!isContractStream(state)) return out;
     if (state._rev && this.built.get(state._id) === state._rev) return out;
+    // Whatever path put this state in the store, code is compiled only from
+    // a revision the network is known to have agreed
+    if (!(await this.trusted(state))) {
+      out.failed.push({ version: "*", reason: "contract stream is not verified" });
+      ActiveLogger.warn(`Not building contract ${state._id}@${state._rev}: not verified`);
+      return out;
+    }
     for (const version of Object.keys(state.contract).sort(byVersion)) {
       try {
         const source = await ContractSource.resolve(state, version, this.fetchUmid);
@@ -138,12 +148,33 @@ export class ContractBuilder {
     return out;
   }
 
-  /** Rebuild any contract streams among documents just written */
+  /**
+   * Is this exact revision what the network agreed? Known when it was
+   * written from a verified feed item (`onWritten`) or fetched through
+   * `verify`; otherwise it is checked now.
+   */
+  private async trusted(state: any): Promise<boolean> {
+    if (this.trustedRev.get(state._id) === state._rev) return true;
+    const verify = this.options.verify;
+    if (!verify) return false;
+    const meta = await readDoc(this.options.store.data, `${state._id}:stream`);
+    if (!meta || !(await verify(state, meta))) return false;
+    this.trustedRev.set(state._id, state._rev);
+    return true;
+  }
+
+  /**
+   * Rebuild any contract streams among documents just written. The caller
+   * writes only documents that passed verification (a feed item's signed
+   * outputs), so the stored revision is trusted.
+   */
   public async onWritten(docs: any[]): Promise<void> {
     for (const doc of docs) {
       if (!isContractStream(doc)) continue;
       // Build from what was stored, which carries the final revision
-      await this.rebuild((await readDoc(this.options.store.data, doc._id)) ?? doc);
+      const stored = (await readDoc(this.options.store.data, doc._id)) ?? doc;
+      if (stored._rev) this.trustedRev.set(stored._id, stored._rev);
+      await this.rebuild(stored);
     }
   }
 
@@ -161,19 +192,25 @@ export class ContractBuilder {
     }
     const sources = this.options.sources;
     const { supernodes } = typeof sources === "function" ? sources() : sources;
+    // Ask every supernode and keep the highest revision that verifies, so one
+    // that serves an older (still attested) state cannot roll the contract back
+    let best: { state: any; meta: any } | undefined;
     for (const up of supernodes) {
       try {
         const r = await up.streams([{ id }]);
         const state = r.docs.find((d: any) => d?._id === id);
         const meta = r.docs.find((d: any) => d?._id === `${id}:stream`);
         if (!state || !meta || !(await verify(state, meta))) continue;
-        const db = this.options.store.data;
-        if ((await writeAtRev(db, meta)) && (await writeAtRev(db, state))) return state;
+        if (!best || revPosition(state._rev) > revPosition(best.state._rev)) best = { state, meta };
       } catch (e) {
         ActiveLogger.warn(`Contract ${id}: ${up.id}: ${(e as Error)?.message || e}`);
       }
     }
-    return undefined;
+    if (!best) return undefined;
+    const db = this.options.store.data;
+    if (!((await writeAtRev(db, best.meta)) && (await writeAtRev(db, best.state)))) return undefined;
+    this.trustedRev.set(id, best.state._rev);
+    return best.state;
   }
 
   public async ensureFor(entry: any): Promise<void> {
@@ -184,7 +221,16 @@ export class ContractBuilder {
     if (!id || id.includes("/") || id.includes("..")) return;
     let state = await readDoc(this.options.store.data, id);
     if (state && this.files.exists(ns, id) && this.built.get(id) === state._rev) return;
+    // A transaction that names this contract stream in its signed $revs fixes
+    // the revision it must run against; an older one is a rollback
+    const named = entry?.$revs?.$i?.[id] ?? entry?.$revs?.$o?.[id];
+    const expected = typeof named === "string" ? splitRev(named).state : undefined;
+    if (state && expected && revPosition(state._rev) < revPosition(expected)) state = undefined;
     if (!state) state = await this.fetchVerified(id);
+    if (state && expected && revPosition(state._rev) < revPosition(expected)) {
+      ActiveLogger.warn(`Contract ${id} is at ${state._rev}, the transaction needs ${expected}; not built`);
+      return;
+    }
     // A label (symlink) is not a stream; Process resolves it on disk
     if (state) await this.rebuild(state);
   }

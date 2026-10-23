@@ -234,7 +234,8 @@ describe("Hybrid lookup", () => {
     });
 
     it("writes every version, the highest as latest", async () => {
-      const builder = new ContractBuilder({ store: store as any, sources: { peers: [], supernodes: [] }, rootDir: root });
+      const builder = new ContractBuilder({ store: store as any, sources: { peers: [], supernodes: [] }, verify: async () => true, rootDir: root });
+      await store.data.bulkDocs([{ _id: "c0ffee:stream", _rev: "1-m" }], { new_edits: false });
       const r = await builder.rebuild(contractState());
       expect(r.built).to.deep.equal(["0.0.2", "0.0.10"]);
       expect(fs.readFileSync(`${root}acme/c0ffee@0.0.2.js`, "utf8")).to.contain("return 2");
@@ -264,6 +265,38 @@ describe("Hybrid lookup", () => {
       // Default contracts ship with the node
       await builder.ensureFor({ $tx: { $namespace: "default", $contract: "onboard" } });
       expect(fs.existsSync(`${root}default`)).to.equal(false);
+    });
+
+    it("does not build a local contract stream that was never verified, whatever put it there", async () => {
+      await store.data.bulkDocs([contractState(), { _id: "c0ffee:stream", _rev: "1-m" }], { new_edits: false });
+      const builder = new ContractBuilder({ store: store as any, sources: { peers: [], supernodes: [] }, rootDir: root });
+      await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@0.0.2" } });
+      expect(fs.existsSync(`${root}acme/c0ffee.js`)).to.equal(false);
+      // Written from a verified feed item, it is trusted
+      await builder.onWritten([contractState()]);
+      expect(fs.existsSync(`${root}acme/c0ffee.js`)).to.equal(true);
+    });
+
+    it("refuses a contract stream older than the revision the transaction names, and takes the highest verified one", async () => {
+      const newer = { ...contractState(), _rev: "9-new" };
+      const older = { ...contractState(), _rev: "2-old" };
+      const meta = { _id: "c0ffee:stream", _rev: "1-m" };
+      const sources = { peers: [], supernodes: [new FakeUpstream("sn1", [older, meta]) as any, new FakeUpstream("sn2", [newer, meta]) as any] };
+      const builder = new ContractBuilder({ store: store as any, sources, verify: async () => true, rootDir: root });
+      await builder.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@0.0.2" }, $revs: { $i: { c0ffee: "1-m:9-new" }, $o: {} } });
+      expect((await store.data.get("c0ffee"))._rev).to.equal("9-new");
+      expect(fs.existsSync(`${root}acme/c0ffee.js`)).to.equal(true);
+
+      // Only an older state exists anywhere: a transaction needing a newer one builds nothing
+      const root2 = fs.mkdtempSync(path.join(os.tmpdir(), "hybrid-contracts-"));
+      const lone = new ContractBuilder({
+        store: { data: { get: async () => ({ error: true }), bulkDocs: async () => ({ ok: true }) } } as any,
+        sources: { peers: [], supernodes: [new FakeUpstream("sn1", [older, meta]) as any] },
+        verify: async () => true,
+        rootDir: root2,
+      });
+      await lone.ensureFor({ $tx: { $namespace: "acme", $contract: "c0ffee@0.0.2" }, $revs: { $i: { c0ffee: "1-m:9-new" }, $o: {} } });
+      expect(fs.existsSync(`${root2}acme/c0ffee.js`)).to.equal(false);
     });
 
     it("compiles nothing it cannot verify: no verifier, or a verifier that says no", async () => {
