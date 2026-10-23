@@ -60,6 +60,7 @@
     "@activeledger/activep2p": "5.0.2",
     "@activeledger/activeprotocol": "5.0.2",
     "@activeledger/activestorage": "5.0.2",
+    "@activeledger/activesync": "5.0.2",
     "@activeledger/activetoolkits": "5.0.2",
     "@activeledger/activeutilities": "5.0.2",
     "@activeledger/httpd": "5.0.2",
