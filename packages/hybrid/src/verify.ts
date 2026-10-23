@@ -318,7 +318,8 @@ export function verifyFeedItem(item: IFeedItem, ctx: VerifyContext): FeedItemChe
 
 /**
  * What a pin hashes: the setup stream's neighbourhood (hosts, ports and
- * identity keys) and its remap, which together decide whose votes count.
+ * identity keys), its remap and the consensus threshold, which together
+ * decide whose votes count and how many are enough.
  * Hashed canonically so the operator can compute it from any node.
  */
 export function neighbourhoodHash(setupDoc: any): string {
@@ -326,6 +327,8 @@ export function neighbourhoodHash(setupDoc: any): string {
     ActiveCrypto.canonicalJson({
       neighbourhood: setupDoc?.neighbourhood ?? [],
       neighbourhoodRemap: setupDoc?.neighbourhoodRemap ?? {},
+      // The threshold decides how many of those votes are enough
+      consensus: setupDoc?.consensus ?? null,
     })
   );
 }

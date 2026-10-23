@@ -425,6 +425,13 @@ describe("hybrid setup pin", () => {
     expect(checkPin(reordered, pin).ok).to.equal(true);
   });
 
+  it("refuses a setup whose consensus threshold differs", () => {
+    const pin = { neighbourhoodSha256: neighbourhoodHash({ ...setup, consensus: { reached: 60 } }) };
+    expect(checkPin({ ...setup, consensus: { reached: 60 } }, pin).ok).to.equal(true);
+    expect(checkPin({ ...setup, consensus: { reached: 1 } }, pin).ok).to.equal(false);
+    expect(checkPin(setup, pin).ok).to.equal(false);
+  });
+
   it("refuses a setup whose voting keys differ", () => {
     const pin = { neighbourhoodSha256: neighbourhoodHash(setup) };
     const swapped = { ...setup, neighbourhood: [{ host: "a", port: 1, identity: { type: "rsa", public: "evil" } }] };
