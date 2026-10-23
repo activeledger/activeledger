@@ -325,7 +325,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
     - `"denied"`: step 0 refused it (deploy, namespace claim, setup, fund, onboard while `refuseOnboard`, a missing `$expire`, or an unlisted contract).
     - `"unavailable"`: no supernode and no mesh peer was reachable. Nothing was forwarded.
     - `"unanswered"`: the transaction was forwarded but no answer came back in time. The body carries the `$umid`, which the hybrid computed before forwarding.
-  - The hybrid never retries a forwarded transaction itself. After `"unanswered"` the client should look the `$umid` up (`GET /umid/:umid` on the hybrid once its feed has caught up, or on a supernode) before sending the transaction again.
+  - The hybrid never retries a forwarded transaction itself. After `"unanswered"` the client should look the `$umid` up (`GET /umid/:umid` on the hybrid once its feed has caught up, or on a supernode) before sending the transaction again. Because a relayed transaction always has `$expire`, a resend is safe either way: before `$expire` it is detected as a duplicate (`Transaction Exists`), and after it the ledger rejects it as expired, so it cannot commit twice.
   - A local "no" is judged against the hybrid's copy refreshed to the tip in step 2, but it can still be stale. A client that is told `"refused"` and believes the transaction should pass can send it to a supernode directly.
 - The committed transaction comes back through the feed like any other item.
 
