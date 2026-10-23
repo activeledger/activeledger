@@ -196,6 +196,26 @@ describe("Peer to peer transport (Activep2p)", function () {
     first.close();
   });
 
+  it("should refuse a client that does not say who the server must be", async () => {
+    await start();
+    await expectReject(
+      P2PClient.connect({ host: "127.0.0.1", port: server.port, identity: clientId }),
+      /expectedPeerKey or isKnownPeer/
+    );
+  });
+
+  it("should cap unauthenticated sockets apart from established peers", async () => {
+    await start({ maxHandshaking: 2, maxHandshakingPerAddress: 2, handshakeTimeoutMs: 5000 });
+    const net = await import("net");
+    const idle = [1, 2].map(() => net.connect({ host: "127.0.0.1", port: server.port }));
+    await new Promise((r) => setTimeout(r, 50));
+    const rejected = once<string>(server, "reject");
+    const third = net.connect({ host: "127.0.0.1", port: server.port });
+    expect((await rejected)[0]).to.equal("too many unauthenticated connections");
+    third.destroy();
+    idle.forEach((s) => s.destroy());
+  });
+
   it("should time out a handshake that never completes", async () => {
     await start({ handshakeTimeoutMs: 100 });
     const rejected = once<string>(server, "reject");

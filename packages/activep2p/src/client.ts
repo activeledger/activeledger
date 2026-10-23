@@ -56,6 +56,12 @@ export class P2PClient {
    * @returns {Promise<P2PConnection>}
    */
   public static async connect(options: P2PClientOptions): Promise<P2PConnection> {
+    // Fail closed: a client that accepts any server key can be impersonated
+    if (!options.expectedPeerKey && !options.isKnownPeer) {
+      throw new Error(
+        "P2PClient.connect needs expectedPeerKey or isKnownPeer to authenticate the server"
+      );
+    }
     const socket = net.connect({ host: options.host, port: options.port });
     const session = await handshake(socket, "client", {
       identity: options.identity,

@@ -32,8 +32,16 @@ export interface P2PServerOptions {
   host?: string;
   identity: P2PIdentity;
   isKnownPeer: KnownPeerCheck;
-  /** Inbound sockets, handshaking or established. Default 64. */
+  /** Established inbound connections. Default 64. */
   maxConnections?: number;
+  /**
+   * Sockets still handshaking, across all addresses. They are capped apart
+   * from established connections so unauthenticated sockets can never use
+   * up the slots authenticated peers need. Default 16.
+   */
+  maxHandshaking?: number;
+  /** Sockets still handshaking from one address. Default 4. */
+  maxHandshakingPerAddress?: number;
   /** Largest frame body accepted or sent. Default 4MB. */
   maxFrameBytes?: number;
   /** Default 5000ms. */
@@ -55,6 +63,7 @@ export interface P2PServerOptions {
 export class P2PServer extends EventEmitter {
   public readonly connections = new Set<P2PConnection>();
   private sockets = new Set<net.Socket>();
+  private handshaking = new Map<net.Socket, string>();
   private handlers = new Map<string, ChannelHandler>();
   private server: net.Server;
 
@@ -112,13 +121,29 @@ export class P2PServer extends EventEmitter {
   }
 
   private accept(socket: net.Socket): void {
-    if (this.sockets.size >= (this.options.maxConnections ?? 64)) {
+    const address = socket.remoteAddress ?? "unknown";
+    // Established connections are full: refuse before spending a handshake
+    if (this.connections.size >= (this.options.maxConnections ?? 64)) {
       socket.destroy();
-      this.emit("reject", "connection limit reached", socket.remoteAddress);
+      this.emit("reject", "connection limit reached", address);
+      return;
+    }
+    let fromAddress = 0;
+    for (const a of this.handshaking.values()) if (a === address) fromAddress++;
+    if (
+      this.handshaking.size >= (this.options.maxHandshaking ?? 16) ||
+      fromAddress >= (this.options.maxHandshakingPerAddress ?? 4)
+    ) {
+      socket.destroy();
+      this.emit("reject", "too many unauthenticated connections", address);
       return;
     }
     this.sockets.add(socket);
-    socket.on("close", () => this.sockets.delete(socket));
+    this.handshaking.set(socket, address);
+    socket.on("close", () => {
+      this.sockets.delete(socket);
+      this.handshaking.delete(socket);
+    });
 
     handshake(socket, "server", {
       identity: this.options.identity,
@@ -126,6 +151,12 @@ export class P2PServer extends EventEmitter {
       timeoutMs: this.options.handshakeTimeoutMs ?? 5000,
     }).then(
       (session) => {
+        this.handshaking.delete(socket);
+        if (this.connections.size >= (this.options.maxConnections ?? 64)) {
+          socket.destroy();
+          this.emit("reject", "connection limit reached", address);
+          return;
+        }
         const connection = new P2PConnection(
           socket,
           session,
