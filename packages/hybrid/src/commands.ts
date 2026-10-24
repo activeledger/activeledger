@@ -29,6 +29,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ConfigError, defaultConfig, loadConfig, mergeFlags, parseUpstream, validateConfig } from "./config";
 import { HttpUpstream, HybridIdentity, UpstreamError, loadIdentity } from "./http-upstream";
 import { Upstream } from "./upstream";
+import { neighbourhoodHash } from "./verify";
 import { interpret, parseEndpoint, registerTx, registryStreamId, retireTx, updateTx } from "./registry";
 
 /**
@@ -222,6 +223,23 @@ export async function peers(ctx: CommandContext): Promise<number> {
       list.length
         ? list.map((p) => `${p.keyHash}  ${p.label ?? ""}  ${(p.endpoints ?? []).map((e: any) => `${e.transport}://${e.host}:${e.port}`).join(" ")}`).join("\n")
         : "no hybrids registered"
+    );
+    return Cli.ExitCode.OK;
+  } catch (e: any) {
+    return fail(ctx, e.message);
+  }
+}
+
+/** `pin`: the hash of the setup stream the upstream serves, for the operator to check and pin */
+export async function pin(ctx: CommandContext): Promise<number> {
+  try {
+    const { upstream } = connect(ctx);
+    const boot = await upstream.bootstrap();
+    const hash = neighbourhoodHash(boot.setup);
+    emit(
+      ctx,
+      { neighbourhoodSha256: hash, network: boot.setup?._id },
+      `${hash}\nCheck this against a node you trust, then set "pin": {"neighbourhoodSha256": "${hash}"} in the config.`
     );
     return Cli.ExitCode.OK;
   } catch (e: any) {

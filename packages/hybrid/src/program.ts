@@ -65,6 +65,7 @@ export const hybridProgram = (version: string): Cli.CliProgram => ({
     { name: "divergences", usage: "[--since <time>]", description: "List local divergence records" },
     { name: "prune", usage: "[--dry-run]", description: "Run the pruner now" },
     { name: "token", description: "Print a new random bearer token for the config" },
+    { name: "pin", description: "Print the hash of the upstream's setup, to put in the config as pin.neighbourhoodSha256 once checked out of band" },
   ],
   flags: [
     ...Cli.COMMON_FLAGS.map((f) => {
@@ -75,6 +76,8 @@ export const hybridProgram = (version: string): Cli.CliProgram => ({
           return { ...f, default: "5270" };
         case "host":
           return { ...f, default: "127.0.0.1" };
+        case "data-dir":
+          return { ...f, default: "./data" };
         default:
           return f;
       }
