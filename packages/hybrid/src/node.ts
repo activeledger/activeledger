@@ -208,10 +208,24 @@ export class HybridNode {
       return result;
     });
 
+    // A quorum of attestations needs more than the one supernode this node
+    // follows. The setup stream names every supernode, and a registered key is
+    // accepted by all of them, so the others serve attestations (and streams
+    // to cross-check) but never the feed.
+    const known = new Set(sources.supernodes.map((u) => u.id));
+    const followed = [boot.upstream, ...sources.supernodes.filter((u) => u !== boot.upstream)];
+    for (const n of boot.setup.neighbourhood ?? []) {
+      if (typeof n?.host !== "string" || !Number.isInteger(Number(n?.port))) continue;
+      const extra = make({ host: n.host, port: Number(n.port), transport: "http" }, identity, network);
+      if (known.has(extra.id)) continue;
+      known.add(extra.id);
+      sources.supernodes.push(extra);
+    }
+
     const cursor = await resumeCursor(store, boot.bootstrap.cursor);
     this.state.cursor = cursor;
     // First in the list is the one that answered the bootstrap
-    const order = [boot.upstream, ...sources.supernodes.filter((u) => u !== boot.upstream)];
+    const order = followed;
     this.feed = new FeedManager({
       upstreams: order,
       state: this.state,

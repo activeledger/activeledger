@@ -217,9 +217,12 @@ export class SourceLookup implements StreamLookup {
    * hash to check a peer's copy against. A tip behind the local copy never
    * replaces it.
    */
-  public async refreshToTip(ids: string[]): Promise<{ missing: string[] }> {
+  public async refreshToTip(ids: string[]): Promise<{ missing: string[]; absent: string[] }> {
     const { supernodes } = this.sources();
     let remaining = [...new Set(ids.filter((id) => typeof id === "string" && id))];
+    // Whether any supernode actually answered: only then is "not served" an
+    // answer rather than a failure to ask
+    let answered = false;
     for (const source of supernodes) {
       if (!remaining.length) break;
       let answer: { docs: any[] };
@@ -229,6 +232,7 @@ export class SourceLookup implements StreamLookup {
         ActiveLogger.warn(`Refresh: ${source.id} could not answer: ${(e as Error)?.message || e}`);
         continue;
       }
+      answered = true;
       const byId = new Map<string, any>();
       for (const d of Array.isArray(answer?.docs) ? answer.docs : []) {
         if (d && typeof d._id === "string") byId.set(d._id, d);
@@ -252,6 +256,8 @@ export class SourceLookup implements StreamLookup {
       }
       remaining = left;
     }
-    return { missing: remaining };
+    // "absent" is a supernode's answer that it has no such document; a
+    // failure to reach any supernode leaves the ids merely missing
+    return { missing: remaining, absent: answered ? remaining : [] };
   }
 }

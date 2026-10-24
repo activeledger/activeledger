@@ -524,8 +524,9 @@ export class Processor implements ItemProcessor {
     // writes one. Absent at the upstream's tip too, it is simply new.
     const dataIds = missing.filter((id) => id.endsWith(":data"));
     if (!dataIds.length) return missing;
-    // Ids the upstream has nothing for either: new, so not missing
-    const absent = new Set((await this.options.lookup.refreshToTip(dataIds)).missing);
+    // Ids a supernode answered it has nothing for: new, so not missing. An
+    // upstream that could not be asked proves nothing, so those stay missing.
+    const absent = new Set((await this.options.lookup.refreshToTip(dataIds)).absent ?? []);
     return missing.filter((id) => !(id.endsWith(":data") && absent.has(id)));
   }
 
@@ -543,7 +544,11 @@ export class Processor implements ItemProcessor {
     );
     for (const id of ids) {
       const local = await readDoc(this.data, id);
-      if (!local?._rev || revPosition(local._rev) < revPosition(revsOut[id].rev)) return false;
+      if (!local?._rev) return false;
+      // Past it, or exactly it. The same position with a different revision is
+      // a fork, not progress, and is left for repair.
+      const past = revPosition(local._rev) > revPosition(revsOut[id].rev);
+      if (!past && local._rev !== revsOut[id].rev) return false;
     }
     return true;
   }

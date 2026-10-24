@@ -181,6 +181,17 @@ describe("Hybrid lookup", () => {
     expect((await get("ahead"))._rev).to.equal("9-local");
   });
 
+  it("tells a supernode's 'nothing here' from nobody being reachable", async () => {
+    const answers = await lookup([], [new FakeUpstream("sn1", [], log)]).refreshToTip(["nope:data"]);
+    expect(answers.missing).to.deep.equal(["nope:data"]);
+    expect(answers.absent).to.deep.equal(["nope:data"]);
+    const down = new FakeUpstream("sn2", [], log);
+    down.down = true;
+    const silent = await lookup([], [down]).refreshToTip(["nope:data"]);
+    expect(silent.missing).to.deep.equal(["nope:data"]);
+    expect(silent.absent).to.deep.equal([]);
+  });
+
   it("writeAtRev keeps the given revision and leaves an identical copy alone", async () => {
     expect(await writeAtRev(store.data as any, clone(state))).to.equal(true);
     expect(await writeAtRev(store.data as any, clone(state))).to.equal(true);

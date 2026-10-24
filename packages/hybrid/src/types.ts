@@ -134,5 +134,9 @@ export interface StreamLookup {
     wanted: { id: string; rev?: string; sha256?: string; metaSha256?: string }[]
   ): Promise<{ missing: string[] }>;
   /** Refresh these streams (and their :stream meta) to the upstream tip */
-  refreshToTip(ids: string[]): Promise<{ missing: string[] }>;
+  refreshToTip(ids: string[]): Promise<{
+    missing: string[];
+    /** Of `missing`, those a supernode answered it has no document for (as opposed to nobody being reachable) */
+    absent?: string[];
+  }>;
 }
