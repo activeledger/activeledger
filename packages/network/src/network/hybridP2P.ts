@@ -46,6 +46,9 @@ export interface HybridP2POptions {
  * `feed` is a request ({from}) that answers {ok} and then pushes `feed`
  * messages: {type:"item"|"heartbeat"|"error", ...}.
  */
+/** Stops the session behind a feed entry, so a replaced feed really ends */
+const replace = new WeakMap<FeedClient, () => void>();
+
 export const startHybridP2P = async (
   api: HybridApi,
   feeds: Set<FeedClient>,
@@ -75,7 +78,8 @@ export const startHybridP2P = async (
     // Registration can change while a connection stays open
     const guard = <T>(fn: (payload: any) => Promise<T> | T) => async (payload: any) => {
       if (!(await api.stillAllowed(keyHash))) {
-        conn.drop("no longer allowed");
+        // Answer first, so the hybrid can tell "refused" from a network fault
+        setImmediate(() => conn.drop("no longer allowed"));
         throw new Error("not authorised");
       }
       return fn(payload);
@@ -96,15 +100,22 @@ export const startHybridP2P = async (
     }));
 
     conn.handle("feed", guard(async (p) => {
-      // One feed per key: a new request replaces this connection's old one
+      // One feed per key: a new request replaces this connection's old one,
+      // and any other connection's, which may be half-dead. Replaced before
+      // the cap is checked, so reconnecting never counts against itself.
       drop();
+      for (const other of [...feeds]) {
+        if (other.keyHash === keyHash) {
+          feeds.delete(other);
+          replace.get(other)?.();
+        }
+      }
       if (feeds.size >= options.maxFeeds()) throw new Error("feed limit reached");
       const from = typeof p?.from === "string" ? p.from : "";
       const me: FeedClient = { keyHash, since: from, connectedAt: Date.now() };
-      // And one per key across connections, as for HTTP
-      for (const other of [...feeds]) if (other.keyHash === keyHash) feeds.delete(other);
       feeds.add(me);
       client = me;
+      replace.set(me, () => session?.stop());
       session = new FeedSession(
         api,
         (event) => {

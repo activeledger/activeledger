@@ -102,6 +102,8 @@ export class FeedSession {
       for (;;) {
         const items = await this.api.feedSince(this.cursor, 50);
         for (const { cursor, item } of items) {
+          // stop() may have come while this page was being read
+          if (this.stopped) return;
           if (!this.write({ type: "item", cursor, item })) {
             return this.stop();
           }
