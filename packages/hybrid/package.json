@@ -54,6 +54,7 @@
     "@activeledger/activecontracts": "5.0.2",
     "@activeledger/activecrypto": "5.0.2",
     "@activeledger/activedefinitions": "5.0.2",
+    "@activeledger/activeledger": "5.0.2",
     "@activeledger/activelogger": "5.0.2",
     "@activeledger/activeoptions": "5.0.2",
     "@activeledger/activep2p": "5.0.2",

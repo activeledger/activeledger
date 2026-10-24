@@ -34,7 +34,8 @@
     "test:network:expiry": "tsx tests/network/authority-expiry.ts",
     "profile:tx": "tsx tests/network/profile.ts",
     "profile:stages": "tsx tests/network/profile-stages.ts",
-    "version:set": "node scripts/set-version.mjs"
+    "version:set": "node scripts/set-version.mjs",
+    "test:network:hybrid": "tsx tests/network/hybrid.ts"
   },
   "devDependencies": {
     "@types/chai": "4.3.1",

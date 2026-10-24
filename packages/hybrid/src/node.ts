@@ -41,6 +41,7 @@ import { Pruner } from "./pruner";
 import { Submitter } from "./submit";
 import { HybridStore, NodeState, Sources } from "./types";
 import { Upstream } from "./upstream";
+import { prepareWorkspace } from "./workspace";
 
 /** The start-up steps, in order. The start-up display and the state file name these. */
 export const NODE_STEPS = ["config", "identity", "store", "bootstrap", "catching up", "ready"];
@@ -65,6 +66,8 @@ export interface HybridNodeOptions {
   ) => Upstream;
   /** Lag at which "catching up" counts as done. Default: the head is confirmed. */
   maxStartLagSeconds?: number;
+  /** Set false in tests that never execute contracts, so no directories appear in the working directory */
+  prepareWorkspace?: boolean;
   /** Poll for catch-up progress at this interval. Default 250ms. */
   progressMs?: number;
 }
@@ -128,6 +131,8 @@ export class HybridNode {
       return opened as unknown as HybridStore & { close(): Promise<void> };
     });
     this.store = store;
+    // Process runs contracts from ./contracts and ./default_contracts
+    if (this.options.prepareWorkspace !== false) prepareWorkspace();
 
     const make =
       this.options.makeUpstream ??
@@ -210,8 +215,10 @@ export class HybridNode {
 
     // A quorum of attestations needs more than the one supernode this node
     // follows. The setup stream names every supernode, and a registered key is
-    // accepted by all of them, so the others serve attestations (and streams
-    // to cross-check) but never the feed.
+    // accepted by all of them. They are asked for attestations and umid
+    // documents only: both are checked against signatures and hashes whoever
+    // serves them. They never serve stream content, tips or the feed, and the
+    // plain-http connection to them is therefore not what the trust rests on.
     const known = new Set(sources.supernodes.map((u) => u.id));
     const followed = [boot.upstream, ...sources.supernodes.filter((u) => u !== boot.upstream)];
     for (const n of boot.setup.neighbourhood ?? []) {
@@ -219,7 +226,7 @@ export class HybridNode {
       const extra = make({ host: n.host, port: Number(n.port), transport: "http" }, identity, network);
       if (known.has(extra.id)) continue;
       known.add(extra.id);
-      sources.supernodes.push(extra);
+      (sources.attesters ??= []).push(extra);
     }
 
     const cursor = await resumeCursor(store, boot.bootstrap.cursor);

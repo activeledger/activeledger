@@ -222,7 +222,8 @@ export class SourceLookup implements StreamLookup {
     let remaining = [...new Set(ids.filter((id) => typeof id === "string" && id))];
     // Whether any supernode actually answered: only then is "not served" an
     // answer rather than a failure to ask
-    let answered = false;
+    let silent = 0;
+    const served = new Set<string>();
     for (const source of supernodes) {
       if (!remaining.length) break;
       let answer: { docs: any[] };
@@ -230,9 +231,9 @@ export class SourceLookup implements StreamLookup {
         answer = await source.streams(remaining.map((id) => ({ id })));
       } catch (e) {
         ActiveLogger.warn(`Refresh: ${source.id} could not answer: ${(e as Error)?.message || e}`);
+        silent++;
         continue;
       }
-      answered = true;
       const byId = new Map<string, any>();
       for (const d of Array.isArray(answer?.docs) ? answer.docs : []) {
         if (d && typeof d._id === "string") byId.set(d._id, d);
@@ -244,6 +245,8 @@ export class SourceLookup implements StreamLookup {
           left.push(id);
           continue;
         }
+        // Served by someone: whatever happens next, it is not absent
+        served.add(id);
         const local = await readDoc(this.db, id);
         if (local && revPosition(local._rev) > revPosition(state._rev)) continue;
         let ok = true;
@@ -256,8 +259,11 @@ export class SourceLookup implements StreamLookup {
       }
       remaining = left;
     }
-    // "absent" is a supernode's answer that it has no such document; a
-    // failure to reach any supernode leaves the ids merely missing
-    return { missing: remaining, absent: answered ? remaining : [] };
+    // Absent only when every supernode was reachable and none served the id
+    // (including one whose copy could not be written)
+    return {
+      missing: remaining,
+      absent: silent === 0 && supernodes.length > 0 ? remaining.filter((id) => !served.has(id)) : [],
+    };
   }
 }

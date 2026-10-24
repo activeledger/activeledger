@@ -66,6 +66,12 @@ export interface Sources {
   supernodes: Upstream[];
   /** Hybrid peers, asked first for streams (cheaper, same verification) */
   peers: Upstream[];
+  /**
+   * Other supernodes named by the setup stream. They are asked only for
+   * attestations and umid documents, which are signature- and hash-checked
+   * whoever serves them; never for stream content, tips or absence.
+   */
+  attesters?: Upstream[];
 }
 
 export type LocalVote = "yes" | "no" | "conditional";

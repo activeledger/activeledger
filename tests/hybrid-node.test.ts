@@ -75,6 +75,7 @@ describe("HybridNode", () => {
       onStep: (s, e) => steps.push(`${s}:${e}`),
       makeUpstream: () => up,
       progressMs: 5,
+      prepareWorkspace: false,
       ...over,
     });
     return node;

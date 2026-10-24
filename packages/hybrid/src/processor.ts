@@ -28,7 +28,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { revPosition, spiConsensus } from "@activeledger/activesync";
 import { ContractBuilder, applyExecutionOptions } from "./contracts";
 import { writeDivergence } from "./divergence";
-import { readDoc, writeAtRev } from "./lookup";
+import { readDoc, splitRev, writeAtRev } from "./lookup";
 import type {
   ApplyAction,
   ApplyOutcome,
@@ -120,10 +120,10 @@ export class Processor implements ItemProcessor {
     const ctx = this.options.context();
     const umid = meta?.umid;
     if (!ctx || typeof umid !== "string" || !state?._id) return false;
-    const { supernodes } = this.sources();
+    const { supernodes, attesters = [] } = this.sources();
     let umidDoc: any;
     const attestations: ActiveDefinitions.ICommitAttestation[] = [];
-    for (const up of supernodes) {
+    for (const up of [...supernodes, ...attesters]) {
       try {
         umidDoc ??= await up.umid(umid);
         const a = await up.attest(umid);
@@ -522,12 +522,17 @@ export class Processor implements ItemProcessor {
     const { missing } = await this.options.lookup.ensure(wanted);
     // A contract's data document does not exist until the contract first
     // writes one. Absent at the upstream's tip too, it is simply new.
-    const dataIds = missing.filter((id) => id.endsWith(":data"));
+    // Only one $revs does not name a real revision for can be new; a concrete
+    // revision that is not to be had is missing, not new.
+    const real = /^[1-9]\d*-[0-9a-f]{8,}/;
+    const named = (id: string): string | undefined =>
+      (item.$revs?.$i as any)?.[id] ?? (item.$revs?.$o as any)?.[id];
+    const dataIds = missing.filter((id) => id.endsWith(":data") && !real.test(splitRev(named(id)).state ?? ""));
     if (!dataIds.length) return missing;
-    // Ids a supernode answered it has nothing for: new, so not missing. An
-    // upstream that could not be asked proves nothing, so those stay missing.
+    // Ids every supernode answered it has nothing for: new, so not missing.
+    // Anything less proves nothing, so those stay missing.
     const absent = new Set((await this.options.lookup.refreshToTip(dataIds)).absent ?? []);
-    return missing.filter((id) => !(id.endsWith(":data") && absent.has(id)));
+    return missing.filter((id) => !(dataIds.includes(id) && absent.has(id)));
   }
 
   /**
@@ -671,7 +676,8 @@ export class Processor implements ItemProcessor {
       return { reached: q.reached && same, count: same ? q.count : 0 };
     };
     let q = agrees();
-    for (const source of this.sources().supernodes) {
+    const asked = this.sources();
+    for (const source of [...asked.supernodes, ...(asked.attesters ?? [])]) {
       if (q.reached) break;
       try {
         const a = await source.attest(item.umid);
