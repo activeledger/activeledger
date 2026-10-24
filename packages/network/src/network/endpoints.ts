@@ -149,8 +149,15 @@ export class Endpoints {
             const relay = tx.$relay;
             delete tx.$relay;
 
+            // The entry node stamps $datetime. Preset, it was overwritten
+            // below - but only after the $expire branch hashed it into
+            // $umid, making it a free nonce past the Transaction Exists
+            // check. Only the entry node runs this, so refusing here cannot
+            // split consensus and needs no build gate.
             if (tx.$datetime) {
-              this.successfulFailure(`$datetime cannot be preset`);
+              return resolve(
+                this.successfulFailure(`$datetime cannot be preset`)
+              );
             }
 
             // Check transaction hasn't expired
