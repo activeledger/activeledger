@@ -432,6 +432,12 @@ describe("hybrid setup pin", () => {
     expect(checkPin(setup, pin).ok).to.equal(false);
   });
 
+  it("refuses a setup whose security section differs", () => {
+    const pin = { neighbourhoodSha256: neighbourhoodHash({ ...setup, security: { signedOutputs: true } }) };
+    expect(checkPin({ ...setup, security: { signedOutputs: true } }, pin).ok).to.equal(true);
+    expect(checkPin({ ...setup, security: { signedOutputs: false } }, pin).ok).to.equal(false);
+  });
+
   it("refuses a setup whose voting keys differ", () => {
     const pin = { neighbourhoodSha256: neighbourhoodHash(setup) };
     const swapped = { ...setup, neighbourhood: [{ host: "a", port: 1, identity: { type: "rsa", public: "evil" } }] };

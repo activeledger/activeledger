@@ -139,7 +139,8 @@ export interface IHybridConfig {
    * Out-of-band trust anchor. The node keys a hybrid verifies votes against
    * come from the upstream it is pointed at, so a man in the middle could
    * hand it keys of their own. With `neighbourhoodSha256` set, bootstrap
-   * refuses a setup stream whose neighbourhood does not hash to it.
+   * refuses a setup stream whose neighbourhood, consensus threshold and
+   * `security` section do not hash to it (`activehybrid` can print it).
    */
   pin?: { neighbourhoodSha256: string };
 }

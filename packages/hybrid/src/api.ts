@@ -48,6 +48,11 @@ export interface HybridServerOptions {
   submitter: { submit(tx: unknown): Promise<SubmitResult> };
   /** Where `/umid` fetches a pruned or unknown umid from (supernodes) */
   sources?: Sources;
+  /** What `activehybrid divergences` and `prune` ask of the running node */
+  admin?: {
+    divergences(since?: string): Promise<unknown[]>;
+    prune(dryRun: boolean): Promise<unknown>;
+  };
   /** Longest a request may take before 503. Default 90s (POST / waits for a supernode). */
   requestTimeoutMs?: number;
   /** SSE keep-alive comment interval. Default 15s. */
@@ -89,6 +94,9 @@ const ROUTES: { match: RegExp; methods: string[] }[] = [
   { match: /^\/umid\/[^/]+$/, methods: ["GET"] },
   { match: /^\/events$/, methods: ["GET"] },
   { match: /^\/$/, methods: ["POST"] },
+  // For the activehybrid CLI: the node holds the database, so it answers
+  { match: /^\/divergences$/, methods: ["GET"] },
+  { match: /^\/prune$/, methods: ["POST"] },
 ];
 
 /**
@@ -212,6 +220,7 @@ export class HybridServer {
         return json(res, h.status, h.body);
       }
       if (path === "/") return await this.post(req, res);
+      if (path === "/divergences" || path === "/prune") return await this.admin(req, res, url);
 
       const param = safeDecode(path.slice(path.indexOf("/", 1) + 1));
       if (path.startsWith("/stream/")) return await this.stream(res, param);
@@ -221,6 +230,27 @@ export class HybridServer {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+
+  /**
+   * CLI administration. Loopback only, whatever `bind` and `token` say: one
+   * of these deletes history.
+   */
+  private async admin(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+    req.resume();
+    const addr = req.socket.remoteAddress ?? "";
+    const local = addr === "::1" || addr === "127.0.0.1" || addr.startsWith("127.") || addr === "::ffff:127.0.0.1";
+    if (!local) return json(res, 403, { error: "Forbidden" });
+    const admin = this.opts.admin;
+    if (!admin) return json(res, 404, { error: "Not found" });
+    if (url.pathname === "/divergences") {
+      const since = url.searchParams.get("since") ?? undefined;
+      if (since !== undefined && Number.isNaN(new Date(isNaN(Number(since)) ? since : Number(since)).getTime())) {
+        return json(res, 400, { error: "Invalid since" });
+      }
+      return json(res, 200, await admin.divergences(since));
+    }
+    return json(res, 200, await admin.prune(url.searchParams.get("dryRun") === "true"));
   }
 
   private async stream(res: http.ServerResponse, id: string | undefined): Promise<void> {

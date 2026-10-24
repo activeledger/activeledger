@@ -36,6 +36,7 @@ import { SourceLookup } from "./lookup";
 import { ItemOrderer } from "./orderer";
 import { P2PUpstream } from "./p2p-upstream";
 import { Processor } from "./processor";
+import { listDivergences } from "./divergence";
 import { Pruner } from "./pruner";
 import { Submitter } from "./submit";
 import { HybridStore, NodeState, Sources } from "./types";
@@ -164,8 +165,25 @@ export class HybridNode {
         ActiveProtocol.Process.dryRunHybrid(entry, store.data as any, { volatileHeld }),
     });
 
+    this.pruner = new Pruner({ store, config, publicPem: identity.publicPem });
+
     // Serve /health from the start: it answers 503 "starting" until ready
-    this.server = new HybridServer({ config, state: this.state, store, lookup, submitter, sources });
+    this.server = new HybridServer({
+      config,
+      state: this.state,
+      store,
+      lookup,
+      submitter,
+      sources,
+      admin: {
+        divergences: async (since) =>
+          listDivergences(store, since === undefined ? undefined : isNaN(Number(since)) ? new Date(since) : Number(since)),
+        prune: async (dryRun) => {
+          if (!this.pruner) throw new Error("not started");
+          return this.pruner.run({ dryRun });
+        },
+      },
+    });
     this.address = await this.server.start();
 
     const boot = await this.step("bootstrap", async () => {
@@ -212,7 +230,6 @@ export class HybridNode {
       );
     }
 
-    this.pruner = new Pruner({ store, config, publicPem: identity.publicPem });
     this.pruner.start();
 
     await this.step("ready", async () => {

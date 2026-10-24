@@ -318,8 +318,9 @@ export function verifyFeedItem(item: IFeedItem, ctx: VerifyContext): FeedItemChe
 
 /**
  * What a pin hashes: the setup stream's neighbourhood (hosts, ports and
- * identity keys), its remap and the consensus threshold, which together
- * decide whose votes count and how many are enough.
+ * identity keys), its remap, the consensus threshold and `security`, which
+ * together decide whose votes count, how many are enough and how
+ * transactions are checked here.
  * Hashed canonically so the operator can compute it from any node.
  */
 export function neighbourhoodHash(setupDoc: any): string {
@@ -329,6 +330,9 @@ export function neighbourhoodHash(setupDoc: any): string {
       neighbourhoodRemap: setupDoc?.neighbourhoodRemap ?? {},
       // The threshold decides how many of those votes are enough
       consensus: setupDoc?.consensus ?? null,
+      // And `security` decides how transactions are checked when they run
+      // here, so a swapped one would change what this node accepts
+      security: setupDoc?.security ?? null,
     })
   );
 }

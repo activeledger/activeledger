@@ -43,13 +43,13 @@ const upstream = (over: any = {}) => {
   return up;
 };
 
-const get = (port: number, p: string) =>
+const get = (port: number, p: string, method = "GET") =>
   new Promise<{ status: number; body: any }>((resolve, reject) => {
-    http.get({ host: "127.0.0.1", port, path: p }, (res) => {
+    http.request({ host: "127.0.0.1", port, path: p, method }, (res) => {
       let data = "";
       res.on("data", (c) => (data += c));
       res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(data || "null") }));
-    }).on("error", reject);
+    }).on("error", reject).end();
   });
 
 describe("HybridNode", () => {
@@ -174,5 +174,26 @@ describe("HybridNode", () => {
     const n = make(up, { onProgress: (lag: number) => progress.push(lag), maxStartLagSeconds: 10_000 });
     await n.start();
     expect(progress.length).to.be.greaterThan(0);
+  });
+
+  it("answers the CLI's divergences and prune requests from loopback", async () => {
+    const n = make(upstream());
+    await n.start();
+    const { writeDivergence } = await import("../packages/hybrid/src/divergence");
+    const store = (n as any).store;
+    await writeDivergence(store, { umid: "u1", kind: "output-mismatch", supernodeTally: { yes: 3, no: 0 }, localResult: {}, $revs: { $i: {}, $o: {} }, at: new Date(2000).toISOString() } as any);
+    await writeDivergence(store, { umid: "u2", kind: "output-mismatch", supernodeTally: { yes: 3, no: 0 }, localResult: {}, $revs: { $i: {}, $o: {} }, at: new Date(9000).toISOString() } as any);
+    const all = await get(n.port!, "/divergences");
+    expect(all.status).to.equal(200);
+    expect(all.body.map((d: any) => d.umid)).to.deep.equal(["u1", "u2"]);
+    const since = await get(n.port!, `/divergences?since=${new Date(5000).toISOString()}`);
+    expect(since.body.map((d: any) => d.umid)).to.deep.equal(["u2"]);
+    expect((await get(n.port!, "/divergences?since=nonsense")).status).to.equal(400);
+
+    const dry = await get(n.port!, "/prune?dryRun=true", "POST");
+    expect(dry.status).to.equal(200);
+    expect(dry.body.dryRun).to.equal(true);
+    expect((await get(n.port!, "/prune", "POST")).body.dryRun).to.equal(false);
+    expect((await get(n.port!, "/prune")).status).to.equal(405);
   });
 });
