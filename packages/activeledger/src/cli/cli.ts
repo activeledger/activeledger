@@ -975,14 +975,17 @@ export class CLIHandler {
           $selfsign: true,
           $sigs: {
             [ActiveOptions.get<string>("host")]: "",
+            setup: "",
           },
         };
 
         // Sign Transaction
         let signed = signatory.sign(assert.$tx);
 
-        // Add twice to transaction
+        // A self signed transaction needs a signature for every input
+        // (process.ts checks each one), and both inputs carry this key
         assert.$sigs[ActiveOptions.get<string>("host")] = signed;
+        assert.$sigs.setup = signed;
 
         // Submit Transaction to self
         ActiveRequest.send(

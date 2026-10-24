@@ -675,6 +675,10 @@ class Processor {
     Home.host = self;
     Home.publicPem = pubPem;
     Home.identity = new ActiveCrypto.KeyPair("rsa", privPem);
+    // Votes and commits are signed with the node key from build 40300. Set
+    // here, where the identity is made, because housekeeping only gets a
+    // neighbourhood on later messages and a transaction can arrive first.
+    ActiveProtocol.Attestation.key = Home.identity;
   }
 
   /**
@@ -702,9 +706,6 @@ class Processor {
     // Are we updating the neighbourhood?
     if (neighbours) {
       this.neighbourhood = neighbours;
-
-      // Votes and commits are signed with the node key from build 40300
-      ActiveProtocol.Attestation.key = Home.identity;
 
       this.secured = new ActiveCrypto.Secured(this.db, this.neighbourhood, {
         reference: Home.reference,

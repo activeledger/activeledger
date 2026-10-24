@@ -537,6 +537,22 @@ describe("Hybrid processor", function () {
       expect(await get(S)).to.deep.equal(signed[S]);
     });
 
+    it("settles an item whose outputs are already past it, instead of dropping it", async () => {
+      const { item, signed } = committedItem(2);
+      // Learned late: the stream is held at a later revision than the item made, and no
+      // upstream can serve the older revision the item needs as its input
+      for (const id of Object.keys(signed)) {
+        await store.data.bulkDocs([{ ...signed[id] }], { new_edits: true, force_rev: "99-newer" });
+      }
+      peers = [];
+      supernodes = [new FakeUpstream("sn1")];
+      const out = await processor.apply(item, from());
+      expect(out.action, out.reasons.join()).to.equal("settled");
+      expect(out.vote).to.equal("no");
+      expect(out.reasons.join()).to.contain("superseded");
+      expect(executions).to.have.length(0);
+    });
+
     it("drops an item whose inputs cannot be had", async () => {
       const { item } = committedItem(2);
       item.$revs = { $i: { [S]: "1-mmm:1-aaa", unknown: "4-x:4-y" }, $o: {} };

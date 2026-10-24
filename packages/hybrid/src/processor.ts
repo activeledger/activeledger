@@ -223,6 +223,12 @@ export class Processor implements ItemProcessor {
     // 2. Prepare inputs
     const missing = await this.prepare(item);
     if (missing.length) {
+      // A stream this node meets late is learned at the upstream's tip, and
+      // the store keeps no older revisions, so the exact one may not exist
+      // any more. If the item's outputs are already at or past what it made,
+      // newer state covers it.
+      const covered = await this.coveredByNewerState(item, revsOut);
+      if (covered) return outcome(umid, "settled", "no", ["superseded: the streams are already past this item"]);
       return outcome(umid, "dropped", "no", [`streams not available at $revs: ${missing.join(", ")}`]);
     }
     const before = await this.snapshot(item, revsOut);
@@ -513,7 +519,33 @@ export class Processor implements ItemProcessor {
       for (const id of Object.keys(side || {})) wanted.push({ id, rev: (side as any)[id] });
     }
     if (!wanted.length) return [];
-    return (await this.options.lookup.ensure(wanted)).missing;
+    const { missing } = await this.options.lookup.ensure(wanted);
+    // A contract's data document does not exist until the contract first
+    // writes one. Absent at the upstream's tip too, it is simply new.
+    const dataIds = missing.filter((id) => id.endsWith(":data"));
+    if (!dataIds.length) return missing;
+    // Ids the upstream has nothing for either: new, so not missing
+    const absent = new Set((await this.options.lookup.refreshToTip(dataIds)).missing);
+    return missing.filter((id) => !(id.endsWith(":data") && absent.has(id)));
+  }
+
+  /**
+   * Every output of an item (from the signed revsOut) is held here at its
+   * attested revision or a later one: later items already moved it on, and
+   * this node learned it from the tip.
+   */
+  private async coveredByNewerState(item: IFeedItem, revsOut: RevsOut): Promise<boolean> {
+    const ids = Object.keys(revsOut);
+    if (!ids.length) return false;
+    // Pull any output we do not hold at all (tip), then compare positions
+    await this.options.lookup.refreshToTip(
+      ids.filter((id) => !id.includes(":"))
+    );
+    for (const id of ids) {
+      const local = await readDoc(this.data, id);
+      if (!local?._rev || revPosition(local._rev) < revPosition(revsOut[id].rev)) return false;
+    }
+    return true;
   }
 
   /** Local documents an item may change, before it runs */

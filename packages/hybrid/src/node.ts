@@ -217,6 +217,12 @@ export class HybridNode {
       state: this.state,
       apply: (item, from) => orderer.submit(item, from),
       saveCursor: (c) => saveCursor(store, c),
+      onOutcome: (o) => {
+        const line = `${o.umid.slice(0, 12)} ${o.action} (${o.vote})${o.reasons.length ? ": " + o.reasons.join("; ") : ""}`;
+        // Anything but a clean save is worth reading; the rest is background
+        o.action === "saved" || o.action === "settled" ? ActiveLogger.debug(line) : ActiveLogger.warn(line);
+        for (const w of o.warnings) ActiveLogger.warn(`${o.umid.slice(0, 12)} ${w}`);
+      },
     });
 
     if (!boot.outdated) {
