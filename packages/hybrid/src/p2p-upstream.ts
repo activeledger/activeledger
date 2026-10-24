@@ -36,92 +36,203 @@ export interface P2PUpstreamOptions {
   /** Feed: longest silence (heartbeats come about every 10s). Default 35s. */
   idleTimeoutMs?: number;
   /**
-   * The supernode's key, when known: pinned in the handshake. Without it the
-   * first connection accepts any key, and `bootstrap()` then checks that the
-   * key is one of the setup stream's nodes (the setup itself is what a
-   * `pin` in the config protects).
+   * The supernode's identity key, when known: every connection must present
+   * exactly this key.
    */
   expectedPeerKey?: string;
-  /** The setup stream's network id, for checking the peer against its nodes */
+  /**
+   * The setup stream's network id. Without `expectedPeerKey` it is required:
+   * `bootstrap()` checks the supernode's key against the setup stream's
+   * nodes, see the class notes.
+   */
   network?: () => string;
 }
 
+/** The supernode's answer to a request from a key it no longer allows */
+const NOT_AUTHORISED = "not authorised";
+
 /**
- * An Upstream over the authenticated P2P transport. One connection is kept
- * and re-dialled when it drops; the feed is requested on it and items are
- * pushed back.
+ * An Upstream over the authenticated P2P transport (`startHybridP2P` on the
+ * supernode). Requests share one connection, dialled on first use and
+ * re-dialled once it closes; concurrent calls share one dial. Each `feed()`
+ * gets a connection of its own, closed when the feed ends: the supernode has
+ * no "stop feed" message, so closing is what ends its session, and a feed's
+ * pushes can never reach another feed.
+ *
+ * Authenticating the supernode:
+ * - With `expectedPeerKey`, every connection must present that key.
+ * - Without it, trust is on first use: the first connection accepts any key
+ *   that signs the handshake, and only `bootstrap()` may run on it.
+ *   `bootstrap()` then requires the key to be one of the nodes of the setup
+ *   stream it returns (by `neighbourhood[].identity.public`). Until that
+ *   check has passed every other call is refused, and afterwards every
+ *   connection must present one of those keys. This only shows the peer is a
+ *   node of the setup it served: the caller must check that setup against its
+ *   pin (or other trust) before acting on either.
+ *
+ * Errors, as `UpstreamError` kinds:
+ * - `network`: the connection could not be made or was lost. A failed dial
+ *   is marked `undelivered`, so a forwarded transaction can go elsewhere.
+ *   A supernode refuses a key that is not registered, or is banned or
+ *   retired, by closing the connection during the handshake; the transport
+ *   cannot tell that apart from any other early close.
+ * - `protocol`: the supernode's key is not the expected one, or a response
+ *   or feed message does not follow the contract.
+ * - `timeout`: no response in `timeoutMs`, or no feed traffic in
+ *   `idleTimeoutMs`.
+ * - `refused`: the supernode answered "not authorised" (it does so on the
+ *   feed when the key is banned or retired while connected).
+ * - `http`: any other error the supernode answered with (the counterpart of
+ *   an error status; there is no status code).
  */
 export class P2PUpstream implements Upstream {
   public readonly id: string;
   private conn?: P2PConnection;
   private connecting?: Promise<P2PConnection>;
-  private known?: Set<string>;
+  /** Setup stream node keys, once `bootstrap()` has checked the peer against them */
+  private nodes?: Set<string>;
+  /** Open connections (shared and feeds), for close() */
+  private open = new Set<P2PConnection>();
 
   constructor(private opts: P2PUpstreamOptions) {
+    if (!opts.expectedPeerKey && !opts.network) {
+      throw new Error("P2PUpstream needs expectedPeerKey or network to authenticate the supernode");
+    }
     const host = opts.host.includes(":") ? `[${opts.host}]` : opts.host;
     this.id = `${host}:${opts.port}:p2p`;
   }
 
-  private async connection(): Promise<P2PConnection> {
-    if (this.conn && !this.conn.closed) return this.conn;
-    this.connecting ??= P2PClient.connect({
-      host: this.opts.host,
-      port: this.opts.port,
-      identity: {
-        type: this.opts.identity.type,
-        publicKey: this.opts.identity.publicPem,
-        privateKey: this.opts.identity.pair.pem as string,
-      },
-      expectedPeerKey: this.opts.expectedPeerKey,
-      // Before bootstrap there is nothing to check against (see the option)
-      isKnownPeer: this.opts.expectedPeerKey ? undefined : (key) => !this.known || this.known.has(key),
-      handshakeTimeoutMs: 5000,
-    })
-      .then((c) => {
-        this.conn = c;
-        c.on("error", () => undefined);
-        return c;
-      })
-      .catch((e: Error) => {
-        throw new UpstreamError(`${this.id}: ${e.message}`, "network");
-      })
+  /** The supernode's key has been checked: pinned, or by `bootstrap()` */
+  private get verified(): boolean {
+    return !!this.opts.expectedPeerKey || !!this.nodes;
+  }
+
+  /** Whether a dial may accept this (handshake-verified) supernode key */
+  private acceptable(key: string): boolean {
+    if (this.opts.expectedPeerKey) return key === this.opts.expectedPeerKey;
+    // Trust on first use: nothing to check against until bootstrap() has run,
+    // and until then only bootstrap() is allowed on the connection
+    return this.nodes ? this.nodes.has(key) : true;
+  }
+
+  /** Dial and handshake one connection */
+  private async dial(what: string): Promise<P2PConnection> {
+    let unacceptable: string | undefined;
+    let c: P2PConnection;
+    try {
+      c = await P2PClient.connect({
+        host: this.opts.host,
+        port: this.opts.port,
+        identity: {
+          type: this.opts.identity.type,
+          publicKey: this.opts.identity.publicPem,
+          privateKey: this.opts.identity.pair.pem as string,
+        },
+        // Called after the handshake signature is verified, so the key is proven
+        isKnownPeer: (key) => {
+          const ok = this.acceptable(key);
+          if (!ok) unacceptable = key;
+          return ok;
+        },
+        handshakeTimeoutMs: 5000,
+      });
+    } catch (e: any) {
+      const reason = String(e?.message ?? e);
+      const error = unacceptable
+        ? new UpstreamError(
+            `${this.id} ${what}: supernode key is not ${
+              this.opts.expectedPeerKey ? "the expected key" : "a node of the setup stream"
+            }`,
+            "protocol"
+          )
+        : new UpstreamError(
+            `${this.id} ${what}: ${reason}` +
+              (reason === "connection closed during handshake"
+                ? " (a supernode closes it for a key that is not registered, or is banned or retired)"
+                : ""),
+            "network"
+          );
+      // Nothing was sent: a transaction can be tried elsewhere
+      (error as any).undelivered = true;
+      throw error;
+    }
+    c.on("error", () => undefined);
+    this.open.add(c);
+    c.once("close", () => this.open.delete(c));
+    return c;
+  }
+
+  /** The shared connection for requests */
+  private connection(what: string): Promise<P2PConnection> {
+    if (this.conn && !this.conn.closed) return Promise.resolve(this.conn);
+    this.connecting ??= this.dial(what)
+      .then((c) => (this.conn = c))
       .finally(() => {
         this.connecting = undefined;
       });
     return this.connecting;
   }
 
-  private async call(channel: string, payload: unknown): Promise<any> {
-    const c = await this.connection();
+  private async request(c: P2PConnection, channel: string, payload: unknown): Promise<any> {
+    const timeoutMs = this.opts.timeoutMs ?? 15000;
+    let timer: NodeJS.Timeout | undefined;
+    // Our own deadline, so a timeout is known as one; the transport's is a backstop
+    const pending = c.request(channel, payload, timeoutMs + 5000);
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new UpstreamError(`${this.id} ${channel}: timed out after ${timeoutMs}ms`, "timeout")),
+        timeoutMs
+      );
+    });
     try {
-      return await c.request(channel, payload, this.opts.timeoutMs ?? 15000);
+      return await Promise.race([pending, deadline]);
     } catch (e: any) {
+      if (e instanceof UpstreamError) throw e;
       const message = String(e?.message ?? e);
-      if (/not authorised|no longer allowed/i.test(message)) {
+      // The transport rejects every pending request when the connection closes
+      if (c.closed) {
+        throw new UpstreamError(`${this.id} ${channel}: connection closed: ${c.closeReason ?? "remote"}`, "network");
+      }
+      // Otherwise the supernode answered with this error
+      if (message === NOT_AUTHORISED) {
         throw new UpstreamError(`${this.id} ${channel}: ${message}`, "refused", 403);
       }
-      throw new UpstreamError(
-        `${this.id} ${channel}: ${message}`,
-        /timed out/i.test(message) ? "timeout" : "network"
-      );
+      throw new UpstreamError(`${this.id} ${channel}: ${message}`, "http");
+    } finally {
+      clearTimeout(timer);
+      pending.catch(() => undefined);
     }
   }
 
+  private async call(channel: string, payload: unknown): Promise<any> {
+    if (!this.verified && channel !== "bootstrap") {
+      throw new UpstreamError(
+        `${this.id} ${channel}: the supernode's key is not pinned, so bootstrap() must check it first`,
+        "protocol"
+      );
+    }
+    return this.request(await this.connection(channel), channel, payload);
+  }
+
   public async bootstrap(): Promise<IBootstrap> {
-    const b = await this.call("bootstrap", {});
+    const c = await this.connection("bootstrap");
+    const b = await this.request(c, "bootstrap", {});
     if (!b || !Array.isArray(b.contracts) || typeof b.cursor !== "string") {
       throw new UpstreamError(`${this.id} bootstrap: malformed response`, "protocol");
     }
-    // The key we are talking to must be one of the setup stream's nodes
-    if (b.setup && this.opts.network) {
-      this.known = new Set(
-        [...nodeKeys(b.setup, this.opts.network()).values()].map((k) => k.public)
-      );
-      const peer = this.conn?.peerKey;
-      if (this.known.size && peer && !this.known.has(peer)) {
-        this.conn?.drop("peer is not a node of the setup stream");
-        throw new UpstreamError(`${this.id} bootstrap: peer key is not a node in the setup stream`, "refused", 403);
+    // The key we are talking to must be one of the setup stream's nodes. A
+    // pinned key is trusted as it is when the supernode has no setup yet.
+    if (this.opts.network && (b.setup || !this.opts.expectedPeerKey)) {
+      const nodes = new Set([...nodeKeys(b.setup, this.opts.network()).values()].map((k) => k.public));
+      if (!nodes.has(c.peerKey)) {
+        c.drop("peer is not a node of the setup stream");
+        throw new UpstreamError(
+          `${this.id} bootstrap: supernode key is not a node of the setup stream` +
+            (nodes.size ? "" : " (it lists no node keys)"),
+          "protocol"
+        );
       }
+      this.nodes = nodes;
     }
     return { ...b, required: Array.isArray(b.required) ? b.required : [] } as IBootstrap;
   }
@@ -131,7 +242,7 @@ export class P2PUpstream implements Upstream {
     if (typeof h?.cursor !== "string" || typeof h?.time !== "number") {
       throw new UpstreamError(`${this.id} head: malformed response`, "protocol");
     }
-    return h;
+    return { cursor: h.cursor, time: h.time };
   }
 
   public async streams(reqs: { id: string; rev?: string }[]) {
@@ -167,25 +278,39 @@ export class P2PUpstream implements Upstream {
     onHeartbeat?: (head: string, time: number) => void
   ): Promise<void> {
     if (signal.aborted) return;
-    const c = await this.connection();
+    if (!this.verified) {
+      throw new UpstreamError(
+        `${this.id} feed: the supernode's key is not pinned, so bootstrap() must check it first`,
+        "protocol"
+      );
+    }
+    const c = await this.dial("feed");
+    if (signal.aborted) return void c.close();
+
     return new Promise<void>((resolve, reject) => {
-      let settled = false;
+      let done = false;
+      // Items and heartbeats in arrival order, one at a time: never overlapping
       let chain: Promise<void> = Promise.resolve();
       let idle: NodeJS.Timeout | undefined;
       const idleMs = this.opts.idleTimeoutMs ?? 35000;
 
-      const finish = (error?: Error) => {
-        if (settled) return;
-        settled = true;
+      // Settles once whatever onItem is running has returned, so a caller
+      // never sees the feed end while its handler is still busy
+      const finish = (error?: unknown) => {
+        if (done) return;
+        done = true;
         clearTimeout(idle);
         signal.removeEventListener("abort", onAbort);
         c.off("close", onClose);
-        // Stop receiving; a later feed() sets its own handler
-        c.handle("feed", () => undefined);
-        error ? reject(error) : resolve();
+        // Ends the supernode's session; later pushes go nowhere
+        c.close();
+        void chain.then(() => (error === undefined ? resolve() : reject(error)));
       };
+      const fail = (message: string, kind: "protocol" | "refused" | "http") =>
+        finish(new UpstreamError(`${this.id} feed: ${message}`, kind, kind === "refused" ? 403 : undefined));
       const onAbort = () => finish();
-      const onClose = () => finish();
+      const onClose = () =>
+        finish(new UpstreamError(`${this.id} feed: connection closed: ${c.closeReason ?? "remote"}`, "network"));
       const touch = () => {
         clearTimeout(idle);
         idle = setTimeout(
@@ -193,29 +318,42 @@ export class P2PUpstream implements Upstream {
           idleMs
         );
       };
+      const queue = (fn: () => void | Promise<void>) => {
+        chain = chain.then(() => (done ? undefined : fn())).catch((e) => finish(e ?? new Error("onItem failed")));
+      };
 
       signal.addEventListener("abort", onAbort, { once: true });
       c.on("close", onClose);
       touch();
 
-      // Pushes arrive as they are sent; the chain keeps onItem one at a time, in order
       c.handle("feed", (m: any) => {
+        if (done) return;
         touch();
-        if (m?.type === "heartbeat") return void onHeartbeat?.(m.head, m.time);
-        if (m?.type === "error") {
-          return finish(new UpstreamError(`${this.id} feed: ${m.error}`, /authoris/.test(m.error) ? "refused" : "protocol"));
+        switch (m?.type) {
+          case "heartbeat":
+            if (typeof m.head !== "string" || typeof m.time !== "number") return fail("malformed heartbeat", "protocol");
+            return queue(() => onHeartbeat?.(m.head, m.time));
+          case "item":
+            if (typeof m.cursor !== "string" || !m.cursor || !m.item || typeof m.item !== "object") {
+              return fail("malformed item", "protocol");
+            }
+            return queue(() => onItem(m.cursor, m.item));
+          case "error":
+            return fail(String(m.error), m.error === NOT_AUTHORISED ? "refused" : "http");
+          // Other types are reserved and skipped
         }
-        if (m?.type !== "item" || typeof m.cursor !== "string") return;
-        chain = chain
-          .then(() => (settled ? undefined : onItem(m.cursor, m.item)))
-          .catch((e) => finish(e));
       });
 
-      this.call("feed", { from: cursor }).catch((e) => finish(e));
+      this.request(c, "feed", { from: cursor }).then(
+        (r) => r?.ok === true || fail("malformed response", "protocol"),
+        (e) => finish(e)
+      );
     });
   }
 
+  /** Close every connection; feeds end with a network error. A later call dials again. */
   public close(): void {
-    this.conn?.close();
+    for (const c of this.open) c.close();
+    this.connecting?.then((c) => c.close(), () => undefined);
   }
 }
