@@ -84,6 +84,11 @@ export class FeedManager {
     return (this.options.now ?? Date.now)();
   }
 
+  /** The newest head any heartbeat has named */
+  public get head(): string {
+    return this.headSeen;
+  }
+
   public start(cursor: string): void {
     if (this.running) return;
     this.cursor = cursor;

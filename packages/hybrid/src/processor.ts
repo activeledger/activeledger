@@ -143,6 +143,11 @@ export class Processor implements ItemProcessor {
     );
   }
 
+  /** The contract builder in use, so bootstrap can build with the same verifier */
+  public get contractBuilder(): ContractBuilder | null {
+    return this.contracts;
+  }
+
   private sources(): Sources {
     const s = this.options.sources;
     return typeof s === "function" ? s() : s;
