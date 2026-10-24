@@ -123,6 +123,22 @@ export class Stream {
   private hostModeSet: boolean = false;
 
   /**
+   * True once the host VM reserves the `activeledger.default.` stream space
+   * (build 40300) - see setReservedStreams.
+   *
+   * @private
+   */
+  private reserveDefaultStreams: boolean = false;
+
+  /**
+   * The id derivation input (seed + name) of every stream newActivityStream
+   * created, so setReservedStreams can check any made before it was called.
+   *
+   * @private
+   */
+  private createdStreams: string[] = [];
+
+  /**
    * Why this execution depends on the supernodes (isSupernode() called,
    * inter-node comms used). Read by the host VM.
    *
@@ -283,10 +299,14 @@ export class Stream {
     if (this.safeMode) {
       throw new Error("Cannot create new Activity stream in Safe Mode");
     } else {
+      // Seed for the stream id - the caller's if they gave one
+      const seed = deterministic ? deterministic : this.umid;
+      this.checkReservedStream(seed + name);
+      this.createdStreams.push(seed + name);
+
       // Create new activity
       let activity = new Activity(
-        // Seed for the stream id - the caller's if they gave one
-        deterministic ? deterministic : this.umid,
+        seed,
         name,
         false,
         this.eventEmitter,
@@ -609,6 +629,49 @@ export class Stream {
     this.hostIsSupernode = supernode;
     for (const activity of Object.values(this.activities)) {
       activity.setHostMode(supernode);
+    }
+  }
+
+  /** Stream name space reserved for the default namespace */
+  public static readonly RESERVED_STREAMS = "activeledger.default.";
+
+  /**
+   * Set by the host VM before any contract phase runs: true from build
+   * 40300, when stream names under `activeledger.default.` are reserved for
+   * the default namespace. Only turns on, never off, and also checks the
+   * streams the contract already created (in its constructor).
+   *
+   * @param {boolean} reserved
+   */
+  public setReservedStreams(reserved: boolean): void {
+    if (!reserved) return;
+    this.reserveDefaultStreams = true;
+    for (const input of this.createdStreams) {
+      this.checkReservedStream(input);
+    }
+  }
+
+  /**
+   * Names under `activeledger.default.` belong to the default namespace
+   * (identities, the hybrid registry). A stream id is sha256(seed + name),
+   * so another contract creating the same name with the same seed first
+   * would squat the id and block the real one with a collision. The whole
+   * hash input is checked, not just the name: seed and name are
+   * concatenated, so moving the start of the name onto the end of the seed
+   * gives the same id.
+   *
+   * @private
+   * @param {string} input seed + name
+   */
+  private checkReservedStream(input: string): void {
+    if (
+      this.reserveDefaultStreams &&
+      this.transactions?.$namespace !== "default" &&
+      input.indexOf(Stream.RESERVED_STREAMS) !== -1
+    ) {
+      throw new Error(
+        `Stream names under "${Stream.RESERVED_STREAMS}" are reserved for the default namespace`
+      );
     }
   }
 

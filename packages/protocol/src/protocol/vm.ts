@@ -41,6 +41,7 @@ import {
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
 import { runSandboxed, runUnsandboxed } from "./sandbox";
+import { Attestation } from "./attest";
 import { createInterface } from "readline";
 //import { ContractControl } from "./vmscript";
 
@@ -612,6 +613,17 @@ export class VirtualMachine
           typeof this.smartContracts[payload.umid].setHostMode === "function"
         ) {
           this.smartContracts[payload.umid].setHostMode(execution.supernode);
+        }
+
+        // Reserve activeledger.default.* stream names for the default
+        // namespace. Gated because it changes which transactions pass.
+        if (
+          typeof this.smartContracts[payload.umid].setReservedStreams ===
+          "function"
+        ) {
+          this.smartContracts[payload.umid].setReservedStreams(
+            ActiveOptions.get<number>("build", 0) >= Attestation.BUILD
+          );
         }
 
         if ("setEvent" in this.smartContracts[payload.umid]) {
