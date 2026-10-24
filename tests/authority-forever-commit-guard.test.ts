@@ -84,3 +84,47 @@ describe("Commit guard: every stream keeps a permanent authority (Activeprotocol
     expect(raised).to.have.length(0);
   });
 });
+
+
+import { ActiveOptions } from "@activeledger/activeoptions";
+
+describe("Commit guard: reserved stream names (Activeprotocol)", () => {
+  const run = async (namespace: string, name: string, build: number) => {
+    const raised: any[] = [];
+    const updater: any = Object.create(StreamUpdater.prototype);
+    updater.entry = { $umid: "u".repeat(64), $datetime: "2026-06-01T12:00:00.000Z", $tx: { $namespace: namespace } };
+    updater.streams = [{ state: { _id: "x" }, meta: { _id: "x:stream", name }, volatile: { _id: "x:volatile" } }];
+    updater.docs = [];
+    updater.refStreams = { new: [], updated: [] };
+    updater.shared = {
+      raiseLedgerError: (code: number, error: Error) => raised.push({ code, message: error.message }),
+      filterPrefix: (id: string) => id,
+      assumedVirtualPrefix: "",
+    };
+    updater.virtualMachine = { getEvents: () => [] };
+    updater.detectCollisions = async () => undefined;
+    const before = ActiveOptions.get("build", 0);
+    ActiveOptions.set("build", build);
+    try {
+      await updater.processStreams();
+    } catch {
+      // The fixture is thin; only the guard's verdict matters here
+    } finally {
+      ActiveOptions.set("build", before);
+    }
+    return raised;
+  };
+
+  it("refuses a new stream under the reserved names from another namespace", async () => {
+    const raised = await run("evil", "activeledger.default.hybrid.abc", 40300);
+    expect(raised).to.have.length(1);
+    expect(raised[0].code).to.equal(1237);
+  });
+
+  it("allows the default namespace, ordinary names, and anything below the build", async () => {
+    expect(await run("default", "activeledger.default.hybrid.abc", 40300)).to.deep.equal([]);
+    expect(await run("evil", "activeledger.defaults", 40300)).to.deep.equal([]);
+    expect(await run("evil", "my.stream", 40300)).to.deep.equal([]);
+    expect(await run("evil", "activeledger.default.hybrid.abc", 40299)).to.deep.equal([]);
+  });
+});

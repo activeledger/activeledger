@@ -214,6 +214,26 @@ export class StreamUpdater {
       }
     }
 
+    // The host's own check that no contract outside the default namespace
+    // created a stream under the reserved names, whatever the contract
+    // object says: the in-contract check (Stream.newActivityStream) is
+    // enforced by objects the contract itself holds. This sees the finished
+    // streams. (A name split across seed and name is only caught in the
+    // contract, where the seed is known.)
+    if (
+      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD &&
+      this.entry.$tx?.$namespace !== "default"
+    ) {
+      for (const stream of this.streams) {
+        if (stream.meta && !stream.meta._rev && typeof stream.meta.name === "string" && stream.meta.name.indexOf("activeledger.default.") !== -1) {
+          return this.shared.raiseLedgerError(
+            1237,
+            new Error(`Stream names under "activeledger.default." are reserved for the default namespace`)
+          );
+        }
+      }
+    }
+
     this.buildReferenceStreams();
 
     // Any inputs left (Means not modified, Unmodified outputs can be ignored)

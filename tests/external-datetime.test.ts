@@ -69,6 +69,15 @@ describe("ExternalInitalise refuses a preset $datetime", () => {
     });
   }
 
+  it("refuses a falsy preset too: it would change the $umid just the same", async () => {
+    for (const falsy of ["", 0, null, false]) {
+      const b = body(true);
+      b.$datetime = falsy;
+      const answer = await submit(b);
+      expect(answer?.content?.$summary?.errors, JSON.stringify(falsy)).to.deep.equal(["$datetime cannot be preset"]);
+    }
+  });
+
   it("still stamps its own when none is given", async () => {
     const b = body(true);
     const umid = ActiveCrypto.Hash.getHash(JSON.stringify(b));

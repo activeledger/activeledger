@@ -154,7 +154,7 @@ export class Endpoints {
             // $umid, making it a free nonce past the Transaction Exists
             // check. Only the entry node runs this, so refusing here cannot
             // split consensus and needs no build gate.
-            if (tx.$datetime) {
+            if (tx.$datetime !== undefined) {
               return resolve(
                 this.successfulFailure(`$datetime cannot be preset`)
               );
