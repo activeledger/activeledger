@@ -189,6 +189,9 @@ export const registerHybridRoutes = (
         .authenticate(headers)
         .then(async (auth) => {
           if (!auth.ok) return send(res, auth.status, { error: auth.reason });
+          // The client went while we authenticated: nothing to answer, and a
+          // feed must not be registered against a response that is gone
+          if (!(res as any).writable) return;
           await handler(res, { keyHash: auth.keyHash, params, query, lastEventId, req });
         })
         .catch((e) => {

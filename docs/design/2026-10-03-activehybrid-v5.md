@@ -624,16 +624,16 @@ lifecycle, and the outcome logger on an item without a `umid`.
 
 Supernode feed (`hybridApi.ts`, `hybridRoutes.ts`):
 
-- `feedSince` stops at the first feed key with no `attest:`/`failed:` document.
-  Restore's `insertUmid`, commits before build 40300 and a failed
-  `Attestation.commit` all leave such a key, so one of them freezes that
-  supernode's feed for every hybrid. Skip keys that can never be attested.
+- Fixed: `feedSince` stopped at the first feed key with no `attest:`/`failed:`
+  document, so restore's `insertUmid`, commits before build 40300 or a failed
+  `Attestation.commit` froze that supernode's feed for every hybrid. A key
+  older than two minutes with no documents is now stepped past.
 - The feed is ordered by entry `$datetime` but keys are written at commit time,
   so a slow transaction can get a key below a hybrid's cursor and is never
   delivered. Resume with an overlap window, or document it.
-- `/h/feed` registers the client after an async `authenticate` without checking
-  whether the request already aborted. The client stays in `feeds` and fills
-  `hybrid-max-feeds`, so real hybrids get 503.
+- Fixed: `/h/feed` registered the client after an async `authenticate` without
+  checking whether the request had aborted, leaking a slot in `feeds` until
+  `hybrid-max-feeds` filled. The guard now returns if the client has gone.
 
 CLI and gateway:
 

@@ -30,7 +30,7 @@ const kp = new ActiveCrypto.KeyPair("rsa");
 const pem = kp.generate().pub.pkcs8pem;
 const keyHash = ActiveCrypto.keyHash(pem);
 
-const make = (over: Partial<RegisteredHybrid> | null = {}, banned: string[] = []) => {
+const make = (over: Partial<RegisteredHybrid> | null = {}, banned: string[] = [], now = () => 4000) => {
   const db = new MemDb();
   const events = new MemDb();
   const registered: RegisteredHybrid | undefined =
@@ -45,6 +45,7 @@ const make = (over: Partial<RegisteredHybrid> | null = {}, banned: string[] = []
     ledgerConfig: () => ({ required: ["req1", { id: "vol1", volatile: true }], window: { days: 30 }, minVersion: "5.1.0" }),
     setupStreamId: () => "setup",
     banned: () => new Set(banned),
+    now,
   });
   return { api, db, events };
 };
@@ -188,6 +189,30 @@ describe("HybridApi", () => {
       seed(events, db);
       events.docs.delete("attest:u3");
       expect((await api.feedSince("")).map((i) => i.item.umid)).to.deep.equal(["u1", "u2"]);
+    });
+
+    it("steps past a key that never gets its documents, once it is old enough", async () => {
+      let clock = 4000;
+      const { api, db, events } = make({}, [], () => clock);
+      seed(events, db);
+      events.docs.delete("attest:u2");
+      events.docs.delete("failed:u2");
+      events.docs.delete("attest:u3");
+      // Still inside the grace: held behind the first missing item
+      expect((await api.feedSince("")).map((i) => i.item.umid)).to.deep.equal(["u1"]);
+      clock = 3000 + 121_000;
+      expect(await api.feedSince("")).to.have.length(1);
+      events.put({ _id: "attest:u3", _rev: "1-a", node: "n1", umid: "u3", outcome: "committed", revsOut: {}, umidDocHash: "d", sig: "sg", nodes: {} });
+      expect((await api.feedSince("")).map((i) => i.item.umid)).to.deep.equal(["u1", "u3"]);
+    });
+
+    it("walks past a run of unattestable keys longer than a page", async () => {
+      const { api, db, events } = make({}, [], () => 10_000_000);
+      seed(events, db);
+      for (const n of [1, 2, 3]) events.docs.delete(`attest:u${n}`);
+      events.docs.delete("failed:u2");
+      events.put({ _id: "umid:4000,u4" });
+      expect(await api.feedSince("", 2)).to.deep.equal([]);
     });
 
     it("honours the limit", async () => {

@@ -72,6 +72,12 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose
   streams have already moved on is marked superseded rather than re-run.
+* The feed is ordered by the time a transaction entered the network. A hybrid
+  that has already read past that time does not receive a transaction that
+  commits later than one stamped after it, which can happen to a slow
+  transaction. Its streams still arrive with the next change to them.
+* A feed key with no attestation (for example one written by restore, or by a
+  commit before build 40300) holds the feed for two minutes and is then skipped.
 * A feed item the hybrid cannot verify, or whose divergence it has recorded, is
   logged and skipped. One dropped for want of something it may find later (a
   stream, a peer's attestation, a failed write) is tried again every 30 seconds,

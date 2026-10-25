@@ -63,6 +63,9 @@ export interface HybridApiDeps {
   banned: () => Set<string>;
   /** Seconds either side of now a signed request may be */
   authWindowSeconds?: number;
+  /** Seconds after a feed key's time before a missing attestation is final */
+  attestGraceSeconds?: number;
+  now?: () => number;
 }
 
 export interface AuthOk {
@@ -333,30 +336,48 @@ export class HybridApi {
     cursor: string,
     limit = 50
   ): Promise<{ cursor: string; item: ActiveDefinitions.IFeedItem }[]> {
-    const after = cursorSuffix(cursor || "");
-    const keys: string[] = [];
-    for (const prefix of ["umid", "fail"]) {
-      const r = await this.deps.events.allDocs({
-        startkey: `${prefix}:${after}`,
-        // allDocs swaps the last character for a high one, so this spans the prefix
-        endkey: `${prefix}:x`,
-        limit: limit + 1,
-      });
-      for (const row of r?.rows ?? []) {
-        const id: string = row._id ?? row.id;
-        if (id && cursorSuffix(id) > after) keys.push(id);
-      }
-    }
-    keys.sort((a, b) => (cursorSuffix(a) < cursorSuffix(b) ? -1 : 1));
-
     const out: { cursor: string; item: ActiveDefinitions.IFeedItem }[] = [];
-    for (const key of keys.slice(0, limit)) {
-      const item = await this.buildItem(key);
-      // An item whose documents are not here yet is the end of what is ready
-      if (!item) break;
-      out.push({ cursor: key, item });
+    let after = cursorSuffix(cursor || "");
+    // A page made only of keys that will never have an item is walked past
+    for (;;) {
+      const keys: string[] = [];
+      for (const prefix of ["umid", "fail"]) {
+        const r = await this.deps.events.allDocs({
+          startkey: `${prefix}:${after}`,
+          // allDocs swaps the last character for a high one, so this spans the prefix
+          endkey: `${prefix}:x`,
+          limit: limit + 1,
+        });
+        for (const row of r?.rows ?? []) {
+          const id: string = row._id ?? row.id;
+          if (id && cursorSuffix(id) > after) keys.push(id);
+        }
+      }
+      keys.sort((a, b) => (cursorSuffix(a) < cursorSuffix(b) ? -1 : 1));
+      if (!keys.length) return out;
+
+      for (const key of keys.slice(0, limit - out.length)) {
+        after = cursorSuffix(key);
+        const item = await this.buildItem(key);
+        if (item) {
+          out.push({ cursor: key, item });
+          continue;
+        }
+        // Documents not written yet are the end of what is ready, but a key
+        // that has stayed without them (a restored umid, a commit from before
+        // attestations, a failed attestation write) never will: step past it
+        // rather than hold every hybrid behind it for good
+        if (!this.unattestable(key)) return out;
+      }
+      if (out.length >= limit) return out;
     }
-    return out;
+  }
+
+  /** True once a feed key is old enough that its missing documents are not coming */
+  private unattestable(key: string): boolean {
+    const ms = Number(cursorSuffix(key).split(",")[0]);
+    const grace = (this.deps.attestGraceSeconds ?? 120) * 1000;
+    return Number.isFinite(ms) && (this.deps.now ?? Date.now)() - ms > grace;
   }
 
   private async buildItem(
