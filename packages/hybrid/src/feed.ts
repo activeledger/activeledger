@@ -104,13 +104,16 @@ export class FeedManager {
     this.options.state.cursor = cursor;
     this.abort = new AbortController();
     const signal = this.abort.signal;
-    const retrying = this.retryLoop(signal);
-    this.running = this.loop(signal).finally(() => {
-      this.running = undefined;
-    });
-    // Both end when the signal aborts; stop() waits for the feed loop
-    const feed = this.running;
-    this.running = Promise.all([feed, retrying]).then(() => undefined);
+    // One promise for both loops: if the feed loop dies the retry loop is
+    // aborted with it, and a later start() begins clean
+    this.running = (async () => {
+      try {
+        await Promise.all([this.loop(signal), this.retryLoop(signal)]);
+      } finally {
+        this.abort?.abort();
+        this.running = undefined;
+      }
+    })();
   }
 
   public async stop(): Promise<void> {

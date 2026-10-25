@@ -244,10 +244,11 @@ export class HybridNode {
       saveCursor: (c) => saveCursor(store, c),
       onMinVersion: (v) => this.minVersionSeen(v),
       onOutcome: (o) => {
-        const line = `${o.umid.slice(0, 12)} ${o.action} (${o.vote})${o.reasons.length ? ": " + o.reasons.join("; ") : ""}`;
+        const id = String(o.umid ?? "(no umid)").slice(0, 12);
+        const line = `${id} ${o.action} (${o.vote})${o.reasons.length ? ": " + o.reasons.join("; ") : ""}`;
         // Anything but a clean save is worth reading; the rest is background
         o.action === "saved" || o.action === "settled" ? ActiveLogger.debug(line) : ActiveLogger.warn(line);
-        for (const w of o.warnings) ActiveLogger.warn(`${o.umid.slice(0, 12)} ${w}`);
+        for (const w of o.warnings) ActiveLogger.warn(`${id} ${w}`);
       },
     });
 

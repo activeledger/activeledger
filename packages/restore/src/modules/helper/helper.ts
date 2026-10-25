@@ -80,10 +80,13 @@ export class Helper {
    * @static
    * @returns number
    */
-  public static votesNeeded = (): number =>
-    Math.ceil(
+  public static votesNeeded = (): number => {
+    const needed = Math.ceil(
       (Provider.consensusReachedAmount * Helper.getNeighbourCount(false)) / 100
     );
+    // No usable consensus setting or neighbourhood: nothing can be a majority
+    return Number.isFinite(needed) && needed > 0 ? needed : Infinity;
+  };
 
   /**
    * The revision of each stream the nodes agree on. One vote per node per

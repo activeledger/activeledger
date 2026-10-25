@@ -57,6 +57,11 @@ describe("Restore Helper - majority (Activerestore)", () => {
     expect(won).to.deep.equal([{ stream: "s1", revision: "1-a" }]);
   });
 
+  it("never carries a revision when the threshold is unusable", () => {
+    const won = Helper.majority([node("a", [["s1", "1-a"]]), node("b", [["s1", "1-a"]])], Infinity);
+    expect(won).to.deep.equal([]);
+  });
+
   it("votesNeeded rounds the consensus percentage up to whole nodes", () => {
     const was = [Provider.neighbourCount, Provider.consensusReachedAmount];
     try {
@@ -65,6 +70,12 @@ describe("Restore Helper - majority (Activerestore)", () => {
       expect(Helper.votesNeeded()).to.equal(3);
       Provider.consensusReachedAmount = 50;
       expect(Helper.votesNeeded()).to.equal(2);
+      // Missing settings must never read as "any single answer is a majority"
+      Provider.consensusReachedAmount = undefined as any;
+      expect(Helper.votesNeeded()).to.equal(Infinity);
+      Provider.consensusReachedAmount = 51;
+      Provider.neighbourCount = 0;
+      expect(Helper.votesNeeded()).to.equal(Infinity);
     } finally {
       [Provider.neighbourCount, Provider.consensusReachedAmount] = was;
     }
