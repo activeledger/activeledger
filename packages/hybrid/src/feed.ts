@@ -48,6 +48,12 @@ export interface FeedManagerOptions {
   outdatedPauseMs?: number;
   now?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Wait between passes over the items dropped for a transient reason */
+  retryMs?: number;
+  /** Attempts in all (the first included) before a dropped item is given up */
+  retryAttempts?: number;
+  /** Most items held for a retry; the oldest are given up past it */
+  retryLimit?: number;
   /** Told about each outcome, e.g. to relay on a yes vote later */
   onOutcome?: (outcome: ApplyOutcome, cursor: string) => void;
   /** The `minVersion` a heartbeat named, so a raised one is seen without a restart */
@@ -79,6 +85,7 @@ export class FeedManager {
   private running?: Promise<void>;
   private cursor = "";
   private headSeen = "";
+  private retries: { item: ActiveDefinitions.IFeedItem; from: Upstream; attempts: number }[] = [];
 
   constructor(private readonly options: FeedManagerOptions) {}
 
@@ -96,9 +103,14 @@ export class FeedManager {
     this.cursor = cursor;
     this.options.state.cursor = cursor;
     this.abort = new AbortController();
-    this.running = this.loop(this.abort.signal).finally(() => {
+    const signal = this.abort.signal;
+    const retrying = this.retryLoop(signal);
+    this.running = this.loop(signal).finally(() => {
       this.running = undefined;
     });
+    // Both end when the signal aborts; stop() waits for the feed loop
+    const feed = this.running;
+    this.running = Promise.all([feed, retrying]).then(() => undefined);
   }
 
   public async stop(): Promise<void> {
@@ -117,6 +129,43 @@ export class FeedManager {
     const entry = this.options.state.upstreams.find((u) => u.host === host);
     if (entry) entry.ok = ok;
     else this.options.state.upstreams.push({ host, ok });
+  }
+
+  /** Keep a transiently dropped item for another attempt */
+  private hold(item: ActiveDefinitions.IFeedItem, from: Upstream, outcome: ApplyOutcome, attempts: number): boolean {
+    if (!outcome.retry || attempts >= (this.options.retryAttempts ?? 5)) return false;
+    this.retries.push({ item, from, attempts });
+    const limit = this.options.retryLimit ?? 200;
+    if (this.retries.length > limit) {
+      const gone = this.retries.splice(0, this.retries.length - limit);
+      ActiveLogger.warn(`Retry queue full: giving up on ${gone.length} dropped item(s)`);
+    }
+    return true;
+  }
+
+  /** Every so often, offer the dropped items to the processor again, oldest first */
+  private async retryLoop(signal: AbortSignal): Promise<void> {
+    const sleep = this.options.sleep ?? defaultSleep;
+    while (!signal.aborted) {
+      await sleep(this.options.retryMs ?? 30000, signal);
+      if (signal.aborted) return;
+      if (!this.retries.length || this.options.state.reason === "outdated") continue;
+      const batch = this.retries;
+      this.retries = [];
+      for (const entry of batch) {
+        if (signal.aborted) return;
+        let outcome: ApplyOutcome;
+        try {
+          outcome = await this.options.apply(entry.item, entry.from);
+        } catch (e) {
+          ActiveLogger.warn(`Retry of ${entry.item?.umid} failed: ${(e as Error)?.message || e}`);
+          continue;
+        }
+        if (this.hold(entry.item, entry.from, outcome, entry.attempts + 1)) continue;
+        // Settled, or out of attempts: say so, so the first drop is not the last word
+        this.options.onOutcome?.(outcome, this.cursor);
+      }
+    }
   }
 
   private async loop(signal: AbortSignal): Promise<void> {
@@ -154,6 +203,7 @@ export class FeedManager {
               progressed = true;
               await this.options.saveCursor(cursor);
               this.options.onOutcome?.(outcome, cursor);
+              this.hold(item, upstream, outcome, 1);
               if (atOrPast(cursor, this.headSeen)) this.options.state.headConfirmedAt = this.now();
             },
             signal,

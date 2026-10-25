@@ -274,6 +274,7 @@ describe("Hybrid processor", function () {
       const out = await processor.apply(item, from());
       expect(out.action).to.equal("dropped");
       expect(out.reasons.join()).to.contain("invalid vote signature");
+      expect(out.retry).to.equal(undefined);
       expect(executions).to.have.length(0);
       expect((await get(S))._rev).to.equal("1-aaa");
     });
@@ -289,6 +290,7 @@ describe("Hybrid processor", function () {
       expect(out.action).to.equal("dropped");
       expect(out.vote).to.equal("no");
       expect(out.reasons.join()).to.contain("matching commit attestations");
+      expect(out.retry).to.equal(true);
       // The local result was put back: the stream is still at $revs
       expect(await get(S)).to.deep.equal(BEFORE_STATE);
       expect(await get(`${S}:stream`)).to.deep.equal(BEFORE_META);
@@ -367,6 +369,7 @@ describe("Hybrid processor", function () {
       expect(out.action).to.equal("repaired");
       expect(out.vote).to.equal("yes");
       expect(out.divergence!.kind).to.equal("output-mismatch");
+      expect(out.retry).to.equal(undefined);
       expect(await get(S)).to.deep.equal(signed[S]);
       expect(await get(`${umid}:umid`)).to.deep.equal(item.umidDoc);
       const [record] = await listDivergences(store as any);
@@ -501,6 +504,7 @@ describe("Hybrid processor", function () {
       const out = await processor.apply(item, from());
       expect(out.action).to.equal("dropped");
       expect(out.reasons.join()).to.contain("shows it committed");
+      expect(out.retry).to.equal(undefined);
       expect(executions).to.have.length(0);
       expect(supernodes[0].calls.umid).to.equal(undefined);
     });

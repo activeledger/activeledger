@@ -103,6 +103,8 @@ export interface ApplyOutcome {
   /** Warnings worth an event, e.g. `adopt.undeclared` */
   warnings: string[];
   reasons: string[];
+  /** A dropped item that failed for want of something a later attempt may find */
+  retry?: boolean;
 }
 
 /** Applies feed items. Items that share streams must be applied in `$revs` order. */

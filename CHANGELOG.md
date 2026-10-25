@@ -72,7 +72,10 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose
   streams have already moved on is marked superseded rather than re-run.
-* A feed item the hybrid cannot apply is logged and skipped; it is not retried.
+* A feed item the hybrid cannot verify, or whose divergence it has recorded, is
+  logged and skipped. One dropped for want of something it may find later (a
+  stream, a peer's attestation, a failed write) is tried again every 30 seconds,
+  up to 5 attempts in all and 200 held at once.
 * Hybrid P2P is available but not exercised on a live network yet, and the P2P
   feed has no flow control.
 

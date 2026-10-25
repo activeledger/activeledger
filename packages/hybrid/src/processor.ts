@@ -163,7 +163,7 @@ export class Processor implements ItemProcessor {
     } catch (e) {
       // Never block the feed on one item
       ActiveLogger.error(e, `Hybrid apply ${item?.umid} failed`);
-      return outcome(item?.umid, "dropped", "no", [`apply failed: ${errorText(e)}`]);
+      return transient(item?.umid, [`apply failed: ${errorText(e)}`]);
     }
   }
 
@@ -229,7 +229,7 @@ export class Processor implements ItemProcessor {
       // newer state covers it.
       const covered = await this.coveredByNewerState(item, revsOut);
       if (covered) return outcome(umid, "settled", "no", ["superseded: the streams are already past this item"]);
-      return outcome(umid, "dropped", "no", [`streams not available at $revs: ${missing.join(", ")}`]);
+      return transient(umid, [`streams not available at $revs: ${missing.join(", ")}`]);
     }
     const before = await this.snapshot(item, revsOut);
     const entry = item.umidDoc.umid as ActiveDefinitions.LedgerEntry;
@@ -301,16 +301,14 @@ export class Processor implements ItemProcessor {
     const q = await this.gatherQuorum(item, ctx);
     if (!q.reached) {
       await this.rollback(before, touched);
-      return outcome(umid, "dropped", "no", [
+      return transient(umid, [
         `adopt needs ${ctx.reachedPercent}% matching commit attestations, have ${q.count}/${ctx.networkSize}`,
       ]);
     }
     const fetched = await this.fetchSigned(revsOut);
     if (fetched.missing.length) {
       await this.rollback(before, touched);
-      return outcome(umid, "dropped", "no", [
-        `attested outputs not available: ${fetched.missing.join(", ")}`,
-      ]);
+      return transient(umid, [`attested outputs not available: ${fetched.missing.join(", ")}`]);
     }
     const verdict = ActiveProtocol.checkAdopt({
       umid,
@@ -323,7 +321,7 @@ export class Processor implements ItemProcessor {
 
     if (!(await this.writeDocs(fetched.docs, before, touched))) {
       await this.rollback(before, touched);
-      return outcome(umid, "dropped", "no", ["writing the attested outputs failed"]);
+      return transient(umid, ["writing the attested outputs failed"]);
     }
 
     if (verdict.ok) {
@@ -466,15 +464,13 @@ export class Processor implements ItemProcessor {
         }
       }
       if (!asked) {
-        return outcome(umid, "dropped", "no", [
-          "failed item reaches consensus and no other upstream could confirm it",
-        ]);
+        return transient(umid, ["failed item reaches consensus and no other upstream could confirm it"]);
       }
     }
 
     const missing = await this.prepare(item);
     if (missing.length) {
-      return outcome(umid, "dropped", "no", [`streams not available at $revs: ${missing.join(", ")}`]);
+      return transient(umid, [`streams not available at $revs: ${missing.join(", ")}`]);
     }
 
     const entry = { ...item.tx, $revs: item.$revs } as ActiveDefinitions.LedgerEntry;
@@ -888,4 +884,9 @@ const entryOf = (item: IFeedItem): any => item?.umidDoc?.umid ?? item?.tx;
 
 function outcome(umid: string, action: ApplyAction, vote: LocalVote, reasons: string[]): ApplyOutcome {
   return { umid, action, vote, warnings: [], reasons };
+}
+
+/** A drop that a later attempt could undo: nothing was wrong with the item itself */
+function transient(umid: string, reasons: string[]): ApplyOutcome {
+  return { ...outcome(umid, "dropped", "no", reasons), retry: true };
 }

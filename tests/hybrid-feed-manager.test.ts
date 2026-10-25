@@ -74,6 +74,84 @@ describe("FeedManager", () => {
     expect(st.cursor).to.equal("umid:2,u2");
   });
 
+  describe("items dropped for a transient reason", () => {
+    const dropped = (umid: string, retry = true): any => ({
+      umid, action: "dropped", vote: "no", warnings: [], reasons: ["streams not available"], retry,
+    });
+    const play = (n: number) => fake("a", [async ({ onItem }) => { const i = item(n); await onItem(i.cursor, i.item); }]);
+
+    it("applies the item again and reports the settled outcome", async () => {
+      const tries: string[] = [];
+      const told: string[] = [];
+      const { m } = make([play(1)], {
+        apply: async (it: any) => (tries.push(it.umid), tries.length < 3 ? dropped(it.umid) : outcome(it.umid)),
+        onOutcome: (o: any) => told.push(o.action),
+      });
+      m.start("");
+      await until(() => told.length === 2);
+      await m.stop();
+      expect(tries).to.deep.equal(["u1", "u1", "u1"]);
+      expect(told).to.deep.equal(["dropped", "saved"]);
+    });
+
+    it("gives up after the attempts allowed and says so", async () => {
+      const tries: string[] = [];
+      const told: string[] = [];
+      const { m } = make([play(1)], {
+        retryAttempts: 3,
+        apply: async (it: any) => (tries.push(it.umid), dropped(it.umid)),
+        onOutcome: (o: any) => told.push(o.action),
+      });
+      m.start("");
+      await until(() => told.length === 2);
+      await m.stop();
+      expect(tries).to.have.length(3);
+      expect(told).to.deep.equal(["dropped", "dropped"]);
+    });
+
+    it("never retries a drop that is not transient", async () => {
+      const tries: string[] = [];
+      const { m } = make([play(1)], {
+        apply: async (it: any) => (tries.push(it.umid), dropped(it.umid, false)),
+      });
+      m.start("");
+      await until(() => tries.length === 1);
+      await new Promise((r) => setTimeout(r, 30));
+      await m.stop();
+      expect(tries).to.have.length(1);
+    });
+
+    it("holds nothing back past the limit, oldest first out", async () => {
+      const tries: string[] = [];
+      const up = fake("a", [async ({ onItem }) => { for (const n of [1, 2, 3]) await onItem(item(n).cursor, item(n).item); }]);
+      let pass = 0;
+      const { m } = make([up], {
+        retryLimit: 2,
+        apply: async (it: any) => (pass++ < 3 ? dropped(it.umid) : (tries.push(it.umid), outcome(it.umid))),
+      });
+      m.start("");
+      await until(() => tries.length === 2);
+      await m.stop();
+      expect(tries).to.deep.equal(["u2", "u3"]);
+    });
+
+    it("waits while the node is outdated", async () => {
+      const tries: string[] = [];
+      const { m, st } = make([play(1)], {
+        apply: async (it: any) => (tries.push(it.umid), tries.length === 1 ? dropped(it.umid) : outcome(it.umid)),
+      });
+      m.start("");
+      await until(() => tries.length === 1);
+      st.reason = "outdated";
+      await new Promise((r) => setTimeout(r, 30));
+      expect(tries).to.have.length(1);
+      st.reason = undefined;
+      await until(() => tries.length === 2);
+      await m.stop();
+      expect(tries).to.have.length(2);
+    });
+  });
+
   it("passes the minVersion a heartbeat names on", async () => {
     const up = fake("a", [async ({ onBeat }) => { onBeat("", 1, "6.0.0"); onBeat("", 2); }]);
     const seen: string[] = [];
@@ -121,7 +199,7 @@ describe("FeedManager", () => {
   it("backs off between rounds when nothing works, doubling to the cap", async () => {
     const waits: number[] = [];
     const up = fake("a", Array.from({ length: 6 }, () => async () => { throw new UpstreamError("down", "network"); }));
-    const { m } = make([up], { backoffMs: { min: 10, max: 40 }, sleep: async (ms: number) => { waits.push(ms); await new Promise((r) => setTimeout(r, 1)); } });
+    const { m } = make([up], { backoffMs: { min: 10, max: 40 }, retryMs: 1e9, sleep: async (ms: number) => { if (ms !== 1e9) waits.push(ms); await new Promise((r) => setTimeout(r, 1)); } });
     m.start("");
     await until(() => waits.length >= 5);
     await m.stop();
