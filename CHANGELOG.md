@@ -1,5 +1,76 @@
 # Activeledger Changelog
 
+## [5.1.0]
+
+Adds the hybrid node: `activehybrid`, a light node that follows the ledger
+from the supernodes, checks what they commit instead of trusting it, and
+serves its own API. It needs **build 40300** on the supernodes, so a network
+is upgraded in two steps: upgrade every supernode, then raise `build` to
+40300 in each `config.json`. Until then nothing below changes how a supernode
+votes or commits.
+
+### Upgrading
+Nothing to do for a network that does not run hybrids.
+
+To run hybrids:
+
+1. Upgrade every supernode, then set `"build": 40300` on all of them.
+2. Optionally add a `hybrid` section to the config before `--assert`
+   (`admission`, `required`, `window`, `minVersion`). It is asserted into the
+   setup stream with `security` and `consensus`. A network that was asserted
+   earlier changes it with `activeledger hybrid ...` (below).
+3. On the hybrid's machine: `activehybrid init`, `register`, `start`.
+
+The legacy `hybrid: []` URL list in `config.json` is no longer read.
+
+The `/h/*` API authenticates with signed requests but does not encrypt them.
+Put TLS in front of it (a reverse proxy) when hybrids connect over an
+untrusted network, and point the hybrid's upstream at the TLS endpoint.
+
+### Added
+* **activehybrid** : `@activeledger/activehybrid` (`packages/hybrid`). Embedded
+  store, no CouchDB. It verifies each feed item (signed votes, a quorum of
+  commit attestations), re-runs the contract itself or adopts the attested
+  outputs, and repairs a mismatch with SPI, writing a divergence record. It
+  relays submitted transactions to a supernode with a `$relay` signature.
+  Commands: `init`, `token`, `check-config`, `register`, `update`, `retire`,
+  `peers`, `pin`, `start`, `stop`, `restart`, `status`, `divergences`, `prune`.
+* **Supernode hybrid API** : `/h/*` (HTTP and server-sent events) and an
+  optional P2P listener (`--hybrid-listen`), the registry contract
+  `default/hybrid` (one stream per key), `--hybrid-max-feeds`.
+* **Signed votes and commit attestations** : at build 40300 each node signs its
+  vote and its commit outcome, stored beside the transaction. Failed
+  transactions with at least one yes vote are kept for hybrids.
+* **`activeledger hybrid`** : `list`, `feeds`, `ban`, `unban`, and the on-ledger
+  changes `allow`, `deny`, `admission <open|allowlist>`, `min-version <semver>`
+  with `sign` and `submit`. A change is a `default/setup` `hybrid` transaction
+  that more than half of the nodes sign: `--out <file>` writes the signed
+  request, each other node runs `hybrid sign <file>`, and any node runs
+  `hybrid submit <file>`. On one node it signs and sends. `deny` stops new
+  registrations only; use `ban` for a feed already open.
+* **`hybrid.minVersion`** : travels on every feed heartbeat and `/h/head`. A
+  running hybrid below it stops applying items and reports `outdated`; lowering
+  it lets the hybrid resume.
+* **Shared command line** : `activeledger` and `activehybrid` share one parser
+  and start-up display. Unknown flags and commands now exit 1 with a
+  suggestion, exit codes are 0/1/2, and non-interactive output is plain lines.
+  `activeledger status` and `check-config` are new.
+
+### Fixed
+* **`--assert` on a self-signed network** : the assert transaction signed one
+  input and not the `setup` input, so it was refused.
+* **Configuration reload** : since the VM refactor in 5.0.0 the request to
+  reload the configuration never reached the node's main process, so adding or
+  removing a node and approving or revoking a namespace updated the ledger but
+  not the running host until restart. It is passed on again.
+
+### Known limits
+* The hybrid keeps only the current revision of each stream, so an item whose
+  streams have already moved on is marked superseded rather than re-run.
+* A feed item the hybrid cannot apply is logged and skipped; it is not retried.
+* Hybrid P2P is available but not exercised on a live network yet, and the P2P
+  feed has no flow control.
+
 ## [5.0.0]
 
 ActiveCore is removed. It was off by default, and its event streams could not
