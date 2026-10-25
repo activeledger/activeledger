@@ -51,6 +51,9 @@ export interface HybridDb {
   }): Promise<any>;
 }
 
+/** Pages of feed keys one `feedSince` call may walk while looking for an item */
+const FEED_SCAN_PAGES = 20;
+
 export interface HybridApiDeps {
   db: HybridDb;
   events: HybridDb;
@@ -332,14 +335,22 @@ export class HybridApi {
    * Feed items after a cursor, oldest first. Committed and failed items share
    * one ordering by `<ms>,<umid>`, so one cursor covers both.
    */
+  private readonly deadRuns = new Map<string, string>();
+
   public async feedSince(
     cursor: string,
     limit = 50
   ): Promise<{ cursor: string; item: ActiveDefinitions.IFeedItem }[]> {
     const out: { cursor: string; item: ActiveDefinitions.IFeedItem }[] = [];
-    let after = cursorSuffix(cursor || "");
+    const start = cursorSuffix(cursor || "");
+    // A run of dead keys found from here before is not walked again
+    let after = this.deadRuns.get(start) ?? start;
+    let pages = 0;
     // A page made only of keys that will never have an item is walked past
     for (;;) {
+      // Bounded per call, so a long run of dead keys costs a few pages a poll
+      // and is crossed over successive polls rather than all at once
+      if (++pages > FEED_SCAN_PAGES) return this.rememberDead(start, after, out);
       const keys: string[] = [];
       for (const prefix of ["umid", "fail"]) {
         const r = await this.deps.events.allDocs({
@@ -354,23 +365,40 @@ export class HybridApi {
         }
       }
       keys.sort((a, b) => (cursorSuffix(a) < cursorSuffix(b) ? -1 : 1));
-      if (!keys.length) return out;
+      if (!keys.length) return this.rememberDead(start, after, out);
 
       for (const key of keys.slice(0, limit - out.length)) {
-        after = cursorSuffix(key);
         const item = await this.buildItem(key);
         if (item) {
           out.push({ cursor: key, item });
+          after = cursorSuffix(key);
           continue;
         }
         // Documents not written yet are the end of what is ready, but a key
         // that has stayed without them (a restored umid, a commit from before
         // attestations, a failed attestation write) never will: step past it
         // rather than hold every hybrid behind it for good
-        if (!this.unattestable(key)) return out;
+        if (!this.unattestable(key)) return this.rememberDead(start, after, out);
+        after = cursorSuffix(key);
       }
       if (out.length >= limit) return out;
     }
+  }
+
+  /**
+   * Where a walk from `start` got to without finding an item, so the next poll
+   * from the same cursor begins there.
+   */
+  private rememberDead(
+    start: string,
+    after: string,
+    out: { cursor: string; item: ActiveDefinitions.IFeedItem }[]
+  ): { cursor: string; item: ActiveDefinitions.IFeedItem }[] {
+    if (!out.length && after > start) {
+      if (this.deadRuns.size >= 256) this.deadRuns.delete(this.deadRuns.keys().next().value as string);
+      this.deadRuns.set(start, after);
+    }
+    return out;
   }
 
   /** True once a feed key is old enough that its missing documents are not coming */

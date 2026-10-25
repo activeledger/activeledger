@@ -215,6 +215,25 @@ describe("HybridApi", () => {
       expect(await api.feedSince("", 2)).to.deep.equal([]);
     });
 
+    it("crosses a long run of dead keys over several polls without rescanning it", async () => {
+      const { api, events } = make({}, [], () => 10_000_000);
+      const keys = 20 * 2 * 3 + 5;
+      for (let i = 0; i < keys; i++) events.put({ _id: `umid:${String(1000 + i).padStart(6, "0")},d${i}` });
+      events.put({ _id: "umid:999999,live" });
+      events.put({ _id: "attest:live", node: "n1", umid: "live", outcome: "committed", revsOut: {}, umidDocHash: "d", sig: "sg", nodes: {} });
+      (api as any).deps.db.put({ _id: "live:umid", umid: { $revs: { $i: {}, $o: {} } }, streams: {} });
+      let found: string[] = [];
+      let polls = 0;
+      while (!found.length && polls < 10) {
+        polls++;
+        found = (await api.feedSince("", 2)).map((i) => i.item.umid);
+      }
+      expect(found).to.deep.equal(["live"]);
+      expect(polls).to.be.greaterThan(1);
+      // The same cursor again starts where the dead run ended
+      expect((await api.feedSince("", 2)).map((i) => i.item.umid)).to.deep.equal(["live"]);
+    });
+
     it("honours the limit", async () => {
       const { api, db, events } = make();
       seed(events, db);
