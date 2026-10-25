@@ -615,3 +615,49 @@ but not exercised on a live network, or not built:
 - Flow control on the P2P feed.
 - `register`, `update`, `retire` and `peers` over P2P (HTTP only today).
 - Raised `minVersion` reaching a running hybrid over P2P as well as HTTP.
+
+### Review findings (branch review, 2026-10-25)
+
+Found by the review of `feat/shared-cli-layer` and not yet fixed. Fixed in the
+branch already: restore's threshold failing open, the feed retry loop's
+lifecycle, and the outcome logger on an item without a `umid`.
+
+Supernode feed (`hybridApi.ts`, `hybridRoutes.ts`):
+
+- `feedSince` stops at the first feed key with no `attest:`/`failed:` document.
+  Restore's `insertUmid`, commits before build 40300 and a failed
+  `Attestation.commit` all leave such a key, so one of them freezes that
+  supernode's feed for every hybrid. Skip keys that can never be attested.
+- The feed is ordered by entry `$datetime` but keys are written at commit time,
+  so a slow transaction can get a key below a hybrid's cursor and is never
+  delivered. Resume with an overlap window, or document it.
+- `/h/feed` registers the client after an async `authenticate` without checking
+  whether the request already aborted. The client stays in `feeds` and fills
+  `hybrid-max-feeds`, so real hybrids get 503.
+
+CLI and gateway:
+
+- `CONFIG_KEYS` in `cli/program.ts` omits keys the code still reads
+  (`p2pStream`, `p2pStreamServer`, `gzip`, `max_memory`, `queue_retry`,
+  `nanoGateway`, `path`, `full`), so those flags now exit 1 as unknown.
+- nano-gateway `auth.ts` verifies the signature over `Number(timestamp)`, not
+  the header string, so a timestamp that does not round-trip fails.
+
+Hybrid and restore:
+
+- `claimPid` (`hybrid/run.ts`) checks then writes with `w`, so two starts at
+  once can both win. Use `wx`.
+- The pruner scans the data database twice an hour with `include_docs`; one
+  pass would do.
+- Restore reports a contract version it cannot rebuild only under `verbose`;
+  it should warn.
+
+Engine items from Varnir (read-only until confirmed, nothing changed):
+
+- Version locks are checked only on a contract path cache miss
+  (`process.ts` ~654-745), so a lock is ignored for a cached exact version and
+  an update's cache refresh opens a window. Move the `_LOCK` stats out of the
+  cache branch.
+- Make a contract update mark the previous version superseded atomically, with
+  an opt-in for exact-version calls.
+- `sortVersions` was reported to order `@9` above `@10`; checked, it does not.
