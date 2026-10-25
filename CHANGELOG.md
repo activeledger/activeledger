@@ -63,6 +63,11 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   reload the configuration never reached the node's main process, so adding or
   removing a node and approving or revoking a namespace updated the ledger but
   not the running host until restart. It is passed on again.
+* **Restore picks the majority revision the way SPI does** : `activerestore`
+  counted votes per revision on its own and could count a node twice or carry a
+  revision on fewer votes than a majority. It now uses the same tally as SPI
+  (one vote per node per stream), and leaves a stream alone when no revision
+  reaches the consensus threshold.
 
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose

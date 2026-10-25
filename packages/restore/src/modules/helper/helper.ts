@@ -22,7 +22,12 @@
  */
 
 import { ActiveLogger } from "@activeledger/activelogger";
+import { spiConsensus } from "@activeledger/activesync";
 import { Provider } from "../provider/provider";
+import {
+  IConsensusData,
+  IStreamInformation
+} from "../../interfaces/quick-restore.interface";
 
 /**
  * Helper class providing useful functions used by all restoration class files
@@ -67,6 +72,46 @@ export class Helper {
   ) =>
     (votes / Helper.getNeighbourCount(dontIncludeSelf)) * 100 >=
     Provider.consensusReachedAmount;
+
+  /**
+   * Votes a revision needs, counted over the other nodes' answers: the same
+   * test as metConsensus, as a count.
+   *
+   * @static
+   * @returns number
+   */
+  public static votesNeeded = (): number =>
+    Math.ceil(
+      (Provider.consensusReachedAmount * Helper.getNeighbourCount(false)) / 100
+    );
+
+  /**
+   * The revision of each stream the nodes agree on. One vote per node per
+   * stream, and the same tally the network uses for SPI (spiConsensus), so
+   * restore and SPI cannot disagree about what the majority holds. A
+   * revision that does not reach `needed` is left out and the node keeps
+   * what it has.
+   *
+   * @static
+   * @param {IStreamInformation[]} nodes one entry per node that answered
+   * @param {number} needed votes to carry a revision
+   * @returns {IConsensusData[]}
+   */
+  public static majority(
+    nodes: IStreamInformation[],
+    needed: number
+  ): IConsensusData[] {
+    const answers = nodes.map((n) =>
+      (Array.isArray(n?.streams) ? n.streams : [])
+        .filter((s) => s && s.id && s.id !== "undefined" && s.rev)
+        .map((s) => ({ _id: s.id, _rev: s.rev }))
+    );
+    const { winners } = spiConsensus(answers, needed);
+    return Object.keys(winners).map((stream) => ({
+      stream,
+      revision: winners[stream].rev
+    }));
+  }
 
   /**
    * Replays every event a restored transaction's contract raised, into
