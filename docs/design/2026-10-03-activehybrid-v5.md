@@ -594,3 +594,15 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
   - the supernode `hybrid` config;
   - for contract authors: `isSupernode()`, the advised `adoptFromSupernode` safety net with worked examples, `shareVolatile()`, and that volatile is per-node by design;
   - that with open admission, hybrids replicate all non-volatile state.
+
+## Backlog
+
+### Hybrid P2P
+
+P2P is not fully turned on yet, so the hybrid's P2P path is deferred. Built
+but not exercised on a live network, or not built:
+
+- A P2P path through the network testnet (the live run is HTTP only).
+- Flow control on the P2P feed.
+- `register`, `update`, `retire` and `peers` over P2P (HTTP only today).
+- Raised `minVersion` reaching a running hybrid over P2P as well as HTTP.
