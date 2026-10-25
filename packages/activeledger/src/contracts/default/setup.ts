@@ -884,9 +884,47 @@ export default class Setup extends PostProcess {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    this.verifySelfSignedTx()
-      ? resolve(true)
-      : reject("Host node signature problem");
+    // Unlike the older entries, count only valid signatures from distinct
+    // configured nodes: padding $sigs with other keys must not reach a majority
+    if (!this.verifyMajoritySigned()) {
+      return reject("Host node signature problem");
+    }
+    // The change is for the network's own setup stream and nothing else
+    const outputs = Object.keys(this.transactions.$o || {});
+    const stream = String(this.config.network || "").split("@")[0];
+    if (outputs.length !== 1 || !stream || outputs[0] !== stream) {
+      return reject("Not the network setup stream");
+    }
+    resolve(true);
+  }
+
+  /**
+   * True when more than half of the configured nodes have a valid signature
+   * over the transaction
+   *
+   * @private
+   * @returns {boolean}
+   */
+  private verifyMajoritySigned(): boolean {
+    const neighbourhood: any[] = this.config.neighbourhood || [];
+    const signatures = (this as any).sigs || {};
+    let valid = 0;
+    const seen = new Set<string>();
+    for (const network of neighbourhood) {
+      const name = `${network.host}:${network.port}`;
+      if (seen.has(name) || typeof signatures[name] !== "string") continue;
+      seen.add(name);
+      try {
+        const kp: any = new (ActiveCrypto.KeyPair as any)(
+          network.identity.type,
+          network.identity.public
+        );
+        if (kp.verify(this.transactions, signatures[name])) valid++;
+      } catch {
+        // An unusable signature is not a vote
+      }
+    }
+    return valid > neighbourhood.length / 2;
   }
 
   /**

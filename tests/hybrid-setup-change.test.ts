@@ -71,3 +71,40 @@ describe("Setup hybrid change", () => {
     expect(() => keyArgument("not a key")).to.throw(/expected/);
   });
 });
+
+describe("Setup hybrid change authorisation", () => {
+  const nodes = [0, 1, 2].map((i) => {
+    const kp = new ActiveCrypto.KeyPair("secp256k1");
+    const keys = kp.generate(2048, true);
+    return { kp, host: "10.0.0." + i, port: 5260, identity: { type: "secp256k1", public: keys.pub.pkcs8pem } };
+  });
+  const tx = { $namespace: "default", $contract: "setup", $entry: "hybrid", $i: {}, $o: { abc: {} } };
+
+  const vote = (sigs: any, outputs: any = tx.$o) => {
+    const c: any = Object.create(Setup.prototype);
+    c.transactions = { ...tx, $o: outputs };
+    c.sigs = sigs;
+    c.config = { network: "abc@1-x", neighbourhood: nodes.map(({ host, port, identity }) => ({ host, port, identity })) };
+    return new Promise<boolean | string>((res) => c.hybridVote(() => res(true), (e: string) => res(e)));
+  };
+  const sign = (n: number, t: any = tx) => nodes[n].kp.sign(t);
+  const name = (n: number) => `${nodes[n].host}:${nodes[n].port}`;
+
+  it("accepts valid signatures from more than half of the nodes", async () => {
+    expect(await vote({ suggester: "x", [name(0)]: sign(0), [name(1)]: sign(1) })).to.equal(true);
+  });
+
+  it("is not reached by padding $sigs with keys that are not nodes", async () => {
+    expect(await vote({ suggester: "x", a: "1", b: "2", c: "3", [name(0)]: sign(0) })).to.match(/signature/);
+  });
+
+  it("does not count an invalid signature", async () => {
+    expect(await vote({ suggester: "x", [name(0)]: sign(0), [name(1)]: "forged" })).to.match(/signature/);
+  });
+
+  it("refuses an output that is not the network setup stream", async () => {
+    const other = { ...tx, $o: { other: {} } };
+    const sigs = { suggester: "x", [name(0)]: sign(0, other), [name(1)]: sign(1, other) };
+    expect(await vote(sigs, other.$o)).to.match(/setup stream/);
+  });
+});
