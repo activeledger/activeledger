@@ -471,7 +471,16 @@ Today the CLI is `minimist` flags with no subcommands, no `--help`, and no error
 |---|---|
 | `hybrid list` | Registered hybrids: key hash, label, endpoints, retired, and whether a feed is connected to this supernode. |
 | `hybrid feeds` | Feeds connected to this supernode, their cursor lag, and the count against `hybrid.maxFeeds`. |
-| `hybrid allow <key\|file>` / `hybrid deny <key>` | Change the `hybrid.admission` allowlist. This is an on-ledger setting, so it goes through the same assert path as `security` and `consensus`. |
+| `hybrid allow <key\|hash\|file>` / `hybrid deny <key\|hash\|file>` | Add or remove a key on the `hybrid.admission` allowlist. |
+| `hybrid admission <open\|allowlist>` / `hybrid min-version <semver>` | Switch admission, or set `hybrid.minVersion`. |
+| `hybrid sign <file>` / `hybrid submit <file>` | Multi-node changes (below). |
+
+The change commands are one `default/setup` `hybrid` transaction. Like `approve` and `revoke` it needs more than half of the nodes to sign. A change is a set of operations (`allow`, `deny`, `admission`, `minVersion`) applied to the setup stream at commit, so two operators cannot overwrite each other's list. On a network of one node the command signs and sends. Otherwise `--out <file>` writes the signed request, each other node runs `hybrid sign <file>`, and any node runs `hybrid submit <file>`. Deny stops new registrations only; `hybrid ban` stops an existing feed on one supernode.
+
+A raised or lowered `minVersion` reaches running hybrids: it rides on every heartbeat and `/h/head`, and an outdated hybrid, which has no feed open, polls `/h/head`. A hybrid that started outdated never pulled its streams, so it still needs a restart after an upgrade.
+
+| Command | Does |
+|---|---|
 | `hybrid ban <keyhash>` / `hybrid unban <keyhash>` | Refuse feeds from a key on this supernode only. Local and not consensus, for dealing with abuse under open admission. |
 
 New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-max-feeds <n>`. The `--hybrid-list`, `--hybrid-register`, `--hybrid-stop` form is not used: the first and the last would act on different programs, and subcommands leave room for the rest.
