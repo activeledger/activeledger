@@ -647,19 +647,19 @@ Hybrid and restore:
 
 - `claimPid` (`hybrid/run.ts`) checks then writes with `w`, so two starts at
   once can both win. Use `wx`.
-- The pruner scans the data database twice an hour with `include_docs`; one
-  pass would do.
-- Restore reports a contract version it cannot rebuild only under `verbose`;
-  it should warn.
+- Fixed: the pruner scans the data database once an hour, not twice.
+- Fixed: restore warns when a contract version cannot be rebuilt.
+- Restore does not re-apply contract locks, which are files and not in the
+  ledger. A locked old version is callable again on a node restored from
+  nothing.
 
-Engine items from Varnir (read-only until confirmed, nothing changed):
+Engine items from Varnir:
 
-- Version locks are checked only on a contract path cache miss
-  (`process.ts` ~654-745), so a lock is ignored for a cached exact version and
-  an update's cache refresh opens a window. Move the `_LOCK` stats out of the
-  cache branch.
-- Make a contract update mark the previous version superseded atomically, with
-  an opt-in for exact-version calls.
+- Fixed: version and global locks (`process.ts`) are checked on every
+  resolution, not only on a path cache miss.
+- Fixed: a contract update takes `lock: "all" | [versions]` and locks those
+  versions in the same commit. A restore does not re-apply locks (they are
+  files, as for the `lock` entry), so a restored node needs them again.
 - `sortVersions` was reported to order `@9` above `@10`; checked, it does not.
 
 ### Other open items

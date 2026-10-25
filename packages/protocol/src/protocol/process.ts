@@ -723,19 +723,6 @@ export class Process extends EventEmitter {
             });
           }
 
-          // Check For Locks Global and Version
-          if (await fs.stat(`${namespacePath}/_LOCK.${this.contractId}`).catch(() => false)) {
-            throw new Error("Contract Global Lock");
-          }
-
-          //
-          if (await fs.stat(`${namespacePath}/_LOCK.${contract}`).catch(() => false)) {
-            throw new Error(
-              `Contract Version Lock ${contract.substring(
-                contract.indexOf("@") + 1
-              )}`
-            );
-          }
           // Wrapped in realpath to avoid issues with cached contracts
           // And to allow us to get the ID of the contract if a label (symlink) was
           // used in the transaction
@@ -747,6 +734,25 @@ export class Process extends EventEmitter {
         }
         this.contractLocation =
           Process.contractPathCache[this.entry.$tx.$contract];
+
+        // Locks are checked on every resolution, never only on a cache miss:
+        // a lock written after a version was cached (or after an update cleared
+        // the cache and the old version was resolved again) has to stop it
+        // being run. The file is the realpath, so a label resolves to the
+        // contract id and version that is actually being run.
+        const dir = this.contractLocation.slice(0, this.contractLocation.lastIndexOf("/"));
+        const file = this.contractLocation.slice(this.contractLocation.lastIndexOf("/") + 1).replace(/\.js$/, "");
+        const ids = new Set([this.contractId, file.split("@")[0]]);
+        for (const id of ids) {
+          if (await fs.stat(`${dir}/_LOCK.${id}`).catch(() => false)) {
+            throw new Error("Contract Global Lock");
+          }
+        }
+        if (await fs.stat(`${dir}/_LOCK.${file}`).catch(() => false)) {
+          throw new Error(
+            `Contract Version Lock ${file.substring(file.indexOf("@") + 1)}`
+          );
+        }
       } catch (e) {
         throw e;
       }

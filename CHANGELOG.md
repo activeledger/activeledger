@@ -55,8 +55,20 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   and start-up display. Unknown flags and commands now exit 1 with a
   suggestion, exit codes are 0/1/2, and non-interactive output is plain lines.
   `activeledger status` and `check-config` are new.
+* **Retire old contract versions on update** : a contract `update` takes an
+  optional `lock` property in its input, `"all"` (every other version the
+  contract has) or an array of version names. Those versions are locked in the
+  same commit as the new one, so they can no longer be called with
+  `$contract: <id>@=<version>`. An unknown version, the version being deployed,
+  or a malformed list is refused, as is `lock` below build 40300. Locks are
+  files on each node, as with the `lock` entry; `unlock` removes one.
 
 ### Fixed
+* **Contract locks are checked on every run** : a global or version lock
+  (`_LOCK.<id>`, `_LOCK.<id>@<version>`) was only looked for when a processor
+  had not cached the contract path, so a version it had already run stayed
+  callable by `$contract: <id>@=<version>` until a restart. Both are now
+  checked each time a contract is resolved, at the cost of a `stat` or two.
 * **`--assert` on a self-signed network** : the assert transaction signed one
   input and not the `setup` input, so it was refused.
 * **Configuration reload** : since the VM refactor in 5.0.0 the request to

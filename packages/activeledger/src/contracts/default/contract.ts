@@ -443,6 +443,40 @@ export default class Contract extends Standard {
   private static readonly REFERENCE_BUILD = 40100;
 
   /**
+   * Build level from which an update may lock the versions it replaces. Below
+   * it a node would ignore the request while another honoured it, so it is
+   * refused rather than quietly diverging.
+   */
+  private static readonly LOCK_BUILD = 40300;
+
+  /**
+   * The versions an update asks to lock: "all" for every other version the
+   * contract has, or an array of version names. The version being deployed is
+   * never locked by its own update, and an unknown name is an error rather
+   * than a lock on nothing.
+   */
+  private versionsToLock(txi: any, existing: string[]): string[] {
+    const asked = txi.lock;
+    if (asked === undefined) return [];
+    if (ActiveOptions.get<number>("build", 0) < Contract.LOCK_BUILD) {
+      throw new Error(`Locking versions on update needs build ${Contract.LOCK_BUILD}`);
+    }
+    if (asked === "all") return existing.filter((v) => v !== txi.version);
+    if (
+      !Array.isArray(asked) ||
+      asked.length > 1000 ||
+      asked.some((v) => typeof v !== "string")
+    ) {
+      throw new Error('lock must be "all" or an array of version names');
+    }
+    for (const v of asked) {
+      if (v === txi.version) throw new Error("Cannot lock the version being deployed");
+      if (!existing.includes(v)) throw new Error(`Cannot lock unknown version ${v}`);
+    }
+    return [...new Set<string>(asked)];
+  }
+
+  /**
    * Is this node allowed to write contract references yet?
    *
    * @private
@@ -1541,6 +1575,13 @@ export default class Contract extends Standard {
       try {
         // Only the contract's deployer may replace it, when enforced (opt-in)
         this.assertContractOwner();
+        // Locks asked for must make sense before anything is committed
+        const output = Object.keys(this.transactions.$o || {})[0];
+        const current = output ? this.getActivityStreams(output).getState() : {};
+        this.versionsToLock(
+          this.transactions.$i[this.identity.getName()],
+          Object.keys(current?.contract || {})
+        );
         // Security Scan
         this.securityScan(
           Buffer.from(
@@ -1591,6 +1632,9 @@ export default class Contract extends Standard {
       this.normaliseLegacyVersions(state);
     }
 
+    // Decided before the new version is added, from the versions it replaces
+    const toLock = this.versionsToLock(txi, Object.keys(state.contract || {}));
+
     // Version Management (see commitAdd for why this is a reference)
     state.contract[txi.version] = this.useContractReferences()
       ? {
@@ -1619,6 +1663,13 @@ export default class Contract extends Standard {
       txi.version,
       code
     );
+
+    // The versions the owner asked to retire, locked in the same commit as
+    // the version that replaces them
+    const files = new ContractFiles(this.rootDir);
+    for (const version of toLock) {
+      files.lock(this.namespace, stream.getName(), "@" + version);
+    }
 
     // Save State
     stream.setState(state);

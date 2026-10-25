@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { ActiveLogger } from "@activeledger/activelogger";
 import {
   ContractFiles,
   ContractSource,
@@ -62,7 +63,9 @@ export class Contract {
           ContractSource.transpile(source.base64, source.target)
         );
       } catch (e: any) {
-        Helper.output(`Cannot rebuild ${contract._id}@${version}: ${e.message}`);
+        ActiveLogger.warn(
+          `Cannot rebuild ${contract._id}@${version}, its file is missing: ${e.message}`
+        );
       }
     }
   }

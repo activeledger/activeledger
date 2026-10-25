@@ -152,22 +152,19 @@ export class Pruner {
     emitter.on("change", watch);
 
     try {
-      // Pass 1: every umid a stream currently points at
-      await this.scan(data, "", undefined, async (doc) => {
-        if (doc._id.endsWith(META_SUFFIX) && typeof doc.umid === "string") {
-          pointed.add(doc.umid);
-        }
-      });
-
-      // Pass 2: :umid docs outside the window
+      // One scan: the umids streams point at, and the :umid docs outside the
+      // window. Which of those old ones is pointed at is settled after, when
+      // every meta has been seen
       const candidates: string[] = [];
       await this.scan(data, "", undefined, async (doc) => {
+        if (doc._id.endsWith(META_SUFFIX)) {
+          if (typeof doc.umid === "string") pointed.add(doc.umid);
+          return;
+        }
         if (!doc._id.endsWith(UMID_SUFFIX)) return;
         counts.umids.scanned++;
         const umid = doc._id.slice(0, -UMID_SUFFIX.length);
-        if (pointed.has(umid)) {
-          counts.umids.keptCurrent++;
-        } else if (doc.umid?.$relay?.key === this.opts.publicPem) {
+        if (doc.umid?.$relay?.key === this.opts.publicPem) {
           counts.umids.keptRelayed++;
         } else {
           const at = Date.parse(doc.umid?.$datetime);
@@ -178,7 +175,7 @@ export class Pruner {
       });
 
       for (const umid of candidates) {
-        // A commit since pass 1 may point a stream at it
+        // Pointed at by a stream, or by a commit since the scan
         if (pointed.has(umid)) {
           counts.umids.keptCurrent++;
           continue;

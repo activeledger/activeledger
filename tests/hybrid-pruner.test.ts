@@ -111,9 +111,9 @@ describe("Hybrid pruner (storage window)", () => {
     let calls = 0;
     level.allDocs = async (opts: any) => {
       const r = await original(opts);
-      // After pass 2 has listed "old" as a candidate, a commit points a
+      // After the scan has listed "old" as a candidate, a commit points a
       // stream at it
-      if (++calls === 2) await store.data.post({ _id: "s2:stream", umid: "old" });
+      if (++calls === 1) await store.data.post({ _id: "s2:stream", umid: "old" });
       return r;
     };
     const counts = await pruner().run();

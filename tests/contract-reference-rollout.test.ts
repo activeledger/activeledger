@@ -62,6 +62,7 @@ describe("Contract reference rollout gate (Activeledger)", () => {
       useContractReferences: (Contract as any).prototype.useContractReferences,
       contractTarget: (Contract as any).prototype.contractTarget,
       compiledEntry: (Contract as any).prototype.compiledEntry,
+      versionsToLock: (Contract as any).prototype.versionsToLock,
       transpile: () => "class Example {}",
       newActivityStream: () => ({
         getName: () => streamName,
