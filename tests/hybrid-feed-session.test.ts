@@ -11,6 +11,7 @@ const fakeApi = (batches: { cursor: string; item: any }[][], head = "umid:1,a") 
       return batches.shift() ?? [];
     },
     head: async () => head,
+    minVersion: () => "5.1.0",
   } as any;
 };
 
@@ -30,7 +31,7 @@ describe("FeedSession", () => {
     await s.start();
     await s.tick();
     s.stop();
-    expect(out[0]).to.match(/^event: heartbeat\ndata: {"head":"umid:1,a","time":\d+}\n\n$/);
+    expect(out[0]).to.match(/^event: heartbeat\ndata: {"head":"umid:1,a","time":\d+,"minVersion":"5.1.0"}\n\n$/);
     expect(out[1]).to.equal(`id: umid:1,u1\ndata: ${JSON.stringify({ umid: "u1", n: 1 })}\n\n`);
     expect(out[2]).to.contain("id: umid:2,u2");
     expect(s.cursor).to.equal("umid:2,u2");
@@ -78,7 +79,7 @@ describe("FeedSession", () => {
 
   it("reports an error to the client and stops when the feed throws", async () => {
     const out: string[] = [];
-    const api = { feedSince: async () => { throw new Error("db down"); }, head: async () => "" } as any;
+    const api = { feedSince: async () => { throw new Error("db down"); }, head: async () => "", minVersion: () => undefined } as any;
     const s = new SseSession(api, (c) => (out.push(c), true), "", 1000, 10_000);
     await s.tick();
     expect(out.join("")).to.contain("event: error");

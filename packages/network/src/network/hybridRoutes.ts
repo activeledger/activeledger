@@ -32,7 +32,7 @@ export const FEED_HEARTBEAT_MS = 10_000;
 /** What a feed sends, before a transport formats it */
 export type FeedEvent =
   | { type: "item"; cursor: string; item: any }
-  | { type: "heartbeat"; head: string; time: number }
+  | { type: "heartbeat"; head: string; time: number; minVersion?: string }
   | { type: "error"; error: string };
 
 /** Server-Sent Events text for one feed event */
@@ -40,7 +40,7 @@ export const toSse = (e: FeedEvent): string =>
   e.type === "item"
     ? `id: ${e.cursor}\ndata: ${JSON.stringify(e.item)}\n\n`
     : e.type === "heartbeat"
-    ? `event: heartbeat\ndata: ${JSON.stringify({ head: e.head, time: e.time })}\n\n`
+    ? `event: heartbeat\ndata: ${JSON.stringify({ head: e.head, time: e.time, minVersion: e.minVersion })}\n\n`
     : `event: error\ndata: ${JSON.stringify({ error: e.error })}\n\n`;
 
 export interface FeedClient {
@@ -129,7 +129,7 @@ export class FeedSession {
       return this.stop();
     }
     const head = await this.api.head(this.now());
-    if (!this.write({ type: "heartbeat", head, time: this.now() })) {
+    if (!this.write({ type: "heartbeat", head, time: this.now(), minVersion: this.api.minVersion() })) {
       this.stop();
     }
   }
@@ -200,7 +200,7 @@ export const registerHybridRoutes = (
   app.get("/h/bootstrap", guard(async (res) => send(res, 200, await api.bootstrap())));
   app.get("/h/head", guard(async (res) => {
     const now = Date.now();
-    send(res, 200, { cursor: await api.head(now), time: now });
+    send(res, 200, { cursor: await api.head(now), time: now, minVersion: api.minVersion() });
   }));
   app.get("/h/peers", guard(async (res) => send(res, 200, await api.peers())));
   app.get("/h/umid/:umid", guard(async (res, c) => {

@@ -54,6 +54,9 @@ import { createInterface } from "readline";
 export class VirtualMachine
   extends events.EventEmitter
   implements IVirtualMachine {
+  /** Transactions whose post processing asked for a configuration reload */
+  private reloadRequests = new Set<string>();
+
   /**
    * Cache of initialised smart contracts
    *
@@ -907,6 +910,15 @@ export class VirtualMachine
    * @param {string} who
    * @returns {Promise<any>}
    */
+  /**
+   * Did this transaction's default contract ask for the configuration to be
+   * reloaded (nodes added or removed, namespaces, hybrid rules)? Asked once,
+   * by whoever owns the transaction, after post processing.
+   */
+  public takeReloadRequest(umid: string): boolean {
+    return this.reloadRequests.delete(umid);
+  }
+
   public postProcess(
     territoriality: boolean,
     who: string,
@@ -945,7 +957,7 @@ export class VirtualMachine
           if (contract && "sysConfig" in contract) {
             if ((contract as any).configReload()) {
               ActiveLogger.info("Reloading Configuration Request");
-              this.emit("reload");
+              this.reloadRequests.add(umid);
             }
           }
         }

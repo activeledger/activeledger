@@ -1485,6 +1485,9 @@ export class Host extends Home {
     // Reload Neighbourhood
     ActiveOptions.extendConfig()
       .then((config: any) => {
+        ActiveLogger.info(
+          `Configuration reloaded (network ${ActiveOptions.get<string>("network", "")}, hybrid minVersion ${ActiveOptions.get<any>("hybrid", {})?.minVersion})`
+        );
         if (config.neighbourhood) {
           ActiveLogger.debug(config.neighbourhood, "Reset Request");
 

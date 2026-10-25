@@ -161,6 +161,8 @@ export interface IVirtualMachine {
   ): Promise<boolean>;
 
   postProcess(territoriality: boolean, who: string, umid: string): Promise<any>;
+  /** Did post processing ask for the configuration to be reloaded? Cleared when asked. */
+  takeReloadRequest(umid: string): boolean;
 
   reconcile(nodes: ActiveDefinitions.INodes, umid: string): Promise<any>;
 }

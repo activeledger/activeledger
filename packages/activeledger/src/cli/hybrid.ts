@@ -23,6 +23,14 @@
 
 import * as fs from "fs";
 import { ActiveOptions, ActiveRequest, Cli } from "@activeledger/activeoptions";
+import {
+  buildChange,
+  HybridChange,
+  keyArgument,
+  signChange,
+  signers,
+  submitChange,
+} from "./hybridChange";
 
 /**
  * `activeledger hybrid list|feeds|ban|unban`. These ask the running node over
@@ -38,11 +46,26 @@ const base = (): string => {
   return `http://${flagHost ? `${flagHost}:${host.split(":").pop()}` : host}`;
 };
 
+const sendChange = async (
+  request: any,
+  show: (data: unknown, text: string) => void,
+  out: { error(t: string): void }
+): Promise<number> => {
+  const errors = await submitChange(request);
+  if (errors.length) {
+    out.error(`not applied: ${errors.join("; ")}`);
+    return Cli.ExitCode.FAIL;
+  }
+  show({ ok: true }, "applied to the ledger");
+  return Cli.ExitCode.OK;
+};
+
 export const hybridCommand = async (
   sub: string | undefined,
   arg: string | undefined,
   json: boolean,
-  out: { log(t: string): void; error(t: string): void } = console
+  out: { log(t: string): void; error(t: string): void } = console,
+  outFile?: string
 ): Promise<number> => {
   const show = (data: unknown, text: string) => out.log(json ? JSON.stringify(data) : text);
   try {
@@ -88,8 +111,46 @@ export const hybridCommand = async (
         show({ ok: true }, `${sub === "ban" ? "banned" : "unbanned"} ${arg}`);
         return Cli.ExitCode.OK;
       }
+      case "allow":
+      case "deny":
+      case "admission":
+      case "min-version": {
+        if (!arg) {
+          out.error(`hybrid ${sub} needs ${sub === "allow" || sub === "deny" ? "a key, key hash or key file" : "a value"}`);
+          return Cli.ExitCode.FAIL;
+        }
+        const change: HybridChange =
+          sub === "allow" ? { allow: [keyArgument(arg)] }
+          : sub === "deny" ? { deny: [keyArgument(arg)] }
+          : sub === "admission" ? { admission: arg as HybridChange["admission"] }
+          : { minVersion: arg };
+        const request = buildChange(change);
+        if (outFile) {
+          fs.writeFileSync(outFile, JSON.stringify(request, null, 2));
+          show({ file: outFile }, `wrote ${outFile}: have the other nodes run 'hybrid sign ${outFile}', then 'hybrid submit ${outFile}'`);
+          return Cli.ExitCode.OK;
+        }
+        return await sendChange(request, show, out);
+      }
+      case "sign": {
+        if (!arg) {
+          out.error("hybrid sign needs the file written by --out");
+          return Cli.ExitCode.FAIL;
+        }
+        const request = signChange(JSON.parse(fs.readFileSync(arg, "utf8")));
+        fs.writeFileSync(arg, JSON.stringify(request, null, 2));
+        show({ signers: signers(request) }, `signed by ${signers(request).join(", ")}`);
+        return Cli.ExitCode.OK;
+      }
+      case "submit": {
+        if (!arg) {
+          out.error("hybrid submit needs the file written by --out");
+          return Cli.ExitCode.FAIL;
+        }
+        return await sendChange(JSON.parse(fs.readFileSync(arg, "utf8")), show, out);
+      }
       default:
-        out.error(`hybrid needs a subcommand: list, feeds, ban <keyhash>, unban <keyhash>`);
+        out.error(`hybrid needs a subcommand: list, feeds, ban <keyhash>, unban <keyhash>, allow <key>, deny <key>, admission <open|allowlist>, min-version <semver>, sign <file>, submit <file>`);
         return Cli.ExitCode.FAIL;
     }
   } catch (e: any) {

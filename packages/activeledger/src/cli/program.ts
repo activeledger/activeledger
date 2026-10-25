@@ -53,7 +53,7 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
   defaultCommand: "start",
   commands: [
     ...Cli.COMMON_COMMANDS,
-    { name: "hybrid", usage: "list|feeds|ban <keyhash>|unban <keyhash>", description: "Manage the hybrids that follow this node" },
+    { name: "hybrid", usage: "list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
   ],
   flags: [
     ...Cli.COMMON_FLAGS.map((f) =>
@@ -82,6 +82,7 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     { name: "setup-only", description: "Run setup then exit", group: "Setup" },
     { name: "db-only", description: "Start only the database", group: "Setup" },
     { name: "disable-autostart", description: "Do not start the helper processes", group: "Setup" },
+    { name: "out", arg: "<file>", description: "hybrid allow|deny|admission|min-version: write the signed change to a file instead of sending it", group: "Hybrid" },
     { name: "hybrid-listen", arg: "<port>", description: "Port for the hybrid P2P listener", group: "Hybrid" },
     { name: "hybrid-max-feeds", arg: "<n>", description: "Most hybrid feeds served at once (default 32)", group: "Hybrid" },
     { name: "hybridMaxFeeds", hidden: true, description: "Config key for hybrid-max-feeds" },

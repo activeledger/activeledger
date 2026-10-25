@@ -325,12 +325,12 @@ export class HttpUpstream implements Upstream {
     return { ...b, required: Array.isArray(b.required) ? b.required : [] } as IBootstrap;
   }
 
-  public async head(): Promise<{ cursor: string; time: number }> {
+  public async head(): Promise<{ cursor: string; time: number; minVersion?: string }> {
     const h = await this.request("GET", "/h/head");
     if (!isObject(h) || typeof h.cursor !== "string" || typeof h.time !== "number") {
       throw new UpstreamError(`${this.id} GET /h/head: malformed response`, "protocol");
     }
-    return { cursor: h.cursor, time: h.time };
+    return { cursor: h.cursor, time: h.time, minVersion: typeof h.minVersion === "string" ? h.minVersion : undefined };
   }
 
   public async streams(
@@ -367,7 +367,7 @@ export class HttpUpstream implements Upstream {
     cursor: string,
     onItem: (cursor: string, item: ActiveDefinitions.IFeedItem) => Promise<void>,
     signal: AbortSignal,
-    onHeartbeat?: (head: string, time: number) => void
+    onHeartbeat?: (head: string, time: number, minVersion?: string) => void
   ): Promise<void> {
     if (signal.aborted) return;
     const what = "GET /h/feed";
@@ -435,7 +435,7 @@ export class HttpUpstream implements Upstream {
             if (!isObject(hb) || typeof hb.head !== "string" || typeof hb.time !== "number") {
               throw new UpstreamError(`${this.id} ${what}: malformed heartbeat`, "protocol");
             }
-            onHeartbeat?.(hb.head, hb.time);
+            onHeartbeat?.(hb.head, hb.time, typeof hb.minVersion === "string" ? hb.minVersion : undefined);
           } else if (ev.event === "message") {
             if (!ev.id) {
               throw new UpstreamError(`${this.id} ${what}: item without a cursor id`, "protocol");

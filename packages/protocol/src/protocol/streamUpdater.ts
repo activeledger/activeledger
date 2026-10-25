@@ -161,6 +161,9 @@ export class StreamUpdater {
         this.entry.$territoriality,
         this.entry.$umid
       );
+      if (this.virtualMachine.takeReloadRequest(this.entry.$umid)) {
+        this.emitter.emit("reload");
+      }
 
       // Update in communication (Recommended pre commit only but can be edge use cases)
       this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
@@ -556,6 +559,9 @@ export class StreamUpdater {
         this.entry.$territoriality,
         this.entry.$umid
       );
+      if (this.virtualMachine.takeReloadRequest(this.entry.$umid)) {
+        this.emitter.emit("reload");
+      }
 
       // Update in communication (Recommended pre commit only but can be edge use cases)
       this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(

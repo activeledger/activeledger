@@ -86,7 +86,7 @@ export const startHybridP2P = async (
     };
 
     conn.handle("bootstrap", guard(() => api.bootstrap()));
-    conn.handle("head", guard(async () => ({ cursor: await api.head(), time: Date.now() })));
+    conn.handle("head", guard(async () => ({ cursor: await api.head(), time: Date.now(), minVersion: api.minVersion() })));
     conn.handle("streams", guard((p) => {
       if (!Array.isArray(p) || p.some((r) => typeof r?.id !== "string")) throw new Error("expected [{id, rev?}]");
       return api.streams(p);

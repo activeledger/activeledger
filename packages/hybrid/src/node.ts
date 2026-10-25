@@ -28,7 +28,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { openEmbeddedStorage } from "@activeledger/activestorage";
 import { IHybridConfig } from "@activeledger/activedefinitions/lib/definitions";
 import { HybridServer } from "./api";
-import { BootstrapError, bootstrapNode, requiredIds, resumeCursor, saveCursor } from "./bootstrap";
+import { BootstrapError, bootstrapNode, isOutdated, requiredIds, resumeCursor, saveCursor } from "./bootstrap";
 import { EventLog } from "./events";
 import { FeedManager, cursorKey } from "./feed";
 import { HttpUpstream, HybridIdentity, loadIdentity } from "./http-upstream";
@@ -89,6 +89,7 @@ export class HybridNode {
   private networkId = "";
   private volatile = new Set<string>();
   private headSeen = "";
+  private startedOutdated = false;
 
   constructor(private readonly options: HybridNodeOptions) {
     this.state = {
@@ -209,7 +210,10 @@ export class HybridNode {
           .filter((r: any) => typeof r !== "string" && r?.volatile)
           .map((r: any) => r.id)
       );
-      if (result.outdated) this.state.reason = "outdated";
+      if (result.outdated) {
+        this.state.reason = "outdated";
+        this.startedOutdated = true;
+      }
       return result;
     });
 
@@ -238,6 +242,7 @@ export class HybridNode {
       state: this.state,
       apply: (item, from) => orderer.submit(item, from),
       saveCursor: (c) => saveCursor(store, c),
+      onMinVersion: (v) => this.minVersionSeen(v),
       onOutcome: (o) => {
         const line = `${o.umid.slice(0, 12)} ${o.action} (${o.vote})${o.reasons.length ? ": " + o.reasons.join("; ") : ""}`;
         // Anything but a clean save is worth reading; the rest is background
@@ -265,6 +270,33 @@ export class HybridNode {
         this.state.reason = undefined;
       }
     });
+  }
+
+  /**
+   * A heartbeat named a `minVersion`. A raised one that leaves this release
+   * below it stops the node applying items, as at start-up. One lowered
+   * again lets it resume, unless it was outdated from the start and so never
+   * pulled the streams it needs, which takes a restart.
+   */
+  private minVersionSeen(minVersion: string): void {
+    if (minVersion === this.state.minVersion || !/^\d+\.\d+\.\d+/.test(minVersion)) return;
+    this.state.minVersion = minVersion;
+    const outdated = isOutdated(this.options.version, minVersion);
+    if (outdated && this.state.reason !== "outdated") {
+      this.state.reason = "outdated";
+      this.state.ready = false;
+      ActiveLogger.warn(
+        `This release (${this.options.version}) is below the network minimum (${minVersion}); not applying items`
+      );
+    } else if (!outdated && this.state.reason === "outdated") {
+      if (this.startedOutdated) {
+        ActiveLogger.warn(`The network minimum is now ${minVersion}; restart to resume`);
+        return;
+      }
+      this.state.reason = undefined;
+      this.state.ready = true;
+      ActiveLogger.info(`The network minimum is now ${minVersion}; applying items again`);
+    }
   }
 
   /** Follow the feed until the head is confirmed (or the allowed lag is reached) */

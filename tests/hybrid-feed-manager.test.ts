@@ -74,6 +74,28 @@ describe("FeedManager", () => {
     expect(st.cursor).to.equal("umid:2,u2");
   });
 
+  it("passes the minVersion a heartbeat names on", async () => {
+    const up = fake("a", [async ({ onBeat }) => { onBeat("", 1, "6.0.0"); onBeat("", 2); }]);
+    const seen: string[] = [];
+    const { m } = make([up], { onMinVersion: (v: string) => seen.push(v) });
+    m.start("");
+    await until(() => seen.length > 0);
+    await m.stop();
+    expect(seen).to.deep.equal(["6.0.0"]);
+  });
+
+  it("asks for the head while outdated, so a lowered minimum is seen", async () => {
+    const up = fake("a", []);
+    up.head = async () => ({ cursor: "", time: 1, minVersion: "5.0.0" });
+    const seen: string[] = [];
+    const { m, st } = make([up], { onMinVersion: (v: string) => seen.push(v), outdatedPauseMs: 1 });
+    st.reason = "outdated";
+    m.start("");
+    await until(() => seen.length > 0);
+    await m.stop();
+    expect(seen[0]).to.equal("5.0.0");
+  });
+
   it("resumes from its cursor after the upstream ends the stream", async () => {
     const up = fake("a", [async ({ onItem }) => { await onItem("umid:1,u1", { umid: "u1" }); }, async () => undefined]);
     const { m, applied } = make([up]);

@@ -44,7 +44,7 @@ export interface IBootstrap {
 export interface Upstream {
   readonly id: string;
   bootstrap(): Promise<IBootstrap>;
-  head(): Promise<{ cursor: string; time: number }>;
+  head(): Promise<{ cursor: string; time: number; minVersion?: string }>;
   /**
    * Stream feed items after `cursor`. `onItem` is awaited before the next
    * item is read. Resolves when the upstream ends the stream or `signal`
@@ -54,7 +54,7 @@ export interface Upstream {
     cursor: string,
     onItem: (cursor: string, item: ActiveDefinitions.IFeedItem) => Promise<void>,
     signal: AbortSignal,
-    onHeartbeat?: (head: string, time: number) => void
+    onHeartbeat?: (head: string, time: number, minVersion?: string) => void
   ): Promise<void>;
   streams(
     reqs: { id: string; rev?: string }[]

@@ -170,6 +170,11 @@ export class HybridApi {
     return !!hybrid && !hybrid.retired;
   }
 
+  /** The on-ledger `hybrid.minVersion`, sent with heartbeats so a running hybrid learns a raised one */
+  public minVersion(): string | undefined {
+    return this.deps.ledgerConfig().minVersion;
+  }
+
   /** `GET /h/bootstrap` */
   public async bootstrap(): Promise<any> {
     const cfg = this.deps.ledgerConfig();

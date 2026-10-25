@@ -176,6 +176,53 @@ async function main(): Promise<boolean> {
     });
     check(refused.$hybrid === "denied", "a contract deploy is denied by the hybrid");
 
+    report.phase("Changing the hybrid rules on the ledger");
+    // More than half of the nodes sign: node 0 builds and signs, node 1 adds
+    // its signature, node 0 submits
+    const setupId = JSON.parse(fs.readFileSync(path.join(nodes[0].dataDir, "config.json"), "utf8")).network.split("@")[0];
+    const change = async (args: string[], label: string) => {
+      const file = path.join(hybridDir, `change-${label}.json`);
+      const built = await run(LEDGER, ["hybrid", ...args, "--out", file], nodes[0].dataDir, 30000);
+      const signed = await run(LEDGER, ["hybrid", "sign", file], nodes[1].dataDir, 30000);
+      const sent = await run(LEDGER, ["hybrid", "submit", file], nodes[0].dataDir, 30000);
+      return check(built.code === 0 && signed.code === 0 && sent.code === 0, `${label}: ${sent.out.trim().split("\n").pop()}`);
+    };
+    const section = async () => {
+      const setup = await storageGet(nodes[0].storageUrl, setupId);
+      return setup.hybrid;
+    };
+
+    await change(["min-version", "99.0.0"], "raise minVersion");
+    await until("the running hybrid to go outdated", async () => {
+      const h = await health();
+      return h?.reason === "outdated" ? true : undefined;
+    }, 45000);
+    check((await health()).ready === false, "a raised minVersion reaches the running hybrid: not ready, outdated");
+    await change(["min-version", "5.0.0"], "lower minVersion");
+    await until("the running hybrid to resume", async () => {
+      const h = await health();
+      return h?.ready ? true : undefined;
+    }, 45000);
+    report.ok("lowering it lets the hybrid resume without a restart");
+
+    const second = fs.mkdtempSync(path.join(os.tmpdir(), "activehybrid-test2-"));
+    await run(HYBRID, ["init", "--upstream", `127.0.0.1:${nodes[0].port}`, "--port", String(HYBRID_PORT + 1)], second);
+    const secondKey = JSON.parse(fs.readFileSync(path.join(second, ".identity"), "utf8")).pub.pkcs8pem;
+    const secondHash = ActiveCrypto.keyHash(secondKey);
+    const secondRegister = () => run(HYBRID, ["register", "--endpoint", `http://127.0.0.1:${HYBRID_PORT + 1}`], second);
+
+    await change(["admission", "allowlist"], "admission allowlist");
+    check((await section()).admission?.allowlist?.length === 0, "the allowlist is empty");
+    check((await secondRegister()).code !== 0, "an unlisted key can no longer register");
+    await change(["allow", secondHash], "allow");
+    check((await section()).admission?.allowlist?.includes(secondHash), "the key is on the ledger's allowlist");
+    const allowed = await secondRegister();
+    check(allowed.code === 0, `an allowed key registers: ${allowed.out.trim().split("\n").pop()}`);
+    await change(["deny", secondHash], "deny");
+    check(!(await section()).admission?.allowlist?.includes(secondHash), "deny takes it off again");
+    await change(["admission", "open"], "admission open");
+    check((await section()).admission === "open", "admission is open again");
+
     report.phase("Status, stop and resume");
     const status = await run(HYBRID, ["status"], hybridDir);
     check(status.code === 0, `status: ${status.out.trim()}`);
@@ -195,12 +242,18 @@ async function main(): Promise<boolean> {
     report.fail(`aborted: ${(e as Error).message}`);
     try {
       console.log("health:", JSON.stringify(await health()));
+      try {
+        const cfgNow = JSON.parse(fs.readFileSync(path.join(harness.nodes[0].dataDir, "config.json"), "utf8"));
+        console.log("node 0 config.network:", cfgNow.network, JSON.stringify((await storageGet(harness.nodes[0].storageUrl, String(cfgNow.network).split("@")[0])).hybrid));
+      } catch (x) {
+        console.log("setup read failed:", (x as Error).message);
+      }
       const { HttpUpstream, loadIdentity } = await import("../../packages/hybrid/src/http-upstream");
       const up = new HttpUpstream({ host: "127.0.0.1", port: 5610, identity: loadIdentity(path.join(hybridDir, ".identity")) });
       console.log("head:", JSON.stringify(await up.head()));
       const ac = new AbortController();
       setTimeout(() => ac.abort(), 4000);
-      await up.feed("", async (c, item) => void console.log("feed item", c, item.outcome), ac.signal, (h, t) => console.log("heartbeat", h, t)).catch((x) => console.log("feed error:", x.message));
+      await up.feed("", async (c, item) => void console.log("feed item", c, item.outcome), ac.signal, (h, t, m) => console.log("heartbeat", h, t, "minVersion", m)).catch((x) => console.log("feed error:", x.message));
     } catch (x) {
       console.log("diagnostics failed:", (x as Error).message);
     }

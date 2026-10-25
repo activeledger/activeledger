@@ -58,7 +58,9 @@ if (cli.command === "hybrid") {
   hybridCommand(
     cli.positionals[1],
     cli.positionals[2],
-    !!cli.flags.json
+    !!cli.flags.json,
+    console,
+    cli.flags.out as string | undefined
   ).then((code) => process.exit(code));
 }
 if (cli.command === "status") {

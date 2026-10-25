@@ -50,6 +50,8 @@ export interface FeedManagerOptions {
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   /** Told about each outcome, e.g. to relay on a yes vote later */
   onOutcome?: (outcome: ApplyOutcome, cursor: string) => void;
+  /** The `minVersion` a heartbeat named, so a raised one is seen without a restart */
+  onMinVersion?: (minVersion: string) => void;
 }
 
 const defaultSleep = (ms: number, signal: AbortSignal) =>
@@ -124,6 +126,15 @@ export class FeedManager {
 
     while (!signal.aborted) {
       if (this.options.state.reason === "outdated") {
+        // No feed is open to carry a heartbeat, so ask: a lowered minimum
+        // must be seen to resume
+        for (const upstream of this.options.upstreams) {
+          const head = await (async () => upstream.head())().catch(() => undefined);
+          if (head?.minVersion) {
+            this.options.onMinVersion?.(head.minVersion);
+            break;
+          }
+        }
         await sleep(this.options.outdatedPauseMs ?? 5000, signal);
         continue;
       }
@@ -146,9 +157,10 @@ export class FeedManager {
               if (atOrPast(cursor, this.headSeen)) this.options.state.headConfirmedAt = this.now();
             },
             signal,
-            (head) => {
+            (head, _time, minVersion) => {
               this.mark(upstream, true);
               this.confirm(head);
+              if (minVersion) this.options.onMinVersion?.(minVersion);
             }
           );
           if (signal.aborted) return;

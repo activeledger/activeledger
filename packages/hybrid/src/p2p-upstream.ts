@@ -237,12 +237,12 @@ export class P2PUpstream implements Upstream {
     return { ...b, required: Array.isArray(b.required) ? b.required : [] } as IBootstrap;
   }
 
-  public async head(): Promise<{ cursor: string; time: number }> {
+  public async head(): Promise<{ cursor: string; time: number; minVersion?: string }> {
     const h = await this.call("head", {});
     if (typeof h?.cursor !== "string" || typeof h?.time !== "number") {
       throw new UpstreamError(`${this.id} head: malformed response`, "protocol");
     }
-    return { cursor: h.cursor, time: h.time };
+    return { cursor: h.cursor, time: h.time, minVersion: typeof h.minVersion === "string" ? h.minVersion : undefined };
   }
 
   public async streams(reqs: { id: string; rev?: string }[]) {
@@ -275,7 +275,7 @@ export class P2PUpstream implements Upstream {
     cursor: string,
     onItem: (cursor: string, item: ActiveDefinitions.IFeedItem) => Promise<void>,
     signal: AbortSignal,
-    onHeartbeat?: (head: string, time: number) => void
+    onHeartbeat?: (head: string, time: number, minVersion?: string) => void
   ): Promise<void> {
     if (signal.aborted) return;
     if (!this.verified) {
@@ -332,7 +332,7 @@ export class P2PUpstream implements Upstream {
         switch (m?.type) {
           case "heartbeat":
             if (typeof m.head !== "string" || typeof m.time !== "number") return fail("malformed heartbeat", "protocol");
-            return queue(() => onHeartbeat?.(m.head, m.time));
+            return queue(() => onHeartbeat?.(m.head, m.time, typeof m.minVersion === "string" ? m.minVersion : undefined));
           case "item":
             if (typeof m.cursor !== "string" || !m.cursor || !m.item || typeof m.item !== "object") {
               return fail("malformed item", "protocol");

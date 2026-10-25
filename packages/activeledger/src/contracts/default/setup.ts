@@ -123,6 +123,9 @@ export default class Setup extends PostProcess {
         case "revoke":
           this.revokeNamespaceVerify(selfsigned, resolve, reject);
           break;
+        case "hybrid":
+          this.hybridVerify(selfsigned, resolve, reject);
+          break;
         default:
           reject("unknown entry");
           break;
@@ -153,6 +156,9 @@ export default class Setup extends PostProcess {
         case "revoke":
           this.revokeNamespaceVote(resolve, reject);
           break;
+        case "hybrid":
+          this.hybridVote(resolve, reject);
+          break;
         default:
           reject("unknown entry");
           break;
@@ -182,6 +188,9 @@ export default class Setup extends PostProcess {
           break;
         case "revoke":
           this.revokeNamespaceCommit(resolve, reject);
+          break;
+        case "hybrid":
+          this.hybridCommit(resolve, reject);
           break;
         default:
           reject("unknown entry");
@@ -747,6 +756,167 @@ export default class Setup extends PostProcess {
     this.config.network =
       activity.getName() + "@" + (activity as any).state._rev;
     this.updateConfig = true;
+
+    resolve(true);
+  }
+
+  //#endregion
+
+  //#region Change Hybrid Rules
+
+  /**
+   * Apply a change to the hybrid section. Changes are operations rather than
+   * a replacement so two operators cannot overwrite each other:
+   * `{ admission?: "open" | "allowlist", allow?: [key], deny?: [key], minVersion?: semver }`
+   * Keys are public keys or their key hashes.
+   *
+   * @private
+   * @static
+   * @param {*} current The hybrid section now on the ledger
+   * @param {*} change
+   * @returns {{ hybrid?: any; error?: string }}
+   */
+  private static applyHybrid(
+    current: any,
+    change: any
+  ): { hybrid?: any; error?: string } {
+    if (!HybridConfig.isSection(current)) {
+      return { error: "Network has no hybrid section" };
+    }
+    if (
+      !change ||
+      typeof change !== "object" ||
+      Array.isArray(change) ||
+      Object.keys(change).some(
+        (k) => ["admission", "allow", "deny", "minVersion"].indexOf(k) === -1
+      )
+    ) {
+      return { error: "Unknown hybrid change" };
+    }
+    const hybrid = JSON.parse(JSON.stringify(current));
+
+    if (change.admission !== undefined) {
+      if (change.admission === "open") {
+        hybrid.admission = "open";
+      } else if (change.admission === "allowlist") {
+        // Opening an allowlist keeps what is already on it
+        if (hybrid.admission === "open") hybrid.admission = { allowlist: [] };
+      } else {
+        return { error: 'admission must be "open" or "allowlist"' };
+      }
+    }
+
+    const keys = (value: any): string[] | null =>
+      Array.isArray(value) &&
+      value.every((k: any) => typeof k === "string" && k.length > 0)
+        ? value
+        : null;
+
+    for (const op of ["allow", "deny"]) {
+      if (change[op] === undefined) continue;
+      const list = keys(change[op]);
+      if (!list) return { error: `${op} must be a list of keys` };
+      if (hybrid.admission === "open") {
+        return { error: `Admission is open, there is no allowlist to ${op}` };
+      }
+      const hashed = (k: string) =>
+        k.indexOf("-----") === -1 ? k : ActiveCrypto.keyHash(k);
+      const entries: string[] = hybrid.admission.allowlist;
+      if (op === "allow") {
+        const held = entries.map(hashed);
+        for (const key of list) {
+          if (held.indexOf(hashed(key)) === -1) entries.push(key);
+        }
+      } else {
+        const gone = list.map(hashed);
+        hybrid.admission.allowlist = entries.filter(
+          (e) => gone.indexOf(hashed(e)) === -1
+        );
+      }
+    }
+
+    if (change.minVersion !== undefined) hybrid.minVersion = change.minVersion;
+
+    const invalid = HybridConfig.validate(hybrid);
+    return invalid ? { error: invalid } : { hybrid };
+  }
+
+  /**
+   * The same shape check as the other majority-signed entries
+   *
+   * @param {boolean} selfsigned
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   */
+  public hybridVerify(
+    selfsigned: boolean,
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    if (!selfsigned) return reject("Must be self signed");
+    if (ActiveOptions.get<number>("build", 0) < Setup.HYBRID_BUILD) {
+      return reject("Hybrid changes need build " + Setup.HYBRID_BUILD);
+    }
+    if (!this.transactions.$i.suggester?.change) {
+      return reject("Missing Hybrid Change Fields");
+    }
+    // Checked against the stream's own section at commit; here a stand-in
+    // that only tests the change itself
+    const { error } = Setup.applyHybrid(
+      {
+        admission: { allowlist: [] },
+        required: [],
+        window: { days: 1 },
+        minVersion: "0.0.0",
+      },
+      this.transactions.$i.suggester.change
+    );
+    error ? reject(error) : resolve(true);
+  }
+
+  /**
+   * A majority of the nodes must have signed
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   */
+  public hybridVote(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    this.verifySelfSignedTx()
+      ? resolve(true)
+      : reject("Host node signature problem");
+  }
+
+  /**
+   * Put the changed section into the setup stream
+   *
+   * @param {((value?: boolean | PromiseLike<boolean> | undefined) => void)} resolve
+   * @param {(reason?: any) => void} reject
+   */
+  public hybridCommit(
+    resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
+    reject: (reason?: any) => void
+  ): void {
+    const stream = Object.keys(this.transactions.$o)[0];
+    const activity = this.getActivityStreams(stream);
+    const network = activity.getState();
+
+    const { hybrid, error } = Setup.applyHybrid(
+      network.hybrid,
+      this.transactions.$i.suggester.change
+    );
+    if (error) return reject(error);
+    network.hybrid = hybrid;
+    activity.setState(network);
+
+    this.reloadConfig = true;
+    this.config.network =
+      activity.getName() + "@" + (activity as any).state._rev;
+    this.updateConfig = true;
+    // Like assert: the section lives on the ledger, not in the config file
+    this.assertedHybrid = true;
 
     resolve(true);
   }
