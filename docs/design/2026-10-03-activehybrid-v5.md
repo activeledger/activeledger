@@ -618,8 +618,7 @@ but not exercised on a live network, or not built:
 
 ### Review findings (branch review, 2026-10-25)
 
-Found by the review of `feat/shared-cli-layer` and not yet fixed. Fixed in the
-branch already: restore's threshold failing open, the feed retry loop's
+Found by the review of `feat/shared-cli-layer`. Fixed in the branch already: restore's threshold failing open, the feed retry loop's
 lifecycle, and the outcome logger on an item without a `umid`.
 
 Supernode feed (`hybridApi.ts`, `hybridRoutes.ts`):
@@ -637,9 +636,10 @@ Supernode feed (`hybridApi.ts`, `hybridRoutes.ts`):
 
 CLI and gateway:
 
-- `CONFIG_KEYS` in `cli/program.ts` omits keys the code still reads
-  (`p2pStream`, `p2pStreamServer`, `gzip`, `max_memory`, `queue_retry`,
-  `nanoGateway`, `path`, `full`), so those flags now exit 1 as unknown.
+- Fixed: `CONFIG_KEYS` in `cli/program.ts` omitted `p2pStream`,
+  `p2pStreamServer`, `gzip`, `max_memory`, `queue_retry` and `nanoGateway`, so
+  those flags exited 1 as unknown. (`path` and `full` belong to the separate
+  `activerestore` binary.)
 - nano-gateway `auth.ts` verifies the signature over `Number(timestamp)`, not
   the header string, so a timestamp that does not round-trip fails.
 
@@ -661,3 +661,12 @@ Engine items from Varnir (read-only until confirmed, nothing changed):
 - Make a contract update mark the previous version superseded atomically, with
   an opt-in for exact-version calls.
 - `sortVersions` was reported to order `@9` above `@10`; checked, it does not.
+
+### Other open items
+
+- `hybrid.maxFeeds` is read from `hybridMaxFeeds` / `--hybrid-max-feeds`, not
+  from the ledger's `hybrid` section.
+- The in-contract reserved-name check can be bypassed by code that tampers with
+  Stream objects.
+- Restore's whole-ledger loop is not extracted into `activesync`; only the
+  per-stream majority tally is shared.
