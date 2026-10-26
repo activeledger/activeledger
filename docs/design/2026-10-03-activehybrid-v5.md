@@ -665,6 +665,11 @@ Engine items from Varnir:
 
 ### Other open items
 
+- Docs: `docs/en-gb/hybrid.md`, `cli.md`, `restore.md`, the contract `upgrade.md` (locks)
+  and `configuration.md` (`build`, `hybrid`) are written for 5.1.0, and
+  `packages/hybrid/README.md` is rewritten. `docs/zh-cn` is not updated; the
+  full documentation rewrite and example contracts are the next task.
+
 - `hybrid.maxFeeds` is read from `hybridMaxFeeds` / `--hybrid-max-feeds`, not
   from the ledger's `hybrid` section.
 - The in-contract reserved-name check can be bypassed by code that tampers with

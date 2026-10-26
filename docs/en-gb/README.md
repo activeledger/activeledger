@@ -12,6 +12,8 @@ Activeledger is a protocol for distributed ledger technology (DLT). Activeledger
 * protocol - Underlying protocol which handles consensus and the smart contract virtual machine.
 * query - Wrapper to enable querying of the ledger data. ⚠️Deprecated⚠️
 * [restore](restore.md) - Handles the network healing and rebuilding from an empty node.*
+* [hybrid](hybrid.md) - A light node which follows the network from its supernodes, verifies everything it is sent and serves its own API.
+* [command line](cli.md) - The commands, flags and exit codes shared by activeledger and activehybrid.
 
 \* These are 3 individual applications to run. Only Activeledger is required but the other 2 are recommended. The reason they have been separated is to give deployment control for performance and cost.
 
