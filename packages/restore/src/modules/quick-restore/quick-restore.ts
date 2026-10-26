@@ -83,9 +83,16 @@ export class QuickRestore {
       const streamInformation: IStreamInformation[] = await this.processRebuildPromises(
         promises
       );
+      const needed = Helper.votesNeeded();
+      if (!Number.isFinite(needed)) {
+        // Nothing can be a majority without it, so say why nothing happens
+        ActiveLogger.error(
+          "consensus.reached is not set in the config file, so no revision can be a majority and nothing will be restored"
+        );
+      }
       const consensusData: IConsensusData[] = Helper.majority(
         streamInformation,
-        Helper.votesNeeded()
+        needed
       );
       await this.fetchDocuments(consensusData);
       const duration = Date.now() - startTime;
@@ -93,7 +100,9 @@ export class QuickRestore {
     } catch (error) {
       ActiveLogger.error(
         error,
-        "There was an error running quick full restore"
+        `There was an error running quick full restore: ${
+          (error as Error)?.message ?? JSON.stringify(error)
+        }`
       );
     }
   }
@@ -246,7 +255,10 @@ export class QuickRestore {
    * @returns {Promise<INetworkData>}
    */
   private async handleNetworkData(activityData: any): Promise<INetworkData> {
-    const hasNotErrored = (data: IBaseData) => (!data.error);
+    // A node that does not hold the stream answers with an empty array (or
+    // nothing), which has no document in it to adopt
+    const hasNotErrored = (data: IBaseData) =>
+      !!data && typeof data._id === "string" && !data.error;
 
     const isNotStreamOrUmid = (data: IBaseData) =>
       data._id.indexOf(":stream") === -1 &&

@@ -88,6 +88,16 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   (one vote per node per stream), and leaves a stream alone when no revision
   reaches the consensus threshold.
 
+* **`activerestore --full` against the embedded store** : it could not restore
+  anything. `/a/all` read each stream's revision from a CouchDB-shaped row the
+  embedded store did not give, so every node answered with an error and restore
+  tried to read the error text as streams; the embedded store's rows now carry
+  `value.rev`. A node that did not hold a stream and answered with an empty
+  array also stopped the restore, and is now skipped. Restore says so, in its
+  log, when `consensus.reached` is not set in its `config.json` (it then has
+  no majority to take and restores nothing), and includes the reason when it
+  fails.
+
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose
   streams have already moved on is marked superseded rather than re-run.

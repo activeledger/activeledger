@@ -10,6 +10,8 @@ To run a full rebuild you run restore with the --full flag. This can be along ru
 
 ## Which Copy Wins
 
+Restore reads `consensus.reached` from the `config.json` in the directory it runs from. Without it there is no majority to take and a full restore restores nothing; it logs an error saying so.
+
 Restore asks every neighbour for each stream it holds and keeps the revision most of them agree on. It counts votes the way the transaction-time repair (SPI) does:
 
 * one vote per node per stream;

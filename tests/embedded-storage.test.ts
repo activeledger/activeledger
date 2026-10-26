@@ -103,6 +103,14 @@ describe("EmbeddedDSConnect (Activestorage)", () => {
       expect(all.rows.map((r: any) => r.id)).to.deep.equal(["a", "b", "c"]);
     });
 
+    it("allDocs rows carry the revision the way CouchDB's do, which /a/all reads", async () => {
+      await db.bulkDocs([{ _id: "a" }], { new_edits: true });
+      const { _rev } = await db.get("a");
+      const all = await db.allDocs();
+      expect(all.rows[0].value).to.deep.equal({ rev: _rev });
+      expect(_rev).to.be.a("string");
+    });
+
     it("purge removes the document", async () => {
       await db.post({ _id: "s1", value: 1 });
       expect(await db.purge({ _id: "s1" })).to.deep.equal({ success: "ok" });

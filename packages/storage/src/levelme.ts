@@ -389,6 +389,9 @@ export class LevelMe {
                     _id: doc._id, // Compatibility Trick
                     id: doc._id,
                     key: doc._id,
+                    // CouchDB's row shape, which /a/all (and so activerestore)
+                    // reads the revision from
+                    value: { rev: doc._rev },
                   };
                 }
               })
