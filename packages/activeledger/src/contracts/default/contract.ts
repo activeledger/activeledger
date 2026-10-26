@@ -485,7 +485,18 @@ export default class Contract extends Standard {
     if (outputs.length !== 1 || outputs[0].toLowerCase() !== this.contract) {
       throw new Error("A lock output must be the contract stream");
     }
-    return this.getActivityStreams(outputs[0]);
+    // It has to be this namespace's own contract: the identity is checked
+    // against the namespace, so nothing else may be recorded on or unlocked
+    const out = this.getActivityStreams(outputs[0]);
+    const held = out.getState();
+    if (
+      !held ||
+      !held.contract ||
+      String(held.namespace || "").toLowerCase() !== this.namespace
+    ) {
+      throw new Error("A lock output must be a contract in the namespace");
+    }
+    return out;
   }
 
   /** Is this lock held, by its file or by what the contract stream recorded */

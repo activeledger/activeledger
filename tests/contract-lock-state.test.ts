@@ -46,12 +46,23 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
     lockHeld: proto.lockHeld,
     getActivityStreams: () => ({ getState: () => st, setState: (n: any) => Object.assign(st, n) }),
   });
+  const own = (more: any = {}) => ({ namespace: "testns", contract: {}, ...more });
   const run = (fn: string, ctx: any) =>
     new Promise<boolean>((resolve, reject) => proto[fn].call(ctx, resolve, reject));
   const files = () => fs.readdirSync("contracts/testns").filter((f) => f.startsWith("_LOCK.")).sort();
 
+  it("a contract of another namespace cannot be locked or unlocked through its state", async () => {
+    const st: any = { namespace: "other", contract: {}, locks: { versions: ["1.0.0"] } };
+    for (const fn of ["voteLock", "voteUnlock"]) {
+      let err: any;
+      await run(fn, context(st, "1.0.0")).catch((e) => (err = e));
+      expect(err, fn).to.contain("in the namespace");
+    }
+    expect(st.locks).to.deep.equal({ versions: ["1.0.0"] });
+  });
+
   it("a lock and an unlock of one version are written to the state and removed from it", async () => {
-    const st: any = {};
+    const st: any = own();
     expect(await run("voteLock", context(st, "1.0.0"))).to.equal(true);
     await run("commitLock", context(st, "1.0.0"));
     expect(st.locks).to.deep.equal({ versions: ["1.0.0"] });
@@ -62,7 +73,7 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
   });
 
   it("the global lock is recorded as all", async () => {
-    const st: any = {};
+    const st: any = own();
     await run("commitLock", context(st));
     expect(st.locks).to.deep.equal({ all: true, versions: [] });
     await run("commitLock", context(st, "1.0.0"));
@@ -71,7 +82,7 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
   });
 
   it("a node that lost the file still sees the lock as held, and can unlock it", async () => {
-    const st: any = { locks: { versions: ["1.0.0"] } };
+    const st: any = own({ locks: { versions: ["1.0.0"] } });
     let err: any;
     await run("voteLock", context(st, "1.0.0")).catch((e) => (err = e));
     expect(err).to.equal("Lock already exists");
@@ -81,7 +92,7 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
   });
 
   it("without an output the lock is files only, as before", async () => {
-    const st: any = {};
+    const st: any = own();
     await run("commitLock", context(st, "1.0.0", {}));
     expect(st.locks).to.equal(undefined);
     expect(files()).to.deep.equal([`_LOCK.${stream}@1.0.0`]);
@@ -89,14 +100,14 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
 
   it("an output that is not the contract is refused", async () => {
     let err: any;
-    await run("voteLock", context({}, "1.0.0", { [("d").repeat(64)]: {} })).catch((e) => (err = e));
+    await run("voteLock", context(own(), "1.0.0", { [("d").repeat(64)]: {} })).catch((e) => (err = e));
     expect(err).to.contain("contract stream");
   });
 
   it("nothing is recorded below the build that every node honours it from", async () => {
     ActiveOptions.set("build", 40200);
     try {
-      const st: any = {};
+      const st: any = own();
       await run("commitLock", context(st, "1.0.0"));
       expect(st.locks).to.equal(undefined);
     } finally {
@@ -112,5 +123,12 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
       locks: { all: true, versions: ["1.0.0", "1.1.0"] },
     });
     expect(files()).to.deep.equal([`_LOCK.${stream}`, `_LOCK.${stream}@1.0.0`, `_LOCK.${stream}@1.1.0`]);
+  });
+
+  it("restore ignores locks that are not in the shape written", async () => {
+    for (const locks of [{ versions: "1.0.0" }, { all: "yes", versions: [1, null, "../x"] }, "all", 7]) {
+      await RestoreContract.rebuild({ _id: stream, namespace: "testns", contract: {}, locks });
+      expect(files(), JSON.stringify(locks)).to.deep.equal([]);
+    }
   });
 });
