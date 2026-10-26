@@ -150,6 +150,7 @@ Read endpoints are served from the hybrid's own copy. They can trail the superno
 * The transaction must set `$tx.$expire`. Without it the `$umid` would depend on the supernode's clock and a resend could not be recognised.
 * Contract deploys, namespace claims, and `default/setup`, `default/fund` and (while `refuseOnboard`) `default/onboard` transactions are refused, as are contracts not in `submit.contracts`. Supernodes enforce their own rules whatever the hybrid allows.
 * An answer the hybrid made itself carries `$hybrid`: `refused` (the local vote was no), `denied` (not allowed through a hybrid), `unavailable` (no supernode reachable) or `unanswered` (forwarded, but no answer in time; the body has the `$umid`). An answer with no `$hybrid` field came from a supernode.
+* A transaction pinned to a locked contract version (`<id>@=<version>`) is refused by the hybrid's own vote, as a `refused` answer with the supernodes' reason, and a lock or unlock is followed by the hybrid like any other change to the contract stream.
 * The hybrid never resends. After `unanswered`, look the `$umid` up before sending again. A resend is safe either way: before `$expire` it is a duplicate, and after it the ledger rejects it.
 
 ## Writing contracts for hybrids

@@ -14,7 +14,7 @@ import { ChildProcess, spawn } from "child_process";
 import { NetworkHarness } from "./harness";
 import { requestJson, storageGet, submit } from "./http";
 import { Report } from "./report";
-import { onboard, registerNamespace, deployContract, runContract } from "./actions";
+import { onboard, registerNamespace, deployContract, runContract, lockContract } from "./actions";
 import { ActiveCrypto } from "../../packages/crypto/src";
 
 const LEDGER = path.resolve(__dirname, "../../packages/activeledger/lib/index.js");
@@ -175,6 +175,38 @@ async function main(): Promise<boolean> {
       $sigs: {},
     });
     check(refused.$hybrid === "denied", "a contract deploy is denied by the hybrid");
+
+    report.phase("A locked contract version");
+    const lockedTx = await lockContract(nodes[0].baseUrl, identity, "hybridtest", contractId, "0.0.1");
+    check(!lockedTx.$summary?.errors, "the lock committed on the supernodes");
+    await until("the hybrid to hold the lock", async () => {
+      const r = await requestJson(`http://127.0.0.1:${HYBRID_PORT}/stream/${contractId}`, "GET").catch(() => undefined);
+      return r?.stream?.locks?.versions?.includes("0.0.1") ? true : undefined;
+    }, 30000);
+    await sameStream(contractId, "contract stream with its lock");
+    const pinnedBody = {
+      $namespace: "hybridtest",
+      $contract: `${contractId}@=0.0.1`,
+      $i: { [identity.streamId]: {} },
+      $o: { [identity.streamId]: { message: "locked" } },
+      $expire: new Date(Date.now() + 5 * 60_000).toISOString(),
+    };
+    const pinned = await requestJson(`http://127.0.0.1:${HYBRID_PORT}/`, "POST", {
+      $tx: pinnedBody,
+      $sigs: { [identity.streamId]: identity.keyPair.sign(pinnedBody) },
+    });
+    // The hybrid may refuse it itself or pass it on for a supernode to refuse;
+    // what must never happen is that it commits
+    check(!!pinned.$hybrid || !!pinned.$summary?.errors || pinned.$summary?.commit === 0, `a transaction pinned to the locked version does not commit (${JSON.stringify(pinned).slice(0, 160)})`);
+    const unlocked = await lockContract(nodes[0].baseUrl, identity, "hybridtest", contractId, "0.0.1", "unlock");
+    check(!unlocked.$summary?.errors, "the unlock committed");
+    await until("the hybrid to drop the lock", async () => {
+      const r = await requestJson(`http://127.0.0.1:${HYBRID_PORT}/stream/${contractId}`, "GET").catch(() => undefined);
+      return r?.stream && !r.stream.locks?.versions?.length ? true : undefined;
+    }, 30000);
+    await sameStream(contractId, "contract stream after the unlock");
+    const divAfter = await requestJson(`http://127.0.0.1:${HYBRID_PORT}/divergences`, "GET");
+    check(Array.isArray(divAfter) && divAfter.length === 0, "no divergences from the lock changes");
 
     report.phase("Changing the hybrid rules on the ledger");
     // More than half of the nodes sign: node 0 builds and signs, node 1 adds
