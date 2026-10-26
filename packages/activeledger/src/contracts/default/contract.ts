@@ -450,6 +450,61 @@ export default class Contract extends Standard {
   private static readonly LOCK_BUILD = 40300;
 
   /**
+   * Record locks on the contract stream's state (`locks: { all?, versions }`).
+   * The lock files are a cache each node writes itself; this is what a restore
+   * writes them back from. Returns the state, changed in place.
+   */
+  public static recordLocks(state: any, versions: string[], all = false): any {
+    const locks = state.locks || { versions: [] };
+    if (all) locks.all = true;
+    locks.versions = [...new Set<string>([...(locks.versions || []), ...versions])].sort();
+    state.locks = locks;
+    return state;
+  }
+
+  /** The reverse of recordLocks, for an unlock */
+  public static forgetLock(state: any, version: string): any {
+    const locks = state.locks;
+    if (!locks) return state;
+    if (version === "") delete locks.all;
+    else locks.versions = (locks.versions || []).filter((v: string) => v !== version);
+    if (!locks.all && !locks.versions.length) delete state.locks;
+    return state;
+  }
+
+  /**
+   * The contract stream a lock or unlock records itself on, when the
+   * transaction names it as its only output. A lock without an output is still
+   * honoured, as files only, as it always was. Below LOCK_BUILD nothing is
+   * recorded, so every node commits the same stream state.
+   */
+  private lockOutput(): any | undefined {
+    if (ActiveOptions.get<number>("build", 0) < Contract.LOCK_BUILD) return undefined;
+    const outputs = Object.keys(this.transactions.$o || {});
+    if (!outputs.length) return undefined;
+    if (outputs.length !== 1 || outputs[0].toLowerCase() !== this.contract) {
+      throw new Error("A lock output must be the contract stream");
+    }
+    return this.getActivityStreams(outputs[0]);
+  }
+
+  /** Is this lock held, by its file or by what the contract stream recorded */
+  private lockHeld(out: any | undefined): boolean {
+    if (
+      fs.existsSync(
+        this.rootDir + this.namespace + "/_LOCK." + this.contract + this.version
+      )
+    ) {
+      return true;
+    }
+    const locks = out && out.getState().locks;
+    if (!locks) return false;
+    return this.version === ""
+      ? !!locks.all
+      : (locks.versions || []).includes(this.version.slice(1));
+  }
+
+  /**
    * The versions an update asks to lock: "all" for every other version the
    * contract has, or an array of version names. The version being deployed is
    * never locked by its own update, and an unknown name is an error rather
@@ -1107,19 +1162,15 @@ export default class Contract extends Standard {
           this.rootDir + this.namespace + "/" + this.contract + ".js"
         )
       ) {
-        // Does the Link file not exist!
-        if (
-          !fs.existsSync(
-            this.rootDir +
-              this.namespace +
-              "/_LOCK." +
-              this.contract +
-              this.version
-          )
-        ) {
-          return resolve(true);
-        } else {
-          return reject("Lock already exists");
+        // Is the lock not held yet!
+        try {
+          if (!this.lockHeld(this.lockOutput())) {
+            return resolve(true);
+          } else {
+            return reject("Lock already exists");
+          }
+        } catch (e) {
+          return reject(e.message);
         }
       } else {
         return reject("Contract not found in namespace");
@@ -1165,19 +1216,15 @@ export default class Contract extends Standard {
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
-      // Does the Link file exist!
-      if (
-        fs.existsSync(
-          this.rootDir +
-            this.namespace +
-            "/_LOCK." +
-            this.contract +
-            this.version
-        )
-      ) {
-        return resolve(true);
-      } else {
-        return reject("Lock doesn't exists");
+      // Is the lock held!
+      try {
+        if (this.lockHeld(this.lockOutput())) {
+          return resolve(true);
+        } else {
+          return reject("Lock doesn't exists");
+        }
+      } catch (e) {
+        return reject(e.message);
       }
     }
     return reject("Invalid Namespace");
@@ -1192,12 +1239,22 @@ export default class Contract extends Standard {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    // Create File
-    new ContractFiles(this.rootDir).lock(
-      this.namespace,
-      this.contract,
-      this.version
-    );
+    // Create File (it may already be there, on a node that kept it)
+    const files = new ContractFiles(this.rootDir);
+    if (!files.isLocked(this.namespace, this.contract, this.version)) {
+      files.lock(this.namespace, this.contract, this.version);
+    }
+    // Record it on the contract stream so a restore can write it back
+    const out = this.lockOutput();
+    if (out) {
+      out.setState(
+        Contract.recordLocks(
+          out.getState(),
+          this.version ? [this.version.slice(1)] : [],
+          this.version === ""
+        )
+      );
+    }
     resolve(true);
   }
 
@@ -1210,12 +1267,15 @@ export default class Contract extends Standard {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    // Remove File
-    new ContractFiles(this.rootDir).unlock(
-      this.namespace,
-      this.contract,
-      this.version
-    );
+    // Remove File (a restored node may hold the lock only as state)
+    const files = new ContractFiles(this.rootDir);
+    if (files.isLocked(this.namespace, this.contract, this.version)) {
+      files.unlock(this.namespace, this.contract, this.version);
+    }
+    const out = this.lockOutput();
+    if (out) {
+      out.setState(Contract.forgetLock(out.getState(), this.version ? this.version.slice(1) : ""));
+    }
 
     resolve(true);
   }
@@ -1670,6 +1730,9 @@ export default class Contract extends Standard {
     for (const version of toLock) {
       files.lock(this.namespace, stream.getName(), "@" + version);
     }
+
+    // Recorded with the version, so a restore can lock them again
+    if (toLock.length) Contract.recordLocks(state, toLock);
 
     // Save State
     stream.setState(state);

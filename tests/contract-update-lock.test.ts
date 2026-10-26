@@ -75,6 +75,15 @@ describe("Contract update locks the versions it replaces (Activeledger)", () => 
     expect(locked()).to.deep.equal([`_LOCK.${streamName}@1.0.0`, `_LOCK.${streamName}@1.1.0`]);
   });
 
+  it("records the locks on the contract stream so a restore can write them back", async () => {
+    const st: any = state();
+    await update(context(st, { version: "2.0.0", lock: ["1.1.0", "1.0.0"] }));
+    expect(st.locks).to.deep.equal({ versions: ["1.0.0", "1.1.0"] });
+    const none: any = state();
+    await update(context(none, { version: "2.0.0" }));
+    expect(none.locks).to.equal(undefined);
+  });
+
   it("redeploying an existing version with all keeps that version open", async () => {
     await update(context(state(), { version: "1.2.0", lock: "all" }));
     expect(locked()).to.deep.equal([`_LOCK.${streamName}@1.0.0`, `_LOCK.${streamName}@1.1.0`]);

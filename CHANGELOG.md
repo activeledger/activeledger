@@ -62,6 +62,13 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   `$contract: <id>@=<version>`. An unknown version, the version being deployed,
   or a malformed list is refused, as is `lock` below build 40300. Locks are
   files on each node, as with the `lock` entry; `unlock` removes one.
+* **Contract locks survive a restore** : from build 40300 an update's `lock`,
+  and a `lock` or `unlock` entry that names the contract stream as its only
+  `$o`, record the locks on that stream (`locks: { all?, versions }`). A node
+  that lost the lock files still treats them as held, and restore writes them
+  back. A `lock` or `unlock` without that output stays files only, and locks
+  made before 5.1.0 are not recorded anywhere, so a restore does not bring them
+  back.
 
 ### Fixed
 * **Contract locks are checked on every run** : a global or version lock

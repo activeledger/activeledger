@@ -649,17 +649,18 @@ Hybrid and restore:
   once can both win. Use `wx`.
 - Fixed: the pruner scans the data database once an hour, not twice.
 - Fixed: restore warns when a contract version cannot be rebuilt.
-- Restore does not re-apply contract locks, which are files and not in the
-  ledger. A locked old version is callable again on a node restored from
-  nothing.
+- Fixed: contract locks are recorded on the contract stream (`locks: { all?,
+  versions }`) by `lock`, `unlock` and an update's `lock`, and restore writes
+  the files back. A `lock` or `unlock` entry records it only when its `$o` is
+  the contract stream, and only from build 40300; without one it is files only.
+  Locks made before this are not in any stream and are not restored.
 
 Engine items from Varnir:
 
 - Fixed: version and global locks (`process.ts`) are checked on every
   resolution, not only on a path cache miss.
 - Fixed: a contract update takes `lock: "all" | [versions]` and locks those
-  versions in the same commit. A restore does not re-apply locks (they are
-  files, as for the `lock` entry), so a restored node needs them again.
+  versions in the same commit, and records them on the contract stream.
 - `sortVersions` was reported to order `@9` above `@10`; checked, it does not.
 
 ### Other open items

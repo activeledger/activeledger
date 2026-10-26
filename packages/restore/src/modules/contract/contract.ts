@@ -68,5 +68,23 @@ export class Contract {
         );
       }
     }
+
+    // Locks are files, so they come back from what the stream recorded
+    const locks = contract.locks;
+    if (locks) {
+      const held: string[] = [
+        ...(locks.all ? [""] : []),
+        ...(locks.versions || []).map((v: string) => "@" + v),
+      ];
+      for (const version of held) {
+        try {
+          files.lock(contract.namespace, contract._id, version);
+        } catch (e: any) {
+          ActiveLogger.warn(
+            `Cannot restore the lock on ${contract._id}${version}: ${e.message}`
+          );
+        }
+      }
+    }
   }
 }
