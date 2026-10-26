@@ -98,6 +98,10 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   no majority to take and restores nothing), and includes the reason when it
   fails.
 
+* **Start-up display** : it adds a line per finished step instead of redrawing
+  one line, so log lines and the helper processes' output no longer end up on
+  the chain's line. It opens with the banner.
+
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose
   streams have already moved on is marked superseded rather than re-run.

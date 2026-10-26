@@ -46,7 +46,14 @@ An unknown command or flag prints what was not recognised, the nearest known nam
 
 ### Output
 
-When output goes to a terminal, `start` shows a short banner and one block per start-up step, filled in as each step completes, with the reason printed at the block that failed. When output is not a terminal, or with `NO_COLOR`, `--quiet` or `--json`, the banner and the display are left out and each step is one plain line (`ok  database`), so logs and scripts never receive escape codes.
+When output goes to a terminal, `start` opens with a banner (three linked blocks, the name and version, and a tagline) and then adds one line as each start-up step finishes, with the chain as far as the node has got:
+
+```
+[###]==[###]   identity
+[###]==[###]==[###]   database
+```
+
+A step that is still running after a second says so once (`...`), for example while a node waits for the others to join. The lines are only ever added, never redrawn, so log lines (and those of the helper processes) sit between them and nothing is overwritten. A step that fails ends the display with `[ X ]` and the reason. When output is not a terminal, or with `NO_COLOR`, `--quiet` or `--json`, the banner and chain are left out and each step is one plain line (`ok  database`), so logs and scripts never receive escape codes.
 
 ## activeledger
 

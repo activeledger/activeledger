@@ -523,6 +523,15 @@ Both programs show the same start-up display, drawn by the shared `options` pack
   - Not shown, and replaced by one plain line per step (`ok  database`), when output is not a terminal, with `NO_COLOR`, `--quiet` or `--json`, or when the node is started by a process manager. Logs and scripts never receive escape codes.
 - **Easter egg.** The same rare roll as in `help` can break the chain mid-build, `[###]=/=[###]`, and mend it a moment later. It is drawn only while a step is already running, so it never changes how long start-up takes.
 
+### Start-up display, as built
+
+The display appends one line per finished step and never redraws a line in
+place. The first version drew the chain on a single line with a carriage return
+and a spinner; the logger and the helper processes also write to the terminal,
+and their lines ended up on the chain's line. A step still running after a
+second prints one `...` line. A hybrid's catching-up detail is printed at most
+every two seconds. The header is the help banner.
+
 ### Open choices
 
 - Whether `activehybrid` also ships as `activeledger hybrid ...` for operators who install one package.

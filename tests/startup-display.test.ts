@@ -50,26 +50,37 @@ describe("Start-up display", () => {
     expect(d.render()).to.not.contain("database");
   });
 
-  it("shows a spinner only in a slow step", () => {
-    const fast = make({ spinnerAfterMs: 60000 });
-    fast.d.begin("config");
-    expect(fast.d.render()).to.contain("[   ]");
-    const slow = make({ spinnerAfterMs: 0 });
-    slow.d.begin("config");
-    expect(slow.d.render()).to.match(/\[ [|/\\-] \]/);
-    fast.d.finish();
-    slow.d.finish();
-  });
-
-  it("shows lag and cursor while catching up", () => {
-    const { d } = make();
+  it("says once that a step is slow, and never redraws a line", async () => {
+    const { d, out } = make({ slowAfterMs: 20 });
     d.begin("config");
-    d.catchUp(12.4, "umid:100,abc");
-    expect(d.render()).to.contain("12s behind  umid:100,abc");
+    await new Promise((r) => setTimeout(r, 120));
+    d.done();
+    expect(out()).to.contain("[   ]   config  ...\n[###]   config\n");
+    expect(out()).to.not.match(/\r|\u001b/);
     d.finish();
   });
 
-  it("fills every block on finish and then stops drawing", () => {
+  it("does not mention a step that finishes quickly while it runs", () => {
+    const { d, out } = make({ slowAfterMs: 60000 });
+    d.begin("config");
+    d.done();
+    expect(out()).to.not.contain("...");
+    d.finish();
+  });
+
+  it("shows lag and cursor while catching up, a line at most every couple of seconds", () => {
+    const { d, out } = make();
+    d.begin("config");
+    d.catchUp(12.4, "umid:100,abc");
+    d.catchUp(11.9, "umid:101,abd");
+    // The second call only updates what the next line will say
+    expect(d.render()).to.contain("12s behind  umid:101,abd");
+    expect(out()).to.contain("12s behind  umid:100,abc");
+    expect(out().match(/s behind/g)).to.have.length(1);
+    d.finish();
+  });
+
+  it("fills every block on finish and then stops writing", () => {
     const { d, out } = make();
     d.begin("config");
     d.finish();
@@ -80,24 +91,30 @@ describe("Start-up display", () => {
     expect(out().length).to.equal(len);
   });
 
-  it("prints log lines above the display and redraws it", () => {
+  it("writes log lines as they are, whole, on their own line", () => {
     const { d, out } = make();
     d.begin("config");
     d.log("INFO hello");
-    expect(out()).to.contain("INFO hello\n");
-    expect(out().endsWith("[   ]   config")).to.equal(true);
+    expect(out().endsWith("INFO hello\n")).to.equal(true);
     d.finish();
   });
 
-  it("breaks the chain on the rare roll and mends it", async () => {
-    const { d } = make({ env: { ...tty, random: () => 0.01 } });
+  it("breaks the chain on the rare roll, on that step's line only", () => {
+    const { d, out } = make({ env: { ...tty, random: () => 0.01 } });
     d.begin("config");
     d.done();
     d.begin("identity");
     expect(d.render()).to.contain("=/=");
-    await new Promise((r) => setTimeout(r, 700));
-    expect(d.render()).to.not.contain("=/=");
+    d.done();
+    d.begin("database");
+    expect(d.render()).to.contain("=/=");
+    d.done();
+    expect(out().match(/=\/=/g)!.length).to.be.greaterThan(0);
     d.finish();
+    const calm = make();
+    calm.d.begin("config"); calm.d.done(); calm.d.begin("identity"); calm.d.done();
+    expect(calm.out()).to.not.contain("=/=");
+    calm.d.finish();
   });
 
   for (const [name, opts] of [
@@ -119,4 +136,9 @@ describe("Start-up display", () => {
       expect(out()).to.not.match(/\u001b|\r/);
     });
   }
+
+  it("opens with the banner: the linked blocks, name and version, and a tagline", () => {
+    const { out } = make();
+    expect(out()).to.match(/^ \[###\]==\[###\]==\[###\]\n   activeledger 5\.1\.0\n   .+\n\n/);
+  });
 });
