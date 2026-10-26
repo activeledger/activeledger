@@ -468,7 +468,9 @@ export default class Contract extends Standard {
     if (!locks) return state;
     if (version === "") delete locks.all;
     else locks.versions = (locks.versions || []).filter((v: string) => v !== version);
-    if (!locks.all && !locks.versions.length) delete state.locks;
+    // Left as an empty record, never deleted: setState merges what it is
+    // given over the stream's state, so a removed key would come back
+    state.locks = { ...locks, versions: locks.versions || [] };
     return state;
   }
 

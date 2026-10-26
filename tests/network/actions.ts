@@ -125,7 +125,8 @@ export async function updateContract(
   contractStreamId: string,
   contractName: string,
   sourcePath: string,
-  version: string
+  version: string,
+  lock?: "all" | string[]
 ): Promise<any> {
   const contractSrc = fs.readFileSync(sourcePath, "utf8");
   const txBody = {
@@ -138,9 +139,38 @@ export async function updateContract(
         namespace,
         name: contractName,
         contract: Buffer.from(contractSrc).toString("base64"),
+        ...(lock === undefined ? {} : { lock }),
       },
     },
     $o: { [contractStreamId]: {} },
+  };
+  const tx = {
+    $tx: txBody,
+    $sigs: { [identity.streamId]: identity.keyPair.sign(txBody) },
+  };
+  return submit(baseUrl, tx);
+}
+
+/**
+ * The `lock` and `unlock` entries of the default contract. A version of ""
+ * is the whole contract. `withOutput` names the contract stream as the output,
+ * which is what records the lock on the stream (build 40300).
+ */
+export async function lockContract(
+  baseUrl: string,
+  identity: Identity,
+  namespace: string,
+  contractStreamId: string,
+  version: string,
+  entry: "lock" | "unlock" = "lock",
+  withOutput = true
+): Promise<any> {
+  const txBody = {
+    $entry: entry,
+    $namespace: "default",
+    $contract: "contract",
+    $i: { [identity.streamId]: { namespace, contract: contractStreamId, version } },
+    ...(withOutput ? { $o: { [contractStreamId]: {} } } : {}),
   };
   const tx = {
     $tx: txBody,
@@ -155,11 +185,13 @@ export async function runContract(
   identity: Identity,
   namespace: string,
   contractStreamId: string,
-  outputPayload: Record<string, unknown>
+  outputPayload: Record<string, unknown>,
+  version?: string
 ): Promise<any> {
   const txBody = {
     $namespace: namespace,
-    $contract: contractStreamId,
+    // "<id>@=<version>" must be that version; the bare id is the latest
+    $contract: version ? `${contractStreamId}@=${version}` : contractStreamId,
     $i: { [identity.streamId]: {} },
     $o: { [identity.streamId]: outputPayload },
   };

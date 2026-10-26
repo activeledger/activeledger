@@ -28,7 +28,7 @@ Activeledger supports versioning of smart contracts. When running a contract you
 
 ## Retiring Old Versions
 
-A version stays callable with `$contract: "[contract stream]@[version]"` after a newer one is deployed. To stop that, lock it. An `update` can lock the versions it replaces in the same commit as the new version, by adding a `lock` property to its input:
+A version stays callable with `$contract: "[contract stream]@=[version]"` after a newer one is deployed. To stop that, lock it. An `update` can lock the versions it replaces in the same commit as the new version, by adding a `lock` property to its input:
 
 ```json
 {
@@ -100,4 +100,4 @@ Each node holds a lock as an empty file beside the contract's compiled code, in 
 | `_LOCK.[contract stream]` | every version of the contract |
 | `_LOCK.[contract stream]@[version]` | one version |
 
-From build `40300` the same locks are also written to the contract stream's state, as `locks: { "all": true, "versions": ["0.0.1"] }`. A lock counts as held if either the file or the state has it, so a node that lost its files still agrees with the others. Locks made before 5.1.0 are not in the state and are not restored.
+From build `40300` the same locks are also written to the contract stream's state, as `locks: { "all": true, "versions": ["0.0.1"] }`. When the last lock is removed the record stays, empty (`"versions": []`). A lock counts as held if either the file or the state has it, so a node that lost its files still agrees with the others. Locks made before 5.1.0 are not in the state and are not restored.

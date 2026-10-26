@@ -44,7 +44,8 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
     assertDeployerAllowed: () => undefined,
     lockOutput: proto.lockOutput,
     lockHeld: proto.lockHeld,
-    getActivityStreams: () => ({ getState: () => st, setState: (n: any) => Object.assign(st, n) }),
+    // As the real stream: a copy out, a shallow merge in (a deleted key comes back)
+    getActivityStreams: () => ({ getState: () => JSON.parse(JSON.stringify(st)), setState: (n: any) => Object.assign(st, n) }),
   });
   const own = (more: any = {}) => ({ namespace: "testns", contract: {}, ...more });
   const run = (fn: string, ctx: any) =>
@@ -68,7 +69,7 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
     expect(st.locks).to.deep.equal({ versions: ["1.0.0"] });
     expect(files()).to.deep.equal([`_LOCK.${stream}@1.0.0`]);
     await run("commitUnlock", context(st, "1.0.0"));
-    expect(st.locks).to.equal(undefined);
+    expect(st.locks).to.deep.equal({ versions: [] });
     expect(files()).to.deep.equal([]);
   });
 
@@ -88,7 +89,7 @@ describe("Contract locks are recorded on the contract stream (Activeledger)", ()
     expect(err).to.equal("Lock already exists");
     expect(await run("voteUnlock", context(st, "1.0.0"))).to.equal(true);
     await run("commitUnlock", context(st, "1.0.0"));
-    expect(st.locks).to.equal(undefined);
+    expect(st.locks).to.deep.equal({ versions: [] });
   });
 
   it("without an output the lock is files only, as before", async () => {

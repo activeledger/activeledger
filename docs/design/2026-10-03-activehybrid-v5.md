@@ -665,6 +665,12 @@ Engine items from Varnir:
 
 ### Other open items
 
+- Documentation rewrite, its own PR: every CLI command and flag, the contract
+  API and entries, configuration, and example contracts (including a
+  hybrid-aware one using `isSupernode()` / `adoptFromSupernode()`, and one using
+  `update` with `lock`). Includes `docs/zh-cn`, and settling which of
+  `config.json` and a flag wins for a supernode setting.
+
 - Docs: `docs/en-gb/hybrid.md`, `cli.md`, `restore.md`, the contract `upgrade.md` (locks)
   and `configuration.md` (`build`, `hybrid`) are written for 5.1.0, and
   `packages/hybrid/README.md` is rewritten. `docs/zh-cn` is not updated; the

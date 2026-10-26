@@ -29,6 +29,7 @@ import {
   registerNamespace,
   deployContract,
   updateContract,
+  lockContract,
   runContract,
 } from "./actions";
 
@@ -215,10 +216,10 @@ async function verifyVersionsAcrossNodes(
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  // Contract references are gated behind build >= 40100 - see
-  // contract.ts's REFERENCE_BUILD. Set on every node before any start:
+  // Contract references (build >= 40100) and recorded locks (>= 40300) are
+  // gated - see contract.ts's REFERENCE_BUILD and LOCK_BUILD. Set on every node before any start:
   // half-enabled is a rollout bug, and this must measure the feature.
-  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 40100 } });
+  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 40300 } });
   let passed = true;
   const check = (ok: boolean, message: string) => {
     passed = assert(report, ok, message) && passed;
@@ -357,6 +358,74 @@ async function main(): Promise<boolean> {
     check(
       ranAgain.$responses?.[0]?.echoedMessage === "after-update",
       "updated contract returned the value it was given"
+    );
+
+    // ---- Locks --------------------------------------------------------
+    // Every node must agree on what is locked, in the ledger and on disk,
+    // and a locked version must stop running at once.
+    const lockFiles = (name: string) =>
+      nodes.map((n) => fs.existsSync(path.join(n.dataDir, "contracts", NAMESPACE, name)));
+    const settle = async (cond: () => Promise<boolean> | boolean) => {
+      for (let i = 0; i < 30 && !(await cond()); i++) await new Promise((r) => setTimeout(r, 500));
+      return cond();
+    };
+    const stateLocks = async () =>
+      Promise.all(nodes.map((n) => storageGet(n.storageUrl, streamId).then((d: any) => d?.locks).catch(() => undefined)));
+    const failed = (r: any) => !!r.$summary?.errors || !!r.$summary?.commit === false;
+
+    report.phase("Updating to 0.0.3 and locking 0.0.1 in the same commit");
+    const lockUpdate = await updateContract(
+      origin.baseUrl, identity, NAMESPACE, streamId, CONTRACT_NAME, sourceV2Path, "0.0.3", ["0.0.1"]
+    );
+    check(!lockUpdate.$summary?.errors, "update with lock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => JSON.stringify(l) === '{"versions":["0.0.1"]}')),
+      "every node records the lock on the contract stream"
+    );
+    check(
+      await settle(() => lockFiles(`_LOCK.${streamId}@0.0.1`).every(Boolean)),
+      "every node wrote the version lock file"
+    );
+    const pinnedLocked = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "x" }, "0.0.1");
+    check(failed(pinnedLocked), "the locked version is refused");
+    const pinnedOpen = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "open" }, "0.0.2");
+    check(!pinnedOpen.$summary?.errors && pinnedOpen.$responses?.[0]?.echoedMessage === "open", "an unlocked older version still runs");
+
+    report.phase("Refusing a lock the contract does not have");
+    const badLock = await updateContract(
+      origin.baseUrl, identity, NAMESPACE, streamId, CONTRACT_NAME, sourceV2Path, "0.0.4", ["9.9.9"]
+    );
+    check(failed(badLock), "an unknown version in lock is refused");
+
+    report.phase("Unlocking with the lock entry");
+    const unlock = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "0.0.1", "unlock");
+    check(!unlock.$summary?.errors, "unlock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => !l?.all && !l?.versions?.length)),
+      "every node emptied the lock record on the contract stream"
+    );
+    check(
+      await settle(() => lockFiles(`_LOCK.${streamId}@0.0.1`).every((x) => !x)),
+      "every node removed the lock file"
+    );
+    const reopened = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "back" }, "0.0.1");
+    check(!reopened.$summary?.errors && reopened.$responses?.[0]?.echoedMessage === "back", "the unlocked version runs again");
+
+    report.phase("Locking the whole contract with the lock entry");
+    const whole = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "lock");
+    check(!whole.$summary?.errors, "global lock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => l?.all === true)),
+      "every node records the global lock"
+    );
+    check(failed(await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "x" })), "the whole contract is refused");
+    const again = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "lock");
+    check(failed(again), "locking what is already locked is refused");
+    const lifted = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "unlock");
+    check(!lifted.$summary?.errors, "global unlock committed");
+    check(
+      !(await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "free" })).$summary?.errors,
+      "the contract runs again once unlocked"
     );
 
     report.phase("Stream size");
