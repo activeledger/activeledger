@@ -646,6 +646,10 @@ export class CLIHandler {
       }
       this.isShuttingDown = true;
       host.shutdown();
+    } else {
+      // Pressed again: do not wait for the graceful exit
+      ActiveLogger.warn("Shut down forced");
+      process.exit(1);
     }
   }
 

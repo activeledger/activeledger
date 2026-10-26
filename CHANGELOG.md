@@ -102,6 +102,12 @@ untrusted network, and point the hybrid's upstream at the TLS endpoint.
   one line, so log lines and the helper processes' output no longer end up on
   the chain's line. It opens with the banner.
 
+* **Ctrl+C before the node is listening** : it logged "Shut Down Initiated" and
+  carried on, because the exit was only scheduled when there was a listen
+  socket to close. A node still starting its workers, or one that never got
+  the port, could not be stopped from the keyboard. It now always exits after
+  the grace period, and pressing Ctrl+C a second time exits at once.
+
 ### Known limits
 * The hybrid keeps only the current revision of each stream, so an item whose
   streams have already moved on is marked superseded rather than re-run.

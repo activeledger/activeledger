@@ -337,21 +337,34 @@ export class Host extends Home {
     external: BusyLockQueue[];
   } = { internal: [], external: [] };
 
+  // A second request to shut down is the same shut down
+  private shuttingDown = false;
+
   public shutdown(): void {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+
+    // Not listening yet (the workers are still starting, or the port was
+    // refused) is when someone is most likely to press Ctrl+C, and the exit
+    // below must not depend on there being a socket to close.
     if (this.listenSocket) {
       // Close the listen socket
       us_listen_socket_close(this.listenSocket);
       this.listenSocket = null;
+    }
 
-      // Only have a a short while before sigkill
-      // Lets try let them finish up then close the app before sigkill can happen
-      setTimeout(() => {
+    // Only have a a short while before sigkill
+    // Lets try let them finish up then close the app before sigkill can happen
+    setTimeout(() => {
+      try {
         ActiveLogger.info("Stopping HTTP Server");
         this.api.close();
-        ActiveLogger.info("Shutting down...");
-        process.exit(0);
-      }, 1300);
-    }
+      } catch (e) {
+        // Still on the way out
+      }
+      ActiveLogger.info("Shutting down...");
+      process.exit(0);
+    }, 1300);
   }
 
   /**
