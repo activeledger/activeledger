@@ -665,6 +665,11 @@ Engine items from Varnir:
 
 ### Other open items
 
+- Linking the CLIs: `npm run link` went with lerna (d92fad08) and nothing
+  replaced it; the README now says to `npm link ./packages/...`. Add a root
+  script for it, and fix the stale mention of it in `.github/workflows/test.yml`.
+  Decide with a possible move to pnpm, which links workspace bins differently.
+
 - Documentation rewrite, its own PR: every CLI command and flag, the contract
   API and entries, configuration, and example contracts (including a
   hybrid-aware one using `isSupernode()` / `adoptFromSupernode()`, and one using

@@ -136,6 +136,14 @@ npm run build
 
 `npm run setup` (install + build) is also available if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
 
+To run the programs by name (`activeledger`, `activehybrid`, `activerestore`) from anywhere, link them globally once after building:
+
+```bash
+npm link ./packages/activeledger ./packages/hybrid ./packages/restore
+```
+
+The links point at the source folders, so `npm run build` updates what they run. Each Node version managed by nvm has its own global folder, so link again after switching versions. From inside the repo, `npx activeledger` works without linking.
+
 The packages import each other by their published `@activeledger/*` names, so the build has to run once before type resolution works — `npm run build` builds them in dependency order for exactly that reason.
 
 ### Releases
