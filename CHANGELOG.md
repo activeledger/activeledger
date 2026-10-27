@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+- `activerestore --full` is throttled so it does not compete with the
+  network: it pauses between streams and between batches, and backs off while
+  the neighbours are slow. `restore.throttle` in `config.json` tunes it;
+  `"throttle": false` or `--fast` turns it off. A stream the node already
+  holds at the network's revision is no longer fetched.
+
 ### Fixed
 - `activerestore --full` into an empty database rebuilt contract files only
   when the deploy transaction happened to be restored before the contract

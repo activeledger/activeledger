@@ -110,6 +110,19 @@ async function main(): Promise<boolean> {
     check([...got.keys()].every((id) => !id.endsWith(":volatile")), "no volatile document was synced");
     check(JSON.stringify(filesOf().sort()) === JSON.stringify(expected), "the contract files were rebuilt");
     check((await storageGet(lost.storageUrl, streamId).catch(() => null))?.contract !== undefined, "the contract stream is back");
+
+    // ---- 3: a few documents missing, the rest held ----------------------------
+    report.phase("Restore: the node is missing three documents and holds the rest");
+    const before = await ledger(lost.storageUrl);
+    const gone = [...before.keys()].filter((id) => !id.endsWith(":volatile")).slice(0, 3);
+    for (const id of gone) await storageDelete(lost.storageUrl, id).catch(() => undefined);
+    const ms3 = await runRestore(lost.dataDir, "restore-few");
+    report.info(`took ${ms3}ms`);
+    const after = await ledger(lost.storageUrl);
+    check(gone.every((id) => after.get(id) === before.get(id)), "the three documents are back at the network's revision");
+    const fewLog = fs.readFileSync(path.join(lost.dataDir, "restore-few.log"), "utf8");
+    const heldLine = /Restored (\d+) stream\(s\); (\d+) already held/.exec(fewLog);
+    check(!!heldLine && Number(heldLine[1]) <= 6 && Number(heldLine[2]) > 0, `only what was missing was fetched (${heldLine ? heldLine[0] : "no summary line"})`);
   } finally {
     await harness.stop();
     harness.cleanup();

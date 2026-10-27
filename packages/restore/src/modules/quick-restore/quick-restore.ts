@@ -35,6 +35,8 @@ import {
 } from "../../interfaces/quick-restore.interface";
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
+import { Throttle } from "../helper/throttle";
+import { ActiveOptions } from "@activeledger/activeoptions";
 
 /** How many times a stream is asked for before it is reported as not restored */
 const FETCH_ATTEMPTS = 3;
@@ -131,10 +133,36 @@ export class QuickRestore {
         Helper.output("Fetch documents: Conesensus data", consensusData);
         const contracts: unknown[] = [];
         const unrestored: string[] = [];
+        const throttle = Throttle.fromConfig(
+          ActiveOptions.get<any>("restore", {}),
+          ActiveOptions.get<boolean>("fast", false)
+        );
+        let held = 0;
+        let fetched = 0;
 
         for (let i = consensusData.length; i--; ) {
           const activity = consensusData[i];
 
+          // Already here at the revision the network agreed on: nothing to
+          // fetch. A contract stream still has its files rebuilt, from the
+          // copy this node holds.
+          const local = await Provider.database.get(activity.stream).catch(() => null);
+          if (local && local._rev === activity.revision) {
+            held++;
+            if (
+              typeof local._id === "string" &&
+              QuickRestore.isStateDocument(local._id) &&
+              local.namespace &&
+              local.contract &&
+              local.compiled
+            ) {
+              contracts.push(local);
+            }
+            continue;
+          }
+
+          await throttle.wait();
+          const fetchStarted = Date.now();
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
           // Under load a neighbour can fail to answer, and every answer
           // being unusable used to skip the stream without a word. Ask
@@ -157,6 +185,8 @@ export class QuickRestore {
           }
           ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
           await this.uploadData(networkData);
+          fetched++;
+          throttle.record(Date.now() - fetchStarted);
           contracts.push(...(networkData.contracts || []));
         }
 
@@ -168,6 +198,10 @@ export class QuickRestore {
         for (const contract of contracts) {
           await Contract.rebuild(contract);
         }
+
+        ActiveLogger.info(
+          `Restored ${fetched} stream(s); ${held} already held at the network's revision`
+        );
 
         if (unrestored.length) {
           ActiveLogger.error(
@@ -199,6 +233,15 @@ export class QuickRestore {
    * @param {IBaseData} doc
    * @returns {Promise<void>}
    */
+  /** A state document: not a stream meta, umid or design document */
+  private static isStateDocument(id: string): boolean {
+    return (
+      id.indexOf(":stream") === -1 &&
+      id.indexOf(":umid") === -1 &&
+      id.indexOf("_design") === -1
+    );
+  }
+
   private static async adoptDocument(doc: IBaseData): Promise<void> {
     let local: { _rev?: string } | null = null;
 

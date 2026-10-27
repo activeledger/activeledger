@@ -10,6 +10,7 @@
  * speed, because the right limit is for whoever sets the throttle to choose.
  *
  * RESTORE_STREAMS=1000 npm run test:network:restore:load
+ * RESTORE_FAST=1 turns the restore's throttle off (--fast) to see the difference.
  */
 
 import * as path from "path";
@@ -123,15 +124,16 @@ async function main(): Promise<boolean> {
     const logPath = path.join(lost.dataDir, "restore-load.log");
     const fd = fs.openSync(logPath, "w");
     const started = Date.now();
-    const child = spawn(process.execPath, [entry, "--full"], { cwd: lost.dataDir, stdio: ["ignore", fd, fd] });
+    const child = spawn(process.execPath, [entry, "--full", ...(process.env.RESTORE_FAST ? ["--fast"] : [])], { cwd: lost.dataDir, stdio: ["ignore", fd, fd] });
     let restoreDone = false;
-    const waiter = settle(() => /Rebuild Complete|error running quick full restore/.test(fs.readFileSync(logPath, "utf8")), 3000)
+    const waiter = settle(() => /Rebuild Complete|error running quick full restore/.test(fs.readFileSync(logPath, "utf8")), 20000)
       .then((ok) => {
         restoreDone = true;
         return ok;
       });
     const during = await liveLoad(live, () => restoreDone);
     const finished = await waiter;
+    report.info(`throttle: ${process.env.RESTORE_FAST ? "off (--fast)" : "default"}`);
     const took = Date.now() - started;
     child.kill();
     check(finished, "the restore reported completion");
