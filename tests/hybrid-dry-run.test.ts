@@ -235,15 +235,10 @@ describe("Process hybrid mode and dry run (Activeprotocol)", () => {
     expect(result.dependence).to.deep.equal([`volatile:${S}`]);
   });
 
-  it("reading volatile the hybrid holds does not", async () => {
+  it("a hybrid never holds a supernode's volatile, so reading it always marks the execution", async () => {
     const { db } = store();
-    const result = await Process.dryRunHybrid(entry("hyvolatile"), db, {
-      volatileHeld: (id) => id === S,
-    });
-
-    expect(result.committed).to.equal(true);
-    expect(result.supernodeDependent).to.equal(false);
-    expect(result.documents[S].seen).to.equal(42);
+    const result = await Process.dryRunHybrid(entry("hyvolatile"), db, {});
+    expect(result.dependence).to.deep.equal([`volatile:${S}`]);
   });
 
   describe("supernode mode is the default and unchanged", () => {

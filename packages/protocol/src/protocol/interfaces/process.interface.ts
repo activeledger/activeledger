@@ -54,8 +54,6 @@ export interface IProcessOptions {
    * written - run it with dryRun().
    */
   mode?: TProcessMode;
-  /** Hybrid: true when this node holds the stream's (shared) volatile */
-  volatileHeld?: (streamId: string) => boolean;
 }
 
 export interface IDryRunOptions extends Omit<IProcessOptions, "mode"> {

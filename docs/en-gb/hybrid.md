@@ -45,7 +45,7 @@ The network's rules for hybrids are in the `hybrid` section of the configuration
 {
   "hybrid": {
     "admission": "open",
-    "required": ["[stream id]", { "id": "[stream id]", "volatile": true }],
+    "required": ["[stream id]"],
     "window": { "days": 30 },
     "minVersion": "5.1.0"
   }
@@ -55,7 +55,7 @@ The network's rules for hybrids are in the `hybrid` section of the configuration
 | Key | Meaning |
 | --- | ------- |
 | `admission` | `"open"`: any key may register. `{ "allowlist": ["[public key or key hash]"] }`: only those keys. Any other value admits nobody. Without a `hybrid` section at all, registration is open. |
-| `required` | Streams every hybrid downloads, beyond the contracts (which are always required). An entry with `"volatile": true` also shares that stream's volatile data, but only if the contract has called `shareVolatile()` on it. |
+| `required` | Streams every hybrid downloads, beyond the contracts (which are always required). Volatile data is never downloaded (see Contracts below). |
 | `window` | How many days of transactions a hybrid keeps. |
 | `minVersion` | The oldest `activehybrid` release allowed to follow the network. |
 
@@ -175,7 +175,7 @@ Every contract feature works on a hybrid. A hybrid runs the contract itself to c
   * If the supernode branch creates a stream, create the same stream in the `else` branch with placeholder values and describe its properties.
   * A supernode-dependent contract with no description is adopted whole and the hybrid emits an `adopt.undeclared` event naming the contract and entry. Treat it as a prompt to add one.
 * Time: a contract sees the transaction's consensus time (`cDate`), never the node's clock, so a contract that takes its time only from there behaves the same on a hybrid and on a supernode.
-* Volatile data is per node. It is only readable through a hybrid when the stream is in the network's `required` list with `volatile: true` **and** the contract called `shareVolatile()`. Contracts that keep secrets in volatile (key shares, for example) never call it.
+* Volatile data is for one node only. It is never served by a supernode, never downloaded by a hybrid, and never copied by SPI or a restore, and there is no way to share it. `getVolatile()` and `setVolatile()` work on every node and read and write that node's own copy. A hybrid that executes a contract reading volatile treats the result as dependent on the supernodes. A contract that wants volatile data only on a supernode can fork on `isSupernode()` and let the hybrid build something else in the other branch.
 
 ## Versions
 

@@ -4,8 +4,8 @@ import { expect } from "chai";
 import { EventEmitter } from "events";
 import "mocha";
 
-// The contract side of the hybrid: isSupernode(), the adopt declarations and
-// shareVolatile(), and how the host reads them back.
+// The contract side of the hybrid: isSupernode(), the adopt declarations, and
+// how the host reads them back.
 describe("Hybrid contract API (Activecontracts)", () => {
   const IN = "a".repeat(64);
   const OUT = "b".repeat(64);
@@ -237,27 +237,6 @@ describe("Hybrid contract API (Activecontracts)", () => {
       expect(
         s.exportAdoptDeclarations().map((d: any) => d.candidates)
       ).to.deep.equal([true, false]);
-    });
-  });
-
-  describe("shareVolatile", () => {
-    it("sets volatileShared in the stream meta the VM exports", () => {
-      const vm = new VirtualMachine("localhost:5259", {} as any, {} as any, {} as any);
-      const s = stream(true);
-      s.getActivityStreams(OUT).shareVolatile();
-      (vm as any).smartContracts["umid-share"] = s;
-
-      const exported = vm.getActivityStreamsFromVM("umid-share");
-      expect(exported).to.have.length(1);
-      expect(exported[0].meta.volatileShared).to.equal(true);
-      expect(exported[0].meta._id).to.equal(OUT + ":stream");
-    });
-
-    it("leaves meta alone on streams that do not call it", () => {
-      const s = stream(true);
-      const a: Activity = s.getActivityStreams(OUT);
-      expect(a.updatedMeta).to.equal(false);
-      expect((a as any).meta.volatileShared).to.equal(undefined);
     });
   });
 

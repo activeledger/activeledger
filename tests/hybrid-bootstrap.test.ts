@@ -55,7 +55,7 @@ describe("versions", () => {
   });
 
   it("reads required ids from plain and object entries", () => {
-    expect(requiredIds(["a", { id: "b", volatile: true }, { id: "" } as any, 5 as any])).to.deep.equal(["a", "b"]);
+    expect(requiredIds(["a", { id: "b" }, { id: "" } as any, 5 as any])).to.deep.equal(["a", "b"]);
     expect(requiredIds(undefined as any)).to.deep.equal([]);
   });
 });
@@ -97,7 +97,7 @@ describe("bootstrapNode", () => {
 
   const good = (over: any = {}) => ({
     setup: setup(),
-    required: ["req1", { id: "req2", volatile: true }],
+    required: ["req1", { id: "req2" }],
     contracts: ["contract1", "contract2"],
     cursor: "umid:9,u9",
     minVersion: "5.1.0",

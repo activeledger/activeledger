@@ -118,7 +118,7 @@ export interface IDivergenceRecord {
 /** The `hybrid` section asserted on-ledger in the setup stream */
 export interface IHybridLedgerConfig {
   admission: "open" | { allowlist: string[] };
-  required: (string | { id: string; volatile?: boolean })[];
+  required: (string | { id: string })[];
   window: { days: number };
   minVersion: string;
 }

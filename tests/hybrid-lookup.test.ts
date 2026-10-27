@@ -104,10 +104,10 @@ describe("Hybrid lookup", () => {
     expect(await get("st:volatile")).to.equal(undefined);
   });
 
-  it("takes volatile from a supernode", async () => {
+  it("never takes volatile, not even from a supernode", async () => {
     const volatile = { _id: "st:volatile", _rev: "1-v", v: 1 };
     await lookup([], [new FakeUpstream("sn1", [state, meta, volatile], log)]).ensure([{ id: "st", rev: "7-net" }]);
-    expect(await get("st:volatile")).to.not.equal(undefined);
+    expect(await get("st:volatile")).to.equal(undefined);
   });
 
   it("overwrites a present but different copy with the network's revision", async () => {

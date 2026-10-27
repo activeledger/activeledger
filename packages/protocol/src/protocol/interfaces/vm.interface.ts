@@ -41,8 +41,6 @@ export interface IVMExecution {
   dryRun?: boolean;
   /** Database for the contract's reads during this execution */
   db?: { get(id: string): Promise<any> };
-  /** Hybrid: true when this node holds the stream's (shared) volatile */
-  volatileHeld?: (streamId: string) => boolean;
 }
 
 /**

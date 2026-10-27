@@ -17,7 +17,7 @@ describe("Hybrid config section", () => {
   const id = "c".repeat(64);
   const valid = () => ({
     admission: "open",
-    required: [id, { id, volatile: true }],
+    required: [id, { id }],
     window: { days: 30 },
     minVersion: "5.1.0",
   });

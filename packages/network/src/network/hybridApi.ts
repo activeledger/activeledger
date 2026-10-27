@@ -251,25 +251,19 @@ export class HybridApi {
 
   /**
    * `POST /h/streams`: state and meta for the requested streams. Volatile is
-   * included only when the stream is listed as required-volatile AND its
-   * meta says `volatileShared`.
+   * per node and is never served.
    */
   public async streams(
     requests: { id: string; rev?: string }[]
   ): Promise<{ docs: any[]; missing: { id: string; rev?: string }[] }> {
-    const volatileIds = new Set(
-      (this.deps.ledgerConfig().required ?? [])
-        .filter((r): r is { id: string; volatile?: boolean } => typeof r !== "string" && !!r.volatile)
-        .map((r) => r.id)
-    );
     const docs: any[] = [];
     const missing: { id: string; rev?: string }[] = [];
     for (const req of requests) {
       // A stream id only. A suffix (":volatile", ":stream", ":umid") would
-      // read a different document straight past the volatile gate below, and
-      // a leading "_" reaches the database's own documents.
+      // read a different document, and a leading "_" reaches the database's
+      // own documents.
       // The one suffix allowed is a contract's own data document, which is
-      // in revsOut and so has to be fetchable; it has no meta or volatile
+      // in revsOut and so has to be fetchable; it has no meta
       const isData = typeof req.id === "string" && req.id.endsWith(":data");
       const base = isData ? req.id.slice(0, -":data".length) : req.id;
       if (!HybridApi.isStreamId(base)) {
@@ -285,10 +279,6 @@ export class HybridApi {
       if (isData) continue;
       const meta = await safeGet(this.deps.db, `${req.id}:stream`);
       if (meta) docs.push(meta);
-      if (volatileIds.has(req.id) && meta?.volatileShared === true) {
-        const volatile = await safeGet(this.deps.db, `${req.id}:volatile`);
-        if (volatile) docs.push(volatile);
-      }
     }
     return { docs, missing };
   }

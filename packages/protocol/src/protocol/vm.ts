@@ -1020,14 +1020,10 @@ export class VirtualMachine
       // Host work: never inside the contract's egress sandbox
       runUnsandboxed(async () => {
         const execution = this.executions[umid];
-        // Volatile is per node and not covered by revsOut. A hybrid that
-        // does not hold this stream's (shared) volatile would read its own
-        // empty copy, so the result depends on the supernodes.
-        if (
-          execution &&
-          !execution.supernode &&
-          !execution.volatileHeld?.(streamId)
-        ) {
+        // Volatile is per node and not covered by revsOut. A hybrid never
+        // holds a supernode's volatile, so what it reads is its own copy and
+        // the result depends on the supernodes.
+        if (execution && !execution.supernode) {
           this.markHostDependent(umid, `volatile:${streamId}`);
         }
         try {
@@ -1056,8 +1052,7 @@ export class VirtualMachine
         if (
           execution &&
           !execution.supernode &&
-          streamId.endsWith(":volatile") &&
-          !execution.volatileHeld?.(streamId.slice(0, -":volatile".length))
+          streamId.endsWith(":volatile")
         ) {
           this.markHostDependent(umid, `volatile:${streamId.slice(0, -":volatile".length)}`);
         }
