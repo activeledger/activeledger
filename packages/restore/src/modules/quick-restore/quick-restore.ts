@@ -125,6 +125,7 @@ export class QuickRestore {
     return new Promise(async (resolve, reject) => {
       try {
         Helper.output("Fetch documents: Conesensus data", consensusData);
+        const contracts: unknown[] = [];
 
         for (let i = consensusData.length; i--; ) {
           const activity = consensusData[i];
@@ -136,6 +137,16 @@ export class QuickRestore {
             streamDataPromise
           );
           await this.uploadData(networkData);
+          contracts.push(...(networkData.contracts || []));
+        }
+
+        // A contract's source lives in the umid of the transaction that
+        // deployed it, which is a document of its own. Rebuilding as each
+        // stream arrived worked only when that umid happened to be restored
+        // first, so on an empty database it depended on the order of the
+        // streams. Every document is written by now.
+        for (const contract of contracts) {
+          await Contract.rebuild(contract);
         }
 
         resolve();
@@ -270,6 +281,7 @@ export class QuickRestore {
 
     const documents: unknown[] = [];
     const volatile: unknown[] = [];
+    const contracts: unknown[] = [];
 
     for (let r = activityData.length; r--; ) {
       const data: IBaseData = activityData[r] as IBaseData;
@@ -281,7 +293,7 @@ export class QuickRestore {
           volatile.push({ _id: `${data._id}:volatile` });
 
           hasRequiredData(data)
-            ? await Contract.rebuild(data)
+            ? contracts.push(data)
             : Helper.output("Data does not have required fields", data);
         }
         // Only need to find one non-erroring stream
@@ -289,7 +301,7 @@ export class QuickRestore {
       }
     }
 
-    return { documents, volatile };
+    return { documents, volatile, contracts };
   }
 
   /**

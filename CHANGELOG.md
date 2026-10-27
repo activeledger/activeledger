@@ -1,5 +1,12 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- `activerestore --full` into an empty database rebuilt contract files only
+  when the deploy transaction happened to be restored before the contract
+  stream. Contract files are now rebuilt after every document is written.
+
 ## [5.1.0]
 
 Adds the hybrid node: `activehybrid`, a light node that follows the ledger
