@@ -149,6 +149,10 @@ export class ActiveOptions {
             if (config.security) ActiveOptions.set("security", config.security);
             if (config.consensus)
               ActiveOptions.set("consensus", config.consensus);
+            // Hybrid rules decide votes (registry admission), so once the
+            // network is asserted only the ledger's count, even when absent:
+            // a local section left in the file must not make nodes differ.
+            ActiveOptions.set("hybrid", config.hybrid);
             if (config.neighbourhood)
               ActiveOptions.set("neighbourhood", config.neighbourhood);
             resolve(config);

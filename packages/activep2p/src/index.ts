@@ -1,6 +1,6 @@
 /*
  * MIT License (MIT)
- * Copyright (c) 2019 Activeledger
+ * Copyright (c) 2026 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +21,8 @@
  * SOFTWARE.
  */
 
-export interface IUpstreamNode {
-  scheme: string;
-  remote: string;
-  port: number;
-  auth: string;
-}
+export { P2PServer, P2PServerOptions, addressGroup } from "./server";
+export { P2PClient, P2PClientOptions } from "./client";
+export { P2PConnection, ChannelHandler } from "./connection";
+export { P2PIdentity, KnownPeerCheck } from "./handshake";
+export { DEFAULT_MAX_FRAME_BYTES } from "./frame";

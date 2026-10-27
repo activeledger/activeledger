@@ -26,6 +26,9 @@ import { ActiveOptions } from "./options";
 import { ActiveChanges } from "./changes";
 import { ActiveDSConnect } from "./dsconnect";
 import { ActiveCache, ActiveCacheManager } from "./cache";
+import * as Cli from "./cli";
+import { StartupDisplay, isManaged } from "./startup";
+import { HybridConfig } from "./hybrid";
 export {
   ActiveDSConnect,
   ActiveOptions,
@@ -34,5 +37,9 @@ export {
   ActiveGZip,
   ActiveClone,
   ActiveCacheManager,
-  ActiveCache
+  ActiveCache,
+  Cli,
+  StartupDisplay,
+  isManaged,
+  HybridConfig
 };

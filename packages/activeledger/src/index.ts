@@ -25,9 +25,13 @@
 
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveOptions, Cli } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { CLIHandler } from "./cli/cli";
+import { supernodeProgram } from "./cli/program";
+import { checkConfigFile, status, waitForExit } from "./cli/health";
+import { hybridCommand } from "./cli/hybrid";
+import { PIDHandler } from "./cli/pid";
 
 // Set during build
 const version = "unset";
@@ -35,17 +39,36 @@ const version = "unset";
 // Initalise CLI Options
 ActiveOptions.init();
 
-// Show Version (Doesn't require identity)
-if (
-  ActiveOptions.get<boolean>("version", false) ||
-  ActiveOptions.get<boolean>("v", false)
-) {
-  console.log(`v${version}`);
-  process.exit(0);
+// Help, version and unknown names are settled before anything starts
+const cli = Cli.runCli(supernodeProgram(version), process.argv.slice(2));
+if (cli.exit !== undefined) {
+  process.exit(cli.exit);
+}
+
+// Commands that need neither an identity nor a running node
+if (cli.command === "check-config") {
+  process.exit(
+    checkConfigFile(
+      ActiveOptions.get<string>("config", "./config.json"),
+      !!cli.flags.json
+    )
+  );
+}
+if (cli.command === "hybrid") {
+  hybridCommand(
+    cli.positionals[1],
+    cli.positionals[2],
+    !!cli.flags.json,
+    console,
+    cli.flags.out as string | undefined
+  ).then((code) => process.exit(code));
+}
+if (cli.command === "status") {
+  status(!!cli.flags.json).then((code) => process.exit(code));
 }
 
 // Do we have an identity (Will always need, Can be shared)
-if (!fs.existsSync("./.identity")) {
+if (cli.command !== "status" && cli.command !== "hybrid" && !fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
   let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
   // 0600: this file contains the node's RSA PRIVATE key - KeyPair.pem is a
@@ -67,18 +90,24 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (ActiveOptions.get<boolean>("merge", false)) {
   // Merge Configs (Helps Build local net)
   CLIHandler.merge();
-} else if (ActiveOptions.get<boolean>("stop", false)) {
+} else if (
+  cli.command === "status" ||
+  cli.command === "check-config" ||
+  cli.command === "hybrid"
+) {
+  // Handled above
+} else if (cli.command === "stop") {
   // The unconditional SIGTERM listener below holds the event loop open
   // (a registered process signal handler is a real libuv handle), so
   // this must exit explicitly once done - same reason backup/restore do.
-  CLIHandler.stop()
+  stopAndWait()
     .then(() => {
       process.exit();
     })
     .catch(() => {
       process.exit();
     });
-} else if (ActiveOptions.get<boolean>("restart", false)) {
+} else if (cli.command === "restart") {
   if (ActiveOptions.get<boolean>("auto", false)) {
     CLIHandler.restart(true);
   } else {
@@ -104,6 +133,20 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
     });
 } else {
   CLIHandler.start(version);
+}
+
+/**
+ * Stop the node and wait for it to exit (--timeout seconds, default 30)
+ */
+async function stopAndWait(): Promise<void> {
+  const handler = new PIDHandler();
+  await handler.init();
+  const pid = (await handler.getPids()).activeledger;
+  await CLIHandler.stop();
+  if (pid && !(await waitForExit(pid, Number(cli.flags.timeout) || 30))) {
+    ActiveLogger.error(`Process ${pid} did not exit in time`);
+    process.exitCode = 1;
+  }
 }
 
 process.on("SIGTERM", async () => {

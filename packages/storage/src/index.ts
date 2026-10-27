@@ -23,3 +23,11 @@
 
 import { ActiveDataStore } from "./datastore";
 export { ActiveDataStore };
+export {
+  EmbeddedDSConnect,
+  IDSConnect,
+  IEmbeddedStorage,
+  IEmbeddedStorageOptions,
+  openEmbeddedStorage,
+} from "./embedded";
+export { EVENT_PREFIX, eventsSince } from "./events";

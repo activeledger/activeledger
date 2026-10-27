@@ -82,6 +82,7 @@ describe("Contract commit writes references, not source (Activeledger)", () => {
       useContractReferences: (Contract as any).prototype.useContractReferences,
       contractTarget: (Contract as any).prototype.contractTarget,
       compiledEntry: (Contract as any).prototype.compiledEntry,
+      versionsToLock: (Contract as any).prototype.versionsToLock,
       transpile: () => "class Example {}",
       newActivityStream: () => ({
         getName: () => streamName,

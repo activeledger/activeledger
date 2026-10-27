@@ -125,6 +125,21 @@ Behaviour is safe by design:
 
 Set both to `false` for the previous HTTP-only behaviour. The P2P path is fire-and-forget, so a client response can arrive fractionally before every node in the majority has durably written; the majority still commits. If your application needs a durability guarantee, confirm with a read rather than relying on response timing.
 
+## Hybrid
+
+The rules for hybrid nodes (see [hybrid](hybrid.md)), written to the setup stream by `--assert` so every node enforces the same ones. Optional; a network without a `hybrid` section lets any key register.
+
+```json
+"hybrid": {
+  "admission": "open",
+  "required": ["[stream id]", { "id": "[stream id]", "volatile": true }],
+  "window": { "days": 30 },
+  "minVersion": "5.1.0"
+}
+```
+
+`admission` is `"open"` or `{ "allowlist": ["[public key or key hash]"] }`; any other value admits nobody. `required` lists streams every hybrid downloads beyond the contracts, `window.days` is how much history a hybrid keeps, and `minVersion` is the oldest `activehybrid` that may follow the network. On a network that is already running they are changed with `activeledger hybrid` (see [command line](cli.md)).
+
 ## Contract isolation
 
 `security.contractIsolation` chooses how a node runs the smart-contract code deployed to it. It has two values:
@@ -161,6 +176,10 @@ The external address for this node.
 The external port for this node.
 
 ## Optional Configuration
+
+### build
+
+The protocol build this node runs at. Features that change what nodes vote on or commit only switch on at their build, so a network can be upgraded node by node and then raised together: upgrade every node, then set the same `build` on all of them. `40300` is needed for [hybrid nodes](hybrid.md) (signed votes and commit attestations) and for [recording contract locks](contracts/deployment/upgrade.md). Raising it before every node is upgraded makes nodes disagree.
 
 ### contractCheckTimeout
 

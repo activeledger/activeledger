@@ -6,7 +6,7 @@ When it comes to running your smart contract it is just about issuing a transact
 {
   "$tx":{
     "$namespace":"[your namespace]",
-    "$contract":"[your contract stream]@[version] OR [your contract stream]",
+    "$contract":"[your contract stream]@=[version] OR [your contract stream]",
     "$i":{
         "[input stream]":{
             /* properties consumed by your contract */

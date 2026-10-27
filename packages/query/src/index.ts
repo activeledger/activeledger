@@ -61,7 +61,18 @@ export class EventEngine {
    * @param {string} contract
    * @param {*} transaction
    */
-  constructor(private db: any, private contract: string, private umid: string) {}
+  constructor(
+    private db: any,
+    private contract: string,
+    private umid: string,
+    /**
+     * The transaction's consensus time in ms. When given, event ids use it
+     * instead of the local clock, so every node writes the same id and the
+     * `:umid` document (which carries the events) hashes the same on all of
+     * them. Without it ids are stamped locally, as before.
+     */
+    private stamp?: number
+  ) {}
 
   /**
    * Emit the event to the database
@@ -73,7 +84,7 @@ export class EventEngine {
   public emit(name: string, data: any): void {
     // Event object to store
     let event: any = {
-      _id: `event:${Date.now()}-${++this.counter},${this.umid}`,
+      _id: `event:${this.stamp ?? Date.now()}-${++this.counter},${this.umid}`,
       name: name,
       data: data,
       phase: this.phase,

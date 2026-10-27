@@ -65,6 +65,7 @@ describe("Contract compile target (Activeledger)", () => {
       useContractReferences: proto.useContractReferences,
       contractTarget: proto.contractTarget,
       compiledEntry: proto.compiledEntry,
+      versionsToLock: proto.versionsToLock,
       // The real compiler, recording which edition it was asked for.
       transpile(target: string) {
         targets.push(target);

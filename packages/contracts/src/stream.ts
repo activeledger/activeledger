@@ -26,6 +26,12 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
+import {
+  IAdoptDeclaration,
+  IAdoptOptions,
+  IAdoptShape,
+  validateAdoptShape,
+} from "./adopt";
 
 /**
  * Stream management class. This will control ACL and permissions for activeledger
@@ -106,6 +112,46 @@ export class Stream {
    * @type {unknown}
    */
   private remoteReturn: unknown;
+
+  /**
+   * Is this contract running on a supernode. Set once by the host VM; a
+   * host that never sets it is a supernode.
+   *
+   * @private
+   */
+  private hostIsSupernode: boolean = true;
+  private hostModeSet: boolean = false;
+
+  /**
+   * True once the host VM reserves the `activeledger.default.` stream space
+   * (build 40300) - see setReservedStreams.
+   *
+   * @private
+   */
+  private reserveDefaultStreams: boolean = false;
+
+  /**
+   * The id derivation input (seed + name) of every stream newActivityStream
+   * created, so setReservedStreams can check any made before it was called.
+   *
+   * @private
+   */
+  private createdStreams: string[] = [];
+
+  /**
+   * Why this execution depends on the supernodes (isSupernode() called,
+   * inter-node comms used). Read by the host VM.
+   *
+   * @private
+   */
+  private supernodeDependentReasons: string[] = [];
+
+  /**
+   * adoptStreamsFromSupernode declarations recorded on a hybrid
+   *
+   * @private
+   */
+  private adoptCandidateDeclarations: IAdoptDeclaration[] = [];
 
   // Backwards Compatible
   public ActiveLogger = ActiveLogger;
@@ -253,10 +299,14 @@ export class Stream {
     if (this.safeMode) {
       throw new Error("Cannot create new Activity stream in Safe Mode");
     } else {
+      // Seed for the stream id - the caller's if they gave one
+      const seed = deterministic ? deterministic : this.umid;
+      this.checkReservedStream(seed + name);
+      this.createdStreams.push(seed + name);
+
       // Create new activity
       let activity = new Activity(
-        // Seed for the stream id - the caller's if they gave one
-        deterministic ? deterministic : this.umid,
+        seed,
         name,
         false,
         this.eventEmitter,
@@ -271,6 +321,7 @@ export class Stream {
 
       // Set Secret Key
       //activity.setKey(this.key);
+      if (this.hostModeSet) activity.setHostMode(this.hostIsSupernode);
       // TODO: Convert name into a umid string and alert dev
       return (this.activities[name] = activity);
     }
@@ -394,18 +445,21 @@ export class Stream {
   ): Promise<ActiveDefinitions.IStream> {
     return new Promise((resolve, reject) => {
       const umid = this.umid;
-      this.eventEmitter.emit("getStreamData", umid, streamId);
-
-      this.eventEmitter.on(
+      // once: each request gets exactly one answer, and a listener left
+      // behind would also fire for a later read of the same stream
+      this.eventEmitter.once(
         `getStreamDataFetched-${umid}${streamId}`,
         (err: Error, data: ActiveDefinitions.IStream) => {
           if (err) {
             ActiveLogger.debug(err, "Event error");
-            reject(err);
+            return reject(err);
           }
           resolve(data);
         }
       );
+
+      // After the listener is in place, so an answer can never be missed
+      this.eventEmitter.emit("getStreamData", umid, streamId);
     });
   }
 
@@ -433,6 +487,8 @@ export class Stream {
    * @returns {Object[]}
    */
   protected getInterNodeComms(): ActiveDefinitions.ICommunications {
+    // Inter-node comms come from the supernodes' vote exchange
+    this.markSupernodeDependent("getInterNodeComms");
     return this.inINC;
   }
 
@@ -442,6 +498,7 @@ export class Stream {
    * @param {object} data
    */
   protected setThisInterNodeComms(data: object): void {
+    this.markSupernodeDependent("setThisInterNodeComms");
     this.outINC = data;
   }
 
@@ -459,6 +516,7 @@ export class Stream {
    *
    */
   protected clearAllInterNodeComms(): void {
+    this.markSupernodeDependent("clearAllInterNodeComms");
     this.clearINC = true;
   }
 
@@ -558,6 +616,164 @@ export class Stream {
   public getTimeout(): Date {
     return this.nextTimeout;
   }
+
+  /**
+   * Set by the host VM before any contract phase runs: false on a hybrid.
+   * Only the first call counts.
+   *
+   * @param {boolean} supernode
+   */
+  public setHostMode(supernode: boolean): void {
+    if (this.hostModeSet) return;
+    this.hostModeSet = true;
+    this.hostIsSupernode = supernode;
+    for (const activity of Object.values(this.activities)) {
+      activity.setHostMode(supernode);
+    }
+  }
+
+  /** Stream name space reserved for the default namespace */
+  public static readonly RESERVED_STREAMS = "activeledger.default.";
+
+  /**
+   * Set by the host VM before any contract phase runs: true from build
+   * 40300, when stream names under `activeledger.default.` are reserved for
+   * the default namespace. Only turns on, never off, and also checks the
+   * streams the contract already created (in its constructor).
+   *
+   * @param {boolean} reserved
+   */
+  public setReservedStreams(reserved: boolean): void {
+    if (!reserved) return;
+    this.reserveDefaultStreams = true;
+    for (const input of this.createdStreams) {
+      this.checkReservedStream(input);
+    }
+  }
+
+  /**
+   * Names under `activeledger.default.` belong to the default namespace
+   * (identities, the hybrid registry). A stream id is sha256(seed + name),
+   * so another contract creating the same name with the same seed first
+   * would squat the id and block the real one with a collision. The whole
+   * hash input is checked, not just the name: seed and name are
+   * concatenated, so moving the start of the name onto the end of the seed
+   * gives the same id.
+   *
+   * @private
+   * @param {string} input seed + name
+   */
+  private checkReservedStream(input: string): void {
+    if (
+      this.reserveDefaultStreams &&
+      this.transactions?.$namespace !== "default" &&
+      input.indexOf(Stream.RESERVED_STREAMS) !== -1
+    ) {
+      throw new Error(
+        `Stream names under "${Stream.RESERVED_STREAMS}" are reserved for the default namespace`
+      );
+    }
+  }
+
+  /**
+   * True on a supernode, false on a hybrid. Wrap supernode-only work
+   * (external calls, volatile) in it and describe what that work writes
+   * with adoptFromSupernode in the else branch.
+   *
+   * Calling it marks the execution supernode-dependent, so a hybrid adopts
+   * the supernodes' attested outputs instead of reporting a divergence.
+   *
+   * @returns {boolean}
+   */
+  public isSupernode(): boolean {
+    this.markSupernodeDependent("isSupernode");
+    return this.hostIsSupernode;
+  }
+
+  /**
+   * Record that this execution depends on the supernodes. Used by the
+   * contract base classes and by the host VM.
+   *
+   * @param {string} reason
+   */
+  public markSupernodeDependent(reason: string): void {
+    if (this.supernodeDependentReasons.indexOf(reason) === -1) {
+      this.supernodeDependentReasons.push(reason);
+    }
+  }
+
+  /**
+   * Why this execution is supernode-dependent. Empty when it is not.
+   *
+   * @returns {string[]}
+   */
+  public getSupernodeDependence(): string[] {
+    return this.supernodeDependentReasons.slice();
+  }
+
+  /**
+   * Adopt safety net for when supernode-only work decides which streams
+   * change. Each listed stream may come back unchanged, or changed only
+   * within shape. The ids must be among the transaction's $i/$o, so the
+   * declaration can never widen what can be written.
+   *
+   * Does nothing on a supernode. On a hybrid it records the declaration.
+   *
+   * @param {string[]} streams
+   * @param {IAdoptShape} shape
+   * @param {IAdoptOptions} [options]
+   */
+  protected adoptStreamsFromSupernode(
+    streams: string[],
+    shape: IAdoptShape,
+    options?: IAdoptOptions
+  ): void {
+    if (this.hostIsSupernode) return;
+    validateAdoptShape(shape);
+    if (!Array.isArray(streams) || !streams.length) {
+      throw new Error("adoptStreamsFromSupernode needs at least one stream");
+    }
+
+    // $i/$o keys are stream ids or labels whose $stream is the id
+    const allowed: { [id: string]: string } = {};
+    for (const io of [this.transactions.$i || {}, this.transactions.$o || {}]) {
+      for (const key of Object.keys(io)) {
+        const id = (io as any)[key]?.$stream || key;
+        allowed[key] = id;
+        allowed[id] = id;
+      }
+    }
+
+    const ids = streams.map((stream) => {
+      const id = allowed[stream];
+      if (!id) {
+        throw new Error(
+          `adoptStreamsFromSupernode: ${stream} is not an input or output of this transaction`
+        );
+      }
+      return this.filterPrefix(id);
+    });
+
+    this.adoptCandidateDeclarations.push({
+      streams: ids,
+      shape: JSON.parse(JSON.stringify(shape)),
+      atomic: !!options?.atomic,
+      candidates: true,
+    });
+  }
+
+  /**
+   * Every adopt declaration recorded during this execution, for the host
+   *
+   * @returns {IAdoptDeclaration[]}
+   */
+  public exportAdoptDeclarations(): IAdoptDeclaration[] {
+    const declarations = this.adoptCandidateDeclarations.slice();
+    for (const activity of Object.values(this.activities)) {
+      declarations.push(...activity.exportAdoptDeclarations());
+    }
+    return declarations;
+  }
 }
 /**
  * Manage an Activity Stream
@@ -624,6 +840,21 @@ export class Activity {
    * @type {ActiveDefinitions.IVolatile}
    */
   private volatile: ActiveDefinitions.IVolatile;
+
+  /**
+   * Host mode, set once through the owning Stream. A supernode by default.
+   *
+   * @private
+   */
+  private hostIsSupernode: boolean = true;
+  private hostModeSet: boolean = false;
+
+  /**
+   * adoptFromSupernode declarations recorded on a hybrid
+   *
+   * @private
+   */
+  private adoptDeclarations: IAdoptDeclaration[] = [];
 
   /**
    * Creates an instance of Activity.
@@ -1231,6 +1462,64 @@ export class Activity {
     // Set Update Flag
     this.updated = true;
     this.volatileUpdated = true;
+  }
+
+  /**
+   * Set by the owning Stream from the host VM. Only the first call counts.
+   *
+   * @param {boolean} supernode
+   */
+  public setHostMode(supernode: boolean): void {
+    if (this.hostModeSet) return;
+    this.hostModeSet = true;
+    this.hostIsSupernode = supernode;
+  }
+
+  /**
+   * Adopt safety net. Call it in the else branch of an isSupernode() check
+   * to describe exactly what the supernode branch writes to this stream.
+   * The shape maps property names to "string" | "number" | "boolean" |
+   * "object" | "array" | "any"; a "?" suffix marks a property optional and a
+   * nested object describes nested properties. With { atomic: true } the
+   * declared properties that change must be none or all of them.
+   *
+   * Does nothing on a supernode. On a hybrid it records the declaration and
+   * marks this stream written, so the local result has a counterpart for
+   * the supernodes' document.
+   *
+   * @param {IAdoptShape} shape
+   * @param {IAdoptOptions} [options]
+   */
+  public adoptFromSupernode(shape: IAdoptShape, options?: IAdoptOptions): void {
+    if (this.hostIsSupernode) return;
+    validateAdoptShape(shape);
+    this.adoptDeclarations.push({
+      streams: [this.getId()],
+      shape: JSON.parse(JSON.stringify(shape)),
+      atomic: !!options?.atomic,
+      candidates: false,
+    });
+    this.updatedMeta = this.updated = true;
+  }
+
+  /**
+   * The adoptFromSupernode declarations recorded on this stream
+   *
+   * @returns {IAdoptDeclaration[]}
+   */
+  public exportAdoptDeclarations(): IAdoptDeclaration[] {
+    return this.adoptDeclarations.slice();
+  }
+
+  /**
+   * Let this stream's volatile be served to hybrids: sets volatileShared in
+   * the stream's :stream meta when the transaction commits. Meta is part of
+   * consensus, so every node agrees on it. Never call it on a stream whose
+   * volatile holds secrets.
+   */
+  public shareVolatile(): void {
+    this.meta.volatileShared = true;
+    this.updatedMeta = this.updated = true;
   }
 
   /**

@@ -29,6 +29,12 @@ import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
 import { EVENT_PREFIX, eventsSince } from "./events";
+import {
+  checkDoc,
+  filterPrefix,
+  isValidDbName,
+  prepareAllDocs,
+} from "./selfhost-helpers";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
@@ -97,7 +103,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     // And nothing but a plain name after it: every distinct name opens (and
     // creates) its own LevelDB directory, so an unchecked suffix let any
     // request create databases on disk without limit.
-    if (!/^activeledger[A-Za-z0-9_-]{0,64}$/.test(name)) {
+    if (!isValidDbName(name)) {
       throw new Error(`invalid database - ${name}`);
     }
     if (!dbCache[name]) {
@@ -119,17 +125,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
    * @returns {number}
    */
   const uuidGenV4 = (): string => randomUUID();
-
-  /**
-   * Checks for the existant of _id if not ads it and returns
-   *
-   * @param {*} doc
-   * @returns {*}
-   */
-  const checkDoc = (doc: any): any => {
-    if (!doc._id) doc._id = uuidGenV4();
-    return doc;
-  };
 
   // Create Light Server
   let http = new ActiveHttpd();
@@ -319,37 +314,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       };
     }
     return txs;
-  };
-
-  /**
-   * C/Pouch conversion utility tool for _all_docs
-   *
-   * @param {*} options
-   * @returns
-   */
-  const prepareAllDocs = (options: any) => {
-    // Convert Limit
-    if (options.limit) {
-      options.limit = parseInt(options.limit) || null;
-    }
-
-    // Convert startkey to remove "
-    if (options.startkey) {
-      options.startkey = options.startkey.replace(/"/g, "");
-    }
-
-    // Convert endkey to remove " and keep unicode search
-    if (options.endkey) {
-      options.endkey = options.endkey.replace(/"/g, "");
-      options.endkey = options.endkey.slice(0, -1) + "\u9999";
-    }
-
-    // Filter prefixes
-    // Leaving this in even though filtering in permissionsChecker as well
-    if (options.keys) {
-      options.keys = options.keys.map((id: string) => filterPrefix(id));
-    }
-    return options;
   };
 
   /**
@@ -625,31 +589,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     } catch (e) {
       e.reason = e.message;
       throw e;
-    }
-  };
-
-  // Filters any prefix (so they're virtual) (: reserved character) to real stream id
-  const filterPrefix = (stream: string, db?: string): string => {
-
-    // Only need to filter activeledger, making optional just in case not passed
-    if (db && db !== 'activeledger') {
-      return stream;
-    } else {
-      // Remove any suffix like :volatile :stream :umid
-      let [streamId, suffix] = stream.split(":");
-
-      // If id length more than 64 trim the start
-      if (streamId.length > 64 && !streamId.startsWith("0x")) {
-        streamId = streamId.slice(-64);
-      }
-
-      // If suffix add it back to return
-      if (suffix) {
-        return streamId + ":" + suffix;
-      }
-
-      // Return just the id
-      return streamId;
     }
   };
 

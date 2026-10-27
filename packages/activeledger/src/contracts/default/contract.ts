@@ -23,6 +23,10 @@
 
 import * as fs from "fs";
 import * as ts from "typescript-api";
+import {
+  ContractFiles,
+  ContractSource,
+} from "@activeledger/activecontracts/lib/source";
 import { Standard, Activity } from "@activeledger/activecontracts";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
@@ -439,6 +443,108 @@ export default class Contract extends Standard {
   private static readonly REFERENCE_BUILD = 40100;
 
   /**
+   * Build level from which an update may lock the versions it replaces. Below
+   * it a node would ignore the request while another honoured it, so it is
+   * refused rather than quietly diverging.
+   */
+  private static readonly LOCK_BUILD = 40300;
+
+  /**
+   * Record locks on the contract stream's state (`locks: { all?, versions }`).
+   * The lock files are a cache each node writes itself; this is what a restore
+   * writes them back from. Returns the state, changed in place.
+   */
+  public static recordLocks(state: any, versions: string[], all = false): any {
+    const locks = state.locks || { versions: [] };
+    if (all) locks.all = true;
+    locks.versions = [...new Set<string>([...(locks.versions || []), ...versions])].sort();
+    state.locks = locks;
+    return state;
+  }
+
+  /** The reverse of recordLocks, for an unlock */
+  public static forgetLock(state: any, version: string): any {
+    const locks = state.locks;
+    if (!locks) return state;
+    if (version === "") delete locks.all;
+    else locks.versions = (locks.versions || []).filter((v: string) => v !== version);
+    // Left as an empty record, never deleted: setState merges what it is
+    // given over the stream's state, so a removed key would come back
+    state.locks = { ...locks, versions: locks.versions || [] };
+    return state;
+  }
+
+  /**
+   * The contract stream a lock or unlock records itself on, when the
+   * transaction names it as its only output. A lock without an output is still
+   * honoured, as files only, as it always was. Below LOCK_BUILD nothing is
+   * recorded, so every node commits the same stream state.
+   */
+  private lockOutput(): any | undefined {
+    if (ActiveOptions.get<number>("build", 0) < Contract.LOCK_BUILD) return undefined;
+    const outputs = Object.keys(this.transactions.$o || {});
+    if (!outputs.length) return undefined;
+    if (outputs.length !== 1 || outputs[0].toLowerCase() !== this.contract) {
+      throw new Error("A lock output must be the contract stream");
+    }
+    // It has to be this namespace's own contract: the identity is checked
+    // against the namespace, so nothing else may be recorded on or unlocked
+    const out = this.getActivityStreams(outputs[0]);
+    const held = out.getState();
+    if (
+      !held ||
+      !held.contract ||
+      String(held.namespace || "").toLowerCase() !== this.namespace
+    ) {
+      throw new Error("A lock output must be a contract in the namespace");
+    }
+    return out;
+  }
+
+  /** Is this lock held, by its file or by what the contract stream recorded */
+  private lockHeld(out: any | undefined): boolean {
+    if (
+      fs.existsSync(
+        this.rootDir + this.namespace + "/_LOCK." + this.contract + this.version
+      )
+    ) {
+      return true;
+    }
+    const locks = out && out.getState().locks;
+    if (!locks) return false;
+    return this.version === ""
+      ? !!locks.all
+      : (locks.versions || []).includes(this.version.slice(1));
+  }
+
+  /**
+   * The versions an update asks to lock: "all" for every other version the
+   * contract has, or an array of version names. The version being deployed is
+   * never locked by its own update, and an unknown name is an error rather
+   * than a lock on nothing.
+   */
+  private versionsToLock(txi: any, existing: string[]): string[] {
+    const asked = txi.lock;
+    if (asked === undefined) return [];
+    if (ActiveOptions.get<number>("build", 0) < Contract.LOCK_BUILD) {
+      throw new Error(`Locking versions on update needs build ${Contract.LOCK_BUILD}`);
+    }
+    if (asked === "all") return existing.filter((v) => v !== txi.version);
+    if (
+      !Array.isArray(asked) ||
+      asked.length > 1000 ||
+      asked.some((v) => typeof v !== "string")
+    ) {
+      throw new Error('lock must be "all" or an array of version names');
+    }
+    for (const v of asked) {
+      if (v === txi.version) throw new Error("Cannot lock the version being deployed");
+      if (!existing.includes(v)) throw new Error(`Cannot lock unknown version ${v}`);
+    }
+    return [...new Set<string>(asked)];
+  }
+
+  /**
    * Is this node allowed to write contract references yet?
    *
    * @private
@@ -516,10 +622,7 @@ export default class Contract extends Standard {
   }
 
   private static hashContractSource(base64: string): string {
-    return ActiveCrypto.Hash.getHash(
-      Buffer.from(base64, "base64").toString(),
-      "sha256"
-    );
+    return ContractSource.hash(base64);
   }
 
   /**
@@ -567,35 +670,10 @@ export default class Contract extends Standard {
    */
   private transpile(target: ContractTarget): string {
     // Base64 Decode & Transpile to javascript
-    return ts.transpileModule(
-      Buffer.from(
-        this.transactions.$i[this.identity.getName()].contract as string,
-        "base64"
-      ).toString(),
-      {
-        compilerOptions: {
-          alwaysStrict: true,
-          strictNullChecks: true,
-          noImplicitAny: true,
-          removeComments: true,
-          module: ts.ModuleKind.CommonJS,
-          moduleResolution: ts.ModuleResolutionKind.Classic,
-          // Pinned editions, never ScriptTarget.Latest - a compiler upgrade
-          // must not move the target of a contract under anyone.
-          target:
-            target === "es2025"
-              ? ts.ScriptTarget.ES2025
-              : ts.ScriptTarget.ES2017,
-          // TypeScript 6 defaults esModuleInterop on, which rewrites `import *`
-          // and default imports in contract code. Off, the es2017 output is
-          // byte-identical to 5.6.3 across every .ts in this repo; a contract
-          // must not change behaviour because the node that compiles it was
-          // upgraded.
-          esModuleInterop: false,
-          ignoreDeprecations: "6.0",
-        },
-      }
-    ).outputText;
+    return ContractSource.transpile(
+      this.transactions.$i[this.identity.getName()].contract as string,
+      target
+    );
   }
 
   /**
@@ -1097,19 +1175,15 @@ export default class Contract extends Standard {
           this.rootDir + this.namespace + "/" + this.contract + ".js"
         )
       ) {
-        // Does the Link file not exist!
-        if (
-          !fs.existsSync(
-            this.rootDir +
-              this.namespace +
-              "/_LOCK." +
-              this.contract +
-              this.version
-          )
-        ) {
-          return resolve(true);
-        } else {
-          return reject("Lock already exists");
+        // Is the lock not held yet!
+        try {
+          if (!this.lockHeld(this.lockOutput())) {
+            return resolve(true);
+          } else {
+            return reject("Lock already exists");
+          }
+        } catch (e) {
+          return reject(e.message);
         }
       } else {
         return reject("Contract not found in namespace");
@@ -1155,19 +1229,15 @@ export default class Contract extends Standard {
 
     // Does this identity have access to namespace (Maybe use ACL?)
     if (this.identity.getState().namespace == this.namespace) {
-      // Does the Link file exist!
-      if (
-        fs.existsSync(
-          this.rootDir +
-            this.namespace +
-            "/_LOCK." +
-            this.contract +
-            this.version
-        )
-      ) {
-        return resolve(true);
-      } else {
-        return reject("Lock doesn't exists");
+      // Is the lock held!
+      try {
+        if (this.lockHeld(this.lockOutput())) {
+          return resolve(true);
+        } else {
+          return reject("Lock doesn't exists");
+        }
+      } catch (e) {
+        return reject(e.message);
       }
     }
     return reject("Invalid Namespace");
@@ -1182,17 +1252,22 @@ export default class Contract extends Standard {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    // Create File
-    fs.closeSync(
-      fs.openSync(
-        this.rootDir +
-          this.namespace +
-          "/_LOCK." +
-          this.contract +
-          this.version,
-        "w"
-      )
-    );
+    // Create File (it may already be there, on a node that kept it)
+    const files = new ContractFiles(this.rootDir);
+    if (!files.isLocked(this.namespace, this.contract, this.version)) {
+      files.lock(this.namespace, this.contract, this.version);
+    }
+    // Record it on the contract stream so a restore can write it back
+    const out = this.lockOutput();
+    if (out) {
+      out.setState(
+        Contract.recordLocks(
+          out.getState(),
+          this.version ? [this.version.slice(1)] : [],
+          this.version === ""
+        )
+      );
+    }
     resolve(true);
   }
 
@@ -1205,10 +1280,15 @@ export default class Contract extends Standard {
     resolve: (value?: boolean | PromiseLike<boolean> | undefined) => void,
     reject: (reason?: any) => void
   ): void {
-    // Remove File
-    fs.unlinkSync(
-      this.rootDir + this.namespace + "/_LOCK." + this.contract + this.version
-    );
+    // Remove File (a restored node may hold the lock only as state)
+    const files = new ContractFiles(this.rootDir);
+    if (files.isLocked(this.namespace, this.contract, this.version)) {
+      files.unlock(this.namespace, this.contract, this.version);
+    }
+    const out = this.lockOutput();
+    if (out) {
+      out.setState(Contract.forgetLock(out.getState(), this.version ? this.version.slice(1) : ""));
+    }
 
     resolve(true);
   }
@@ -1521,14 +1601,10 @@ export default class Contract extends Standard {
     );
 
     // Write the contract to its location as latest (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
-      code
-    );
-
-    // Write the contract to its location as a version (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}@${txi.version}.js`,
+    new ContractFiles(this.rootDir).write(
+      this.namespace,
+      stream.getName(),
+      txi.version,
       code
     );
 
@@ -1572,6 +1648,13 @@ export default class Contract extends Standard {
       try {
         // Only the contract's deployer may replace it, when enforced (opt-in)
         this.assertContractOwner();
+        // Locks asked for must make sense before anything is committed
+        const output = Object.keys(this.transactions.$o || {})[0];
+        const current = output ? this.getActivityStreams(output).getState() : {};
+        this.versionsToLock(
+          this.transactions.$i[this.identity.getName()],
+          Object.keys(current?.contract || {})
+        );
         // Security Scan
         this.securityScan(
           Buffer.from(
@@ -1622,6 +1705,9 @@ export default class Contract extends Standard {
       this.normaliseLegacyVersions(state);
     }
 
+    // Decided before the new version is added, from the versions it replaces
+    const toLock = this.versionsToLock(txi, Object.keys(state.contract || {}));
+
     // Version Management (see commitAdd for why this is a reference)
     state.contract[txi.version] = this.useContractReferences()
       ? {
@@ -1644,16 +1730,22 @@ export default class Contract extends Standard {
     );
 
     // Write the contract to its location as latest (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}.js`,
+    new ContractFiles(this.rootDir).write(
+      this.namespace,
+      stream.getName(),
+      txi.version,
       code
     );
 
-    // Write the contract to its location (Using its stream name)
-    fs.writeFileSync(
-      `${this.rootDir}${this.namespace}/${stream.getName()}@${txi.version}.js`,
-      code
-    );
+    // The versions the owner asked to retire, locked in the same commit as
+    // the version that replaces them
+    const files = new ContractFiles(this.rootDir);
+    for (const version of toLock) {
+      files.lock(this.namespace, stream.getName(), "@" + version);
+    }
+
+    // Recorded with the version, so a restore can lock them again
+    if (toLock.length) Contract.recordLocks(state, toLock);
 
     // Save State
     stream.setState(state);

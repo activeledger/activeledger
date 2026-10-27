@@ -46,8 +46,8 @@ jobs:
       - name: Build packages
         run: |
           for target in definitions logger utilities httpd options storage \
-                        crypto query contracts protocol network toolkits \
-                        ledger restore; do
+                        crypto activesync activep2p query contracts protocol \
+                        network toolkits ledger restore hybrid; do
             echo "::group::build:$target"
             npm run "build:$target"
             echo "::endgroup::"

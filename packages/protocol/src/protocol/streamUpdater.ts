@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { Attestation } from "./attest";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -160,6 +161,9 @@ export class StreamUpdater {
         this.entry.$territoriality,
         this.entry.$umid
       );
+      if (this.virtualMachine.takeReloadRequest(this.entry.$umid)) {
+        this.emitter.emit("reload");
+      }
 
       // Update in communication (Recommended pre commit only but can be edge use cases)
       this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(
@@ -213,6 +217,26 @@ export class StreamUpdater {
       }
     }
 
+    // The host's own check that no contract outside the default namespace
+    // created a stream under the reserved names, whatever the contract
+    // object says: the in-contract check (Stream.newActivityStream) is
+    // enforced by objects the contract itself holds. This sees the finished
+    // streams. (A name split across seed and name is only caught in the
+    // contract, where the seed is known.)
+    if (
+      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD &&
+      this.entry.$tx?.$namespace !== "default"
+    ) {
+      for (const stream of this.streams) {
+        if (stream.meta && !stream.meta._rev && typeof stream.meta.name === "string" && stream.meta.name.indexOf("activeledger.default.") !== -1) {
+          return this.shared.raiseLedgerError(
+            1237,
+            new Error(`Stream names under "activeledger.default." are reserved for the default namespace`)
+          );
+        }
+      }
+    }
+
     this.buildReferenceStreams();
 
     // Any inputs left (Means not modified, Unmodified outputs can be ignored)
@@ -262,6 +286,13 @@ export class StreamUpdater {
       //$nodes: this.entry.$nodes, // This is to different! Umid recovery not working
       $origin: this.entry.$origin,
       $remoteAddr: this.entry.$remoteAddr,
+      // The hybrid that relayed it, verified by the entry node. Left out
+      // entirely when absent, so every other umid doc stays byte-identical
+      // to what earlier releases wrote (and so does all of it below 40300).
+      ...(this.entry.$relay &&
+      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD
+        ? { $relay: this.entry.$relay }
+        : {}),
     };
   }
 
@@ -478,6 +509,15 @@ export class StreamUpdater {
         _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
           }`,
       });
+
+      // Sign what was committed, for hybrids (build 40300 and later)
+      await Attestation.commit(
+        this.db,
+        this.dbev,
+        this.reference,
+        this.entry,
+        this.docs
+      );
     } catch (error) {
       ActiveLogger.error(error, "Datastore Failure");
       this.shared.raiseLedgerError(1510, new Error("Failed to save streams"));
@@ -519,6 +559,9 @@ export class StreamUpdater {
         this.entry.$territoriality,
         this.entry.$umid
       );
+      if (this.virtualMachine.takeReloadRequest(this.entry.$umid)) {
+        this.emitter.emit("reload");
+      }
 
       // Update in communication (Recommended pre commit only but can be edge use cases)
       this.nodeResponse.incomms = this.virtualMachine.getInternodeCommsFromVM(

@@ -1,0 +1,54 @@
+{
+  "name": "@activeledger/activesync",
+  "version": "5.0.2",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "description": "Shared ledger sync logic: SPI tally, umid backfill and history walking, over any peer transport",
+  "keywords": [
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts",
+    "activeledger",
+    "network",
+    "node",
+    "sync"
+  ],
+  "homepage": "https://github.com/activeledger/activeledger",
+  "main": "./lib/index.js",
+  "scripts": {
+    "start": "node lib/index.js",
+    "test": "cd ../../ && npm test",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:es": "tsc --outDir es --module es2022",
+    "build": "npm run build:commonjs && npm run build:es",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/activeledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/activeledger/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "devDependencies": {
+    "@activeledger/activedefinitions": "5.0.2",
+    "@types/node": "24.10.1",
+    "typescript": "7.0.2"
+  },
+  "files": [
+    "es",
+    "lib"
+  ],
+  "types": "./lib/index.d.ts",
+  "jsnext:main": "./es/index.js",
+  "module": "./es/index.js",
+  "dependencies": {
+    "@activeledger/activecrypto": "5.0.2",
+    "@activeledger/activelogger": "5.0.2"
+  }
+}

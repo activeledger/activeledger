@@ -1,5 +1,129 @@
 # Activeledger Changelog
 
+## [5.1.0]
+
+Adds the hybrid node: `activehybrid`, a light node that follows the ledger
+from the supernodes, checks what they commit instead of trusting it, and
+serves its own API. It needs **build 40300** on the supernodes, so a network
+is upgraded in two steps: upgrade every supernode, then raise `build` to
+40300 in each `config.json`. Until then nothing below changes how a supernode
+votes or commits.
+
+### Upgrading
+Nothing to do for a network that does not run hybrids.
+
+To run hybrids:
+
+1. Upgrade every supernode, then set `"build": 40300` on all of them.
+2. Optionally add a `hybrid` section to the config before `--assert`
+   (`admission`, `required`, `window`, `minVersion`). It is asserted into the
+   setup stream with `security` and `consensus`. A network that was asserted
+   earlier changes it with `activeledger hybrid ...` (below).
+3. On the hybrid's machine: `activehybrid init`, `register`, `start`.
+
+The legacy `hybrid: []` URL list in `config.json` is no longer read.
+
+The `/h/*` API authenticates with signed requests but does not encrypt them.
+Put TLS in front of it (a reverse proxy) when hybrids connect over an
+untrusted network, and point the hybrid's upstream at the TLS endpoint.
+
+### Added
+* **activehybrid** : `@activeledger/activehybrid` (`packages/hybrid`). Embedded
+  store, no CouchDB. It verifies each feed item (signed votes, a quorum of
+  commit attestations), re-runs the contract itself or adopts the attested
+  outputs, and repairs a mismatch with SPI, writing a divergence record. It
+  relays submitted transactions to a supernode with a `$relay` signature.
+  Commands: `init`, `token`, `check-config`, `register`, `update`, `retire`,
+  `peers`, `pin`, `start`, `stop`, `restart`, `status`, `divergences`, `prune`.
+* **Supernode hybrid API** : `/h/*` (HTTP and server-sent events) and an
+  optional P2P listener (`--hybrid-listen`), the registry contract
+  `default/hybrid` (one stream per key), `--hybrid-max-feeds`.
+* **Signed votes and commit attestations** : at build 40300 each node signs its
+  vote and its commit outcome, stored beside the transaction. Failed
+  transactions with at least one yes vote are kept for hybrids.
+* **`activeledger hybrid`** : `list`, `feeds`, `ban`, `unban`, and the on-ledger
+  changes `allow`, `deny`, `admission <open|allowlist>`, `min-version <semver>`
+  with `sign` and `submit`. A change is a `default/setup` `hybrid` transaction
+  that more than half of the nodes sign: `--out <file>` writes the signed
+  request, each other node runs `hybrid sign <file>`, and any node runs
+  `hybrid submit <file>`. On one node it signs and sends. `deny` stops new
+  registrations only; use `ban` for a feed already open.
+* **`hybrid.minVersion`** : travels on every feed heartbeat and `/h/head`. A
+  running hybrid below it stops applying items and reports `outdated`; lowering
+  it lets the hybrid resume.
+* **Shared command line** : `activeledger` and `activehybrid` share one parser
+  and start-up display. Unknown flags and commands now exit 1 with a
+  suggestion, exit codes are 0/1/2, and non-interactive output is plain lines.
+  `activeledger status` and `check-config` are new.
+* **Retire old contract versions on update** : a contract `update` takes an
+  optional `lock` property in its input, `"all"` (every other version the
+  contract has) or an array of version names. Those versions are locked in the
+  same commit as the new one, so they can no longer be called with
+  `$contract: <id>@=<version>`. An unknown version, the version being deployed,
+  or a malformed list is refused, as is `lock` below build 40300. Locks are
+  files on each node, as with the `lock` entry; `unlock` removes one.
+* **Contract locks survive a restore** : from build 40300 an update's `lock`,
+  and a `lock` or `unlock` entry that names the contract stream as its only
+  `$o`, record the locks on that stream (`locks: { all?, versions }`). A node
+  that lost the lock files still treats them as held, and restore writes them
+  back. A `lock` or `unlock` without that output stays files only, and locks
+  made before 5.1.0 are not recorded anywhere, so a restore does not bring them
+  back.
+
+### Fixed
+* **Contract locks are checked on every run** : a global or version lock
+  (`_LOCK.<id>`, `_LOCK.<id>@<version>`) was only looked for when a processor
+  had not cached the contract path, so a version it had already run stayed
+  callable by `$contract: <id>@=<version>` until a restart. Both are now
+  checked each time a contract is resolved, at the cost of a `stat` or two.
+* **`--assert` on a self-signed network** : the assert transaction signed one
+  input and not the `setup` input, so it was refused.
+* **Configuration reload** : since the VM refactor in 5.0.0 the request to
+  reload the configuration never reached the node's main process, so adding or
+  removing a node and approving or revoking a namespace updated the ledger but
+  not the running host until restart. It is passed on again.
+* **Restore picks the majority revision the way SPI does** : `activerestore`
+  counted votes per revision on its own and could count a node twice or carry a
+  revision on fewer votes than a majority. It now uses the same tally as SPI
+  (one vote per node per stream), and leaves a stream alone when no revision
+  reaches the consensus threshold.
+
+* **`activerestore --full` against the embedded store** : it could not restore
+  anything. `/a/all` read each stream's revision from a CouchDB-shaped row the
+  embedded store did not give, so every node answered with an error and restore
+  tried to read the error text as streams; the embedded store's rows now carry
+  `value.rev`. A node that did not hold a stream and answered with an empty
+  array also stopped the restore, and is now skipped. Restore says so, in its
+  log, when `consensus.reached` is not set in its `config.json` (it then has
+  no majority to take and restores nothing), and includes the reason when it
+  fails.
+
+* **Start-up display** : it adds a line per finished step instead of redrawing
+  one line, so log lines and the helper processes' output no longer end up on
+  the chain's line. It opens with the banner.
+
+* **Ctrl+C before the node is listening** : it logged "Shut Down Initiated" and
+  carried on, because the exit was only scheduled when there was a listen
+  socket to close. A node still starting its workers, or one that never got
+  the port, could not be stopped from the keyboard. It now always exits after
+  the grace period, and pressing Ctrl+C a second time exits at once.
+
+### Known limits
+* The hybrid keeps only the current revision of each stream, so an item whose
+  streams have already moved on is marked superseded rather than re-run.
+* The feed is ordered by the time a transaction entered the network. A hybrid
+  that has already read past that time does not receive a transaction that
+  commits later than one stamped after it, which can happen to a slow
+  transaction. Its streams still arrive with the next change to them.
+* A feed key with no attestation (for example one written by restore, or by a
+  commit before build 40300) holds the feed for two minutes and is then skipped.
+* A feed item the hybrid cannot verify, or whose divergence it has recorded, is
+  logged and skipped. One dropped for want of something it may find later (a
+  stream, a peer's attestation, a failed write) is tried again every 30 seconds,
+  up to 5 attempts in all and 200 held at once.
+* Hybrid P2P is available but not exercised on a live network yet, and the P2P
+  feed has no flow control.
+
 ## [5.0.0]
 
 ActiveCore is removed. It was off by default, and its event streams could not

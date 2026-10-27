@@ -27,7 +27,6 @@ import { ActiveNetwork } from "@activeledger/activenetwork";
 import {
   IStreamInformation,
   INetworkData,
-  IReductionData,
   IRestoreStream,
   IKnockData,
   IConsensusData,
@@ -81,11 +80,19 @@ export class QuickRestore {
       .map(preparePromise);
 
     try {
-      const streamInformation: IReductionData = await this.processRebuildPromises(
+      const streamInformation: IStreamInformation[] = await this.processRebuildPromises(
         promises
       );
-      const consensusData: IConsensusData[] = await this.checkConsensus(
-        streamInformation
+      const needed = Helper.votesNeeded();
+      if (!Number.isFinite(needed)) {
+        // Nothing can be a majority without it, so say why nothing happens
+        ActiveLogger.error(
+          "consensus.reached is not set in the config file, so no revision can be a majority and nothing will be restored"
+        );
+      }
+      const consensusData: IConsensusData[] = Helper.majority(
+        streamInformation,
+        needed
       );
       await this.fetchDocuments(consensusData);
       const duration = Date.now() - startTime;
@@ -93,7 +100,9 @@ export class QuickRestore {
     } catch (error) {
       ActiveLogger.error(
         error,
-        "There was an error running quick full restore"
+        `There was an error running quick full restore: ${
+          (error as Error)?.message ?? JSON.stringify(error)
+        }`
       );
     }
   }
@@ -123,7 +132,7 @@ export class QuickRestore {
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
           const streamDataPromise = await streamData(activity);
           ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
-          const networkData: INetworkData = this.handleNetworkData(
+          const networkData: INetworkData = await this.handleNetworkData(
             streamDataPromise
           );
           await this.uploadData(networkData);
@@ -245,8 +254,11 @@ export class QuickRestore {
    * @param {Promise<unknown>[]} promises
    * @returns {Promise<INetworkData>}
    */
-  private handleNetworkData(activityData: any): INetworkData {
-    const hasNotErrored = (data: IBaseData) => (!data.error);
+  private async handleNetworkData(activityData: any): Promise<INetworkData> {
+    // A node that does not hold the stream answers with an empty array (or
+    // nothing), which has no document in it to adopt
+    const hasNotErrored = (data: IBaseData) =>
+      !!data && typeof data._id === "string" && !data.error;
 
     const isNotStreamOrUmid = (data: IBaseData) =>
       data._id.indexOf(":stream") === -1 &&
@@ -269,7 +281,7 @@ export class QuickRestore {
           volatile.push({ _id: `${data._id}:volatile` });
 
           hasRequiredData(data)
-            ? Contract.rebuild(data)
+            ? await Contract.rebuild(data)
             : Helper.output("Data does not have required fields", data);
         }
         // Only need to find one non-erroring stream
@@ -281,60 +293,15 @@ export class QuickRestore {
   }
 
   /**
-   * Check the consensus data of a stream
-   *
-   * @private
-   * @param {*} streamInformation
-   * @returns {Promise<IConsensusData[]>}
-   */
-  private checkConsensus(
-    streamInformation: IReductionData
-  ): Promise<IConsensusData[]> {
-    const streamIdCorrect = (streamId: string) =>
-      !!(streamId && streamId !== "undefined");
-
-    return new Promise((resolve) => {
-      const consensusReached: IConsensusData[] = [];
-      const streams = Object.keys(streamInformation);
-
-      for (let i = streams.length; i--; ) {
-        const streamId = streams[i];
-
-        if (streamIdCorrect(streamId)) {
-          const stream = streamInformation[streamId];
-          const revisions = Object.keys(stream);
-
-          for (let i = revisions.length; i--; ) {
-            const revision = revisions[i];
-            const vote = stream[revision];
-
-            Helper.output("Check Consensus: Adding", {
-              stream: streamId,
-              revision
-            });
-
-            if (Helper.metConsensus(vote)) {
-              consensusReached.push({ stream: streamId, revision });
-              break;
-            }
-          }
-        }
-      }
-
-      resolve(consensusReached);
-    });
-  }
-
-  /**
-   * Process the data rebuild promises, clean the returned data and reduce it.
+   * Process the data rebuild promises and clean the returned data.
    *
    * @private
    * @param {Promise<IStreamInformation>[]} promises
-   * @returns {Promise<IReductionData>}
+   * @returns {Promise<IStreamInformation[]>}
    */
   private processRebuildPromises(
     promises: Promise<IStreamInformation>[]
-  ): Promise<IReductionData> {
+  ): Promise<IStreamInformation[]> {
     const streamDataCorrect = (data: IStreamInformation) =>
       !!data;
 
@@ -348,67 +315,12 @@ export class QuickRestore {
         Helper.output("cleanedStreamInformation", cleanedStreamInformation);
 
         Object.keys(cleanedStreamInformation).length > 0
-          ? resolve(this.reduceStreamInformation(cleanedStreamInformation))
+          ? resolve(cleanedStreamInformation)
           : reject("No data to process");
       } catch (error) {
         reject(error);
       }
     });
-  }
-
-  /**
-   *  Reduce the given stream information
-   *
-   * @private
-   * @param {IStreamInformation[]} streamInformation
-   * @returns {*}
-   */
-  private reduceStreamInformation(
-    streamInformation: IStreamInformation[]
-  ): IReductionData {
-    const haveStream = (stream: IRestoreStream) =>
-      !!reduction[stream.id];
-
-    const haveRevision = (stream: IRestoreStream) =>
-      !!reduction[stream.id][stream.rev];
-
-    const incrementStreamRevisionCounter = (stream: IRestoreStream) =>
-      reduction[stream.id][stream.rev]++;
-
-    const startStreamRevisionCounter = (stream: IRestoreStream) =>
-      (reduction[stream.id][stream.rev] = 1);
-
-    const initialiseStreamCounter = (stream: IRestoreStream) =>
-      (reduction[stream.id] = { [stream.rev]: 1 });
-
-    let reduction: IReductionData = {};
-
-    Helper.output("Stream Information", streamInformation);
-
-    for (let i = streamInformation.length; i--; ) {
-      if (streamInformation[i] && streamInformation[i].streams) {
-        const streams = Object.values(streamInformation[i].streams);
-        Helper.output(`Reducing ${streams.length} streams`);
-
-        for (let s = streams.length; s--; ) {
-          const stream = streams[s];
-
-          if (stream) {
-            Helper.output("Reducing stream", stream);
-
-            haveStream(stream)
-              ? haveRevision(stream)
-                ? incrementStreamRevisionCounter(stream)
-                : startStreamRevisionCounter(stream)
-              : initialiseStreamCounter(stream);
-          }
-        }
-      }
-    }
-
-    Helper.output("Reduction", reduction);
-
-    return reduction;
   }
 
   /**

@@ -1,57 +1,24 @@
 <img src="https://raw.githubusercontent.com/activeledger/activeledger/master/docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 
-# Activehybrid Connect
+# Activehybrid
 
-Maintain every permissioned chain yourself, When you're not able to reach consensus to join the main network nodes Hybrid Connect allowes you to still have processing access to the transactions. If you have access to 1 or more main network nodes (upstream) they will relay all transactions to your hybrid node. The hybrid node doesn't assume that these upstream servers are trustworthy. What this means is all transactions will still be verified and all smart contracts are run locally.
+A light node that follows an Activeledger network from its supernodes without taking part in consensus. It keeps an embedded store (no CouchDB), serves its own read and submit API, and relays the transactions it is sent to a supernode.
 
-Transactions are always relayed, The main network node may not pass the voting round for a specific transaction but it will send it to the connected Hybrid nodes. Transactions are relayed immediately after a failure is raised or the transaction is commited on that node. 
-
-## Best Effort Eventual Conesnsus
-
-To reduce the load on the upstream servers and the network, Hybrid nodes use a Best Effort Eventual Consensus mechanism. This consensus is improved as more upstream servers allow access. As Activeledger is transactional based the Hybrid node doesn't need the entire dataset to form consensus. If using the quick start method any missing data for a transaction to be processed is relayed by the upstream server(s) transaction checkpoints to speed up the processing.
-
-## Getting Started
-
-### Hybrid Connect Client Side
+It does not trust the supernodes it follows. Every transaction is checked against the signed votes and commit attestations of the network's nodes, and every contract is run locally. When the result differs from what was committed the hybrid repairs the stream from the network and writes a divergence record.
 
 ```bash
-activehybrid
+npm install -g @activeledger/activehybrid
+
+activehybrid init --upstream supernode.example.com:5260
+activehybrid register --label "reporting node"
+activehybrid start
+activehybrid status
 ```
 
-Modify the upstream section like so
+The supernodes need build `40300`. See the documentation for the network settings (`hybrid.admission`, `hybrid.required`, `hybrid.minVersion`), the `hybrid.json` options, the local API and what contract authors need to know (`isSupernode()`, `adoptFromSupernode()`).
 
-```json
-{
-  "upstream": {
-    "scheme": "http",
-    "remote": "127.0.0.1",
-    "port": 5260,
-    "auth": "@uthC0de" // Create / Use Provided Random Authentication Code
-  }
-}
-```
+`activehybrid --help` lists every command and flag.
 
-### Upstream Server Side
-
-Modify the nodes config.json file. Currently after making the file change you need to restart your activeledger instance. 
-
-```json
-{
-  "hybrid": [
-    {
-      "active": true,
-      "url": "http://ip:5260",
-      "auth": "@uthC0de" // Create / Use Provided Random Authentication Code
-    }
-  ]
-}
-```
-
-## Contract Developer Notice
-
-All contract features are supported there are however a few quirks to bare in mind. A hybrid node will always anounce itself as a hybrid instead of the usual reference. If you're using INC (Internode Communication) and this information is not shared currently to hybrid nodes. Territoriality information is also currently not shared.
-
-| Language |                                                                                                       |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| English  | [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/configuration.md) |
-| Chinese  | [说明文档](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/configuration.md)      |
+|Language| |
+|--------|-|
+|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/hybrid.md)|

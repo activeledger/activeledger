@@ -48,10 +48,12 @@ Constraints:
 
 ## Sub-projects and build order
 
-1. Supernode side.
+1. Supernode side. Its first part is the package extractions, and the shared CLI layer in `options` (see "Command line") is built with them, because both programs depend on it.
 2. Hybrid core, over HTTP.
 3. Hybrid mesh, plus P2P.
 4. Later, out of scope: hybrids give supernodes evidence that they are wrong.
+
+The CLI work and the hybrid are one release, 5.1.0. The CLI layer is built first so the hybrid is written against it, but it is not released on its own: the strict unknown-flag change reaches operators in the same release as the new commands it supports.
 
 ## 1. Supernode side
 
@@ -323,7 +325,7 @@ A divergence record contains: `{umid, kind, supernodeTally, localResult, $revs, 
     - `"denied"`: step 0 refused it (deploy, namespace claim, setup, fund, onboard while `refuseOnboard`, a missing `$expire`, or an unlisted contract).
     - `"unavailable"`: no supernode and no mesh peer was reachable. Nothing was forwarded.
     - `"unanswered"`: the transaction was forwarded but no answer came back in time. The body carries the `$umid`, which the hybrid computed before forwarding.
-  - The hybrid never retries a forwarded transaction itself. After `"unanswered"` the client should look the `$umid` up (`GET /umid/:umid` on the hybrid once its feed has caught up, or on a supernode) before sending the transaction again.
+  - The hybrid never retries a forwarded transaction itself. After `"unanswered"` the client should look the `$umid` up (`GET /umid/:umid` on the hybrid once its feed has caught up, or on a supernode) before sending the transaction again. Because a relayed transaction always has `$expire`, a resend is safe either way: before `$expire` it is detected as a duplicate (`Transaction Exists`), and after it the ledger rejects it as expired, so it cannot commit twice.
   - A local "no" is judged against the hybrid's copy refreshed to the tip in step 2, but it can still be stale. A client that is told `"refused"` and believes the transaction should pass can send it to a supernode directly.
 - The committed transaction comes back through the feed like any other item.
 
@@ -469,7 +471,16 @@ Today the CLI is `minimist` flags with no subcommands, no `--help`, and no error
 |---|---|
 | `hybrid list` | Registered hybrids: key hash, label, endpoints, retired, and whether a feed is connected to this supernode. |
 | `hybrid feeds` | Feeds connected to this supernode, their cursor lag, and the count against `hybrid.maxFeeds`. |
-| `hybrid allow <key\|file>` / `hybrid deny <key>` | Change the `hybrid.admission` allowlist. This is an on-ledger setting, so it goes through the same assert path as `security` and `consensus`. |
+| `hybrid allow <key\|hash\|file>` / `hybrid deny <key\|hash\|file>` | Add or remove a key on the `hybrid.admission` allowlist. |
+| `hybrid admission <open\|allowlist>` / `hybrid min-version <semver>` | Switch admission, or set `hybrid.minVersion`. |
+| `hybrid sign <file>` / `hybrid submit <file>` | Multi-node changes (below). |
+
+The change commands are one `default/setup` `hybrid` transaction. Like `approve` and `revoke` it needs more than half of the nodes to sign. A change is a set of operations (`allow`, `deny`, `admission`, `minVersion`) applied to the setup stream at commit, so two operators cannot overwrite each other's list. On a network of one node the command signs and sends. Otherwise `--out <file>` writes the signed request, each other node runs `hybrid sign <file>`, and any node runs `hybrid submit <file>`. Deny stops new registrations only; `hybrid ban` stops an existing feed on one supernode.
+
+A raised or lowered `minVersion` reaches running hybrids: it rides on every heartbeat and `/h/head`, and an outdated hybrid, which has no feed open, polls `/h/head`. A hybrid that started outdated never pulled its streams, so it still needs a restart after an upgrade.
+
+| Command | Does |
+|---|---|
 | `hybrid ban <keyhash>` / `hybrid unban <keyhash>` | Refuse feeds from a key on this supernode only. Local and not consensus, for dealing with abuse under open admission. |
 
 New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-max-feeds <n>`. The `--hybrid-list`, `--hybrid-register`, `--hybrid-stop` form is not used: the first and the last would act on different programs, and subcommands leave room for the rest.
@@ -490,6 +501,37 @@ New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-ma
 - **Plain output.** The banner and tagline are left out when output is not a terminal, when `NO_COLOR` is set, and with `--json` or `--quiet`, so scripts that parse help never see them.
 - Help for one command (`help hybrid`) prints no banner, only the usage.
 
+### Start-up display
+
+Both programs show the same start-up display, drawn by the shared `options` package. It reports real progress; it never adds delay.
+
+- **The chain builds as start-up proceeds.** Each start-up step is one block. A block is drawn empty, `[   ]`, while its step runs and filled, `[###]`, with a link `==` to the previous block when the step completes:
+
+  ```
+  activeledger 5.1.0
+  [###]==[###]==[###]==[   ]   database
+  ```
+
+  A step that is slow shows a small spinner inside its block. A step that fails stops the display at that block, draws `[ X ]`, and prints the reason on the next line, so the failure is where the eye already is.
+- **Steps** are the real ones in the start-up code, not decoration:
+  - supernode: config, identity, database, network, consensus, ready;
+  - hybrid: config, identity, store, bootstrap, catching up, ready.
+- **Catching up** shows the lag in seconds counting down and the cursor position, because for a hybrid that is the part that takes time. The last block fills as lag approaches zero, and `ready` appears when `/health` would report ready.
+- **The display stops when the node is ready**, and then ordinary log lines take over. Log lines raised during start-up are printed above the display, not through it, so they stay readable and in order.
+- **Where it shows.**
+  - On a terminal, `start` draws it. A node that detaches into the background (no `--foreground`) draws it in the launching terminal until the child reports ready, then returns; the child itself draws nothing.
+  - Not shown, and replaced by one plain line per step (`ok  database`), when output is not a terminal, with `NO_COLOR`, `--quiet` or `--json`, or when the node is started by a process manager. Logs and scripts never receive escape codes.
+- **Easter egg.** The same rare roll as in `help` can break the chain mid-build, `[###]=/=[###]`, and mend it a moment later. It is drawn only while a step is already running, so it never changes how long start-up takes.
+
+### Start-up display, as built
+
+The display appends one line per finished step and never redraws a line in
+place. The first version drew the chain on a single line with a carriage return
+and a spinner; the logger and the helper processes also write to the terminal,
+and their lines ended up on the chain's line. A step still running after a
+second prints one `...` line. A hybrid's catching-up detail is printed at most
+every two seconds. The header is the help banner.
+
 ### Open choices
 
 - Whether `activehybrid` also ships as `activeledger hybrid ...` for operators who install one package.
@@ -504,7 +546,7 @@ New start-up flags: `--hybrid-listen <port>` (the P2P listener) and `--hybrid-ma
 
 ### Versioning
 
-- Ship as v5.1.0.
+- Ship as v5.1.0, with the CLI work and the hybrid together.
 - Signed votes are gated by build 40300.
 - Hybrids require 40300.
 - The CHANGELOG notes the removal of `config.hybrid[]` and the push flow.
@@ -547,6 +589,7 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
 - a user transaction without `$expire` is refused as `denied`; one with it gets the same `$umid` from the hybrid and from the entry supernode, and a resend is detected as a duplicate;
 - a supernode refuses a new feed beyond `hybrid.maxFeeds`;
 - a hybrid below `hybrid.minVersion` stops applying items, writes no divergence record, reports `ready: false` with `reason: "outdated"`, answers `POST /` as `unavailable`, and resumes from its cursor after an upgrade; a raise of `minVersion` on a running network is noticed on the next head poll;
+- the start-up display: it reports each real step, stops at a failing step with the reason, adds no measurable start-up time, prints no escape codes to a pipe, a log file, `NO_COLOR`, `--quiet` or `--json`, and a detached node draws it in the launching terminal until ready;
 - the CLI: `--help` and `--json` work on every command in both programs; an unknown command or flag, including on the start-up path, exits 1 with a suggestion before anything starts; `help` lists every command, shows the banner on a terminal, and omits it with `--json`, `--quiet`, `NO_COLOR` or a pipe; `status` exits 2 when not ready; the existing flags still work;
 - `POST /` marks every hybrid-produced outcome with `$hybrid` (`refused`, `denied`, `unavailable`, `unanswered`) and passes supernode responses through without it; `unanswered` carries the `$umid`;
 - a pinned `events` filter serves only matching events, excludes events missing the pinned field and `tx.*` events, cannot be widened by a client, and applies on `Last-Event-ID` resume;
@@ -569,3 +612,87 @@ Add `test:network:hybrid`, running 3 supernodes and 3 hybrids: one HTTP-only, on
   - the supernode `hybrid` config;
   - for contract authors: `isSupernode()`, the advised `adoptFromSupernode` safety net with worked examples, `shareVolatile()`, and that volatile is per-node by design;
   - that with open admission, hybrids replicate all non-volatile state.
+
+## Backlog
+
+### Hybrid P2P
+
+P2P is not fully turned on yet, so the hybrid's P2P path is deferred. Built
+but not exercised on a live network, or not built:
+
+- A P2P path through the network testnet (the live run is HTTP only).
+- Flow control on the P2P feed.
+- `register`, `update`, `retire` and `peers` over P2P (HTTP only today).
+- Raised `minVersion` reaching a running hybrid over P2P as well as HTTP.
+
+### Review findings (branch review, 2026-10-25)
+
+Found by the review of `feat/shared-cli-layer`. Fixed in the branch already: restore's threshold failing open, the feed retry loop's
+lifecycle, and the outcome logger on an item without a `umid`.
+
+Supernode feed (`hybridApi.ts`, `hybridRoutes.ts`):
+
+- Fixed: `feedSince` stopped at the first feed key with no `attest:`/`failed:`
+  document, so restore's `insertUmid`, commits before build 40300 or a failed
+  `Attestation.commit` froze that supernode's feed for every hybrid. A key
+  older than two minutes with no documents is now stepped past.
+- The feed is ordered by entry `$datetime` but keys are written at commit time,
+  so a slow transaction can get a key below a hybrid's cursor and is never
+  delivered. Resume with an overlap window, or document it.
+- Fixed: `/h/feed` registered the client after an async `authenticate` without
+  checking whether the request had aborted, leaking a slot in `feeds` until
+  `hybrid-max-feeds` filled. The guard now returns if the client has gone.
+
+CLI and gateway:
+
+- Fixed: `CONFIG_KEYS` in `cli/program.ts` omitted `p2pStream`,
+  `p2pStreamServer`, `gzip`, `max_memory`, `queue_retry` and `nanoGateway`, so
+  those flags exited 1 as unknown. (`path` and `full` belong to the separate
+  `activerestore` binary.)
+- nano-gateway `auth.ts` verifies the signature over `Number(timestamp)`, not
+  the header string, so a timestamp that does not round-trip fails.
+
+Hybrid and restore:
+
+- `claimPid` (`hybrid/run.ts`) checks then writes with `w`, so two starts at
+  once can both win. Use `wx`.
+- Fixed: the pruner scans the data database once an hour, not twice.
+- Fixed: restore warns when a contract version cannot be rebuilt.
+- Fixed: contract locks are recorded on the contract stream (`locks: { all?,
+  versions }`) by `lock`, `unlock` and an update's `lock`, and restore writes
+  the files back. A `lock` or `unlock` entry records it only when its `$o` is
+  the contract stream, and only from build 40300; without one it is files only.
+  Locks made before this are not in any stream and are not restored.
+
+Engine items from Varnir:
+
+- Fixed: version and global locks (`process.ts`) are checked on every
+  resolution, not only on a path cache miss.
+- Fixed: a contract update takes `lock: "all" | [versions]` and locks those
+  versions in the same commit, and records them on the contract stream.
+- `sortVersions` was reported to order `@9` above `@10`; checked, it does not.
+
+### Other open items
+
+- Linking the CLIs: `npm run link` went with lerna (d92fad08) and nothing
+  replaced it; the README now says to `npm link ./packages/...`. Add a root
+  script for it, and fix the stale mention of it in `.github/workflows/test.yml`.
+  Decide with a possible move to pnpm, which links workspace bins differently.
+
+- Documentation rewrite, its own PR: every CLI command and flag, the contract
+  API and entries, configuration, and example contracts (including a
+  hybrid-aware one using `isSupernode()` / `adoptFromSupernode()`, and one using
+  `update` with `lock`). Includes `docs/zh-cn`, and settling which of
+  `config.json` and a flag wins for a supernode setting.
+
+- Docs: `docs/en-gb/hybrid.md`, `cli.md`, `restore.md`, the contract `upgrade.md` (locks)
+  and `configuration.md` (`build`, `hybrid`) are written for 5.1.0, and
+  `packages/hybrid/README.md` is rewritten. `docs/zh-cn` is not updated; the
+  full documentation rewrite and example contracts are the next task.
+
+- `hybrid.maxFeeds` is read from `hybridMaxFeeds` / `--hybrid-max-feeds`, not
+  from the ledger's `hybrid` section.
+- The in-contract reserved-name check can be bypassed by code that tampers with
+  Stream objects.
+- Restore's whole-ledger loop is not extracted into `activesync`; only the
+  per-stream majority tally is shared.

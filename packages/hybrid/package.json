@@ -25,8 +25,8 @@
   },
   "scripts": {
     "start": "node lib/index.js",
-    "build:commonjs": "tsc --outDir lib --module commonjs  && copyfiles -f ./src/default.config.json ./lib && copyfiles -u 3 ../activeledger/lib/contracts/default/* ./lib",
-    "build:es": "tsc --outDir es --module es2022  && copyfiles -f ./src/default.config.json ./es && copyfiles -u 3 ../activeledger/es/contracts/default/* ./es",
+    "build:commonjs": "tsc --outDir lib --module commonjs",
+    "build:es": "tsc --outDir es --module es2022",
     "build": "npm run build:commonjs && npm run build:es",
     "prepublishOnly": "npm run build"
   },
@@ -41,7 +41,6 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "24.10.1",
-    "copyfiles": "2.4.1",
     "typescript": "7.0.2"
   },
   "files": [
@@ -55,13 +54,14 @@
     "@activeledger/activecontracts": "5.0.2",
     "@activeledger/activecrypto": "5.0.2",
     "@activeledger/activedefinitions": "5.0.2",
+    "@activeledger/activeledger": "5.0.2",
     "@activeledger/activelogger": "5.0.2",
     "@activeledger/activeoptions": "5.0.2",
+    "@activeledger/activep2p": "5.0.2",
     "@activeledger/activeprotocol": "5.0.2",
     "@activeledger/activestorage": "5.0.2",
-    "@activeledger/activetoolkits": "5.0.2",
+    "@activeledger/activesync": "5.0.2",
     "@activeledger/activeutilities": "5.0.2",
-    "@activeledger/httpd": "5.0.2",
     "typescript-api": "npm:typescript@6.0.3"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"

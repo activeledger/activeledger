@@ -29,7 +29,14 @@
   "autostart": {
     "restore": true
   },
-  "hybrid": [],
+  "hybrid": {
+    "admission": "open",
+    "required": [],
+    "window": {
+      "days": 30
+    },
+    "minVersion": "5.1.0"
+  },
   "experimental": {},
   "CORS": [
     "*"

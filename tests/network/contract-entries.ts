@@ -20,8 +20,9 @@ import * as path from "path";
 import * as fs from "fs";
 import * as os from "os";
 import * as crypto from "crypto";
+import { spawn } from "child_process";
 import { NetworkHarness } from "./harness";
-import { storageGet } from "./http";
+import { storageGet, storageDelete } from "./http";
 import { Report } from "./report";
 import {
   Identity,
@@ -29,6 +30,7 @@ import {
   registerNamespace,
   deployContract,
   updateContract,
+  lockContract,
   runContract,
 } from "./actions";
 
@@ -215,10 +217,10 @@ async function verifyVersionsAcrossNodes(
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  // Contract references are gated behind build >= 40100 - see
-  // contract.ts's REFERENCE_BUILD. Set on every node before any start:
+  // Contract references (build >= 40100) and recorded locks (>= 40300) are
+  // gated - see contract.ts's REFERENCE_BUILD and LOCK_BUILD. Set on every node before any start:
   // half-enabled is a rollout bug, and this must measure the feature.
-  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 40100 } });
+  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 40300 } });
   let passed = true;
   const check = (ok: boolean, message: string) => {
     passed = assert(report, ok, message) && passed;
@@ -358,6 +360,147 @@ async function main(): Promise<boolean> {
       ranAgain.$responses?.[0]?.echoedMessage === "after-update",
       "updated contract returned the value it was given"
     );
+
+    // ---- Locks --------------------------------------------------------
+    // Every node must agree on what is locked, in the ledger and on disk,
+    // and a locked version must stop running at once.
+    const lockFiles = (name: string) =>
+      nodes.map((n) => fs.existsSync(path.join(n.dataDir, "contracts", NAMESPACE, name)));
+    const settle = async (cond: () => Promise<boolean> | boolean, tries = 30) => {
+      for (let i = 0; i < tries && !(await cond()); i++) await new Promise((r) => setTimeout(r, 500));
+      return cond();
+    };
+    const stateLocks = async () =>
+      Promise.all(nodes.map((n) => storageGet(n.storageUrl, streamId).then((d: any) => d?.locks).catch(() => undefined)));
+    const failed = (r: any) => !!r.$summary?.errors || !!r.$summary?.commit === false;
+
+    report.phase("Updating to 0.0.3 and locking 0.0.1 in the same commit");
+    const lockUpdate = await updateContract(
+      origin.baseUrl, identity, NAMESPACE, streamId, CONTRACT_NAME, sourceV2Path, "0.0.3", ["0.0.1"]
+    );
+    check(!lockUpdate.$summary?.errors, "update with lock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => JSON.stringify(l) === '{"versions":["0.0.1"]}')),
+      "every node records the lock on the contract stream"
+    );
+    check(
+      await settle(() => lockFiles(`_LOCK.${streamId}@0.0.1`).every(Boolean)),
+      "every node wrote the version lock file"
+    );
+    const pinnedLocked = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "x" }, "0.0.1");
+    check(failed(pinnedLocked), "the locked version is refused");
+    const pinnedOpen = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "open" }, "0.0.2");
+    check(!pinnedOpen.$summary?.errors && pinnedOpen.$responses?.[0]?.echoedMessage === "open", "an unlocked older version still runs");
+
+    report.phase("Refusing a lock the contract does not have");
+    const badLock = await updateContract(
+      origin.baseUrl, identity, NAMESPACE, streamId, CONTRACT_NAME, sourceV2Path, "0.0.4", ["9.9.9"]
+    );
+    check(failed(badLock), "an unknown version in lock is refused");
+
+    report.phase("Unlocking with the lock entry");
+    const unlock = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "0.0.1", "unlock");
+    check(!unlock.$summary?.errors, "unlock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => !l?.all && !l?.versions?.length)),
+      "every node emptied the lock record on the contract stream"
+    );
+    check(
+      await settle(() => lockFiles(`_LOCK.${streamId}@0.0.1`).every((x) => !x)),
+      "every node removed the lock file"
+    );
+    const reopened = await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "back" }, "0.0.1");
+    check(!reopened.$summary?.errors && reopened.$responses?.[0]?.echoedMessage === "back", "the unlocked version runs again");
+
+    report.phase("Locking the whole contract with the lock entry");
+    const whole = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "lock");
+    check(!whole.$summary?.errors, "global lock committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => l?.all === true)),
+      "every node records the global lock"
+    );
+    check(failed(await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "x" })), "the whole contract is refused");
+    const again = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "lock");
+    check(failed(again), "locking what is already locked is refused");
+    const lifted = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "", "unlock");
+    check(!lifted.$summary?.errors, "global unlock committed");
+    check(
+      !(await runContract(origin.baseUrl, identity, NAMESPACE, streamId, { message: "free" })).$summary?.errors,
+      "the contract runs again once unlocked"
+    );
+
+    // ---- Refusals from the wrong caller -------------------------------
+    report.phase("Locks from an identity outside the namespace");
+    const outsider: Identity = await onboard(origin.baseUrl);
+    await registerNamespace(origin.baseUrl, outsider, "entryother");
+    check(
+      failed(await lockContract(origin.baseUrl, outsider, "entryother", streamId, "0.0.1")),
+      "another namespace cannot lock this contract"
+    );
+    check(
+      failed(await lockContract(origin.baseUrl, outsider, NAMESPACE, streamId, "0.0.1")),
+      "an identity that does not own the namespace cannot lock in it"
+    );
+    check(
+      failed(await lockContract(origin.baseUrl, identity, NAMESPACE, identity.streamId, "0.0.1")),
+      "an output that is not a contract is refused"
+    );
+    check(
+      (await stateLocks()).every((l) => !l?.all && !l?.versions?.length),
+      "none of those left a lock behind"
+    );
+
+    // ---- Restore ------------------------------------------------------
+    // Locks are files. A node that lost them, restored by activerestore --full
+    // from the ledger, must get them back from what the stream recorded.
+    report.phase("Restoring a node that lost its contract files and locks");
+    const held = await lockContract(origin.baseUrl, identity, NAMESPACE, streamId, "0.0.2");
+    check(!held.$summary?.errors, "lock of 0.0.2 committed");
+    check(
+      await settle(async () => (await stateLocks()).every((l) => JSON.stringify(l?.versions) === '["0.0.2"]')),
+      "every node records it"
+    );
+    const lost = nodes[3];
+    const nsDir = path.join(lost.dataDir, "contracts", NAMESPACE);
+    for (const f of fs.readdirSync(nsDir)) {
+      if (f.includes(streamId)) fs.rmSync(path.join(nsDir, f));
+    }
+    check(!fs.existsSync(path.join(nsDir, `_LOCK.${streamId}@0.0.2`)), "the node has lost its lock file");
+    // A node holding every stream has nothing for a full restore to fetch, so
+    // take the contract stream from its store as well, as a node that never
+    // received it would be.
+    await storageDelete(lost.storageUrl, streamId);
+    await storageDelete(lost.storageUrl, `${streamId}:stream`);
+    check(
+      (await storageGet(lost.storageUrl, streamId).catch(() => null))?.contract === undefined,
+      "the node has lost the contract stream"
+    );
+    // activerestore reads its own config.json, and takes the majority from the
+    // consensus.reached set there; the harness config has none
+    const lostConfigPath = path.join(lost.dataDir, "config.json");
+    const lostConfig = JSON.parse(fs.readFileSync(lostConfigPath, "utf8"));
+    lostConfig.consensus = { ...(lostConfig.consensus || {}), reached: 60 };
+    fs.writeFileSync(lostConfigPath, JSON.stringify(lostConfig, null, 2));
+    const restoreEntry = path.join(__dirname, "..", "..", "packages", "restore", "lib", "index.js");
+    const logPath = path.join(lost.dataDir, "restore.log");
+    const logFd = fs.openSync(logPath, "w");
+    const child = spawn(process.execPath, [restoreEntry, "--full"], { cwd: lost.dataDir, stdio: ["ignore", logFd, logFd] });
+    // It rebuilds, then lingers, so wait for the work rather than the exit
+    const lockBack = path.join(nsDir, `_LOCK.${streamId}@0.0.2`);
+    const restored = await settle(() => fs.existsSync(lockBack), 120);
+    child.kill("SIGKILL");
+    if (!restored) {
+      // Kept for whoever reads the failure: the restore's own output
+      const kept = path.join(os.tmpdir(), "restore-contract-entries.log");
+      fs.copyFileSync(logPath, kept);
+      report.warn(`restore output kept at ${kept}`);
+    }
+    check(restored, "activerestore --full rebuilt the contract");
+    for (const v of ["0.0.1", "0.0.2", "0.0.3"]) {
+      check(fs.existsSync(path.join(nsDir, `${streamId}@${v}.js`)), `restore rebuilt ${v}`);
+    }
+    check(fs.existsSync(path.join(nsDir, `_LOCK.${streamId}@0.0.2`)), "restore wrote the lock for 0.0.2 back");
+    check(!fs.existsSync(path.join(nsDir, `_LOCK.${streamId}@0.0.1`)), "restore did not invent a lock for 0.0.1");
 
     report.phase("Stream size");
     report.ok(

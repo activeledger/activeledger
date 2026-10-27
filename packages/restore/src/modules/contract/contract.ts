@@ -21,8 +21,13 @@
  * SOFTWARE.
  */
 
-import * as fs from "fs";
-import * as ts from "typescript-api";
+import { ActiveLogger } from "@activeledger/activelogger";
+import {
+  ContractFiles,
+  ContractSource,
+} from "@activeledger/activecontracts/lib/source";
+import { Provider } from "../provider/provider";
+import { Helper } from "../helper/helper";
 
 /**
  * Manages contract file caching
@@ -32,68 +37,59 @@ import * as ts from "typescript-api";
  */
 export class Contract {
   /**
-   * Rebuilds file cache from ledger entry
+   * Rebuilds file cache from ledger entry. A version that cannot be
+   * recovered (hash-only, or its deploy transaction not held) is reported
+   * and skipped rather than stopping the restore.
    *
    * @static
    * @param {*} contract
    */
-  public static rebuild(contract: any): void {
-    // Get keys of the contract
-    let versions = Object.keys(contract.contract);
+  public static async rebuild(contract: any): Promise<void> {
+    const files = new ContractFiles("contracts");
+    const fetchUmid = (umid: string) =>
+      Provider.database.get(`${umid}:umid`).catch(() => undefined);
 
-    // Loop Keys in order and build contract file
-    for (let i = 0; i < versions.length; i++) {
-      // TODO : Version checking, Array order isn't guaranteed
-      const version = versions[i];
-      const code = Contract.transpile(contract.contract[version]);
-
-      // Make sure we have contract
-      if (!fs.existsSync("contracts")) fs.mkdirSync("contracts");
-
-      // Make sure we have namespace
-      if (!fs.existsSync(`contracts/${contract.namespace}`))
-        fs.mkdirSync(`contracts/${contract.namespace}`);
-
-      // Write Latest
-      fs.writeFileSync(
-        `contracts/${contract.namespace}/${contract._id}.js`,
-        code
-      );
-
-      // Write Latest Version
-      fs.writeFileSync(
-        `contracts/${contract.namespace}/${contract._id}@${version}.js`,
-        code
-      );
-    }
-  }
-
-  /**
-   * Transpile Typescript to Javascript
-   *
-   * @private
-   * @static
-   * @param {string} code
-   * @returns {string}
-   */
-  private static transpile(code: string): string {
-    // Base64 Decode & Transpile to javascript
-    return ts.transpileModule(Buffer.from(code, "base64").toString(), {
-      compilerOptions: {
-        alwaysStrict: true,
-        strictNullChecks: true,
-        noImplicitAny: true,
-        removeComments: true,
-        module: ts.ModuleKind.CommonJS,
-        moduleResolution: ts.ModuleResolutionKind.Classic,
-        target: ts.ScriptTarget.ES2017,
-        // TypeScript 6 defaults esModuleInterop on, which rewrites `import *`
-        // and default imports in contract code. Off, the output is byte-identical
-        // to 5.6.3 across every .ts in this repo; a contract must not change
-        // behaviour because the node that compiles it was upgraded.
-        esModuleInterop: false,
-        ignoreDeprecations: "6.0"
+    for (const version of Object.keys(contract.contract)) {
+      try {
+        const source = await ContractSource.resolve(
+          contract,
+          version,
+          fetchUmid
+        );
+        files.write(
+          contract.namespace,
+          contract._id,
+          version,
+          ContractSource.transpile(source.base64, source.target)
+        );
+      } catch (e: any) {
+        ActiveLogger.warn(
+          `Cannot rebuild ${contract._id}@${version}, its file is missing: ${e.message}`
+        );
       }
-    }).outputText;
+    }
+
+    // Locks are files, so they come back from what the stream recorded
+    try {
+      const locks = contract.locks;
+      const held: string[] = [];
+      if (locks && locks.all === true) held.push("");
+      if (locks && Array.isArray(locks.versions)) {
+        for (const v of locks.versions) {
+          if (typeof v === "string") held.push("@" + v);
+        }
+      }
+      for (const version of held) {
+        try {
+          files.lock(contract.namespace, contract._id, version);
+        } catch (e: any) {
+          ActiveLogger.warn(
+            `Cannot restore the lock on ${contract._id}${version}: ${e.message}`
+          );
+        }
+      }
+    } catch (e: any) {
+      ActiveLogger.warn(`Cannot restore the locks on ${contract._id}: ${e.message}`);
+    }
   }
 }
