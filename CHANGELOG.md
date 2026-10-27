@@ -6,6 +6,13 @@
 - `activerestore --full` into an empty database rebuilt contract files only
   when the deploy transaction happened to be restored before the contract
   stream. Contract files are now rebuilt after every document is written.
+- `activerestore --full` silently left out a document at every 500-row page
+  boundary: `/a/all` skipped two rows after the start key where it needed to
+  skip one. A restore into an empty database came back a few documents short.
+- `activerestore --full` asks a stream's neighbours again when none of them
+  answered, and says which streams it could not restore.
+- `activerestore --full` no longer creates `:volatile` documents. They are
+  per node, and the contract makes one again when it sets volatile data.
 
 ## [5.1.0]
 

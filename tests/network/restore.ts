@@ -90,7 +90,7 @@ async function main(): Promise<boolean> {
 
     // ---- 2: empty ledger ---------------------------------------------------
     report.phase("Restore: the node lost its whole ledger");
-    const want = await ledger(origin.storageUrl);
+    const want = new Map([...(await ledger(origin.storageUrl))].filter(([id]) => !id.endsWith(":volatile")));
     report.info(`the network ledger holds ${want.size} documents`);
     for (const id of await ledger(lost.storageUrl).then((m) => [...m.keys()])) {
       await storageDelete(lost.storageUrl, id).catch(() => undefined);
@@ -100,13 +100,14 @@ async function main(): Promise<boolean> {
     const ms2 = await runRestore(lost.dataDir, "restore-empty");
     report.info(`took ${ms2}ms`);
     const got = await ledger(lost.storageUrl);
-    const missing = [...want.keys()].filter((id) => !got.has(id) && !id.endsWith(":volatile"));
-    // :volatile documents are scratch space each node mints its own revision for
+    const missing = [...want.keys()].filter((id) => !got.has(id));
+    // volatile is per node and never synced
     const wrong = [...want.entries()]
-      .filter(([id, rev]) => !id.endsWith(":volatile") && got.has(id) && got.get(id) !== rev)
+      .filter(([id, rev]) => got.has(id) && got.get(id) !== rev)
       .map(([id]) => id);
     check(missing.length === 0, missing.length ? `${missing.length} documents not restored, e.g. ${missing.slice(0, 3).join(", ")}` : "every document is back");
     check(wrong.length === 0, wrong.length ? `${wrong.length} documents at a different revision, e.g. ${wrong.slice(0, 3).join(", ")}` : "every revision matches the network");
+    check([...got.keys()].every((id) => !id.endsWith(":volatile")), "no volatile document was synced");
     check(JSON.stringify(filesOf().sort()) === JSON.stringify(expected), "the contract files were rebuilt");
     check((await storageGet(lost.storageUrl, streamId).catch(() => null))?.contract !== undefined, "the contract stream is back");
   } finally {

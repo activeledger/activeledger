@@ -35,7 +35,6 @@ export interface IStreamInformation {
 
 export interface INetworkData {
   documents: any;
-  volatile: any;
   /** Contract streams whose files are rebuilt once every document is written */
   contracts?: any[];
 }

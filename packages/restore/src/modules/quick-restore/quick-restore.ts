@@ -36,6 +36,10 @@ import {
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
 
+/** How many times a stream is asked for before it is reported as not restored */
+const FETCH_ATTEMPTS = 3;
+const FETCH_RETRY_MS = 500;
+
 /**
  * Perform a full restore on a nodes database
  *
@@ -126,16 +130,32 @@ export class QuickRestore {
       try {
         Helper.output("Fetch documents: Conesensus data", consensusData);
         const contracts: unknown[] = [];
+        const unrestored: string[] = [];
 
         for (let i = consensusData.length; i--; ) {
           const activity = consensusData[i];
 
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
-          const streamDataPromise = await streamData(activity);
+          // Under load a neighbour can fail to answer, and every answer
+          // being unusable used to skip the stream without a word. Ask
+          // again, and say so when it still cannot be had.
+          let networkData: INetworkData = { documents: [] };
+          for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+            const answers = await streamData(activity).catch(() => []);
+            networkData = await this.handleNetworkData(answers);
+            if (networkData.documents.length) break;
+            if (attempt < FETCH_ATTEMPTS) {
+              await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * attempt));
+            }
+          }
+          if (!networkData.documents.length) {
+            unrestored.push(activity.stream);
+            ActiveLogger.error(
+              `[Not restored] ${activity.stream} at ${activity.revision}: no neighbour supplied it after ${FETCH_ATTEMPTS} attempts`
+            );
+            continue;
+          }
           ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
-          const networkData: INetworkData = await this.handleNetworkData(
-            streamDataPromise
-          );
           await this.uploadData(networkData);
           contracts.push(...(networkData.contracts || []));
         }
@@ -147,6 +167,12 @@ export class QuickRestore {
         // streams. Every document is written by now.
         for (const contract of contracts) {
           await Contract.rebuild(contract);
+        }
+
+        if (unrestored.length) {
+          ActiveLogger.error(
+            `${unrestored.length} stream(s) could not be restored, run the restore again to retry them`
+          );
         }
 
         resolve();
@@ -244,17 +270,7 @@ export class QuickRestore {
         return reject(error);
       }
 
-      try {
-        await Provider.database.bulkDocs(networkData.volatile, {
-          new_edits: true
-        });
-        resolve();
-      } catch (error) {
-        ActiveLogger.error(
-          "Error occurred in processNetworkData: Uploading volatile to database"
-        );
-        reject(error);
-      }
+      resolve();
     });
   }
 
@@ -280,7 +296,6 @@ export class QuickRestore {
       !!(data.namespace && data.contract && data.compiled);
 
     const documents: unknown[] = [];
-    const volatile: unknown[] = [];
     const contracts: unknown[] = [];
 
     for (let r = activityData.length; r--; ) {
@@ -290,8 +305,6 @@ export class QuickRestore {
         documents.push(data);
 
         if (isNotStreamOrUmid(data)) {
-          volatile.push({ _id: `${data._id}:volatile` });
-
           hasRequiredData(data)
             ? contracts.push(data)
             : Helper.output("Data does not have required fields", data);
@@ -301,7 +314,7 @@ export class QuickRestore {
       }
     }
 
-    return { documents, volatile, contracts };
+    return { documents, contracts };
   }
 
   /**

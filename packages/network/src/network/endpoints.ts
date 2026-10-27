@@ -1804,8 +1804,12 @@ export class Endpoints {
       // Setup Search Options
       let options: any = { limit: 500 };
       if (start) {
+        // startkey is inclusive, so skip the row the caller already has.
+        // This used to skip two "for the meta and the volatile", but the
+        // volatile rows are filtered out below and not every row is followed
+        // by one, so it dropped a real document at every page boundary.
         options.startkey = start;
-        options.skip = 2; // Skip meta and volatile
+        options.skip = 1;
       }
 
       db.allDocs(options)

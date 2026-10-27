@@ -106,7 +106,9 @@ export class Helper {
   ): IConsensusData[] {
     const answers = nodes.map((n) =>
       (Array.isArray(n?.streams) ? n.streams : [])
-        .filter((s) => s && s.id && s.id !== "undefined" && s.rev)
+        // Volatile is per node and is made again by the contract that sets
+        // it, so it is never synced
+        .filter((s) => s && s.id && s.id !== "undefined" && s.rev && !String(s.id).endsWith(":volatile"))
         .map((s) => ({ _id: s.id, _rev: s.rev }))
     );
     const { winners } = spiConsensus(answers, needed);
