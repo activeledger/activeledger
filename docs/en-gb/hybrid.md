@@ -175,7 +175,7 @@ Every contract feature works on a hybrid. A hybrid runs the contract itself to c
   * If the supernode branch creates a stream, create the same stream in the `else` branch with placeholder values and describe its properties.
   * A supernode-dependent contract with no description is adopted whole and the hybrid emits an `adopt.undeclared` event naming the contract and entry. Treat it as a prompt to add one.
 * Time: a contract sees the transaction's consensus time (`cDate`), never the node's clock, so a contract that takes its time only from there behaves the same on a hybrid and on a supernode.
-* Volatile data is for one node only. It is never served by a supernode, never downloaded by a hybrid, and never copied by SPI or a restore, and there is no way to share it. `getVolatile()` and `setVolatile()` work on every node and read and write that node's own copy. A hybrid that executes a contract reading volatile treats the result as dependent on the supernodes. A contract that wants volatile data only on a supernode can fork on `isSupernode()` and let the hybrid build something else in the other branch.
+* Volatile data is for one node only. It is never served by a supernode, never downloaded by a hybrid, and never copied by SPI or a restore, and there is no way to share it. `getVolatile()` and `setVolatile()` work on every node and read and write that node's own copy, and reading it does not mark the execution. It is allowed to differ between nodes (a contract may keep `Date.now()` in it), so a contract should not rely on it being the same everywhere. A contract that wants volatile data only on a supernode can fork on `isSupernode()` and let the hybrid build something else.
 
 ## Versions
 

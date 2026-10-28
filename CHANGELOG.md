@@ -7,8 +7,9 @@
   supernode, `POST /h/streams` never serves it, and `activerestore --full`
   never copies or creates it. `shareVolatile()` and the `volatile` flag on a
   `required` entry are removed (a `volatile` flag already in a config is
-  ignored). A hybrid that runs a contract reading volatile treats the result as
-  dependent on the supernodes. A contract that wants volatile only on a supernode can fork on `isSupernode()`.
+  ignored). A hybrid reads its own volatile, like every node, and
+  reading it no longer marks the execution as depending on the supernodes. A
+  contract that wants volatile only on a supernode can fork on `isSupernode()`.
 
 ## [5.1.0]
 

@@ -1019,13 +1019,10 @@ export class VirtualMachine
     this.emitter.on("getVolatile", (umid: string, streamId: string) =>
       // Host work: never inside the contract's egress sandbox
       runUnsandboxed(async () => {
+        // Volatile is per node. A hybrid reads its own copy, as every node
+        // does; what a contract does with a value that may differ is up to
+        // the contract.
         const execution = this.executions[umid];
-        // Volatile is per node and not covered by revsOut. A hybrid never
-        // holds a supernode's volatile, so what it reads is its own copy and
-        // the result depends on the supernodes.
-        if (execution && !execution.supernode) {
-          this.markHostDependent(umid, `volatile:${streamId}`);
-        }
         try {
           const volatile: ActiveDefinitions.IVolatile = await (
             execution?.db || this.db
@@ -1047,15 +1044,6 @@ export class VirtualMachine
     this.emitter.on("getStreamData", (umid: string, streamId: string) =>
       // Host work: never inside the contract's egress sandbox
       runUnsandboxed(async () => {
-        // Same rule as getVolatile when a contract reads a volatile doc by id
-        const execution = this.executions[umid];
-        if (
-          execution &&
-          !execution.supernode &&
-          streamId.endsWith(":volatile")
-        ) {
-          this.markHostDependent(umid, `volatile:${streamId.slice(0, -":volatile".length)}`);
-        }
         try {
           const data: ActiveDefinitions.IStream = await (
             this.executions[umid]?.db || this.db

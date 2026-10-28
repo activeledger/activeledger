@@ -88,7 +88,7 @@ export interface IExecutionResult {
   events: any[];
   /** isSupernode() called, egress blocked, unheld volatile read, or inter-node comms used */
   supernodeDependent: boolean;
-  /** The reasons, e.g. "isSupernode", "blocked:https", "volatile:<streamId>" */
+  /** The reasons, e.g. "isSupernode", "blocked:https" */
   dependence: string[];
   /** adoptFromSupernode / adoptStreamsFromSupernode declarations */
   adopt: IAdoptDeclaration[];

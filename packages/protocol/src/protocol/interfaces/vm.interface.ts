@@ -48,7 +48,7 @@ export interface IVMExecution {
  */
 export interface IVMExecutionReport {
   supernodeDependent: boolean;
-  /** isSupernode, getInterNodeComms, blocked:http, volatile:<streamId>, ... */
+  /** isSupernode, getInterNodeComms, blocked:http, ... */
   dependence: string[];
   adopt: IAdoptDeclaration[];
 }
