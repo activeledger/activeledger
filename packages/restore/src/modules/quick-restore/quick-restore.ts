@@ -95,7 +95,10 @@ export class QuickRestore {
     // Writes to a database nobody is serving fail without a word, so the
     // restore would report success having written nothing
     try {
-      await Provider.database.allDocs({ limit: 1 });
+      // A request to a database nobody is serving does not throw, it comes
+      // back empty, so an answer with no rows is the thing to look for
+      const probe = await Provider.database.allDocs({ limit: 1 });
+      if (!probe || !Array.isArray(probe.rows)) throw new Error("no answer");
     } catch {
       ActiveLogger.error(
         "The node's database cannot be reached. Start the node (or its database with activeledger --db-only) and run the restore again"

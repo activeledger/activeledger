@@ -163,6 +163,11 @@ class Processor {
     // Enable Extended Debugging
     ActiveLogger.enableDebug = ActiveOptions.get<boolean>("debug", false);
 
+    // The host is gone (stopped, crashed or killed), so there is nobody left
+    // to take work from. Without this a worker outlives its host and keeps
+    // holding what it opened.
+    process.on("disconnect", () => process.exit(0));
+
     // Listen for IPC (Interprocess Communication)
     process.on("message", (m: any) => {
       switch (m.type) {
