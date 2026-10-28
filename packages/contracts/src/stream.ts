@@ -1512,17 +1512,6 @@ export class Activity {
   }
 
   /**
-   * Let this stream's volatile be served to hybrids: sets volatileShared in
-   * the stream's :stream meta when the transaction commits. Meta is part of
-   * consensus, so every node agrees on it. Never call it on a stream whose
-   * volatile holds secrets.
-   */
-  public shareVolatile(): void {
-    this.meta.volatileShared = true;
-    this.updatedMeta = this.updated = true;
-  }
-
-  /**
    * Consensus Number Generator
    * Warning: Not to be considered a RNG becausew if you know current streams, contracts and inputs you can work out this value
    * This is used for when you want to get a reference style identifier without knowing a name.

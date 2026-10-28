@@ -311,7 +311,6 @@ export class Process extends EventEmitter {
         supernode: false,
         dryRun: true,
         db: this.db,
-        volatileHeld: options.volatileHeld,
       };
     }
 
@@ -549,7 +548,7 @@ export class Process extends EventEmitter {
       {} as ActiveDSConnect,
       {} as ActiveDSConnect,
       undefined as unknown as ActiveCrypto.Secured,
-      { mode: "hybrid", volatileHeld: options.volatileHeld }
+      { mode: "hybrid" }
     );
     return process.dryRun(options.contractVersion);
   }

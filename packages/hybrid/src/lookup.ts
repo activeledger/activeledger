@@ -183,7 +183,6 @@ export class SourceLookup implements StreamLookup {
     for (const w of wants) {
       const state = byId.get(w.id);
       const meta = byId.get(`${w.id}:stream`);
-      const volatile = byId.get(`${w.id}:volatile`);
       const reason = !state
         ? "not served"
         : w.state && state._rev !== w.state
@@ -205,8 +204,6 @@ export class SourceLookup implements StreamLookup {
       for (const doc of [meta, state]) {
         if (doc && !(await writeAtRev(this.db, doc))) ok = false;
       }
-      // Volatile is per node and unsigned: only a supernode may supply it
-      if (ok && volatile && !isPeer) await writeAtRev(this.db, volatile);
       if (!ok) left.push(w);
     }
     return left;
@@ -253,8 +250,6 @@ export class SourceLookup implements StreamLookup {
         for (const doc of [byId.get(`${id}:stream`), state]) {
           if (doc && !(await writeAtRev(this.db, doc))) ok = false;
         }
-        const volatile = byId.get(`${id}:volatile`);
-        if (ok && volatile) await writeAtRev(this.db, volatile);
         if (!ok) left.push(id);
       }
       remaining = left;

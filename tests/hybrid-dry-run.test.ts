@@ -227,22 +227,13 @@ describe("Process hybrid mode and dry run (Activeprotocol)", () => {
     expect(writes).to.deep.equal([]);
   });
 
-  it("reading volatile the hybrid does not hold marks the execution", async () => {
+  it("reading volatile reads the hybrid's own copy and does not mark the execution", async () => {
     const { db } = store();
     const result = await Process.dryRunHybrid(entry("hyvolatile"), db);
 
     expect(result.committed).to.equal(true);
-    expect(result.dependence).to.deep.equal([`volatile:${S}`]);
-  });
-
-  it("reading volatile the hybrid holds does not", async () => {
-    const { db } = store();
-    const result = await Process.dryRunHybrid(entry("hyvolatile"), db, {
-      volatileHeld: (id) => id === S,
-    });
-
-    expect(result.committed).to.equal(true);
     expect(result.supernodeDependent).to.equal(false);
+    expect(result.dependence).to.deep.equal([]);
     expect(result.documents[S].seen).to.equal(42);
   });
 

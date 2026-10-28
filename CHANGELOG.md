@@ -8,17 +8,24 @@
   the neighbours are slow. `restore.throttle` in `config.json` tunes it;
   `"throttle": false` or `--fast` turns it off. A stream the node already
   holds at the network's revision is no longer fetched.
-
 - A stopped `activerestore --full` carries on when run again: it skips what it
   already wrote and fetches the rest. It logs progress every 500 streams, and
   replays a transaction's events before writing its umid document so a stop in
   between loses nothing.
-
 - `activerestore --full` finishes with a low priority history pass: it walks
   each stream's chain of umids and fetches any a majority no longer holds.
   `--skip-history` or `restore.history: false` leaves it out, and
   `--history-only` runs just that pass later. `activesync`'s
   `walkUmidHistory` takes `continuePastHeld` to walk through umids it holds.
+
+### Changed
+- Volatile data is never exposed. A hybrid no longer downloads it from a
+  supernode, `POST /h/streams` never serves it, and `activerestore --full`
+  never copies or creates it. `shareVolatile()` and the `volatile` flag on a
+  `required` entry are removed (a `volatile` flag already in a config is
+  ignored). A hybrid reads its own volatile, like every node, and
+  reading it no longer marks the execution as depending on the supernodes. A
+  contract that wants volatile only on a supernode can fork on `isSupernode()`.
 
 ### Fixed
 - `activerestore --full` counted a majority one vote higher than SPI does. It

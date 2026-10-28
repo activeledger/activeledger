@@ -41,7 +41,7 @@ const onlyKeys = (value: Record<string, unknown>, keys: string[]): boolean =>
  *
  * {
  *   admission: "open" | { allowlist: [publicKey | keyHash] },
- *   required: [streamId | { id: streamId, volatile?: boolean }],
+ *   required: [streamId | { id: streamId }],
  *   window: { days: number },
  *   minVersion: "5.1.0"
  * }
@@ -94,10 +94,12 @@ export class HybridConfig {
             onlyKeys(entry, ["id", "volatile"]) &&
             typeof entry.id === "string" &&
             STREAM_ID.test(entry.id) &&
+            // 5.1.0 wrote a boolean here. It is ignored now, but a network
+            // asserted with it must still validate.
             (entry.volatile === undefined ||
               typeof entry.volatile === "boolean");
       if (!valid) {
-        return "hybrid.required entries must be a stream id or {id, volatile?}";
+        return "hybrid.required entries must be a stream id or {id}";
       }
     }
 
