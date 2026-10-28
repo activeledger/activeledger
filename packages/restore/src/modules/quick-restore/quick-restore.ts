@@ -163,6 +163,12 @@ export class QuickRestore {
       return;
     }
     const given = section?.history && typeof section.history === "object" ? section.history : {};
+    if (!Number.isFinite(given.minAgree) && !Number.isFinite(Helper.votesNeeded())) {
+      ActiveLogger.error(
+        "consensus.reached is not set in the config file, so the history pass has no bar to hold documents to and was skipped"
+      );
+      return;
+    }
     const ctx: SyncContext = {
       store: Provider.database,
       events: Provider.eventDatabase,
@@ -173,7 +179,8 @@ export class QuickRestore {
       walkLimit: Number.isFinite(given.walkLimit) ? given.walkLimit : HISTORY_WALK_LIMIT,
       hopDelayMs: Number.isFinite(given.hopDelayMs) ? given.hopDelayMs : HISTORY_HOP_DELAY_MS,
       continuePastHeld: true,
-      minAgree: Number.isFinite(given.minAgree) ? given.minAgree : 1,
+      // The same bar SPI and the state pass use, unless the config sets one
+      minAgree: Number.isFinite(given.minAgree) ? given.minAgree : Helper.votesNeeded(),
     };
     const throttle = Throttle.fromConfig(
       section,

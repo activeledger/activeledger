@@ -146,9 +146,17 @@ async function main(): Promise<boolean> {
     check((await hasUmid(origin)) && !(await hasUmid(lost)), "only the first node holds the deploy umid");
     await runRestore(lost.dataDir, "restore-no-history", ["--skip-history"]);
     check(!(await hasUmid(lost)), "--skip-history leaves it out, so the state restore alone does not find it");
+    // One node's word is below the bar SPI and the state pass use, so it is not adopted
+    await runRestore(lost.dataDir, "restore-history-default", ["--history-only"]);
+    check(!(await hasUmid(lost)), "a umid only one node vouches for is not adopted at the network's consensus bar");
+    // restore.history.minAgree overrides the bar
+    const cfgPath = path.join(lost.dataDir, "config.json");
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    cfg.restore = { history: { minAgree: 1 } };
+    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
     const ms4 = await runRestore(lost.dataDir, "restore-history", ["--history-only"]);
     report.info(`took ${ms4}ms`);
-    check(await hasUmid(lost), "the history pass found it and fetched it");
+    check(await hasUmid(lost), "with minAgree 1 the history pass found it and fetched it");
     const histLog = fs.readFileSync(path.join(lost.dataDir, "restore-history.log"), "utf8");
     check(!/Restored \d+ stream/.test(histLog), "--history-only did not run the state pass");
     check(/History Complete;.*[1-9]\d* umid\(s\) recovered/.test(histLog), "and reported what it recovered");

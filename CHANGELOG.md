@@ -21,6 +21,10 @@
   `walkUmidHistory` takes `continuePastHeld` to walk through umids it holds.
 
 ### Fixed
+- `activerestore --full` counted a majority one vote higher than SPI does. It
+  now uses the same calculation: the `consensus.reached` percentage of all
+  nodes, less one for this node, rounded up. The history pass holds documents
+  to the same bar (`restore.history.minAgree` overrides it).
 - `activerestore --full` into an empty database rebuilt contract files only
   when the deploy transaction happened to be restored before the contract
   stream. Contract files are now rebuilt after every document is written.
