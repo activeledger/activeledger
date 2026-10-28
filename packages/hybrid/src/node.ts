@@ -87,7 +87,6 @@ export class HybridNode {
   private pruner?: Pruner;
   private setupDoc: any;
   private networkId = "";
-  private volatile = new Set<string>();
   private headSeen = "";
   private startedOutdated = false;
 
@@ -149,7 +148,6 @@ export class HybridNode {
 
     const lookup = new SourceLookup({ store, sources: () => sources });
     const events = new EventLog(store.events);
-    const volatileHeld = (id: string) => this.volatile.has(id);
     const processor = new Processor({
       store,
       sources: () => sources,
@@ -157,7 +155,6 @@ export class HybridNode {
       events,
       context: () => this.state.verify,
       setup: () => this.setupDoc,
-      volatileHeld,
     });
     const orderer = new ItemOrderer({ processor, store });
     const submitter = new Submitter({
@@ -168,7 +165,7 @@ export class HybridNode {
       identity: { pair: identity.pair, publicPem: identity.publicPem },
       db: store.data as any,
       dryRun: (entry) =>
-        ActiveProtocol.Process.dryRunHybrid(entry, store.data as any, { volatileHeld }),
+        ActiveProtocol.Process.dryRunHybrid(entry, store.data as any),
     });
 
     this.pruner = new Pruner({ store, config, publicPem: identity.publicPem });
@@ -205,11 +202,6 @@ export class HybridNode {
       this.networkId = result.network;
       this.state.verify = result.verify;
       this.state.minVersion = result.minVersion;
-      this.volatile = new Set(
-        (result.bootstrap.required ?? [])
-          .filter((r: any) => typeof r !== "string" && r?.volatile)
-          .map((r: any) => r.id)
-      );
       if (result.outdated) {
         this.state.reason = "outdated";
         this.startedOutdated = true;

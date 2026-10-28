@@ -42,7 +42,7 @@ const make = (over: Partial<RegisteredHybrid> | null = {}, banned: string[] = []
       lookup: async (h) => (h === keyHash ? registered : undefined),
       list: async () => (registered ? [{ ...registered, keyHash }] : []),
     },
-    ledgerConfig: () => ({ required: ["req1", { id: "vol1", volatile: true }], window: { days: 30 }, minVersion: "5.1.0" }),
+    ledgerConfig: () => ({ required: ["req1", { id: "vol1" }], window: { days: 30 }, minVersion: "5.1.0" }),
     setupStreamId: () => "setup",
     banned: () => new Set(banned),
     now,
@@ -127,21 +127,11 @@ describe("HybridApi", () => {
       expect(ok.missing).to.have.length(3);
     });
 
-    it("serves volatile only when required-volatile AND volatileShared", async () => {
+    it("never serves volatile, however the stream is listed or marked", async () => {
       const { api, db } = make();
-      db.put({ _id: "vol1", _rev: "1-a" }).put({ _id: "vol1:volatile", v: 1 });
-      db.put({ _id: "req1", _rev: "1-a" }).put({ _id: "req1:stream", volatileShared: true }).put({ _id: "req1:volatile", v: 2 });
-
-      // Listed required-volatile, but meta does not share it
-      db.put({ _id: "vol1:stream", volatileShared: false });
+      db.put({ _id: "vol1", _rev: "1-a" }).put({ _id: "vol1:stream" }).put({ _id: "vol1:volatile", v: 1 });
       expect((await api.streams([{ id: "vol1" }])).docs.map((d) => d._id)).to.not.include("vol1:volatile");
-
-      // Shared in meta, but not listed required-volatile
-      expect((await api.streams([{ id: "req1" }])).docs.map((d) => d._id)).to.not.include("req1:volatile");
-
-      // Both
-      db.put({ _id: "vol1:stream", volatileShared: true });
-      expect((await api.streams([{ id: "vol1" }])).docs.map((d) => d._id)).to.include("vol1:volatile");
+      expect((await api.streams([{ id: "vol1:volatile" }])).missing).to.have.length(1);
     });
   });
 

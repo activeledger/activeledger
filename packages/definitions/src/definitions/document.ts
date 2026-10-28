@@ -66,8 +66,6 @@ export interface IMeta extends IFullState {
   contractlock?: Array<string>;
   acl?: { [reference: string]: string };
   removedAuthorities?: Array<ILedgerRemovedAuthority>;
-  /** Set by the contract's shareVolatile(): this stream's volatile may be served to hybrids */
-  volatileShared?: boolean;
 }
 
 /**

@@ -54,8 +54,6 @@ export interface IProcessOptions {
    * written - run it with dryRun().
    */
   mode?: TProcessMode;
-  /** Hybrid: true when this node holds the stream's (shared) volatile */
-  volatileHeld?: (streamId: string) => boolean;
 }
 
 export interface IDryRunOptions extends Omit<IProcessOptions, "mode"> {
@@ -90,7 +88,7 @@ export interface IExecutionResult {
   events: any[];
   /** isSupernode() called, egress blocked, unheld volatile read, or inter-node comms used */
   supernodeDependent: boolean;
-  /** The reasons, e.g. "isSupernode", "blocked:https", "volatile:<streamId>" */
+  /** The reasons, e.g. "isSupernode", "blocked:https" */
   dependence: string[];
   /** adoptFromSupernode / adoptStreamsFromSupernode declarations */
   adopt: IAdoptDeclaration[];

@@ -132,7 +132,7 @@ The rules for hybrid nodes (see [hybrid](hybrid.md)), written to the setup strea
 ```json
 "hybrid": {
   "admission": "open",
-  "required": ["[stream id]", { "id": "[stream id]", "volatile": true }],
+  "required": ["[stream id]"],
   "window": { "days": 30 },
   "minVersion": "5.1.0"
 }

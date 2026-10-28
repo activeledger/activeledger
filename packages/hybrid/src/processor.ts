@@ -71,8 +71,6 @@ export interface ProcessorOptions {
   contracts?: ContractBuilder | null;
   /** Default Process.dryRunHybrid */
   execute?: ExecuteFn;
-  /** True when this hybrid holds a stream's (shared) volatile */
-  volatileHeld?: (streamId: string) => boolean;
   /** SPI: how many hybrid peers to ask. Default 5. */
   spiPeers?: number;
   /** Clock for divergence records */
@@ -574,7 +572,7 @@ export class Processor implements ItemProcessor {
   private async run(entry: ActiveDefinitions.LedgerEntry): Promise<IExecutionResult> {
     if (this.options.setup) applyExecutionOptions(this.options.setup());
     if (this.contracts) await this.contracts.ensureFor(entry);
-    return this.execute(entry, this.data, { volatileHeld: this.options.volatileHeld });
+    return this.execute(entry, this.data, {});
   }
 
   /** Save the local result with normal revision assignment; resolves with the ids written */
