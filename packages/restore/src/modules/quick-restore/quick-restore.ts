@@ -41,6 +41,8 @@ import { ActiveOptions } from "@activeledger/activeoptions";
 /** How many times a stream is asked for before it is reported as not restored */
 const FETCH_ATTEMPTS = 3;
 const FETCH_RETRY_MS = 500;
+/** How often, in streams, progress is logged */
+const PROGRESS_EVERY = 500;
 
 /**
  * Perform a full restore on a nodes database
@@ -142,6 +144,12 @@ export class QuickRestore {
 
         for (let i = consensusData.length; i--; ) {
           const activity = consensusData[i];
+          const done = consensusData.length - i;
+          if (done % PROGRESS_EVERY === 0) {
+            ActiveLogger.info(
+              `Restore progress: ${done}/${consensusData.length} (${fetched} fetched, ${held} already held)`
+            );
+          }
 
           // Already here at the revision the network agreed on: nothing to
           // fetch. A contract stream still has its files rebuilt, from the
@@ -296,15 +304,21 @@ export class QuickRestore {
         // (activerestore's interagent only backfills umid documents).
         for (let i = networkData.documents.length; i--;) {
           const doc = networkData.documents[i] as IBaseData;
-          await QuickRestore.adoptDocument(doc);
 
           // Every :umid document just restored belongs to a transaction
           // this node never ran itself (that's the whole point of a bulk
           // catch-up), so replay whatever events it raised - same
           // reasoning as interagent.ts's per-error insertUmid().
+          //
+          // Events first, the umid document last. A restore that is stopped
+          // part way skips whatever it already holds when it is run again,
+          // so the umid document is what says "done": stopped after it, the
+          // events would never be replayed. Replaying twice is harmless,
+          // each event keeps its own _id.
           if (doc._id && doc._id.indexOf(":umid") !== -1) {
             await Helper.replayEvents(doc);
           }
+          await QuickRestore.adoptDocument(doc);
         }
       } catch (error) {
         ActiveLogger.error(

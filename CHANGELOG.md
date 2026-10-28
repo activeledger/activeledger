@@ -9,6 +9,11 @@
   `"throttle": false` or `--fast` turns it off. A stream the node already
   holds at the network's revision is no longer fetched.
 
+- A stopped `activerestore --full` carries on when run again: it skips what it
+  already wrote and fetches the rest. It logs progress every 500 streams, and
+  replays a transaction's events before writing its umid document so a stop in
+  between loses nothing.
+
 ### Fixed
 - `activerestore --full` into an empty database rebuilt contract files only
   when the deploy transaction happened to be restored before the contract
