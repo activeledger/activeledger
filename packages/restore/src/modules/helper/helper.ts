@@ -74,15 +74,21 @@ export class Helper {
     Provider.consensusReachedAmount;
 
   /**
-   * Votes a revision needs, counted over the other nodes' answers: the same
-   * test as metConsensus, as a count.
+   * Votes a revision needs, counted over the other nodes' answers. This is
+   * the calculation SPI makes on a running node: the consensus percentage of
+   * every node, less one for this node, rounded up. The less one is what lets
+   * a network split exactly 50/50 reach a decision, and restore has to agree
+   * with SPI about what a majority is.
    *
    * @static
    * @returns number
    */
   public static votesNeeded = (): number => {
-    const needed = Math.ceil(
-      (Provider.consensusReachedAmount * Helper.getNeighbourCount(false)) / 100
+    const nodes = Helper.getNeighbourCount(false);
+    if (!(nodes > 0)) return Infinity;
+    const needed = Math.max(
+      1,
+      Math.ceil((Provider.consensusReachedAmount / 100) * nodes - 1)
     );
     // No usable consensus setting or neighbourhood: nothing can be a majority
     return Number.isFinite(needed) && needed > 0 ? needed : Infinity;
@@ -106,7 +112,9 @@ export class Helper {
   ): IConsensusData[] {
     const answers = nodes.map((n) =>
       (Array.isArray(n?.streams) ? n.streams : [])
-        .filter((s) => s && s.id && s.id !== "undefined" && s.rev)
+        // Volatile is per node and is made again by the contract that sets
+        // it, so it is never synced
+        .filter((s) => s && s.id && s.id !== "undefined" && s.rev && !String(s.id).endsWith(":volatile"))
         .map((s) => ({ _id: s.id, _rev: s.rev }))
     );
     const { winners } = spiConsensus(answers, needed);

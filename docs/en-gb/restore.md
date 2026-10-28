@@ -25,3 +25,38 @@ When no revision reaches that, the stream is left alone and reported, not overwr
 When restore finds a contract stream it rebuilds the compiled contract files in `contracts/[namespace]/` for every version, from the source in the stream or the deploy transaction it points to. A version whose source cannot be found (a hash-only entry whose deploy transaction this node does not hold) is reported as a warning and skipped; the rest of the restore carries on.
 
 Contract locks are restored too, from the `locks` the contract stream carries (see [Locking and Unlocking a Contract](contracts/deployment/upgrade.md)). Locks made by a `lock` entry that did not name the contract stream as its output, and locks made before 5.1.0, are only files and cannot be restored.
+
+
+## Going easy on the network
+
+A full restore asks the same nodes that are taking transactions, so it goes one stream at a time and pauses between them. It pauses 5ms before each stream and a further 200ms after every 100 streams, and it backs off while the neighbours are slow to answer (a fetch over 400ms doubles the pause, up to 5s) and eases back once they are not. On a small local network that is about 100 documents a second, against about 530 with no throttle.
+
+A stream the node already holds at the revision the network agreed on is not fetched at all. A contract stream it holds still has its files rebuilt, from the local copy.
+
+Change it in the `restore` section of the `config.json` restore runs from:
+
+```json
+"restore": {
+  "throttle": { "pauseMs": 5, "batch": 100, "batchPauseMs": 200, "slowMs": 400, "maxBackoffMs": 5000 }
+}
+```
+
+`"throttle": false` turns it off, as does `activerestore --full --fast`. Use that for a node that is not serving anything.
+
+### History
+
+The last pass, run after the node is already restored and usable, goes through every stream's chain of transactions (umids) from the one its meta names back to the start, and fetches any umid document the node does not hold. The listing already brings across every umid a majority holds, so this finds the gaps: a umid most nodes lost, or that SPI left out. It only reads what the node already holds, so on a healthy node it is quick; it fetches, pauses and backs off like the main pass. A chain ends where a transaction has no record of the one before it (older transactions), which is the start as far as the ledger can tell.
+
+It logs `History Complete`, and warns with a few examples if any chain could not be completed. Run only the state first and the history later: `activerestore --full --skip-history` brings the node back, and `activerestore --full --history-only` later does just the history (it still asks the neighbours for the listing, but fetches no state). Leave it out with `--skip-history` or `"restore": { "history": false }`. Tune it with `"restore": { "history": { "hopDelayMs": 50, "walkLimit": 1000000, "minAgree": 1 } }`. `minAgree` is how many neighbours must give the identical document before it is adopted. By default it is the same number the state pass and SPI use for a majority: the `consensus.reached` percentage of all nodes, less one for this node, rounded up (so a network split exactly 50/50 can still decide). Set `minAgree` to override it, for example to 1 to take a umid only one neighbour holds. A document for a different umid than the one asked for is never adopted.
+
+### Stopping and carrying on
+
+A full restore can be stopped at any point (Ctrl+C, a crash, a reboot) and run again. It keeps no progress file: whatever it already wrote is held at the network's revision, so the next run skips it and fetches only the rest. It logs `Restore progress` every 500 streams and ends with how many streams it fetched and how many it already held. The listing of the neighbours' streams is asked for again each run.
+
+A transaction's events are replayed before its umid document is written, so a restore stopped in between replays them again on the next run rather than losing them.
+
+Volatile data is for one node only, so a restore never copies or creates it.
+
+## How many nodes
+
+A restore and SPI both rely on the other nodes agreeing, so a small network has little to check against. One to three nodes work, but treat them as the minimum to run at all. Four is a safe minimum and five or more is best.

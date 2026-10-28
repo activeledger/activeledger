@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+- `activerestore --full` is throttled so it does not compete with the
+  network: it pauses between streams and between batches, and backs off while
+  the neighbours are slow. `restore.throttle` in `config.json` tunes it;
+  `"throttle": false` or `--fast` turns it off. A stream the node already
+  holds at the network's revision is no longer fetched.
+- A stopped `activerestore --full` carries on when run again: it skips what it
+  already wrote and fetches the rest. It logs progress every 500 streams, and
+  replays a transaction's events before writing its umid document so a stop in
+  between loses nothing.
+- `activerestore --full` finishes with a low priority history pass: it walks
+  each stream's chain of umids and fetches any a majority no longer holds.
+  `--skip-history` or `restore.history: false` leaves it out, and
+  `--history-only` runs just that pass later. `activesync`'s
+  `walkUmidHistory` takes `continuePastHeld` to walk through umids it holds.
+
 ### Changed
 - Volatile data is never exposed. A hybrid no longer downloads it from a
   supernode, `POST /h/streams` never serves it, and `activerestore --full`
@@ -10,6 +26,22 @@
   ignored). A hybrid reads its own volatile, like every node, and
   reading it no longer marks the execution as depending on the supernodes. A
   contract that wants volatile only on a supernode can fork on `isSupernode()`.
+
+### Fixed
+- `activerestore --full` counted a majority one vote higher than SPI does. It
+  now uses the same calculation: the `consensus.reached` percentage of all
+  nodes, less one for this node, rounded up. The history pass holds documents
+  to the same bar (`restore.history.minAgree` overrides it).
+- `activerestore --full` into an empty database rebuilt contract files only
+  when the deploy transaction happened to be restored before the contract
+  stream. Contract files are now rebuilt after every document is written.
+- `activerestore --full` silently left out a document at every 500-row page
+  boundary: `/a/all` skipped two rows after the start key where it needed to
+  skip one. A restore into an empty database came back a few documents short.
+- `activerestore --full` asks a stream's neighbours again when none of them
+  answered, and says which streams it could not restore.
+- `activerestore --full` no longer creates `:volatile` documents. They are
+  per node, and the contract makes one again when it sets volatile data.
 
 ## [5.1.0]
 

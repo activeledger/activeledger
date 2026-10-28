@@ -35,6 +35,18 @@ import {
 } from "../../interfaces/quick-restore.interface";
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
+import { Throttle } from "../helper/throttle";
+import { SyncContext, walkUmidHistory } from "@activeledger/activesync";
+import { ActiveOptions } from "@activeledger/activeoptions";
+
+/** How many times a stream is asked for before it is reported as not restored */
+const FETCH_ATTEMPTS = 3;
+const FETCH_RETRY_MS = 500;
+/** How often, in streams, progress is logged */
+const PROGRESS_EVERY = 500;
+/** The history pass goes the whole way back, and a pause between network hops keeps it gentle */
+const HISTORY_WALK_LIMIT = 1000000;
+const HISTORY_HOP_DELAY_MS = 50;
 
 /**
  * Perform a full restore on a nodes database
@@ -94,15 +106,129 @@ export class QuickRestore {
         streamInformation,
         needed
       );
-      await this.fetchDocuments(consensusData);
+      const skipHistory = ActiveOptions.get<boolean>("skip-history", false);
+      const historyOnly = ActiveOptions.get<boolean>("history-only", false);
+      if (skipHistory && historyOnly) {
+        ActiveLogger.error(
+          "--skip-history and --history-only together leave nothing to do"
+        );
+        return;
+      }
+      // The state is what the node needs to run, so it comes first. History
+      // is a separate run for when the node is back and there is time.
+      if (!historyOnly) await this.fetchDocuments(consensusData);
       const duration = Date.now() - startTime;
-      ActiveLogger.info(`Rebuild Complete; Duration: ${duration}ms`);
+      ActiveLogger.info(
+        historyOnly
+          ? "Rebuild skipped (--history-only)"
+          : `Rebuild Complete; Duration: ${duration}ms`
+      );
+      await this.restoreHistory(consensusData);
     } catch (error) {
       ActiveLogger.error(
         error,
         `There was an error running quick full restore: ${
           (error as Error)?.message ?? JSON.stringify(error)
         }`
+      );
+    }
+  }
+
+  /**
+   * The last and lowest priority pass: every stream's chain of umids.
+   *
+   * The node is fully usable before this runs, nothing in operation needs the
+   * history. The listing already brought across every umid document a
+   * majority holds; this finds the ones it could not, walking each stream's
+   * chain back from the umid its meta names and fetching any that is missing
+   * from the neighbours' best-supported answer. A chain stops where a umid
+   * has no `prev` (older transactions), which is the start as far as the
+   * ledger can tell.
+   *
+   * Throttled like the rest, and safe to stop: a rerun reads what it holds
+   * and fetches only what is still missing. `restore.history: false` or
+   * `--skip-history` leaves it out.
+   *
+   * @private
+   * @param {IConsensusData[]} consensusData
+   * @returns {Promise<void>}
+   */
+  private async restoreHistory(consensusData: IConsensusData[]): Promise<void> {
+    const section = ActiveOptions.get<any>("restore", {});
+    if (
+      section?.history === false ||
+      ActiveOptions.get<boolean>("skip-history", false)
+    ) {
+      ActiveLogger.info("History pass skipped");
+      return;
+    }
+    const given = section?.history && typeof section.history === "object" ? section.history : {};
+    if (!Number.isFinite(given.minAgree) && !Number.isFinite(Helper.votesNeeded())) {
+      ActiveLogger.error(
+        "consensus.reached is not set in the config file, so the history pass has no bar to hold documents to and was skipped"
+      );
+      return;
+    }
+    const ctx: SyncContext = {
+      store: Provider.database,
+      events: Provider.eventDatabase,
+      peers: {
+        umid: (umid: string) =>
+          Provider.network.neighbourhood.knockAll(`umid/${umid}`, null, true),
+      },
+      walkLimit: Number.isFinite(given.walkLimit) ? given.walkLimit : HISTORY_WALK_LIMIT,
+      hopDelayMs: Number.isFinite(given.hopDelayMs) ? given.hopDelayMs : HISTORY_HOP_DELAY_MS,
+      continuePastHeld: true,
+      // The same bar SPI and the state pass use, unless the config sets one
+      minAgree: Number.isFinite(given.minAgree) ? given.minAgree : Helper.votesNeeded(),
+    };
+    const throttle = Throttle.fromConfig(
+      section,
+      ActiveOptions.get<boolean>("fast", false)
+    );
+
+    const streams = consensusData.filter(
+      (c) => QuickRestore.isStateDocument(c.stream) && c.stream.indexOf(":") === -1
+    );
+    ActiveLogger.info(`History pass: ${streams.length} stream(s)`);
+    const started = Date.now();
+    let recovered = 0;
+    const incomplete: string[] = [];
+
+    for (let i = 0; i < streams.length; i++) {
+      const id = streams[i].stream;
+      if (i && i % PROGRESS_EVERY === 0) {
+        ActiveLogger.info(`History progress: ${i}/${streams.length} (${recovered} umid(s) recovered)`);
+      }
+      let umid: string | undefined;
+      try {
+        umid = (await Provider.database.get(`${id}:stream`))?.umid;
+      } catch {
+        continue;
+      }
+      if (!umid) continue;
+
+      const fetchStarted = Date.now();
+      try {
+        const walk = await walkUmidHistory(ctx, id, umid);
+        recovered += walk.recovered.length;
+        if (!walk.complete) incomplete.push(`${id} (${walk.stoppedAt})`);
+        // Only a walk that went to the network is worth pausing for
+        if (walk.recovered.length) {
+          await throttle.wait();
+          throttle.record(Date.now() - fetchStarted);
+        }
+      } catch (error) {
+        incomplete.push(`${id} (${(error as Error)?.message ?? "failed"})`);
+      }
+    }
+
+    ActiveLogger.info(
+      `History Complete; Duration: ${Date.now() - started}ms; ${recovered} umid(s) recovered`
+    );
+    if (incomplete.length) {
+      ActiveLogger.warn(
+        `${incomplete.length} stream(s) have a chain that could not be completed, e.g. ${incomplete.slice(0, 3).join("; ")}`
       );
     }
   }
@@ -125,17 +251,88 @@ export class QuickRestore {
     return new Promise(async (resolve, reject) => {
       try {
         Helper.output("Fetch documents: Conesensus data", consensusData);
+        const contracts: unknown[] = [];
+        const unrestored: string[] = [];
+        const throttle = Throttle.fromConfig(
+          ActiveOptions.get<any>("restore", {}),
+          ActiveOptions.get<boolean>("fast", false)
+        );
+        let held = 0;
+        let fetched = 0;
 
         for (let i = consensusData.length; i--; ) {
           const activity = consensusData[i];
+          const done = consensusData.length - i;
+          if (done % PROGRESS_EVERY === 0) {
+            ActiveLogger.info(
+              `Restore progress: ${done}/${consensusData.length} (${fetched} fetched, ${held} already held)`
+            );
+          }
 
+          // Already here at the revision the network agreed on: nothing to
+          // fetch. A contract stream still has its files rebuilt, from the
+          // copy this node holds.
+          const local = await Provider.database.get(activity.stream).catch(() => null);
+          if (local && local._rev === activity.revision) {
+            held++;
+            if (
+              typeof local._id === "string" &&
+              QuickRestore.isStateDocument(local._id) &&
+              local.namespace &&
+              local.contract &&
+              local.compiled
+            ) {
+              contracts.push(local);
+            }
+            continue;
+          }
+
+          await throttle.wait();
+          const fetchStarted = Date.now();
           ActiveLogger.info(`[Fetching] ${activity.stream}`);
-          const streamDataPromise = await streamData(activity);
+          // Under load a neighbour can fail to answer, and every answer
+          // being unusable used to skip the stream without a word. Ask
+          // again, and say so when it still cannot be had.
+          let networkData: INetworkData = { documents: [] };
+          for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+            const answers = await streamData(activity).catch(() => []);
+            networkData = await this.handleNetworkData(answers);
+            if (networkData.documents.length) break;
+            if (attempt < FETCH_ATTEMPTS) {
+              await new Promise((r) => setTimeout(r, FETCH_RETRY_MS * attempt));
+            }
+          }
+          if (!networkData.documents.length) {
+            unrestored.push(activity.stream);
+            ActiveLogger.error(
+              `[Not restored] ${activity.stream} at ${activity.revision}: no neighbour supplied it after ${FETCH_ATTEMPTS} attempts`
+            );
+            continue;
+          }
           ActiveLogger.info(`[Fetching Complete] ${activity.stream}`);
-          const networkData: INetworkData = await this.handleNetworkData(
-            streamDataPromise
-          );
           await this.uploadData(networkData);
+          fetched++;
+          throttle.record(Date.now() - fetchStarted);
+          contracts.push(...(networkData.contracts || []));
+        }
+
+        // A contract's source lives in the umid of the transaction that
+        // deployed it, which is a document of its own. Rebuilding as each
+        // stream arrived worked only when that umid happened to be restored
+        // first, so on an empty database it depended on the order of the
+        // streams. Every document is written by now.
+        for (const contract of contracts) {
+          await Contract.rebuild(contract);
+        }
+
+        ActiveLogger.info(
+          `Restored ${fetched} stream(s); ${held} already held at the network's revision`
+        );
+
+        if (unrestored.length) {
+          ActiveLogger.error(
+            `${unrestored.length} stream(s) could not be restored, run the restore again to retry them`
+          );
         }
 
         resolve();
@@ -162,6 +359,15 @@ export class QuickRestore {
    * @param {IBaseData} doc
    * @returns {Promise<void>}
    */
+  /** A state document: not a stream meta, umid or design document */
+  private static isStateDocument(id: string): boolean {
+    return (
+      id.indexOf(":stream") === -1 &&
+      id.indexOf(":umid") === -1 &&
+      id.indexOf("_design") === -1
+    );
+  }
+
   private static async adoptDocument(doc: IBaseData): Promise<void> {
     let local: { _rev?: string } | null = null;
 
@@ -216,15 +422,21 @@ export class QuickRestore {
         // (activerestore's interagent only backfills umid documents).
         for (let i = networkData.documents.length; i--;) {
           const doc = networkData.documents[i] as IBaseData;
-          await QuickRestore.adoptDocument(doc);
 
           // Every :umid document just restored belongs to a transaction
           // this node never ran itself (that's the whole point of a bulk
           // catch-up), so replay whatever events it raised - same
           // reasoning as interagent.ts's per-error insertUmid().
+          //
+          // Events first, the umid document last. A restore that is stopped
+          // part way skips whatever it already holds when it is run again,
+          // so the umid document is what says "done": stopped after it, the
+          // events would never be replayed. Replaying twice is harmless,
+          // each event keeps its own _id.
           if (doc._id && doc._id.indexOf(":umid") !== -1) {
             await Helper.replayEvents(doc);
           }
+          await QuickRestore.adoptDocument(doc);
         }
       } catch (error) {
         ActiveLogger.error(
@@ -233,17 +445,7 @@ export class QuickRestore {
         return reject(error);
       }
 
-      try {
-        await Provider.database.bulkDocs(networkData.volatile, {
-          new_edits: true
-        });
-        resolve();
-      } catch (error) {
-        ActiveLogger.error(
-          "Error occurred in processNetworkData: Uploading volatile to database"
-        );
-        reject(error);
-      }
+      resolve();
     });
   }
 
@@ -269,7 +471,7 @@ export class QuickRestore {
       !!(data.namespace && data.contract && data.compiled);
 
     const documents: unknown[] = [];
-    const volatile: unknown[] = [];
+    const contracts: unknown[] = [];
 
     for (let r = activityData.length; r--; ) {
       const data: IBaseData = activityData[r] as IBaseData;
@@ -278,10 +480,8 @@ export class QuickRestore {
         documents.push(data);
 
         if (isNotStreamOrUmid(data)) {
-          volatile.push({ _id: `${data._id}:volatile` });
-
           hasRequiredData(data)
-            ? await Contract.rebuild(data)
+            ? contracts.push(data)
             : Helper.output("Data does not have required fields", data);
         }
         // Only need to find one non-erroring stream
@@ -289,7 +489,7 @@ export class QuickRestore {
       }
     }
 
-    return { documents, volatile };
+    return { documents, contracts };
   }
 
   /**

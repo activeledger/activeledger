@@ -62,14 +62,21 @@ describe("Restore Helper - majority (Activerestore)", () => {
     expect(won).to.deep.equal([]);
   });
 
-  it("votesNeeded rounds the consensus percentage up to whole nodes", () => {
+  it("votesNeeded is the calculation SPI makes: the percentage of all nodes, less this one, rounded up", () => {
     const was = [Provider.neighbourCount, Provider.consensusReachedAmount];
     try {
       Provider.neighbourCount = 4;
       Provider.consensusReachedAmount = 51;
-      expect(Helper.votesNeeded()).to.equal(3);
-      Provider.consensusReachedAmount = 50;
       expect(Helper.votesNeeded()).to.equal(2);
+      Provider.consensusReachedAmount = 60;
+      expect(Helper.votesNeeded()).to.equal(2);
+      // A network split 50/50 can still decide, which is what the "less one" is for
+      Provider.consensusReachedAmount = 50;
+      expect(Helper.votesNeeded()).to.equal(1);
+      Provider.neighbourCount = 10;
+      Provider.consensusReachedAmount = 51;
+      expect(Helper.votesNeeded()).to.equal(5);
+      Provider.neighbourCount = 4;
       // Missing settings must never read as "any single answer is a majority"
       Provider.consensusReachedAmount = undefined as any;
       expect(Helper.votesNeeded()).to.equal(Infinity);
