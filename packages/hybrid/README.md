@@ -10,7 +10,7 @@ It does not trust the supernodes it follows. Every transaction is checked agains
 npm install -g @activeledger/activehybrid
 
 activehybrid init --upstream supernode.example.com:5260
-activehybrid register --label "reporting node"
+activehybrid register --label "reporting node" --endpoint http://hybrid.example.com:5270
 activehybrid start
 activehybrid status
 ```

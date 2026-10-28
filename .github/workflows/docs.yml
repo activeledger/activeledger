@@ -1,0 +1,66 @@
+# Builds the guide in docs/guide with MkDocs Material and publishes it to
+# GitHub Pages. The build is strict, so a broken link or a page missing from
+# the nav fails here before it reaches the site.
+#
+# Pages has to be switched to "GitHub Actions" as its source once, in the
+# repository settings. If Actions minutes ever run out, the same site can be
+# built and pushed by hand:  pip install -r docs/requirements.txt &&
+# mkdocs gh-deploy  (and set Pages to serve the gh-pages branch).
+name: Docs
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/guide/**"
+      - "docs/requirements.txt"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/guide/**"
+      - "docs/requirements.txt"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install MkDocs
+        run: python3 -m pip install -r docs/requirements.txt
+
+      - name: Build (strict)
+        run: mkdocs build --strict --site-dir site
+
+      - name: Upload site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

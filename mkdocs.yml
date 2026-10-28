@@ -1,0 +1,67 @@
+site_name: Activeledger
+site_description: How to run, operate and use Activeledger
+site_url: https://activeledger.github.io/activeledger/
+repo_url: https://github.com/activeledger/activeledger
+edit_uri: edit/master/docs/guide/
+docs_dir: docs/guide
+strict: true
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Start here:
+      - What Activeledger is: concepts.md
+      - Install: install.md
+      - Run a first network: first-network.md
+  - Using the network:
+      - Identities and namespaces: identities.md
+      - Sending a transaction: transactions.md
+      - The HTTP API: api.md
+  - Contracts:
+      - What a contract is: contracts/index.md
+      - Write a contract: contracts/write.md
+      - The contract API: contracts/reference.md
+      - Deploy, update and lock: contracts/deploy.md
+      - Run a contract: contracts/run.md
+      - Contracts on hybrids: contracts/hybrid.md
+  - Hybrid nodes:
+      - What a hybrid is: hybrid/index.md
+      - Run a hybrid: hybrid/run.md
+      - Operate hybrids: hybrid/operate.md
+  - Command line:
+      - activeledger: cli/activeledger.md
+      - activehybrid: cli/activehybrid.md
+      - activerestore: cli/activerestore.md
+  - Running a network:
+      - Configuration: operate/configuration.md
+      - Nodes, consensus and upgrades: operate/nodes.md
+      - Restoring a node: operate/restore.md
+      - Security: operate/security.md
+      - Troubleshooting: operate/troubleshooting.md
