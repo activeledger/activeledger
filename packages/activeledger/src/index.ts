@@ -109,9 +109,9 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
     });
 } else if (cli.command === "restart") {
   if (ActiveOptions.get<boolean>("auto", false)) {
-    CLIHandler.restart(true);
+    CLIHandler.restart(true, version);
   } else {
-    CLIHandler.restart();
+    CLIHandler.restart(false, version);
   }
 } else if (ActiveOptions.get<boolean>("stats", false)) {
   CLIHandler.getStats(version);

@@ -99,13 +99,39 @@ async function main(): Promise<boolean> {
 
     report.phase("Ctrl+C");
     const kids = pids();
+    // The node's workers are its children
+    const workers = spawnSync("pgrep", ["-P", String(kids.activeledger)], { encoding: "utf8" }).stdout
+      .split("\n").map(Number).filter((n) => n && n !== kids.activestorage && n !== kids.activerestore);
+    report.info(`${workers.length} worker process(es) before`);
     process.kill(kids.activeledger, "SIGINT");
     const gone = await settle(() => !alive(kids.activeledger), 60);
     check(gone, "the node ends");
     check(await settle(() => !alive(kids.activestorage), 30), "and the database with it");
     check(await settle(() => !alive(kids.activerestore), 30), "and the restore engine with it");
+    check(workers.length > 0 && (await settle(() => workers.every((w) => !alive(w)), 30)), "and its workers with it");
     const stop = run(["stop"]);
     check(!/ESRCH/.test(stop.stdout + stop.stderr), "a stop afterwards does not report an error");
+
+    report.phase("activerestore --full with the node's database not running");
+    // A node that was set up but never started has no database running
+    const idle = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-lifecycle-idle-"));
+    spawnSync(process.execPath, [ledger, "--setup-only", "--port", String(PORT + 40)], { cwd: idle, encoding: "utf8", timeout: 60000 });
+    const noDb = spawnSync(process.execPath, [restore, "--full"], { cwd: idle, encoding: "utf8", timeout: 60000, maxBuffer: 64 * 1024 * 1024 });
+    fs.rmSync(idle, { recursive: true, force: true });
+    check(noDb.status === 1, `ends with 1 (exit ${noDb.status})`);
+    check(/database cannot be reached/.test(noDb.stdout + noDb.stderr), "and says the database cannot be reached");
+
+    report.phase("restart");
+    let out = "";
+    const restarted = spawn(process.execPath, [ledger, "restart"], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+    restarted.stdout.on("data", (d) => (out += d));
+    restarted.stderr.on("data", (d) => (out += d));
+    await settle(() => /Boot Process Started/.test(out), 100);
+    check(/Boot Process Started @ Version v?\d+\.\d+\.\d+/.test(out), "reports its version, not undefined");
+    const upPids = pids();
+    restarted.kill("SIGINT");
+    await settle(() => !alive(upPids.activeledger), 60);
+    await settle(() => !alive(upPids.activestorage), 30);
   } finally {
     node.kill("SIGKILL");
     const left = (() => {

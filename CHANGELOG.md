@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [5.1.3]
+
+### Fixed
+- `activerestore --full` now really stops with "The node's database cannot be
+  reached" when the database is not running. The check added in 5.1.2 never
+  fired, because a request to a database nobody serves comes back empty
+  instead of failing, so the restore reported success having written nothing.
+- `activeledger restart` printed its version as `undefined`.
+- A node's worker processes ended with the node only if it was stopped
+  cleanly; after a crash or a kill they were left running. They now end when
+  their node goes.
+
 ## [5.1.2]
 
 ### Fixed

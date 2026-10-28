@@ -222,7 +222,9 @@ export class CLIHandler {
    *
    * @static
    */
-  public static async restart(auto?: boolean): Promise<void> {
+  public static async restart(auto?: boolean, version?: string): Promise<void> {
+    // A restart is its own process, so nothing has set the version yet
+    if (version) CLIHandler.version = version;
     ActiveLogger.info("Restarting");
     await this.stop(true);
     await this.start(CLIHandler.version);
