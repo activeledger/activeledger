@@ -1,6 +1,6 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.1.1]
 
 ### Added
 - `activerestore --full` is throttled so it does not compete with the
