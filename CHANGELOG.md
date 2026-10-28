@@ -14,6 +14,11 @@
   replays a transaction's events before writing its umid document so a stop in
   between loses nothing.
 
+- `activerestore --full` finishes with a low priority history pass: it walks
+  each stream's chain of umids and fetches any a majority no longer holds.
+  `--skip-history` or `restore.history: false` leaves it out. `activesync`'s
+  `walkUmidHistory` takes `continuePastHeld` to walk through umids it holds.
+
 ### Fixed
 - `activerestore --full` into an empty database rebuilt contract files only
   when the deploy transaction happened to be restored before the contract

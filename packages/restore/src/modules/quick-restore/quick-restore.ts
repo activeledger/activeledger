@@ -36,6 +36,7 @@ import {
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
 import { Throttle } from "../helper/throttle";
+import { SyncContext, walkUmidHistory } from "@activeledger/activesync";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
 /** How many times a stream is asked for before it is reported as not restored */
@@ -43,6 +44,9 @@ const FETCH_ATTEMPTS = 3;
 const FETCH_RETRY_MS = 500;
 /** How often, in streams, progress is logged */
 const PROGRESS_EVERY = 500;
+/** The history pass goes the whole way back, and a pause between network hops keeps it gentle */
+const HISTORY_WALK_LIMIT = 1000000;
+const HISTORY_HOP_DELAY_MS = 50;
 
 /**
  * Perform a full restore on a nodes database
@@ -105,12 +109,104 @@ export class QuickRestore {
       await this.fetchDocuments(consensusData);
       const duration = Date.now() - startTime;
       ActiveLogger.info(`Rebuild Complete; Duration: ${duration}ms`);
+      await this.restoreHistory(consensusData);
     } catch (error) {
       ActiveLogger.error(
         error,
         `There was an error running quick full restore: ${
           (error as Error)?.message ?? JSON.stringify(error)
         }`
+      );
+    }
+  }
+
+  /**
+   * The last and lowest priority pass: every stream's chain of umids.
+   *
+   * The node is fully usable before this runs, nothing in operation needs the
+   * history. The listing already brought across every umid document a
+   * majority holds; this finds the ones it could not, walking each stream's
+   * chain back from the umid its meta names and fetching any that is missing
+   * from the neighbours' best-supported answer. A chain stops where a umid
+   * has no `prev` (older transactions), which is the start as far as the
+   * ledger can tell.
+   *
+   * Throttled like the rest, and safe to stop: a rerun reads what it holds
+   * and fetches only what is still missing. `restore.history: false` or
+   * `--skip-history` leaves it out.
+   *
+   * @private
+   * @param {IConsensusData[]} consensusData
+   * @returns {Promise<void>}
+   */
+  private async restoreHistory(consensusData: IConsensusData[]): Promise<void> {
+    const section = ActiveOptions.get<any>("restore", {});
+    if (
+      section?.history === false ||
+      ActiveOptions.get<boolean>("skip-history", false)
+    ) {
+      ActiveLogger.info("History pass skipped");
+      return;
+    }
+    const given = section?.history && typeof section.history === "object" ? section.history : {};
+    const ctx: SyncContext = {
+      store: Provider.database,
+      events: Provider.eventDatabase,
+      peers: {
+        umid: (umid: string) =>
+          Provider.network.neighbourhood.knockAll(`umid/${umid}`, null, true),
+      },
+      walkLimit: Number.isFinite(given.walkLimit) ? given.walkLimit : HISTORY_WALK_LIMIT,
+      hopDelayMs: Number.isFinite(given.hopDelayMs) ? given.hopDelayMs : HISTORY_HOP_DELAY_MS,
+      continuePastHeld: true,
+    };
+    const throttle = Throttle.fromConfig(
+      section,
+      ActiveOptions.get<boolean>("fast", false)
+    );
+
+    const streams = consensusData.filter(
+      (c) => QuickRestore.isStateDocument(c.stream) && c.stream.indexOf(":") === -1
+    );
+    ActiveLogger.info(`History pass: ${streams.length} stream(s)`);
+    const started = Date.now();
+    let recovered = 0;
+    const incomplete: string[] = [];
+
+    for (let i = 0; i < streams.length; i++) {
+      const id = streams[i].stream;
+      if (i && i % PROGRESS_EVERY === 0) {
+        ActiveLogger.info(`History progress: ${i}/${streams.length} (${recovered} umid(s) recovered)`);
+      }
+      let umid: string | undefined;
+      try {
+        umid = (await Provider.database.get(`${id}:stream`))?.umid;
+      } catch {
+        continue;
+      }
+      if (!umid) continue;
+
+      const fetchStarted = Date.now();
+      try {
+        const walk = await walkUmidHistory(ctx, id, umid);
+        recovered += walk.recovered.length;
+        if (!walk.complete) incomplete.push(`${id} (${walk.stoppedAt})`);
+        // Only a walk that went to the network is worth pausing for
+        if (walk.recovered.length) {
+          await throttle.wait();
+          throttle.record(Date.now() - fetchStarted);
+        }
+      } catch (error) {
+        incomplete.push(`${id} (${(error as Error)?.message ?? "failed"})`);
+      }
+    }
+
+    ActiveLogger.info(
+      `History Complete; Duration: ${Date.now() - started}ms; ${recovered} umid(s) recovered`
+    );
+    if (incomplete.length) {
+      ActiveLogger.warn(
+        `${incomplete.length} stream(s) have a chain that could not be completed, e.g. ${incomplete.slice(0, 3).join("; ")}`
       );
     }
   }

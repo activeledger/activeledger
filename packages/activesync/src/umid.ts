@@ -49,6 +49,13 @@ export interface SyncContext {
   walkLimit?: number;
   /** Pause between hops. Default 50ms */
   hopDelayMs?: number;
+  /**
+   * Keep walking through umids that are already held, instead of stopping at
+   * the first one. A held umid is only read, never fetched or replayed. For a
+   * full restore, which has to find a gap in the middle of a chain; SPI keeps
+   * the default because it is repairing the newest hops.
+   */
+  continuePastHeld?: boolean;
 }
 
 export const UMID_WALK_LIMIT = 100;
@@ -289,6 +296,17 @@ export async function walkUmidHistory(
       held = !!(local && local._id);
     } catch {
       held = false;
+    }
+
+    if (held && ctx.continuePastHeld) {
+      let local: any;
+      try {
+        local = await ctx.store.get(`${cursor}:umid`);
+      } catch {
+        return { recovered, stoppedAt: "held umid could not be read", complete: false, frontier: cursor };
+      }
+      cursor = previousUmidFor(local, streamId);
+      continue;
     }
 
     // Call backfillUmid even when held, and stop afterwards rather than

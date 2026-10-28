@@ -43,6 +43,12 @@ Change it in the `restore` section of the `config.json` restore runs from:
 
 `"throttle": false` turns it off, as does `activerestore --full --fast`. Use that for a node that is not serving anything.
 
+### History
+
+The last pass, run after the node is already restored and usable, goes through every stream's chain of transactions (umids) from the one its meta names back to the start, and fetches any umid document the node does not hold. The listing already brings across every umid a majority holds, so this finds the gaps: a umid most nodes lost, or that SPI left out. It only reads what the node already holds, so on a healthy node it is quick; it fetches, pauses and backs off like the main pass. A chain ends where a transaction has no record of the one before it (older transactions), which is the start as far as the ledger can tell.
+
+It logs `History Complete`, and warns with a few examples if any chain could not be completed. Leave it out with `--skip-history` or `"restore": { "history": false }`. Tune it with `"restore": { "history": { "hopDelayMs": 50, "walkLimit": 1000000 } }`.
+
 ### Stopping and carrying on
 
 A full restore can be stopped at any point (Ctrl+C, a crash, a reboot) and run again. It keeps no progress file: whatever it already wrote is held at the network's revision, so the next run skips it and fetches only the rest. It logs `Restore progress` every 500 streams and ends with how many streams it fetched and how many it already held. The listing of the neighbours' streams is asked for again each run.
