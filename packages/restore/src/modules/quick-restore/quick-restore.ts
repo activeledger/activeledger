@@ -159,6 +159,7 @@ export class QuickRestore {
       walkLimit: Number.isFinite(given.walkLimit) ? given.walkLimit : HISTORY_WALK_LIMIT,
       hopDelayMs: Number.isFinite(given.hopDelayMs) ? given.hopDelayMs : HISTORY_HOP_DELAY_MS,
       continuePastHeld: true,
+      minAgree: Number.isFinite(given.minAgree) ? given.minAgree : 1,
     };
     const throttle = Throttle.fromConfig(
       section,

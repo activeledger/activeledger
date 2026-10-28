@@ -56,6 +56,13 @@ export interface SyncContext {
    * the default because it is repairing the newest hops.
    */
   continuePastHeld?: boolean;
+  /**
+   * How many nodes must give the identical document before it is adopted.
+   * Default 1, which is what SPI has always done. A restore looks for the
+   * umids a majority no longer holds, so it cannot ask for a majority, but it
+   * can ask for more than one.
+   */
+  minAgree?: number;
 }
 
 export const UMID_WALK_LIMIT = 100;
@@ -136,7 +143,13 @@ export async function backfillUmid(
   const grouped: { [hash: string]: { count: number; doc: any } } = {};
   for (let i = responses.length; i--; ) {
     const response = responses[i];
-    if (!response?.umid?.$umid) {
+    // It has to be the document that was asked for. A peer answering with a
+    // different transaction's umid is not an answer.
+    if (
+      !response?.umid?.$umid ||
+      response.umid.$umid !== umid ||
+      response._id !== `${umid}:umid`
+    ) {
       continue;
     }
     const hash = ActiveCrypto.Hash.getHash(JSON.stringify(response));
@@ -151,8 +164,18 @@ export async function backfillUmid(
     return false;
   }
 
-  const winner =
-    grouped[hashes.sort((a, b) => grouped[b].count - grouped[a].count)[0]].doc;
+  const best = grouped[hashes.sort((a, b) => grouped[b].count - grouped[a].count)[0]];
+  const winner = best.doc;
+  const needed = Math.max(1, ctx.minAgree ?? 1);
+  if (best.count < needed) {
+    ActiveLogger.warn(
+      `SPI UMID ${umid} - only ${best.count} node(s) gave the same document, ${needed} needed`
+    );
+    return false;
+  }
+  if (best.count === 1 && responses.length > 1) {
+    ActiveLogger.warn(`SPI UMID ${umid} - adopted on the word of a single node`);
+  }
 
   try {
     // new_edits:false only ever ADDS a document we do not have, keeping

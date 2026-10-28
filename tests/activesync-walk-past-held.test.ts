@@ -62,3 +62,38 @@ describe("walkUmidHistory - continuePastHeld (Activesync)", () => {
     expect(asked).to.deep.equal([]);
   });
 });
+
+describe("backfillUmid - what it will adopt (Activesync)", () => {
+  const { backfillUmid } = require("../packages/activesync/src/umid");
+  const make = (answers: any[], minAgree?: number) => {
+    const written: any[] = [];
+    const ctx: any = {
+      store: { get: async () => { throw new Error("missing"); }, bulkDocs: async (d: any[]) => (written.push(...d), { ok: true }) },
+      events: { post: async () => ({}) },
+      peers: { umid: async () => answers },
+      minAgree,
+    };
+    return { ctx, written };
+  };
+  const good = (u: string, extra = {}) => ({ _id: `${u}:umid`, umid: { $umid: u }, ...extra });
+
+  it("ignores an answer for a different umid, or one filed under another id", async () => {
+    const { ctx, written } = make([good("OTHER"), { _id: "U1:umid", umid: { $umid: "OTHER" } }, { _id: "OTHER:umid", umid: { $umid: "U1" } }]);
+    expect(await backfillUmid(ctx, "U1")).to.equal(false);
+    expect(written).to.deep.equal([]);
+  });
+
+  it("adopts the right document", async () => {
+    const { ctx, written } = make([good("U1"), good("OTHER")]);
+    expect(await backfillUmid(ctx, "U1")).to.equal(true);
+    expect(written.map((d) => d._id)).to.deep.equal(["U1:umid"]);
+  });
+
+  it("holds out for minAgree identical answers when asked to", async () => {
+    const one = make([good("U1"), good("U1", { x: 1 })], 2);
+    expect(await backfillUmid(one.ctx, "U1")).to.equal(false);
+    expect(one.written).to.deep.equal([]);
+    const two = make([good("U1"), good("U1"), good("U1", { x: 1 })], 2);
+    expect(await backfillUmid(two.ctx, "U1")).to.equal(true);
+  });
+});
