@@ -136,8 +136,26 @@ export class CLIHandler {
     this.statsHandler.init();
     CLIHandler.version = version;
     await CLIHandler.pidHandler.init();
-    await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
-    await CLIHandler.statsHandler.resetUptime();
+    // These run once and exit. Recording their pid would replace the running
+    // node's, and status and stop would then look for a process that is gone.
+    const oneShot = [
+      "assert",
+      "assert-network",
+      "sign",
+      "public",
+      "setup-only",
+    ].some((flag) => ActiveOptions.get<boolean>(flag, false));
+    if (!oneShot) {
+      await CLIHandler.pidHandler.addPid(EPIDChild.LEDGER, process.pid);
+      await CLIHandler.statsHandler.resetUptime();
+      // The real handlers need the host, which does not exist until the
+      // database is up. A signal before then used to end the process with
+      // its database still running, so until boot takes over, stop the
+      // children and go.
+      for (const signal of CLIHandler.earlySignals) {
+        process.on(signal, CLIHandler.earlyShutdown);
+      }
+    }
     this.normalStart();
   }
 
@@ -151,12 +169,22 @@ export class CLIHandler {
       await CLIHandler.pidHandler.init();
       const pids = await CLIHandler.pidHandler.getPids();
 
+      // A process that has already gone (a node that was interrupted or
+      // crashed) must not stop the others being stopped
+      const kill = (pid: number) => {
+        try {
+          process.kill(pid);
+        } catch (error: any) {
+          if (error?.code !== "ESRCH") throw error;
+        }
+      };
+
       pids.activeledger && pids.activeledger !== 0
-        ? process.kill(pids.activeledger)
+        ? kill(pids.activeledger)
         : ActiveLogger.warn("No PID for Activeledger process");
 
       pids.activestorage && pids.activestorage !== 0
-        ? process.kill(pids.activestorage)
+        ? kill(pids.activestorage)
         : ActiveLogger.warn("No PID for Activestorage process");
 
       // ActiveCore was removed in 5.0.0, but a node upgraded while it was
@@ -171,7 +199,7 @@ export class CLIHandler {
       }
 
       pids.activerestore && pids.activerestore !== 0
-        ? process.kill(pids.activerestore)
+        ? kill(pids.activerestore)
         : ActiveLogger.warn("No PID for Activerestore process");
 
       ActiveLogger.info("Shutdown complete, reseting PID file");
@@ -229,9 +257,19 @@ export class CLIHandler {
    */
   public static merge(): void {
     //#region Merge Configs
-    if (ActiveOptions.get<Array<string>>("merge", []).length) {
+    // A single --merge comes through as a string, not a list
+    const asked: string[] = ([] as string[]).concat(
+      ActiveOptions.get<string | string[]>("merge", [])
+    );
+    if (asked.length) {
+      if (asked.length < 2) {
+        ActiveLogger.fatal(
+          "--merge needs two or more configuration files, one per node, e.g. --merge a/config.json --merge b/config.json"
+        );
+        process.exit(1);
+      }
       // Cache merge
-      let merge = ActiveOptions.get<Array<string>>("merge", []);
+      let merge = asked;
       // Holds the object to write back
       let neighbourhood: Array<any> = [];
       // Loop array build network object up and loop again (Speed not important)
@@ -645,6 +683,26 @@ export class CLIHandler {
         datastore.isShuttingDown = true;
       }
       this.isShuttingDown = true;
+      // The database and the restore engine are separate processes. Left
+      // running they hold their ports and keep a stale .PID, and the next
+      // stop reports an error for a process that is already gone. They go
+      // when this process does, after the host has finished with them.
+      CLIHandler.pidHandler
+        .getPids()
+        .then((pids) => {
+          process.once("exit", () => {
+            for (const pid of [pids.activestorage, pids.activerestore]) {
+              if (pid) {
+                try {
+                  process.kill(pid);
+                } catch {
+                  // Already gone
+                }
+              }
+            }
+          });
+        })
+        .catch(() => undefined);
       host.shutdown();
     } else {
       // Pressed again: do not wait for the graceful exit
@@ -655,6 +713,27 @@ export class CLIHandler {
 
   // Track if we are shutting down
   private static isShuttingDown = false;
+
+  private static readonly earlySignals: NodeJS.Signals[] = ["SIGINT", "SIGTERM", "SIGQUIT"];
+
+  /** Handles a stop signal while the node is still starting up */
+  private static readonly earlyShutdown = async (): Promise<void> => {
+    try {
+      const pids = await CLIHandler.pidHandler.getPids();
+      for (const pid of [pids.activestorage, pids.activerestore]) {
+        if (pid) {
+          try {
+            process.kill(pid);
+          } catch {
+            // Already gone
+          }
+        }
+      }
+    } catch {
+      // Nothing recorded yet, so nothing to stop
+    }
+    process.exit(0);
+  };
 
   /**
    * Used to wait on self host
@@ -687,7 +766,10 @@ export class CLIHandler {
         poll.unref();
       };
 
-      // Slightly more graceful shutdown
+      // Slightly more graceful shutdown, now the host exists to do it
+      for (const signal of CLIHandler.earlySignals) {
+        process.off(signal, CLIHandler.earlyShutdown);
+      }
       process.on("SIGINT", () => {
         CLIHandler.terminate(host, datastore);
       });
@@ -898,6 +980,15 @@ export class CLIHandler {
   }
 
   /**
+   * End a command that runs once. The process would otherwise stay up,
+   * because the node's worker sockets and timers keep the event loop alive.
+   * A moment is left for the last log line to be written.
+   */
+  private static endOneShot(code: number): void {
+    setTimeout(() => process.exit(code), 200);
+  }
+
+  /**
    * Assert the network configuration into the ledger
    *
    * @private
@@ -1004,15 +1095,18 @@ export class CLIHandler {
                 response.data.$summary,
                 "Networking Assertion Failed"
               );
+              CLIHandler.endOneShot(1);
             } else {
               ActiveLogger.info(
                 response.data.$streams,
                 "Network Asserted to the ledger"
               );
+              CLIHandler.endOneShot(0);
             }
           })
           .catch(() => {
             ActiveLogger.fatal("Networking Assertion Failed");
+            CLIHandler.endOneShot(1);
           });
       })
       .catch((error: any) => {
@@ -1020,6 +1114,7 @@ export class CLIHandler {
           error.response ? error.response.data : error,
           "Unable to assess network for assertion"
         );
+        CLIHandler.endOneShot(1);
       });
     //#endregion
   }

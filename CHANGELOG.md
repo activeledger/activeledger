@@ -1,5 +1,23 @@
 # Activeledger Changelog
 
+## [5.1.2]
+
+### Fixed
+- `activeledger --assert` (and `--assert-network`, `--sign`, `--public`,
+  `--setup-only`) no longer replaces the running node's pid in `.PID`. After an
+  assert, `status` said "not running" and `stop` missed the node. `--assert`
+  also ends when it is done instead of staying up.
+- `activerestore --full` ends when it is done, with exit code 1 if it could not
+  do its work, instead of staying up. It checks the node's database can be
+  reached before it starts, and rejects `--skip-history` with `--history-only`
+  straight away.
+- Ctrl+C (or a stop signal) stops the node's database and restore engine with
+  it, also when it arrives while the node is still starting. `stop` no longer
+  gives up when the node has already gone.
+- `activehybrid` `/health` listed each supernode twice.
+- `activeledger --merge` with one file says it needs two or more instead of
+  crashing.
+
 ## [5.1.1]
 
 ### Added

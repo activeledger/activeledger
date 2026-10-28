@@ -59,7 +59,12 @@ export class QuickRestore {
    * Creates an instance of QuickRestore.
    */
   constructor() {
-    this.runQuickFullRestore();
+    // A full restore is a job, not a service: when it is done the process
+    // ends, with a failing code if it could not do what was asked.
+    this.runQuickFullRestore().then((ok) => {
+      // A moment is left for the last log line to be written
+      setTimeout(() => process.exit(ok ? 0 : 1), 200);
+    });
   }
 
   /**
@@ -76,7 +81,28 @@ export class QuickRestore {
    * @private
    * @returns {Promise<void>}
    */
-  private async runQuickFullRestore(): Promise<void> {
+  private async runQuickFullRestore(): Promise<boolean> {
+    if (
+      ActiveOptions.get<boolean>("skip-history", false) &&
+      ActiveOptions.get<boolean>("history-only", false)
+    ) {
+      ActiveLogger.error(
+        "--skip-history and --history-only together leave nothing to do"
+      );
+      return false;
+    }
+
+    // Writes to a database nobody is serving fail without a word, so the
+    // restore would report success having written nothing
+    try {
+      await Provider.database.allDocs({ limit: 1 });
+    } catch {
+      ActiveLogger.error(
+        "The node's database cannot be reached. Start the node (or its database with activeledger --db-only) and run the restore again"
+      );
+      return false;
+    }
+
     const preparePromise = (node: string) =>
       this.getRebuildData(neighbourhood[node]);
 
@@ -106,14 +132,7 @@ export class QuickRestore {
         streamInformation,
         needed
       );
-      const skipHistory = ActiveOptions.get<boolean>("skip-history", false);
       const historyOnly = ActiveOptions.get<boolean>("history-only", false);
-      if (skipHistory && historyOnly) {
-        ActiveLogger.error(
-          "--skip-history and --history-only together leave nothing to do"
-        );
-        return;
-      }
       // The state is what the node needs to run, so it comes first. History
       // is a separate run for when the node is back and there is time.
       if (!historyOnly) await this.fetchDocuments(consensusData);
@@ -124,6 +143,7 @@ export class QuickRestore {
           : `Rebuild Complete; Duration: ${duration}ms`
       );
       await this.restoreHistory(consensusData);
+      return Number.isFinite(needed);
     } catch (error) {
       ActiveLogger.error(
         error,
@@ -131,6 +151,7 @@ export class QuickRestore {
           (error as Error)?.message ?? JSON.stringify(error)
         }`
       );
+      return false;
     }
   }
 

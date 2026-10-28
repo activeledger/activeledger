@@ -129,7 +129,12 @@ export class FeedManager {
 
   private mark(upstream: Upstream, ok: boolean): void {
     const host = upstream.id;
-    const entry = this.options.state.upstreams.find((u) => u.host === host);
+    // The state starts with "host:port" and an upstream's id adds its
+    // transport ("host:port:http"), so match either, and do not add a second
+    // entry for the same supernode
+    const entry = this.options.state.upstreams.find(
+      (u) => u.host === host || host.startsWith(`${u.host}:`)
+    );
     if (entry) entry.ok = ok;
     else this.options.state.upstreams.push({ host, ok });
   }
