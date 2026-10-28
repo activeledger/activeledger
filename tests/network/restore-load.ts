@@ -135,8 +135,14 @@ async function main(): Promise<boolean> {
     const finished = await waiter;
     report.info(`throttle: ${process.env.RESTORE_FAST ? "off (--fast)" : "default"}`);
     const took = Date.now() - started;
-    child.kill();
     check(finished, "the restore reported completion");
+    // The history pass follows the state restore, at a lower priority
+    const historyStarted = Date.now();
+    const historyDone = await settle(() => /History Complete|History pass skipped/.test(fs.readFileSync(logPath, "utf8")), 6000);
+    child.kill();
+    const historyLine = /History Complete; Duration: (\d+)ms; (\d+) umid/.exec(fs.readFileSync(logPath, "utf8"));
+    check(historyDone, "the history pass reported completion");
+    report.info(historyLine ? `history pass took ${historyLine[1]}ms, ${historyLine[2]} umid(s) recovered` : `history pass took ${Date.now() - historyStarted}ms`);
     report.info(`restore took ${took}ms for ${want.size} documents (${Math.round((want.size / took) * 1000)} docs/s)`);
     report.info(`live transactions during it: ${describe(during)}`);
     report.info(`live transactions baseline : ${describe(baseline)}`);

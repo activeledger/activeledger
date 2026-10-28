@@ -146,10 +146,11 @@ async function main(): Promise<boolean> {
     check((await hasUmid(origin)) && !(await hasUmid(lost)), "only the first node holds the deploy umid");
     await runRestore(lost.dataDir, "restore-no-history", ["--skip-history"]);
     check(!(await hasUmid(lost)), "--skip-history leaves it out, so the state restore alone does not find it");
-    const ms4 = await runRestore(lost.dataDir, "restore-history");
+    const ms4 = await runRestore(lost.dataDir, "restore-history", ["--history-only"]);
     report.info(`took ${ms4}ms`);
     check(await hasUmid(lost), "the history pass found it and fetched it");
     const histLog = fs.readFileSync(path.join(lost.dataDir, "restore-history.log"), "utf8");
+    check(!/Restored \d+ stream/.test(histLog), "--history-only did not run the state pass");
     check(/History Complete;.*[1-9]\d* umid\(s\) recovered/.test(histLog), "and reported what it recovered");
   } finally {
     await harness.stop();

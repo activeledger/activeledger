@@ -16,7 +16,8 @@
 
 - `activerestore --full` finishes with a low priority history pass: it walks
   each stream's chain of umids and fetches any a majority no longer holds.
-  `--skip-history` or `restore.history: false` leaves it out. `activesync`'s
+  `--skip-history` or `restore.history: false` leaves it out, and
+  `--history-only` runs just that pass later. `activesync`'s
   `walkUmidHistory` takes `continuePastHeld` to walk through umids it holds.
 
 ### Fixed

@@ -106,9 +106,23 @@ export class QuickRestore {
         streamInformation,
         needed
       );
-      await this.fetchDocuments(consensusData);
+      const skipHistory = ActiveOptions.get<boolean>("skip-history", false);
+      const historyOnly = ActiveOptions.get<boolean>("history-only", false);
+      if (skipHistory && historyOnly) {
+        ActiveLogger.error(
+          "--skip-history and --history-only together leave nothing to do"
+        );
+        return;
+      }
+      // The state is what the node needs to run, so it comes first. History
+      // is a separate run for when the node is back and there is time.
+      if (!historyOnly) await this.fetchDocuments(consensusData);
       const duration = Date.now() - startTime;
-      ActiveLogger.info(`Rebuild Complete; Duration: ${duration}ms`);
+      ActiveLogger.info(
+        historyOnly
+          ? "Rebuild skipped (--history-only)"
+          : `Rebuild Complete; Duration: ${duration}ms`
+      );
       await this.restoreHistory(consensusData);
     } catch (error) {
       ActiveLogger.error(
