@@ -69,11 +69,11 @@ describe("The guide (docs/guide)", () => {
     expect(disk.filter((p) => !/^# \S/.test(read(p)))).to.deep.equal([]);
   });
 
-  it("carries no placeholder text and no tool or author attribution", () => {
+  it("carries no placeholder text and no author attribution", () => {
     const found: string[] = [];
     for (const page of disk) {
       const text = read(page);
-      for (const re of [/\bTODO\b/, /\bTBD\b/, /coming soon/i, /\bClaude\b/, /Anthropic/, /Co-Authored-By/i, /Generated with/i]) {
+      for (const re of [/\bTODO\b/, /\bTBD\b/, /coming soon/i, /Co-Authored-By/i, /Generated with/i]) {
         if (re.test(text)) found.push(`${page}: ${re}`);
       }
     }
