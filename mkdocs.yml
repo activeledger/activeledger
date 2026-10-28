@@ -44,6 +44,18 @@ nav:
       - Identities and namespaces: identities.md
       - Sending a transaction: transactions.md
       - The HTTP API: api.md
+  - SDKs:
+      - Choosing an SDK: sdks/index.md
+      - Concepts shared by every SDK: sdks/concepts.md
+      - JavaScript / TypeScript: sdks/js.md
+      - Python: sdks/python.md
+      - Go: sdks/go.md
+      - JVM (Kotlin and Java): sdks/jvm.md
+      - C# / .NET: sdks/csharp.md
+      - Rust: sdks/rust.md
+      - PHP: sdks/php.md
+      - Dart: sdks/dart.md
+      - Swift: sdks/swift.md
   - Contracts:
       - What a contract is: contracts/index.md
       - Write a contract: contracts/write.md
