@@ -56,3 +56,7 @@ A full restore can be stopped at any point (Ctrl+C, a crash, a reboot) and run a
 A transaction's events are replayed before its umid document is written, so a restore stopped in between replays them again on the next run rather than losing them.
 
 Volatile data is for one node only, so a restore never copies or creates it.
+
+## How many nodes
+
+A restore and SPI both rely on the other nodes agreeing, so a small network has little to check against. One to three nodes work, but treat them as the minimum to run at all. Four is a safe minimum and five or more is best.
