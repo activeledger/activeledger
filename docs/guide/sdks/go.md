@@ -155,7 +155,7 @@ fmt.Println(response.Responses())   // values the contract returned
 | `Output(streamID, payload)` | One entry in `$o`. |
 | `ReadOnly(label, streamID)` | One entry in `$r`. |
 
-`Build` returns an error if the namespace, the contract or every signer is missing. Keys in `$tx` appear in the order you added them, and the signature covers that order.
+`Build` returns an error if the namespace, the contract or every signer is missing. The `$tx` keys always appear in the order `$entry` (if set), `$namespace`, `$contract`, `$i`, `$o`, `$r`, whatever order you call the methods. Streams inside `$i`, `$o` and `$r` keep the order you added them. The signature covers those exact bytes.
 
 On the response, `Committed()` is true when the node reported no errors. `Errors()`, `NewStreams()` and `Responses()` read the matching parts of the reply described in [Transactions](../transactions.md#reading-the-reply). `Raw` holds the reply text unparsed.
 
@@ -188,6 +188,9 @@ for _, value := range response.Responses() {
 The contract must return the values itself. The SDK has no helper for reading a stream directly.
 
 ## Events
+
+!!! warning
+    Events are deprecated from SDK v2.4.0 and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
 
 `Subscribe` opens a server-sent events stream and returns two channels. Cancel the context to close the connection.
 

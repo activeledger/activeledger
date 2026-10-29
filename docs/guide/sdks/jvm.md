@@ -24,7 +24,7 @@ Maven:
 </dependency>
 ```
 
-The published metadata pulls in BouncyCastle 1.85.2, OkHttp 4.12.0, kotlinx-coroutines 1.9.0 and Gson 2.11.0. If you add the bare jar by hand, declare these yourself or you will get `NoClassDefFoundError` at run time.
+The published metadata pulls in BouncyCastle 1.85.2, OkHttp 4.12.0, kotlinx-coroutines 1.9.0 and Gson 2.11.0. If you add the bare jar by hand, declare these yourself or you will get `NoClassDefFoundError` at run time. The 1.0.0 POM lists them with runtime scope, so a Maven build must also declare Gson, OkHttp and kotlinx-coroutines itself to compile against `responses()`, `Connection(baseUrl, OkHttpClient)` or `Flow`.
 
 !!! warning
     BouncyCastle 1.84 or later is required. If another dependency in your build pins an older BouncyCastle, ML-DSA fails at run time with `NoClassDefFoundError: org/bouncycastle/crypto/generators/MLDSAKeyPairGenerator`, not at compile time. Override the version upwards (`org.bouncycastle:bcprov-jdk18on:1.85.2`).
@@ -188,6 +188,9 @@ response.responses().forEach { println(it) }
 
 ## Events
 
+!!! warning
+    Events are deprecated from SDK 1.1.0 (tagged but not yet on Maven Central; 1.0.0 behaves as described here) and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
+
 In Kotlin, `ledger.events.subscribe()` returns a `Flow<LedgerEvent>` over the node's server-sent events endpoint (`/events` by default; pass another path to change it). Collecting starts the connection and cancelling the collector closes it.
 
 ```kotlin
@@ -203,11 +206,11 @@ In Java, pass a listener. `subscribe` returns a `Subscription`, which you close 
 ```java
 try (var subscription = client.subscribe(event ->
         System.out.println(event.getName() + ": " + event.getData()))) {
-    Thread.sleep(10_000);
+    Thread.sleep(10_000);   // throws InterruptedException: catch it or declare it
 }
 ```
 
-An overload takes a path as the second argument. If the stream drops, the flow ends with an error and the Java listener simply stops receiving; reconnecting is up to you.
+An overload takes a path as the second argument. If the stream ends, the flow completes (or fails with an error if the connection broke) and the Java listener simply stops receiving; reconnecting is up to you.
 
 ## Signing elsewhere
 

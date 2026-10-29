@@ -27,7 +27,7 @@ Every SDK reports that the post-quantum key types (`ml-dsa-65` and `falcon-512`)
 
 ## What is the same everywhere
 
-See [Concepts shared by every SDK](concepts.md). The language pages follow the same order: install, quick start, keys, seeds, transactions, reading state, events, signing elsewhere, and things that will bite you.
+See [Concepts shared by every SDK](concepts.md). The language pages follow the same order: install, quick start, keys, seeds, transactions, reading state, events (deprecated in most), signing elsewhere, and things that will bite you.
 
 ## Source and issues
 

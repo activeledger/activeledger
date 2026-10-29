@@ -1,6 +1,6 @@
 # Python SDK
 
-`activeledger` is the Python client for Activeledger. It builds and signs transactions, onboards identities and subscribes to events. It needs Python 3.9 or later and, for the post-quantum key types, Activeledger 4.7.0 or later. The core uses only the standard library, so installing it never needs a C compiler; the key types that need extra packages are opt-in.
+`activeledger` is the Python client for Activeledger. It builds and signs transactions, and onboards identities. It needs Python 3.9 or later and, for the post-quantum key types, Activeledger 4.7.0 or later. The core uses only the standard library, so installing it never needs a C compiler; the key types that need extra packages are opt-in.
 
 The SDK has no dependencies of its own. It does not generate or hold RSA keys (see [Keys](#keys)).
 
@@ -171,6 +171,9 @@ for value in ledger.submit(tx).responses:
 ```
 
 ## Events
+
+!!! warning
+    Events are deprecated from SDK 1.4.0 and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
 
 `ledger.events.subscribe()` is a generator over the node's server-sent events. Leaving the loop closes the connection.
 

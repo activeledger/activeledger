@@ -1,6 +1,6 @@
 # PHP SDK
 
-The PHP SDK builds, signs and submits Activeledger transactions from PHP, and can subscribe to event streams. It is published on Packagist as `activeledger/sdk` and needs PHP 8.1 or later with the `curl`, `json` and `openssl` extensions. The SDK does not state a minimum Activeledger node version. Its live tests run against a network started from an Activeledger checkout, and the post-quantum key types need a node that accepts `ml-dsa-65` identities (see [Identities](../identities.md)).
+The PHP SDK builds, signs and submits Activeledger transactions from PHP, and can submit transactions and read state. It is published on Packagist as `activeledger/sdk` and needs PHP 8.1 or later with the `curl`, `json` and `openssl` extensions. The SDK does not state a minimum Activeledger node version. Its live tests run against a network started from an Activeledger checkout, and the post-quantum key types need a node that accepts `ml-dsa-65` identities (see [Identities](../identities.md)).
 
 It supports two key types: `ml-dsa-65` (post-quantum) and `secp256k1`. It cannot create `rsa` or `falcon-512` identities; see [Signing elsewhere](#signing-elsewhere) for those.
 
@@ -195,37 +195,9 @@ What comes back is whatever the contract chooses to return, and `responses()` ha
 
 ## Events
 
-Event streams are served by Activecore, a separate service on its own port, not by the node. Pass its URL as the second constructor argument. Subscribing without it throws a `LogicException` that says so.
+`Client::subscribeToActivity`, `subscribeToContractEvents`, `subscribe` and `LedgerEvent` are deprecated and will be removed in the next major version. Activecore is deprecated and no longer serves events. A node serves contract events only from its own storage service, which must never be reachable beyond the node's host, so a client SDK has nothing to connect to.
 
-```php
-use Activeledger\Client;
-use Activeledger\LedgerEvent;
-
-$client = new Client('http://localhost:5260', 'http://localhost:5261');
-
-// Every stream change on the ledger. Return false from the callback to stop.
-$client->subscribeToActivity(function (LedgerEvent $event): bool {
-    echo $event->data;
-    return true;
-});
-
-// Changes to one stream
-$client->subscribeToActivity($callback, $streamId);
-
-// Events a contract emitted: all, by contract, or one named event
-$client->subscribeToContractEvents($callback);
-$client->subscribeToContractEvents($callback, 'mycontract');
-$client->subscribeToContractEvents($callback, 'mycontract', 'transfer');
-```
-
-Asking for an event name without a contract throws a `LogicException`.
-
-A `LedgerEvent` has `data`, `name` and `id` (the last two are `null` when the server did not send them), and `json()` decodes `data` or returns `null` if it is not JSON.
-
-Subscribing blocks. It ends when the callback returns `false`, when the server closes the stream, or when a timeout expires. `subscribe($pathOrUrl, $callback, $timeoutSeconds)` is the lower-level call and is the only one that takes a timeout; a timeout expiring is a normal end, not an error. A reply of HTTP 400 or above throws a `RuntimeException`.
-
-!!! warning
-    Activity and contract events are different feeds. Activity fires for stream changes, so an ordinary transaction produces it. Contract events carry only what a contract explicitly emitted. Subscribe to contract events for a transaction that emits nothing and you will correctly receive nothing, which looks the same as a broken subscription.
+To react to events, run your own server-sent events listener on the node's host and relay what you need through your own backend. Each frame has an `id` of `<ms>-<counter>,<umid>` and `data` of `{name,data,phase,contract}`. See [The HTTP API](../api.md#events-get-activeledgereventsevents).
 
 ## Signing elsewhere
 
@@ -278,7 +250,7 @@ composer install
 vendor/bin/phpunit --testsuite unit
 ```
 
-The unit suite needs no network. The `live` suite needs a running ledger and reads `AL_NODES` and `AL_STORAGE` from the environment; the SDK's README describes how to start one from an Activeledger checkout.
+The unit suite needs no network. The `live` suite needs a running ledger and reads `AL_NODES` and `AL_STORAGE` from the environment; the docblock of `tests/LiveNetworkTest.php` shows how (`npm run test:network:serve` in an Activeledger checkout).
 
 - Source, issues and README: <https://github.com/activeledger/SDK-PHP>
 - Package: <https://packagist.org/packages/activeledger/sdk>

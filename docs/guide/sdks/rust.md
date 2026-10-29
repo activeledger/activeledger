@@ -56,7 +56,7 @@ Two key types are supported. Both implement the `Signer` trait, so either can be
 | ML-DSA-65 | `KeyPair` | `ml-dsa-65` | 1952 bytes | 4032 bytes | 3309 bytes | base64 |
 | secp256k1 | `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes | `0x` hex |
 
-`rsa` and `falcon-512` are not supported. Asking for a Falcon key returns `KeyError::FalconUnsupported`.
+`rsa` and `falcon-512` are not supported. There is no Falcon key type in this crate, so there is no way to create or load one. `KeyType::Falcon512` exists only so that `recovery::derive_seed` can produce a Falcon seed.
 
 Both types have the same shape:
 
@@ -75,7 +75,7 @@ let ec_full = Secp256k1KeyPair::generate_with(false); // uncompressed
 let ec_public = ec.public_key();                      // "0x02..."
 ```
 
-`sign` and `verify` are also available on both types. `private_key()` returns `None` for a key made with `from_public`.
+`verify` is a method on both types. `sign` comes from the `Signer` trait, so add `use activeledger::Signer;`. `private_key()` returns `None` for a key made with `from_public`.
 
 !!! warning
     secp256k1 keys are `0x`-prefixed hex, not base64. The prefix is required.
@@ -233,7 +233,7 @@ impl Signer for AuditedSigner {
 
 - **A rejected transaction is an HTTP 200.** Check `response.committed()`, not the status. If the body is not valid JSON, `errors()` is empty and `committed()` is `true`; check `raw()` if the node might be returning something else, such as a proxy error page.
 - **Every signature problem is reported as 1220 "Signature Incorrect".** Wrong key type, wrong-length key material and bad bytes all give the same message. `tx.signed_bytes()` shows exactly what was signed.
-- **The builder cannot set `$expire`.** There is no method for it. A transaction sent twice runs twice; see [Sending a transaction](../transactions.md). Add the field yourself and use `submit_raw` if you need it.
+- **The builder cannot set `$expire`.** There is no method for it. A transaction sent twice runs twice; see [Sending a transaction](../transactions.md). To set it, build the `$tx` object yourself with `Object`, sign its `canonical::to_bytes` with a `Signer`, wrap it in an envelope and send it with `submit_raw`.
 - **Falcon-512 is not supported.** Use `ml-dsa-65` or `secp256k1`.
 - **ML-DSA-65 keys are not validated on load.** Any 1952 bytes decode to some key; a wrong key fails at verification, not at construction.
 - **Namespaces are claimed permanently.** A test that registers a fixed namespace passes once and fails on re-runs against the same network.

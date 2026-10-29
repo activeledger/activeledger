@@ -90,7 +90,7 @@ await keys.exportKey(key, 'keys', createDir: true); // writes keys/<name>.json
 final loaded = await keys.importKey('keys/identity.json');
 ```
 
-`exportKey` refuses to overwrite unless you pass `overwrite: true`. The file contains the private key, so store it accordingly. (`dart:io` is used, so this is not available on the web.)
+`exportKey` refuses to overwrite unless you pass `overwrite: true`. The file contains the private key, so store it accordingly. (These two use `dart:io` and fail on the web; the rest of the SDK does not.)
 
 ## Seeds and recovery phrases
 
@@ -217,8 +217,8 @@ From a checkout of the SDK:
 
 ```bash
 dart pub get
-dart test packages/activeledger
-dart test packages/activeledger_falcon
+cd packages/activeledger && dart test
+cd ../activeledger_falcon && dart test
 ```
 
 The tests check canonical JSON, signatures and seed derivation against the JavaScript SDK's cross-language vectors. Integration tests in `test/integration` need a running network and are set up through the `AL_NODES` and `AL_STORAGE` environment variables; see the package README.
