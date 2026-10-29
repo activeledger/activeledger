@@ -2,6 +2,9 @@
 
 The C# SDK builds, signs and submits Activeledger transactions from .NET. It is published on NuGet as `Activeledger.SDK` and targets `netstandard2.0` and `net8.0`, so modern .NET, .NET Framework, Unity and Mono all work. Its one dependency is BouncyCastle, which is pure managed code. It supports the post-quantum key types (`ml-dsa-65`, `falcon-512`) as well as `secp256k1`. The SDK does not state a minimum Activeledger node version; the key types it signs with must be ones your node accepts (see [Identities](../identities.md#key-types)).
 
+!!! note
+    As of 29 October 2026 NuGet serves 2.4.0. Version 2.5.0 is tagged and released on GitHub but has not been published to NuGet, so `dotnet add package` gives you 2.4.0.
+
 ## Install
 
 ```bash
@@ -162,36 +165,9 @@ foreach (JsonElement value in response.Responses)
 
 ## Events
 
-Event streams come from Activecore, a separate service on its own port, not from the node. Give the client its address as `coreUrl`.
+`SubscribeAsync`, `SubscribeToActivityAsync`, `SubscribeToContractEventsAsync`, `LedgerEvent` and the `coreUrl` constructor argument are marked `[Obsolete]` from SDK v2.5.0 and will be removed in the next major version. ActiveCore is deprecated and no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to.
 
-```csharp
-using var client = new ActiveledgerClient(
-    "http://localhost:5260",
-    coreUrl: "http://localhost:5261");
-
-using var cts = new CancellationTokenSource();
-
-// Every stream change
-await foreach (var e in client.SubscribeToActivityAsync(cancellationToken: cts.Token))
-{
-    Console.WriteLine(e.Data);
-}
-
-// Changes to one stream
-await foreach (var e in client.SubscribeToActivityAsync(streamId, cts.Token)) { }
-
-// Events a contract emitted: all, one contract, or one named event
-await foreach (var e in client.SubscribeToContractEventsAsync()) { }
-await foreach (var e in client.SubscribeToContractEventsAsync("mycontract")) { }
-await foreach (var e in client.SubscribeToContractEventsAsync("mycontract", "transfer")) { }
-```
-
-Each `LedgerEvent` has `Data`, and `Name` and `Id` when the server sent them. Cancelling the token closes the connection. `SubscribeAsync(pathOrUrl)` takes a raw path or absolute URL for any other event endpoint.
-
-!!! warning
-    Activity and contract events are different feeds. An ordinary transaction produces activity, not contract events. If you subscribe to contract events and the contract emitted nothing, you receive nothing, which looks like a broken subscription.
-
-Without `coreUrl`, a subscribe call throws and names the missing setting. Pointing at the node instead returns 403.
+To react to events, run your own server-sent events listener on the node's host and relay what you need. See [The HTTP API](../api.md#events-get-activeledgereventsevents).
 
 ## Signing elsewhere
 
@@ -228,7 +204,7 @@ Numbers follow JavaScript, so `1.0` becomes `1`. `NaN` and infinity are refused.
 
 **Every signature fault is reported as 1220.** A wrong key type, wrong-length key and bad bytes all give the same message. `tx.SignedBytes()` and `tx.ToJson()` show what was signed and sent.
 
-**Post-quantum signatures differ every time.** Signing the same message twice gives different bytes, so verify, never compare. `secp256k1` signing is deterministic. Falcon signatures vary in length (about 649 to 662 bytes), and `secp256k1` signatures are DER of 70 to 72 bytes. Do not size buffers or columns to a fixed length.
+**Post-quantum signatures differ every time.** Signing the same message twice gives different bytes, so verify, never compare. `secp256k1` signing is deterministic. Falcon signatures vary in length (about 646 to 664 bytes), and `secp256k1` signatures are DER of about 68 to 72 bytes. Do not size buffers or columns to a fixed length.
 
 **The builder cannot set `$expire`.** A transaction signed by it and sent twice runs twice. See the warning in [Sending a transaction](../transactions.md). To retry safely, build the envelope yourself and use `SubmitRawAsync`.
 
@@ -246,7 +222,7 @@ Numbers follow JavaScript, so `1.0` becomes `1`. `NaN` and infinity are refused.
 dotnet test
 ```
 
-The live-network tests skip unless `AL_NODES` and `AL_STORAGE` are set to the URLs of a running test network. The test project targets `net9.0`, so you need the .NET 9 runtime to run them.
+The live-network tests skip unless `AL_NODES` and `AL_STORAGE` are set to the URLs of a running test network. The test project targets `net9.0`, so you need the .NET 9 runtime to run them, or set `DOTNET_ROLL_FORWARD=Major` to run them on a newer one.
 
 - Source and issues: <https://github.com/activeledger/SDK-CSharp>
 - Package: <https://www.nuget.org/packages/Activeledger.SDK>

@@ -8,7 +8,7 @@ The SDK sends transactions and keeps keys. It does not read streams or listen fo
 
 ## Install
 
-Pick the package for where your code runs. Both have the same API, and a key made by one works in the other.
+Pick the package for where your code runs. Both have the same API, apart from key file storage (see Keys), and a key made by one works in the other.
 
 | Where | Package | Signing |
 |---|---|---|
@@ -148,7 +148,7 @@ The signature goes under the key's identity in `$sigs`. There is also a position
 `connection.sendTransaction(tx)` posts it and resolves with the node's reply as an `ILedgerResponse`: `$umid`, `$summary`, `$streams` and optionally `$responses`. [Transactions](../transactions.md#reading-the-reply) explains each field.
 
 !!! warning
-    A refused transaction still resolves. The node answers HTTP 200 and the failure is in the reply. Check `response.$summary.commit` is above zero, and read `$summary.errors` when it is not. Only network and non-200 failures reject the promise. `onboardKey` is the exception: it rejects when no identity was created.
+    A refused transaction still resolves. The node answers HTTP 200 and the failure is in the reply. Check `response.$summary.commit` is above zero, and when it is not, read the `errors` the node sends in `$summary`. The `ILedgerResponse` type does not declare them, so cast: `(response.$summary as any).errors`. Only network and non-200 failures reject the promise. `onboardKey` is the exception: it rejects when no identity was created.
 
 For a transaction the helper cannot shape, build the object yourself and sign it with `signTransaction`. This is how to add `$expire`, which `labelledTransaction` has no option for (see [Transactions](../transactions.md) for why you want it on anything you might retry):
 

@@ -129,8 +129,8 @@ let tx = try ledger.transactions.labelledTransaction(
     inputLabel: "input",
     stream: key.identity!,
     inputData: .object([("message", .string("hello"))]),
-    outputs: .object([("target-stream", .object([("amount", .integer(10))]))]),
-    entry: "update")                       // optional $entry
+    entry: "update",                       // optional $entry
+    outputs: .object([("target-stream", .object([("amount", .integer(10))]))]))
 
 let response = try await ledger.send(tx)
 if !response.committed {
