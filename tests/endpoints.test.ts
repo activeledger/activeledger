@@ -530,3 +530,46 @@ describe("Endpoints.buildClientResponse (Activenetwork)", () => {
     expect(out).to.not.have.property("$debug");
   });
 });
+
+describe("Endpoints non-object request bodies (Activenetwork)", () => {
+  // The transaction endpoint answers 500 "Invalid Transaction" for any body
+  // that is not a transaction object; null used to be dereferenced instead.
+  const host = {} as any;
+
+  for (const [name, body] of [
+    ["null", null],
+    ["an array", []],
+    ["a string", "text"],
+    ["a number", 7],
+    ["a boolean", true],
+    ["an empty object", {}],
+  ] as [string, any][]) {
+    it(`rejects ${name} as Invalid Transaction`, async () => {
+      let rejected: any;
+      try {
+        await Endpoints.ExternalInitalise(host, body, "127.0.0.1", {} as any);
+      } catch (e) {
+        rejected = e;
+      }
+      expect(rejected).to.deep.equal({
+        statusCode: 500,
+        content: "Invalid Transaction",
+      });
+    });
+  }
+
+  it("parses a JSON null body to null for that same rejection", async () => {
+    const out = await Endpoints.postConvertor(host, Buffer.from("null"), false);
+    expect(out.body).to.equal(null);
+  });
+
+  it("rejects an empty body in the parser with a 500", async () => {
+    let rejected: any;
+    try {
+      await Endpoints.postConvertor(host, "", false);
+    } catch (e) {
+      rejected = e;
+    }
+    expect(rejected).to.have.property("statusCode", 500);
+  });
+});

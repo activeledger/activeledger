@@ -711,7 +711,7 @@ export class Endpoints {
       };
 
       // Not supporting mutiple transactions yet
-      if (body.$multi) {
+      if (body && body.$multi) {
         // We can either send them all at once or in seq depends on transaction lets default to all at once
         const results = [] as any[];
         if (body.$seq) {
