@@ -65,7 +65,7 @@ describe("The built programs (command line smoke)", () => {
       const bad = run("hybrid", "check-config", "--config", "bad.json");
       expect(bad.code).to.equal(2);
       expect(bad.out).to.contain("nope: unknown key");
-    });
+    }).timeout(10000); // two child processes, which can pass 2s under load
   });
 
   describe("status with nothing running", () => {
