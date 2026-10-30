@@ -32,7 +32,7 @@ Sending the same signed transaction twice runs it twice, unless it carries `$tx.
 
 ## Events
 
-The event clients in the SDKs (Python, Go, JVM, PHP, C#, JavaScript) are deprecated and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Dart and Swift have no events client. To react to events, run your own server-sent events listener on the node's host and relay what you need; see [The HTTP API](../api.md#events-get-activeledgereventsevents). Rust has an events client; check its page before you design around it.
+The event clients in the SDKs (Python, Go, JVM, PHP, C#, Rust, JavaScript) are deprecated and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Dart and Swift have no events client. To react to events, run your own server-sent events listener on the node's host and relay what you need; see [The HTTP API](../api.md#events-get-activeledgereventsevents).
 
 ## Where the SDKs differ
 

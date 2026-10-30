@@ -173,6 +173,9 @@ for value in response.responses() {
 
 ## Events
 
+!!! warning
+    Events are deprecated in the Rust SDK and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
+
 Event streams come from Activecore, which is a separate service on its own port, not from the node. Give the client its URL with `with_core`. Subscribing without it returns `ClientError::NoCoreUrl`.
 
 ```rust
