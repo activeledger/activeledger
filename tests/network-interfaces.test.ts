@@ -6,8 +6,9 @@ import { ActiveInterfaces } from "../packages/network/src/network/utils";
 // ActiveInterfaces caches its result in private statics and reads the live
 // argv/config objects, so each test resets the cache and swaps those in.
 describe("ActiveInterfaces binding details", () => {
-  const argv: any = ActiveOptions.fetch(true);
-  const config: any = ActiveOptions.fetch(false);
+  // Other suites may replace these objects, so always fetch them fresh
+  const argvNow = (): any => ActiveOptions.fetch(true);
+  const configNow = (): any => ActiveOptions.fetch(false);
   let savedArgv: any;
   let savedConfig: any;
 
@@ -16,6 +17,8 @@ describe("ActiveInterfaces binding details", () => {
     (ActiveInterfaces as any).bindingPort = undefined;
   };
   const setup = (a: any, c: any) => {
+    const argv = argvNow();
+    const config = configNow();
     for (const k of Object.keys(argv)) delete argv[k];
     for (const k of Object.keys(config)) delete config[k];
     Object.assign(argv, a);
@@ -24,8 +27,8 @@ describe("ActiveInterfaces binding details", () => {
   };
 
   beforeEach(() => {
-    savedArgv = { ...argv };
-    savedConfig = { ...config };
+    savedArgv = { ...argvNow() };
+    savedConfig = { ...configNow() };
   });
 
   afterEach(() => {
@@ -71,7 +74,7 @@ describe("ActiveInterfaces binding details", () => {
   it("caches the first answer", () => {
     setup({ _: [] }, { host: "10.1.2.3:6000" });
     expect(ActiveInterfaces.getBindingDetails("host")).to.equal("10.1.2.3");
-    config.host = "9.9.9.9:9999";
+    configNow().host = "9.9.9.9:9999";
     expect(ActiveInterfaces.getBindingDetails("host")).to.equal("10.1.2.3");
     expect(ActiveInterfaces.getBindingDetails("port", true)).to.equal(6000);
   });
