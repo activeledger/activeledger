@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`onboard` returns an `Identity` with `stream_id` and `public_key`. It returns an error if the ledger did not create a stream.
+`onboard` returns an `Identity` with `stream_id` and `public_key`. It returns `ClientError::OnboardFailed`, carrying the raw reply, unless the reply is committed (see below) and created a stream.
 
 ## Keys
 
@@ -56,7 +56,7 @@ Two key types are supported. Both implement the `Signer` trait, so either can be
 | ML-DSA-65 | `KeyPair` | `ml-dsa-65` | 1952 bytes | 4032 bytes | 3309 bytes | base64 |
 | secp256k1 | `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes | `0x` hex |
 
-`rsa` and `falcon-512` are not supported. There is no Falcon key type in this crate, so there is no way to create or load one. `KeyType::Falcon512` exists only so that `recovery::derive_seed` can produce a Falcon seed.
+`rsa` and `falcon-512` are not supported. There is no Falcon key type in this crate, so there is no way to create or load one, and no call returns an error about Falcon. (`KeyError::FalconUnsupported` still exists so that code matching on it compiles, but nothing returns it.) `KeyType::Falcon512` exists only so that `recovery::derive_seed` can produce a Falcon seed.
 
 Both types have the same shape:
 
@@ -76,6 +76,8 @@ let ec_public = ec.public_key();                      // "0x02..."
 ```
 
 `verify` is a method on both types. `sign` comes from the `Signer` trait, so add `use activeledger::Signer;`. `private_key()` returns `None` for a key made with `from_public`.
+
+`from_keys` checks that the two halves belong together, for both types. A private key that does not match the public key returns `KeyError::Malformed { role: "private" }`. A secp256k1 public key that is not a point on the curve is rejected as `KeyError::Malformed { role: "public" }`.
 
 !!! warning
     secp256k1 keys are `0x`-prefixed hex, not base64. The prefix is required.
@@ -142,11 +144,14 @@ Send it with `client.submit(&tx).await`. The `Response` has:
 
 | Method | Returns |
 |---|---|
-| `committed()` | `true` when the ledger reported no errors |
-| `errors()` | The messages in `$summary.errors` |
+| `committed()` | `true` only if the HTTP status is 2xx, the body is a JSON object with a `$summary` object, and `errors()` is empty |
+| `errors()` | The messages in `$summary.errors`; if there are none but the reply is not a ledger reply, a message saying why |
+| `status()` | The HTTP status as a `u16` |
 | `new_streams()` | Ids of streams the transaction created |
 | `responses()` | Values the contract returned with `returnToRemote` |
 | `raw()` | The body exactly as the node sent it |
+
+A non-2xx status, a body that is not a JSON object (empty, HTML, `[]`, `null`) and a body with no `$summary` object (such as `{}`) are all not committed, and `errors()` says which. `submit` and `submit_raw` still return `Ok(Response)` for these, so check `committed()` rather than relying on the `Result`.
 
 `client.submit_raw(&str)` posts an envelope you built yourself. Use `Client::with_http` to supply your own `reqwest::Client` (for timeouts or proxies).
 
@@ -174,7 +179,7 @@ for value in response.responses() {
 ## Events
 
 !!! warning
-    Events are deprecated in the Rust SDK and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
+    `Client::with_core`, `subscribe_to_activity`, `subscribe_to_contract_events` and `subscribe` are deprecated since 2.4.0 and will be removed in the next major version, so using them gives compiler warnings. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
 
 Event streams come from Activecore, which is a separate service on its own port, not from the node. Give the client its URL with `with_core`. Subscribing without it returns `ClientError::NoCoreUrl`.
 
@@ -234,11 +239,11 @@ impl Signer for AuditedSigner {
 
 ## Things that will bite you
 
-- **A rejected transaction is an HTTP 200.** Check `response.committed()`, not the status. If the body is not valid JSON, `errors()` is empty and `committed()` is `true`; check `raw()` if the node might be returning something else, such as a proxy error page.
+- **A rejected transaction is an HTTP 200.** Check `response.committed()`, not the status or the `Result`. `committed()` is also `false` for a non-2xx status, a body that is not a JSON object, or one without a `$summary` object, such as a proxy error page; `errors()` says why and `raw()` has the body.
 - **Every signature problem is reported as 1220 "Signature Incorrect".** Wrong key type, wrong-length key material and bad bytes all give the same message. `tx.signed_bytes()` shows exactly what was signed.
 - **The builder cannot set `$expire`.** There is no method for it. A transaction sent twice runs twice; see [Sending a transaction](../transactions.md). To set it, build the `$tx` object yourself with `Object`, sign its `canonical::to_bytes` with a `Signer`, wrap it in an envelope and send it with `submit_raw`.
 - **Falcon-512 is not supported.** Use `ml-dsa-65` or `secp256k1`.
-- **ML-DSA-65 keys are not validated on load.** Any 1952 bytes decode to some key; a wrong key fails at verification, not at construction.
+- **ML-DSA-65 public keys are not validated on load.** Any 1952 bytes decode to some key; a wrong one fails at verification, not at construction. `from_keys` does check that the private key matches the public key.
 - **Namespaces are claimed permanently.** A test that registers a fixed namespace passes once and fails on re-runs against the same network.
 - **Consensus is a majority.** When `submit` returns, most nodes have committed and the rest may still be writing. Reading straight away from one node is a race.
 - **`serde_json` cannot produce signable bytes.** It sorts keys and writes `1.0` for `1`. Use the crate's `Object`, `Value` and `canonical` module for anything that is signed.
