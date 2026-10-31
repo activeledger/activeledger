@@ -1,6 +1,4 @@
-import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
 import { VirtualMachine } from "../packages/protocol/src/protocol/vm";
-import { ActiveCrypto } from "../packages/crypto/src";
 import { expect, should } from "chai";
 import "mocha";
 
@@ -13,7 +11,6 @@ describe("Virtual Machine Test (Activeprotocol)", () => {
   it("should create secured VM", () => {
     VM = new VirtualMachine(
       "localhost:5259",
-      new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any, // Fix private type
       {} as any,
       {} as any
     );

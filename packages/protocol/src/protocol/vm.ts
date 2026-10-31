@@ -27,7 +27,6 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
-import { ActiveCrypto } from "@activeledger/activecrypto";
 //import { NodeVM, VMScript } from "@activeledger/vm2";
 import { setTimeout } from "timers";
 import * as fs from "fs";
@@ -195,11 +194,9 @@ export class VirtualMachine
    * @param {ActiveDefinitions.LedgerIORputs} reads
    * @param {ActiveDSConnect} db
    * @param {ActiveDSConnect} dbev
-   * @param {ActiveCrypto.Secured} secured
    */
   constructor(
     private selfHost: string,
-    private secured: ActiveCrypto.Secured,
     private db: ActiveDSConnect,
     private dbev: ActiveDSConnect
   ) {

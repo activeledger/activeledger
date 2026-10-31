@@ -253,7 +253,6 @@ describe("Process hybrid mode and dry run (Activeprotocol)", () => {
             db,
             {} as any,
             {} as any,
-            new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any,
             options
           ),
         };

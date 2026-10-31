@@ -1,6 +1,4 @@
-import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
 import { Process } from "../packages/protocol/src/protocol/process";
-import { ActiveCrypto } from "../packages/crypto/src";
 import { expect } from "chai";
 import "mocha";
 import * as fs from 'fs';
@@ -54,7 +52,6 @@ describe("Process (Activeprotocol)", () => {
       {} as any,
       {} as any,
       {} as any,
-      new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any // Fix private type
       );
     } finally {
       // Remove temporary vmscript.js - runs even if the constructor above threw

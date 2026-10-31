@@ -256,6 +256,9 @@ export class Stream {
   /**
    * Attempts to decrypt data with possible known private keys
    *
+   * @deprecated Never worked in contracts (it called a non-existent static
+   * Secured.decrypt) and is no longer supported; always rejects.
+   *
    * @param {(ActiveCrypto.ISecuredData | {})} data
    * @param {boolean} [safeMode=true]
    * @returns {Promise<{}>}
@@ -264,28 +267,9 @@ export class Stream {
     data: ActiveCrypto.ISecuredData | {},
     safeMode = true
   ): Promise<{}> {
-    return new Promise((resolve, reject) => {
-      // Safemode being enabled?
-      if (safeMode) {
-        // Set safemode
-        this.safeMode = safeMode;
-
-        // Loop all activities and set safemode
-        let keys = Object.keys(this.activities);
-        let i = keys.length;
-        while (i--) {
-          this.activities[keys[i]].setSafeMode();
-        }
-      }
-
-      // Run Decryption (On success return only data)
-      //@ts-ignore this may need to be deprecated
-      ActiveCrypto.Secured.decrypt(data as ActiveCrypto.ISecuredData)
-        .then((results: any) => {
-          resolve(results.data);
-        })
-        .catch(reject);
-    });
+    return Promise.reject(
+      new Error("attemptDecrypt is deprecated and no longer supported")
+    );
   }
 
   /**

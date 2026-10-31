@@ -27,7 +27,6 @@ import { EventEmitter } from "events";
 import { VirtualMachine } from "./vm";
 import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
-import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import {
   IVMDataPayload,
@@ -285,7 +284,6 @@ export class Process extends EventEmitter {
    * @param {ActiveDSConnect} db
    * @param {ActiveDSConnect} error
    * @param {ActiveDSConnect} events
-   * @param {ActiveCrypto.Secured} secured
    */
   constructor(
     private entry: ActiveDefinitions.LedgerEntry,
@@ -295,7 +293,6 @@ export class Process extends EventEmitter {
     private db: ActiveDSConnect,
     private dbe: ActiveDSConnect,
     private dbev: ActiveDSConnect,
-    private secured: ActiveCrypto.Secured,
     options: IProcessOptions = {}
   ) {
     super();
@@ -329,7 +326,6 @@ export class Process extends EventEmitter {
       if (!Process.generalContractVM) {
         Process.generalContractVM = new VirtualMachine(
           this.selfHost,
-          this.secured,
           this.db,
           this.dbev
         );
@@ -547,7 +543,6 @@ export class Process extends EventEmitter {
       db,
       {} as ActiveDSConnect,
       {} as ActiveDSConnect,
-      undefined as unknown as ActiveCrypto.Secured,
       { mode: "hybrid" }
     );
     return process.dryRun(options.contractVersion);

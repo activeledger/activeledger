@@ -1,6 +1,4 @@
-import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
 import { Process } from "../packages/protocol/src/protocol/process";
-import { ActiveCrypto } from "../packages/crypto/src";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { expect } from "chai";
 import "mocha";
@@ -35,7 +33,6 @@ describe("Process.commit - logging a contract commit failure (Activeprotocol)", 
         {} as any,
         {} as any,
         {} as any,
-        new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any
       );
 
       const raised: any[] = [];
