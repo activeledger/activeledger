@@ -30,6 +30,9 @@ The published metadata pulls in BouncyCastle 1.85.2, OkHttp 4.12.0, kotlinx-coro
     BouncyCastle 1.84 or later is required. If another dependency in your build pins an older BouncyCastle, ML-DSA fails at run time with `NoClassDefFoundError: org/bouncycastle/crypto/generators/MLDSAKeyPairGenerator`, not at compile time. Override the version upwards (`org.bouncycastle:bcprov-jdk18on:1.85.2`).
 
 !!! note
+    Maven Central currently serves only 1.0.0. The source is at 1.1.0 plus fixes that have been merged but not released. Where this page says "from the next release", that behaviour is in the source on `master` and not in the 1.0.0 jar you can download today. Check that the version you use includes it before you rely on it.
+
+!!! note
     The 1.0.0 POM on Maven Central wrongly names the licence as Apache 2.0. The SDK is MIT, as its `LICENSE` file says. Later versions declare it correctly.
 
 ## Quick start
@@ -87,7 +90,7 @@ try (ActiveledgerClient client = new ActiveledgerClient("http://localhost:5260")
 }
 ```
 
-`Activeledger(baseUrl)` gives you `connection` (submit and onboard) and `events`. `onboard` returns an `Identity(streamId, keyPair)`, and throws `IllegalStateException` if the node did not create a stream.
+`Activeledger(baseUrl)` gives you `connection` (submit and onboard) and `events` (deprecated). `onboard` returns an `Identity(streamId, keyPair)`, and throws `IllegalStateException` if the node did not create a stream. Check `response.committed` after `submit`, as above; see the rule under Sending transactions.
 
 ## Keys
 
@@ -113,6 +116,11 @@ val verifyOnly = KeyPair.fromPublic(KeyType.ML_DSA_65, pub)
 ```
 
 The post-quantum types are base64 of the raw key bytes. `secp256k1` is `0x`-prefixed hex; the prefix is required. Lengths are checked on load and a wrong one throws `IllegalArgumentException` naming the problem. `canSign` is false for a key made with `fromPublic`, and `sign` then throws. `verify(message, signature)` returns a boolean.
+
+!!! warning
+    From the next release, `fromKeys` checks that the public and private key belong together and throws `IllegalArgumentException` if they do not. For `secp256k1` it derives the public key from the private scalar and compares; for ML-DSA-65 and Falcon-512 it signs a fixed message and verifies it. In 1.0.0 only the lengths were checked, so a mismatched pair loaded fine, signed fine, and was rejected by the ledger as `1220 Signature Incorrect`. `fromPublic` cannot do this check, because it has no private key.
+
+From the next release, a `secp256k1` public key that is the right length and prefix but is not a point on the curve is also rejected, by `fromPublic` and `fromKeys`, with `IllegalArgumentException`. `secp256k1` hex must contain only hex digits; a sign character or non-ASCII digit that 1.0.0 might have decoded is now refused.
 
 `generateSecp256k1(compressed = true)` makes a 33-byte public key, which is the default. `compressed = false` makes the 65-byte form. The ledger accepts both.
 
@@ -160,13 +168,20 @@ Payload values may be `String`, `Int`, `Long`, `Double`, `Boolean`, `null` or a 
 
 | Member | Meaning |
 |---|---|
-| `committed` | `true` when the reply has no errors |
-| `errors` | The error strings from the reply summary |
+| `committed` | `true` only if the reply is a commit (see below) |
+| `errors` | The error strings from the reply summary, plus an entry for each reason the reply is not a commit |
 | `newStreams` | Ids of streams the transaction created |
 | `responses()` | Whatever the contract returned with `returnToRemote` |
 | `raw` | The reply body as received |
 
 Java uses `getCommitted()`, `getErrors()`, `getNewStreams()`, `responses()` and `getRaw()`.
+
+!!! warning
+    From the next release, a reply counts as committed only if all of these hold: the HTTP status is 2xx, the body is a JSON object, the body has a `$summary` object, and `$summary.errors` is absent or empty. Anything else is not committed and `errors` has an entry saying why, for example `HTTP 502`, `response is not a JSON object` or `response has no $summary`. That covers an empty body, `{}`, `null`, an array and a proxy's HTML error page. The getters never throw on a bad body.
+
+    In 1.0.0 `committed` was simply "no errors in `$summary`". A `{}` reply or one with no `$summary` counted as committed, a non-2xx status was ignored, and a body that was not a JSON object made the getters throw. Do not treat a missing `$summary` as success on 1.0.0; check `response.raw` yourself.
+
+`onboard` throws `IllegalStateException` (with the reply in the message) when the reply names no new stream, so an onboarding that did not happen cannot hand you an empty identity.
 
 ## Reading state
 
@@ -189,9 +204,9 @@ response.responses().forEach { println(it) }
 ## Events
 
 !!! warning
-    Events are deprecated from SDK 1.1.0 (tagged but not yet on Maven Central; 1.0.0 behaves as described here) and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
+    Events are deprecated from SDK 1.1.0 (tagged but not yet on Maven Central) and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour, including fixes that are in the source but not yet released.
 
-In Kotlin, `ledger.events.subscribe()` returns a `Flow<LedgerEvent>` over the node's server-sent events endpoint (`/events` by default; pass another path to change it). Collecting starts the connection and cancelling the collector closes it.
+In Kotlin, `ledger.events.subscribe()` returns a `Flow<LedgerEvent>` over the node's server-sent events endpoint (`/events` by default; pass another path to change it). Collecting starts the connection and cancelling the collector closes it. From the next release this works as described. In 1.0.0 the blocking read ran before the cancellation hook was reached, so cancelling did not interrupt a read that was waiting for the next event.
 
 ```kotlin
 ledger.events.subscribe().collect { event ->
@@ -210,7 +225,14 @@ try (var subscription = client.subscribe(event ->
 }
 ```
 
-An overload takes a path as the second argument. If the stream ends, the flow completes (or fails with an error if the connection broke) and the Java listener simply stops receiving; reconnecting is up to you.
+An overload takes a path as the second argument. From the next release:
+
+- A non-2xx reply fails the flow with an `IOException` ("Event stream returned HTTP 404"). In 1.0.0 the body of an error reply was read as if it were events.
+- There is no read timeout on the stream, so a quiet stream stays open.
+- `Subscription.close()` cancels the stream and then waits up to 5 seconds for the connection to be released. Called from inside the listener it does not wait.
+- Only one leading space after `event:`, `id:` and `data:` is removed, as the server-sent events specification says. 1.0.0 trimmed all surrounding whitespace.
+
+If the stream ends, the flow completes (or fails with an error if the connection broke) and the Java listener simply stops receiving; reconnecting is up to you.
 
 ## Signing elsewhere
 
@@ -224,14 +246,15 @@ Sign the same bytes you send. The ledger checks the signature against the exact 
 
 ## Things that will bite you
 
-- **A rejected transaction is HTTP 200.** Check `response.committed`, not the status code.
+- **A rejected transaction is HTTP 200.** Check `response.committed`, not the status code. From the next release a non-2xx status or a reply without `$summary` is also not committed.
+- **A mismatched key pair is caught late on 1.0.0.** Until `fromKeys` verifies the pair (next release), the ledger reports it as `1220`.
 - **Errors are vague.** A wrong type string, a wrong-length key or a signature that is one byte out all appear as `1220 Signature Incorrect`. The SDK validates key lengths and type strings first, so most of these fail locally with a clearer message.
 - **Always send the key type.** The ledger treats a missing `type` as `rsa`. The SDK always sends it; if you build an envelope by hand, do the same.
 - **Falcon and secp256k1 signatures vary in length.** Do not assume a fixed size.
 - **Post-quantum signing is hedged.** Two signatures over the same message differ, and both verify. `secp256k1` signing is deterministic and low-S.
 - **Keys and seeds are secrets.** `exportPrivate()` returns the private key as a plain string. Do not log it.
 - **Blocking from Java.** `ActiveledgerClient` blocks the calling thread with `runBlocking`. Do not call it from an Android main thread.
-- **Timeouts.** The default OkHttp client uses a 10 second connect timeout and a 30 second read timeout. Pass your own `OkHttpClient` to `Connection(baseUrl, client)` to change that. `Activeledger` and `ActiveledgerClient` do not take one.
+- **Timeouts.** The default OkHttp client uses a 10 second connect timeout and a 30 second read timeout. Pass your own `OkHttpClient` to `Connection(baseUrl, client)` to change that. `Activeledger` and `ActiveledgerClient` do not take one. The events client ignores the read timeout (next release).
 - **Payload numbers become JSON doubles.** `Int` and `Long` are written the way JavaScript's `JSON.stringify` would write them, which matters for very large integers.
 
 ## Testing and further reading
