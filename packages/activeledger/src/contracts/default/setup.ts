@@ -1123,7 +1123,7 @@ export default class Setup extends PostProcess {
       ta = typeof a,
       tb = typeof b;
     return a && b && ta === "object" && ta === tb
-      ? ok(a).length === ok(a).length &&
+      ? ok(a).length === ok(b).length &&
           ok(b).every(key => this.deepEq(a[key], b[key]))
       : a === b;
   }

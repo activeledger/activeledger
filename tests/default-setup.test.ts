@@ -597,5 +597,10 @@ describe("Default setup contract (Activeledger)", () => {
       expect(s.deepEq(1, 1)).to.equal(true);
       expect(s.deepEq(1, 2)).to.equal(false);
     });
+
+    it("deepEq notices a key present on only one side", () => {
+      expect(s.deepEq({ a: 1, b: 2 }, { a: 1 })).to.equal(false);
+      expect(s.deepEq({ a: 1 }, { a: 1, b: 2 })).to.equal(false);
+    });
   });
 });
