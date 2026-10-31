@@ -201,36 +201,43 @@ export class Secured {
     passwords: any
   ): Promise<ISecuredData> {
     return new Promise(async (resolve, reject) => {
-      // Out Object
-      let out: ISecuredData = data;
+      // A throw inside an async executor would leave this promise pending forever
+      try {
+        // Out Object
+        let out: ISecuredData = data;
 
-      // Do we need to decrypt the root?
-      if (data.$ADENC && data.$ADAR && passwords[data.$ADAR]) {
-        // Open "decrypted" data
-        out = JSON.parse(
-          await this.cipherDecrypt(passwords[data.$ADAR], data.$ADENC)
-        );
-      }
-
-      // Loop all other props
-      let keys = Object.keys(out);
-      let i = keys.length;
-
-      while (i--) {
-        let property = keys[i];
-        let value = out[property];
-
-        // Is the value, not empty and an object
-        if (value !== null && typeof value === "object") {
-          // Update Object (Why is twice needed?)
-          out[property] = await this.deepMapDecrypt(
-            value as ISecuredData,
-            passwords
+        // Do we need to decrypt the root?
+        if (data.$ADENC && data.$ADAR && passwords[data.$ADAR]) {
+          // Open "decrypted" data
+          out = JSON.parse(
+            await this.cipherDecrypt(passwords[data.$ADAR], data.$ADENC)
           );
         }
-      }
 
-      resolve(out);
+        // Loop all other props
+        let keys = Object.keys(out);
+        let i = keys.length;
+
+        while (i--) {
+          let property = keys[i];
+          let value = out[property];
+
+          // Is the value, not empty and an object
+          if (value !== null && typeof value === "object") {
+            // Update Object (Why is twice needed?)
+            out[property] = await this.deepMapDecrypt(
+              value as ISecuredData,
+              passwords
+            );
+          }
+        }
+
+        resolve(out);
+      } catch (e) {
+        reject(
+          new Error("Secured: unable to decrypt data (" + (e as Error).message + ")")
+        );
+      }
     });
   }
 
@@ -247,7 +254,7 @@ export class Secured {
 
       // Return object if no root ADAC (Activeledger Data Access Controller)
       if (!packet.$ADAC) {
-        resolve(packet);
+        return reject(new Error("Secured: no $ADAC to encrypt with"));
       }
 
       // Loop ADAC to create role passwords
@@ -262,14 +269,13 @@ export class Secured {
         while (ii--) {
           // Get Role
           let role = roles[ii];
-          // Do we have a password for this roll
+          // Create the password the first time this role is seen
           if (!passwords[role]) {
-            // Create Password
             passwords[role] = Secured.createPassword(Date.now().toString());
-
-            // Assign
-            tmpRoles[role] = passwords[role];
           }
+
+          // Every recipient gets its own wrapped copy of the role password
+          tmpRoles[role] = passwords[role];
         }
 
         // Temporary storage of public rsa key
@@ -357,24 +363,32 @@ export class Secured {
           }
 
           if (tmpP) {
-            // Remove base64 (Weirdly TS cannot see 2nd argument)
-            tmpP = JSON.parse(Buffer.from(tmpP, "base64").toString("utf8"));
+            // KeyPair.decrypt() returns the plain JSON that encrypt() put in
+            // (there is no base64 layer left to remove)
+            let tmpRoles: any;
+            try {
+              tmpRoles = JSON.parse(tmpP);
+            } catch (e) {
+              return reject(
+                new Error("Secured: cannot read role keys for " + packet.$ADAC[i].ref)
+              );
+            }
 
             // Loop Object with roles
-            let roleKeys = Object.keys(tmpP);
+            let roleKeys = Object.keys(tmpRoles);
             let ii = roleKeys.length;
             while (ii--) {
               if (!passwords[roleKeys[ii]]) {
-                passwords[roleKeys[ii]] = tmpP[roleKeys[ii] as any];
+                passwords[roleKeys[ii]] = tmpRoles[roleKeys[ii]];
               }
             }
           }
         }
       } else {
-        resolve(packet);
+        return resolve(packet);
       }
 
-      // Encrypt the Data
+      // Decrypt the Data
       this.deepMapDecrypt(packet.data as ISecuredData, passwords)
         .then(result => {
           packet.data = result;

@@ -23,9 +23,6 @@ const peer = rsa();
 
 /**
  * What a recipient can recover: their role passwords, via their private key.
- * Secured.decrypt() is not used for this because its node branch base64-decodes
- * the already-plain JSON the key returns (reported separately), so the data
- * layer is driven through the same private step decrypt() ends with.
  */
 function recoverPasswords(entry: any, prv: string): any {
   return JSON.parse(new KeyPair("rsa", prv).decrypt(entry.roles));
@@ -156,10 +153,7 @@ describe("Secured ($ADAC envelopes)", () => {
     expect(dec.data).to.deep.equal({ a: 1 });
   });
 
-  // Every recipient of a role should be able to open it. Not asserted: the
-  // second recipient naming an existing role is handed an empty key set (see
-  // the PR notes), so this pins only what is true today for the first.
-  it("hands the first recipient of a role its password", async () => {
+  it("hands every recipient of a role its own password", async () => {
     const enc: any = await new Secured(db, neighbour, self).encrypt(
       packetFor(
         [
@@ -169,7 +163,73 @@ describe("Secured ($ADAC envelopes)", () => {
         { vault: { $ADAR: "admin", secret: "s3cret" } }
       )
     );
-    // $ADAC is processed last-to-first, so the PubKey entry created the password
-    expect(recoverPasswords(enc.$ADAC[1], peer.prv)).to.have.property("admin");
+    // $ADAC is processed last-to-first, so $ADAC[0] is the later recipient
+    const forSelf = recoverPasswords(enc.$ADAC[0], self.private);
+    const forPeer = recoverPasswords(enc.$ADAC[1], peer.prv);
+    expect(forSelf).to.have.property("admin");
+    expect(forPeer).to.have.property("admin");
+    expect(forSelf.admin).to.equal(forPeer.admin);
+  });
+
+  it("lets a later recipient of an already-seen role open the data", async () => {
+    const enc: any = await new Secured(db, neighbour, self).encrypt(
+      packetFor(
+        [
+          // $ADAC is processed last-to-first, so node1 is the later recipient of "admin"
+          { ref: "node1", type: ADACType.Node, roles: ["admin"] },
+          { ref: "node0", type: ADACType.Node, roles: ["admin"] },
+        ],
+        { vault: { $ADAR: "admin", secret: "s3cret" } }
+      )
+    );
+    const dec = await openData(new Secured(db, neighbour, self), enc, recoverPasswords(enc.$ADAC[0], peer.prv));
+    expect(dec.vault.secret).to.equal("s3cret");
+  });
+
+  it("decrypt() opens the data for a node recipient", async () => {
+    const secured = new Secured(db, neighbour, self);
+    const enc: any = await secured.encrypt(
+      packetFor([{ ref: "node0", type: ADACType.Node, roles: ["admin"] }], {
+        open: "visible",
+        vault: { $ADAR: "admin", secret: "s3cret", nested: { n: 1 } },
+      })
+    );
+    const dec: any = await secured.decrypt(enc);
+    expect(dec.data.open).to.equal("visible");
+    expect(dec.data.vault.secret).to.equal("s3cret");
+    expect(dec.data.vault.nested).to.deep.equal({ n: 1 });
+  });
+
+  it("rejects encrypt() with a clear error when there is no root $ADAC", async () => {
+    let err: any;
+    try {
+      await new Secured(db, neighbour, self).encrypt({ data: { a: 1 } } as any);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).to.be.instanceOf(Error);
+    expect(err.message).to.contain("$ADAC");
+  });
+
+  it("rejects decrypt() promptly when the ciphertext has been tampered with", async function () {
+    this.timeout(3000);
+    const secured = new Secured(db, neighbour, self);
+    const enc: any = await secured.encrypt(
+      packetFor([{ ref: "node0", type: ADACType.Node, roles: ["admin"] }], {
+        vault: { $ADAR: "admin", secret: "s3cret" },
+      })
+    );
+    const raw = Buffer.from(enc.data.vault.$ADENC, "base64");
+    raw[raw.length - 1] ^= 0xff;
+    enc.data.vault.$ADENC = raw.toString("base64");
+
+    let err: any;
+    try {
+      await secured.decrypt(enc);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).to.be.instanceOf(Error);
+    expect(err.message).to.contain("decrypt");
   });
 });

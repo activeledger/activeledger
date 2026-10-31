@@ -232,14 +232,17 @@ describe("Neighbour and Neighbourhood", () => {
         n.graceStop = true; // stop the recovery poll this started
       });
 
-      // Correct behaviour, not asserted: an unbundled POST to a dead node
-      // currently resolves with { data: null } and never marks it down (see
-      // the PR notes), so only the resolved value is checked here.
-      it("resolves an unbundled knock to a dead node without throwing", async () => {
+      it("rejects an unbundled knock to a dead node and marks it down", async () => {
         const n = neighbour(1, true);
-        const res = await n.knock("init", { $umid: "u6b" });
-        expect(res.data).to.equal(null);
-        n.graceStop = true;
+        let err: any;
+        try {
+          await n.knock("init", { $umid: "u6b" });
+        } catch (e) {
+          err = e;
+        }
+        expect(err).to.be.instanceOf(Error);
+        expect(n.isHome).to.equal(false);
+        n.graceStop = true; // stop the recovery poll this started
       });
 
       it("does not mark a gracefully stopping neighbour down", async () => {

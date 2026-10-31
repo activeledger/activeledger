@@ -313,6 +313,13 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
                   }
                   return;
                 }
+                // Same failure signal for the unbundled path: ActiveRequest
+                // resolves { data: null } when the neighbour is unreachable.
+                if (response?.data === null) {
+                  this.markUnavailable();
+                  reject(new Error("Request Failed"));
+                  return;
+                }
                 if (response.data?.$enc && response.data.$packet) {
                   response.data = JSON.parse(
                     Buffer.from(
