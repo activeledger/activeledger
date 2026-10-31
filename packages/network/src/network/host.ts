@@ -985,7 +985,9 @@ export class Host extends Home {
           bundles = [bodyString];
         }
         for (let i = bundles.length; i--;) {
-          if (bundles[i]) {
+          // An empty single body still needs an answer (rejected by the
+          // parser); empty bundle parts were already answered above
+          if (bundles[i] || !headers["X-Bundle"]) {
             // All posted data should be JSON
             // Convert data for potential encryption
             Endpoints.postConvertor(
