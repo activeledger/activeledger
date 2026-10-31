@@ -70,7 +70,7 @@ final ec = keys.generateKey('me');                         // secp256k1
 final pq = keys.generateKey('me', type: KeyType.mlDsa65);
 ```
 
-A `Key` has `name`, `type`, `key.publicKey`, `key.privateKey`, `identity` (null until onboarded) and `phrase`. `key.privateKey` is the secret; keep it out of logs.
+A `Key` has `name`, `type`, `key` (the pair, as `key.key.publicKey` and `key.key.privateKey`), `identity` (null until onboarded) and `phrase`. `Key` also has a `publicKey` shortcut. The private key is the secret; keep it out of logs.
 
 Falcon-512 needs the add-on. Call `ActiveledgerFalcon.enable()` once at startup:
 
@@ -91,6 +91,10 @@ final loaded = await keys.importKey('keys/identity.json');
 ```
 
 `exportKey` refuses to overwrite unless you pass `overwrite: true`. The file contains the private key, so store it accordingly. (These two use `dart:io` and fail on the web; the rest of the SDK does not.)
+
+`importKey` (and `Key.fromJson`) checks that the public key belongs to the private key, and throws a `FormatException` if not. For secp256k1 it derives the public key and compares; for ML-DSA-65 it signs and verifies a probe message. Falcon-512 is checked the same way when the add-on is enabled. RSA pairs are not checked. A mismatched pair would otherwise sign happily and only fail at the node, as `1220 Signature Incorrect`.
+
+A secp256k1 public key must be a real point on the curve. The SDK rejects points that are off the curve, have a coordinate at or above the field prime, or are the point at infinity, in both the compressed and uncompressed encodings. Verifying against such a key returns `false`.
 
 ## Seeds and recovery phrases
 
@@ -157,6 +161,8 @@ await ledger.send(tx);
 
 `LedgerResponse` has `committed`, `errors`, `umid`, `summary` (`total`, `vote`, `commit`), `streams` (`created`, `updated`), `responses`, `debug` and `raw` for the decoded JSON. `ledger.send` is `connection.sendTransaction`, which also accepts a plain map or a JSON string.
 
+`committed` is true only when the reply has a `$summary` object and its `errors` are absent or an empty list. An empty `{}` body, a reply with no `$summary`, or an `errors` value that is not a list (which `errors` reports as text) is not committed. It does not look at `commit`. The accessors do not throw on a wrongly typed field: they return `null`, an empty list or an empty summary instead, and `raw` holds whatever arrived.
+
 ## Reading state
 
 There is no read or storage endpoint in this SDK, because a node's storage service listens only on the node's own host. Read state through a transaction: name the streams in `readonly` (`$r`), and have the contract return values with `returnToRemote`. They arrive in `response.responses`.
@@ -200,7 +206,7 @@ final ok = ledger.payloads.verify(order, signature, key.publicKey, type: key.typ
 ## Things that will bite you
 
 !!! warning
-    A rejected transaction is HTTP 200. `sendTransaction` throws `LedgerHttpException` only for a non-2xx status. Always check `response.committed`.
+    A rejected transaction is HTTP 200. `sendTransaction` throws `LedgerHttpException` for a non-2xx status, and `ActiveledgerException` for a 2xx body that is not a JSON object (including a body that is not JSON at all). It does not throw for a rejection. Always check `response.committed`.
 
 - **Signature errors are vague.** A wrong type string, a wrong-length key or signed bytes differing by one character all come back as `1220 Signature Incorrect`. `tx.signedString` is exactly what was signed; compare it with what another implementation signed.
 - **Key order matters.** Signatures cover `canonicalJson($tx)` and the node does not sort keys. If you change `tx.tx` after signing, sign again. For payloads, persist `payloads.canonical(...)` with the signature and verify that.
@@ -213,7 +219,7 @@ final ok = ledger.payloads.verify(order, signature, key.publicKey, type: key.typ
 
 ## Testing and further reading
 
-From a checkout of the SDK:
+From a checkout of the SDK, run the tests from inside each package directory:
 
 ```bash
 dart pub get
