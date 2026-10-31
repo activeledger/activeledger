@@ -572,11 +572,11 @@ describe("Default setup contract (Activeledger)", () => {
       expect(s.deepArrayEq([], [])).to.equal(true);
     });
 
-    // BUG (not asserted, see PR): deepArrayEq only checks that every member
-    // of a exists in b, so [{a:1},{a:1}] equals [{a:1},{b:2}]. The correct
-    // answer is false because b has a member a lacks. Not asserted here.
-    // Likewise deepEq compares ok(a).length with itself, so an extra key on
-    // a is never noticed (it is also unused).
+    it("deepArrayEq does not let one member of b match several members of a", () => {
+      expect(s.deepArrayEq([{ a: 1 }, { a: 1 }], [{ a: 1 }, { b: 2 }])).to.equal(false);
+      expect(s.deepArrayEq([{ a: 1 }, { b: 2 }], [{ a: 1 }, { a: 1 }])).to.equal(false);
+      expect(s.deepArrayEq([{ a: 1 }, { a: 1 }, { b: 2 }], [{ a: 1 }, { b: 2 }, { a: 1 }])).to.equal(true);
+    });
 
     it("arrayEq finds a structurally equal member", () => {
       expect(s.arrayEq({ a: [1] }, [{ x: 1 }, { a: [1] }])).to.equal(true);
