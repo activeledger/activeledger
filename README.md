@@ -16,7 +16,14 @@ Activeledger is a distributed ledger technology. A network of permissioned nodes
 
 ## Installation
 
-Please see our documentation for detailed instructions. We currently have 2 languages available.
+Please see the hosted documentation for detailed instructions.
+
+## Documentation
+
+- [Activeledger guide](https://activeledger.github.io/activeledger/) - running, operating and using Activeledger
+- [SDKs](https://activeledger.github.io/activeledger/sdks/) - one page per language: [JavaScript](https://activeledger.github.io/activeledger/sdks/js/), [Python](https://activeledger.github.io/activeledger/sdks/python/), [Go](https://activeledger.github.io/activeledger/sdks/go/), [JVM](https://activeledger.github.io/activeledger/sdks/jvm/), [C#](https://activeledger.github.io/activeledger/sdks/csharp/), [Rust](https://activeledger.github.io/activeledger/sdks/rust/), [PHP](https://activeledger.github.io/activeledger/sdks/php/), [Dart](https://activeledger.github.io/activeledger/sdks/dart/), [Swift](https://activeledger.github.io/activeledger/sdks/swift/)
+
+The earlier per-language documents remain in the repository:
 
 |Language| |
 |--------|-|
