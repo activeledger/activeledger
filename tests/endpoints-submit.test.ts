@@ -513,8 +513,10 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       it("with $seq waits for each transaction before starting the next", async () => {
         let running = 0;
         let overlapped = false;
+        const submitted: string[] = [];
         const { host } = makeHost({ replies: [] });
         host.pending = async (entry: any) => {
+          submitted.push(entry.$sigs.signer);
           running++;
           if (running > 1) overlapped = true;
           await new Promise((r) => setTimeout(r, 20));
@@ -541,10 +543,8 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           "u-one",
           "u-two",
         ]);
-        // KNOWN QUIRK, deliberately not asserted: $seq walks $multi from the
-        // end (the `for (let i = n; i--;)` idiom), so the LAST transaction is
-        // submitted first. A caller using $seq for dependent transactions
-        // would expect the first one to go first.
+        // Submitted in the order sent, so dependent transactions can rely on it
+        expect(submitted).to.deep.equal(["one", "two"]);
       });
     });
   });

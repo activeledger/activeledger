@@ -290,6 +290,9 @@ export default class Setup extends PostProcess {
           }
         }
       }
+
+      // None of the configured nodes signed
+      reject("Host node signature problem");
     } else {
       reject("Network Neighborhood not matching");
     }
@@ -1069,22 +1072,19 @@ export default class Setup extends PostProcess {
    * @returns {boolean}
    */
   private deepArrayEq(a: Array<any>, b: Array<any>): boolean {
-    // First check the lengths match
-    if (a.length == b.length) {
-      // Loop a and verify in b, Order check not important
-      let i = a.length;
-      // prepare the return
-      let results: boolean = true;
-      while (i--) {
-        if (!this.arrayEq(a[i], b)) {
-          return false;
-        }
-      }
-      // Got here it must match!
-      return true;
-    } else {
-      return false;
+    // The lengths must match
+    if (a.length != b.length) return false;
+
+    // Order is not important, but each member of b can only match one member
+    // of a (multiset comparison)
+    const remaining = b.map((item) => JSON.stringify(item));
+    let i = a.length;
+    while (i--) {
+      const at = remaining.indexOf(JSON.stringify(a[i]));
+      if (at === -1) return false;
+      remaining.splice(at, 1);
     }
+    return true;
   }
 
   /**
@@ -1123,7 +1123,7 @@ export default class Setup extends PostProcess {
       ta = typeof a,
       tb = typeof b;
     return a && b && ta === "object" && ta === tb
-      ? ok(a).length === ok(a).length &&
+      ? ok(a).length === ok(b).length &&
           ok(b).every(key => this.deepEq(a[key], b[key]))
       : a === b;
   }

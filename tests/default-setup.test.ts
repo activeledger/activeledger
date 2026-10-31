@@ -195,12 +195,10 @@ describe("Default setup contract (Activeledger)", () => {
       await refused(s.vote(), "Found invalid node signature");
     });
 
-    // BUG (not asserted, see PR): when the neighbourhood matches but none of
-    // the configured nodes signed, assertVote neither resolves nor rejects
-    // (the loop falls through), so the vote phase hangs until the VM's phase
-    // timeout. The correct behaviour is a rejection, e.g.
-    //   await refused(s.vote(), "No node signature")
-    // with $sigs holding no host:port key.
+    it("vote refuses a matching neighbourhood when no configured node signed", async () => {
+      const s = make("assert", setup());
+      await refused(s.vote(), "Host node signature problem");
+    });
 
     it("commit builds the setup stream from the asserted fields", async () => {
       const input = setup({ lock: "extra" });
@@ -574,11 +572,11 @@ describe("Default setup contract (Activeledger)", () => {
       expect(s.deepArrayEq([], [])).to.equal(true);
     });
 
-    // BUG (not asserted, see PR): deepArrayEq only checks that every member
-    // of a exists in b, so [{a:1},{a:1}] equals [{a:1},{b:2}]. The correct
-    // answer is false because b has a member a lacks. Not asserted here.
-    // Likewise deepEq compares ok(a).length with itself, so an extra key on
-    // a is never noticed (it is also unused).
+    it("deepArrayEq does not let one member of b match several members of a", () => {
+      expect(s.deepArrayEq([{ a: 1 }, { a: 1 }], [{ a: 1 }, { b: 2 }])).to.equal(false);
+      expect(s.deepArrayEq([{ a: 1 }, { b: 2 }], [{ a: 1 }, { a: 1 }])).to.equal(false);
+      expect(s.deepArrayEq([{ a: 1 }, { a: 1 }, { b: 2 }], [{ a: 1 }, { b: 2 }, { a: 1 }])).to.equal(true);
+    });
 
     it("arrayEq finds a structurally equal member", () => {
       expect(s.arrayEq({ a: [1] }, [{ x: 1 }, { a: [1] }])).to.equal(true);
@@ -598,6 +596,11 @@ describe("Default setup contract (Activeledger)", () => {
       expect(s.deepEq({ a: { b: 1 } }, { a: { b: 2 } })).to.equal(false);
       expect(s.deepEq(1, 1)).to.equal(true);
       expect(s.deepEq(1, 2)).to.equal(false);
+    });
+
+    it("deepEq notices a key present on only one side", () => {
+      expect(s.deepEq({ a: 1, b: 2 }, { a: 1 })).to.equal(false);
+      expect(s.deepEq({ a: 1 }, { a: 1, b: 2 })).to.equal(false);
     });
   });
 });

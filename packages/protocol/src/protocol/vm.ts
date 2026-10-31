@@ -950,7 +950,7 @@ export class VirtualMachine
         }
         
         // Reload Configuration Required?
-        if (this.contractReferences[umid]?.tx?.$namespace == "default") {
+        if (this.contractReferences?.[umid]?.tx?.$namespace == "default") {
           if (contract && "sysConfig" in contract) {
             if ((contract as any).configReload()) {
               ActiveLogger.info("Reloading Configuration Request");
