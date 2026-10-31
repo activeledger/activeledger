@@ -153,10 +153,7 @@ describe("Secured ($ADAC envelopes)", () => {
     expect(dec.data).to.deep.equal({ a: 1 });
   });
 
-  // Every recipient of a role should be able to open it. Not asserted: the
-  // second recipient naming an existing role is handed an empty key set (see
-  // the PR notes), so this pins only what is true today for the first.
-  it("hands the first recipient of a role its password", async () => {
+  it("hands every recipient of a role its own password", async () => {
     const enc: any = await new Secured(db, neighbour, self).encrypt(
       packetFor(
         [
@@ -166,8 +163,27 @@ describe("Secured ($ADAC envelopes)", () => {
         { vault: { $ADAR: "admin", secret: "s3cret" } }
       )
     );
-    // $ADAC is processed last-to-first, so the PubKey entry created the password
-    expect(recoverPasswords(enc.$ADAC[1], peer.prv)).to.have.property("admin");
+    // $ADAC is processed last-to-first, so $ADAC[0] is the later recipient
+    const forSelf = recoverPasswords(enc.$ADAC[0], self.private);
+    const forPeer = recoverPasswords(enc.$ADAC[1], peer.prv);
+    expect(forSelf).to.have.property("admin");
+    expect(forPeer).to.have.property("admin");
+    expect(forSelf.admin).to.equal(forPeer.admin);
+  });
+
+  it("lets a later recipient of an already-seen role open the data", async () => {
+    const enc: any = await new Secured(db, neighbour, self).encrypt(
+      packetFor(
+        [
+          // $ADAC is processed last-to-first, so node1 is the later recipient of "admin"
+          { ref: "node1", type: ADACType.Node, roles: ["admin"] },
+          { ref: "node0", type: ADACType.Node, roles: ["admin"] },
+        ],
+        { vault: { $ADAR: "admin", secret: "s3cret" } }
+      )
+    );
+    const dec = await openData(new Secured(db, neighbour, self), enc, recoverPasswords(enc.$ADAC[0], peer.prv));
+    expect(dec.vault.secret).to.equal("s3cret");
   });
 
   it("decrypt() opens the data for a node recipient", async () => {

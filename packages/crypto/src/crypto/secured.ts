@@ -262,14 +262,13 @@ export class Secured {
         while (ii--) {
           // Get Role
           let role = roles[ii];
-          // Do we have a password for this roll
+          // Create the password the first time this role is seen
           if (!passwords[role]) {
-            // Create Password
             passwords[role] = Secured.createPassword(Date.now().toString());
-
-            // Assign
-            tmpRoles[role] = passwords[role];
           }
+
+          // Every recipient gets its own wrapped copy of the role password
+          tmpRoles[role] = passwords[role];
         }
 
         // Temporary storage of public rsa key
