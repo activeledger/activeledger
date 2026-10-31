@@ -3,7 +3,7 @@
 The C# SDK builds, signs and submits Activeledger transactions from .NET. It is published on NuGet as `Activeledger.SDK` and targets `netstandard2.0` and `net8.0`, so modern .NET, .NET Framework, Unity and Mono all work. Its one dependency is BouncyCastle, which is pure managed code. It supports the post-quantum key types (`ml-dsa-65`, `falcon-512`) as well as `secp256k1`. The SDK does not state a minimum Activeledger node version; the key types it signs with must be ones your node accepts (see [Identities](../identities.md#key-types)).
 
 !!! note
-    As of 29 October 2026 NuGet serves 2.4.0. Version 2.5.0 is tagged and released on GitHub but has not been published to NuGet, so `dotnet add package` gives you 2.4.0.
+    As of 31 October 2026 NuGet serves 2.4.0. Version 2.5.0 is tagged and released on GitHub but has not been published to NuGet, so `dotnet add package` gives you 2.4.0. The source on `master` has fixes made after 2.5.0 that are in no release yet. This page describes that source. Where it says a behaviour is new, the package from NuGet will not have it until a later version is published.
 
 ## Install
 
@@ -43,7 +43,7 @@ if (!response.Committed)
 }
 ```
 
-`OnboardAsync` throws `InvalidOperationException` if the ledger did not create a stream, so you never get an `Identity` with an empty id. `SubmitAsync` does not throw for a rejected transaction; see [Things that will bite you](#things-that-will-bite-you).
+`OnboardAsync` throws `InvalidOperationException` unless the reply is `Committed` and created a stream, so you never get an `Identity` with an empty id. `SubmitAsync` does not throw for a rejected transaction; see [Things that will bite you](#things-that-will-bite-you).
 
 !!! warning
     `JsonObject` here is `Activeledger.JsonObject`, not a `System.Text.Json` type. See [Things that will bite you](#things-that-will-bite-you).
@@ -59,7 +59,7 @@ if (!response.Committed)
 | `Secp256k1` | `secp256k1` | 33 or 65 bytes | 32 bytes | `0x` hex |
 | `Rsa` | `rsa` | | | not implemented |
 
-`KeyPair.Generate`, `Sign` and `Verify` throw `NotSupportedException` for `Rsa`. For the underlying key formats, see [Identities](../identities.md#key-types).
+`KeyPair.Generate`, `Sign` and `Verify` throw `NotSupportedException` for `Rsa`. The SDK always sends the key type explicitly, because the ledger treats a missing type as `rsa`. For the underlying key formats, see [Identities](../identities.md#key-types).
 
 ```csharp
 var mldsa  = KeyPair.Generate(KeyType.MlDsa65);
@@ -70,7 +70,7 @@ var ecFull = KeyPair.Generate(KeyType.Secp256k1, compressed: false); // uncompre
 string pub  = mldsa.PublicKey;   // exactly the string the ledger stores
 string priv = mldsa.PrivateKey;
 
-// Restore a stored key pair
+// Restore a stored key pair. Throws ArgumentException if the halves do not match.
 var restored = KeyPair.FromKeys(KeyType.MlDsa65, pub, priv);
 
 // Verify only: no private key, and Sign() throws
@@ -79,6 +79,10 @@ Console.WriteLine(verifier.CanSign);   // False
 ```
 
 `PublicKey` and `PrivateKey` are not named for an encoding because it depends on the scheme: base64 for the post-quantum keys, `0x`-prefixed hex for `secp256k1`. Put the string in a transaction as it is.
+
+`FromKeys` checks that the private key belongs to the public key and throws `ArgumentException` if it does not. For `secp256k1` it also throws for a private scalar of zero or at or above the curve order. Without the check, a mismatched pair builds fine and then signs transactions the ledger rejects as 1220.
+
+`FromPublic` and `FromKeys` also check the public key. A `secp256k1` public key must be 33 bytes starting `0x02` or `0x03`, or 65 bytes starting `0x04`, and it must be a point on the curve. A key that is off the curve is rejected with `ArgumentException` rather than failing later at verification.
 
 `FromKeys` needs both halves. A Falcon private key does not contain its public key, so the SDK cannot rebuild one from the private half alone.
 
@@ -97,11 +101,14 @@ var d = KeyPair.FromPhrase(KeyType.MlDsa65, phrase);          // BIP-39
 var e = KeyPair.FromPhrase(KeyType.Secp256k1, phrase, "pass"); // with a passphrase
 ```
 
-A seed of the wrong length is refused, not padded. For `secp256k1`, a seed of zero or one at or above the curve order is refused rather than reduced. Either would otherwise give you a working key for a different identity.
+A seed of the wrong length is refused with `ArgumentException`, not padded. For `secp256k1`, a seed of zero or one at or above the curve order is refused rather than reduced. Either would otherwise give you a working key for a different identity.
 
-`FromPhrase` checks the word list and the checksum. One phrase can back an identity of each type, because each type derives its own seed from it. `RecoveryPhrase` exposes the steps if you need them: `Validate`, `ToSeed`, `DeriveSeed` and `SeedSize`.
+`FromPhrase` checks the word list and the checksum, and throws `ArgumentException` for a phrase that fails either. One phrase can back an identity of each type, because each type derives its own seed from it. `RecoveryPhrase` exposes the steps if you need them: `Validate`, `ToSeed`, `DeriveSeed` and `SeedSize`.
 
 `KeyPair.FromLegacyPhrase(phrase)` recovers a `secp256k1` key from a phrase made by the older `@activeledger/sdk-bip39` package. It does not validate the phrase, because that package never did. Use it for recovery only.
+
+!!! warning
+    BIP-39 puts the passphrase through Unicode normalisation (NFKD). When the runtime cannot normalise, because `InvariantGlobalization` is on or ICU is missing, `RecoveryPhrase.ToSeed` and so `KeyPair.FromPhrase` throw `PlatformNotSupportedException` for a passphrase with any non-ASCII character. Otherwise the key would differ from the one other hosts derive from the same phrase. ASCII passphrases work in every mode.
 
 The SDK has no function that generates a new phrase. Make one with another tool, then derive keys from it with `FromPhrase`.
 
@@ -122,7 +129,7 @@ var tx = Transaction.Builder()
 var response = await client.SubmitAsync(tx);
 ```
 
-`Build()` throws `InvalidOperationException` if the namespace, the contract or every input is missing. Every input takes its own signer, and every signer signs the same bytes: the canonical form of `$tx`.
+`Build()` throws `InvalidOperationException` if the namespace or the contract is missing, or there is no input. Every input takes its own signer, and every signer signs the same bytes: the canonical form of `$tx`.
 
 `Transaction.Onboard(signer)` makes the self-signed onboarding transaction (`$selfsign` true, `$sigs` keyed by the `$i` label). `client.OnboardAsync(signer)` does that and submits it. See [Identities](../identities.md#onboard-the-identity).
 
@@ -130,13 +137,23 @@ What comes back is a `LedgerResponse`:
 
 | Member | What it holds |
 |---|---|
-| `Committed` | `true` when `$summary.errors` is empty or absent |
-| `Errors` | the messages from `$summary.errors` |
+| `Committed` | `true` only when `Errors` is empty (see below) |
+| `Errors` | the messages from `$summary.errors`, plus an entry for each reason below |
+| `StatusCode` | the HTTP status the node answered with |
 | `NewStreams` | ids from `$streams.new` |
 | `Responses` | the values in `$responses`, as `JsonElement` |
 | `Raw` | the body as the node sent it |
 
-`SubmitRawAsync(string body)` posts an envelope you built yourself.
+A reply is `Committed` only when all of these hold:
+
+- the HTTP status is 2xx
+- the body is a JSON object
+- it contains a `$summary` object
+- `$summary.errors` is absent or empty
+
+Anything else is not committed, and `Errors` says why: `HTTP status 502`, `the response body was not a JSON object` (an empty body or an HTML error page) or `the response had no $summary object`. An empty `{}` is therefore not committed. The getters never throw, whatever the body held.
+
+`SubmitRawAsync(string body)` posts an envelope you built yourself. Both submit methods take a `CancellationToken`. Cancelling it throws `OperationCanceledException`.
 
 ## Reading state
 
@@ -167,6 +184,8 @@ foreach (JsonElement value in response.Responses)
 
 `SubscribeAsync`, `SubscribeToActivityAsync`, `SubscribeToContractEventsAsync`, `LedgerEvent` and the `coreUrl` constructor argument are marked `[Obsolete]` from SDK v2.5.0 and will be removed in the next major version. ActiveCore is deprecated and no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to.
 
+Using any of them gives compiler warning CS0618. If you must keep one for now, cancelling its token ends the stream with `OperationCanceledException`, and a non-success reply throws `HttpRequestException`.
+
 To react to events, run your own server-sent events listener on the node's host and relay what you need. See [The HTTP API](../api.md#events-get-activeledgereventsevents).
 
 ## Signing elsewhere
@@ -186,7 +205,7 @@ public sealed class HsmSigner : ISigner
 
 ## Things that will bite you
 
-**A rejected transaction is an HTTP 200.** Check `response.Committed`. `SubmitAsync` does not throw for a ledger rejection; only `OnboardAsync` does.
+**A rejected transaction is an HTTP 200.** Check `response.Committed`. Do not treat an HTTP success as a ledger success. `SubmitAsync` does not throw for a ledger rejection or an error status; only `OnboardAsync` does. A network failure throws from `HttpClient` as usual.
 
 **Use the SDK's JSON types for anything signed.** `System.Text.Json` escapes non-ASCII and HTML characters and does not promise key order, so it cannot reproduce the bytes the ledger signs. Payloads are built with `Activeledger.JsonObject` and `JsonArray`, which keep insertion order. The key order you write is the order that is signed.
 
