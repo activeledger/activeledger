@@ -293,6 +293,15 @@ export class PermissionsChecker {
         }
       }
 
+      // A state document with no :stream document still passes the length
+      // check below (one result counts as two keys), so require the meta too
+      if (results.some((result) => !result.meta)) {
+        throw {
+          code: 950,
+          reason: "Stream(s) not found",
+        };
+      }
+
       const sigOnlyAdjustment = this.data.filter(id => this.shared.sigOnly[this.shared.filterPrefix(id, true)]).length;
       // lengths should match then have all streams and meta data
       // wonder why it added contractdataincluded! (and it doesn't stop the tx? )

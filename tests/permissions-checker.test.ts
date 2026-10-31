@@ -105,11 +105,11 @@ describe("PermissionsChecker - fetch and lock rules", () => {
     expect(err.reason).to.equal("Stream(s) not found");
   });
 
-  // The rejection is not a coded one today (a TypeError surfaces rather than
-  // 950), so only the safety property is pinned: it is never let through.
-  it("never lets through a stream that has state but no :stream document", async () => {
+  it("reports a stream that has state but no :stream document as 950", async () => {
     const pc = checker(entry(signed(alice)), dbOf([rows()[0]]));
-    await rejection(pc.process([STREAM], true, LAST));
+    const err = await rejection(pc.process([STREAM], true, LAST));
+    expect(err.code).to.equal(950);
+    expect(err.reason).to.equal("Stream(s) not found");
   });
 
   it("gives an unexpected fetch failure code 950 once retries are exhausted", async () => {
