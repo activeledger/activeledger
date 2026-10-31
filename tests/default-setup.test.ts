@@ -195,12 +195,10 @@ describe("Default setup contract (Activeledger)", () => {
       await refused(s.vote(), "Found invalid node signature");
     });
 
-    // BUG (not asserted, see PR): when the neighbourhood matches but none of
-    // the configured nodes signed, assertVote neither resolves nor rejects
-    // (the loop falls through), so the vote phase hangs until the VM's phase
-    // timeout. The correct behaviour is a rejection, e.g.
-    //   await refused(s.vote(), "No node signature")
-    // with $sigs holding no host:port key.
+    it("vote refuses a matching neighbourhood when no configured node signed", async () => {
+      const s = make("assert", setup());
+      await refused(s.vote(), "Host node signature problem");
+    });
 
     it("commit builds the setup stream from the asserted fields", async () => {
       const input = setup({ lock: "extra" });

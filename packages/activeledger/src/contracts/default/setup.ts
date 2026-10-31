@@ -290,6 +290,9 @@ export default class Setup extends PostProcess {
           }
         }
       }
+
+      // None of the configured nodes signed
+      reject("Host node signature problem");
     } else {
       reject("Network Neighborhood not matching");
     }
