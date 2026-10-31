@@ -183,6 +183,28 @@ describe("StatsHandler (activeledger --stats)", () => {
       }
     });
 
+    it("parses df output whose columns are padded with spaces", async () => {
+      await stats.init();
+      const real = child.execSync;
+      child.execSync = (cmd: string) =>
+        Buffer.from(
+          cmd.startsWith("du")
+            ? "1234\t.\n"
+            : "1K-blocks     Avail     Used\n 959287324 712345678 198765432\n"
+        );
+      try {
+        const { hdd } = await stats.getStats();
+        expect(hdd).to.deep.equal({
+          activeledger: 1234,
+          diskSize: 959287324,
+          diskFree: 712345678,
+          diskUsed: 198765432,
+        });
+      } finally {
+        child.execSync = real;
+      }
+    });
+
     it("throws when the stats file cannot be read", async () => {
       let thrown: any;
       try {
