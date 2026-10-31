@@ -58,7 +58,7 @@ func main() {
 | Type | Constant | Wire string | Public key | Private key | Signature | Encoding |
 |---|---|---|---|---|---|---|
 | ML-DSA-65 | `KeyTypeMLDSA65` | `ml-dsa-65` | 1952 bytes | 4032 bytes | 3309 bytes | base64 |
-| secp256k1 | `KeyTypeSecp256k1` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes, varies | `0x` hex |
+| secp256k1 | `KeyTypeSecp256k1` | `secp256k1` | 33 or 65 bytes | 32 bytes | 68 to 71 bytes, varies | `0x` hex |
 
 `KeyTypeRSA` and `KeyTypeFalcon512` exist as constants so that `ParseKeyType` can recognise them, but the SDK cannot create or sign with either. Asking for Falcon gives `ErrFalconUnsupported`. `ParseKeyType` is case-sensitive and also accepts `bitcoin` and `ethereum`, which it treats as `secp256k1`.
 

@@ -100,7 +100,7 @@ same = KeyPair.from_keys(KeyType.FALCON_512, public_b64, private_b64)   # ValueE
 checker = KeyPair.from_public(KeyType.FALCON_512, public_b64)   # verify only
 ```
 
-Sizes are 1952-byte public and 4032-byte private keys for ML-DSA-65, and 897 and 1281 bytes for Falcon-512. A Falcon signature is 649 to 662 bytes, so never assume a fixed length. Signing is hedged for both schemes: two signatures over the same message differ and both verify.
+Sizes are 1952-byte public and 4032-byte private keys for ML-DSA-65, and 897 and 1281 bytes for Falcon-512. A Falcon signature is about 650 bytes and varies, so never assume a fixed length. Signing is hedged for both schemes: two signatures over the same message differ and both verify.
 
 `verify()` returns `False` for a malformed signature instead of raising. `from_keys` checks that the two keys belong together by signing and verifying a fixed message, so building a pair from both keys needs liboqs, as generating does. `from_public` needs no private key and does no such check. A verify-only pair raises `ValueError` if you ask it to sign or read its private key. `can_sign` tells you which kind you hold.
 

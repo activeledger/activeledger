@@ -56,9 +56,9 @@ Future<void> main() async {
 
 | `KeyType` | Wire string | Public key | Private key | Signature | Encoding |
 |---|---|---|---|---|---|
-| `secp256k1` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes, varies | `0x` hex |
+| `secp256k1` | `secp256k1` | 33 or 65 bytes | 32 bytes | 68 to 71 bytes, varies | `0x` hex |
 | `mlDsa65` | `ml-dsa-65` | 1952 bytes | 4032 bytes | 3309 bytes | base64 |
-| `falcon512` | `falcon-512` | 897 bytes | 1281 bytes | 649 to 662 bytes, varies | base64 |
+| `falcon512` | `falcon-512` | 897 bytes | 1281 bytes | about 650 bytes, varies | base64 |
 | `rsa` | `rsa` | PEM | PEM | 256 bytes for 2048-bit | PEM |
 
 `generateKey` defaults to `KeyType.secp256k1`. Pass `compressed: true` for a 33-byte secp256k1 public key. RSA is for legacy identities only: an existing PEM key can sign and verify, but the SDK cannot generate one.
@@ -119,7 +119,7 @@ One phrase can back a key of each type; each type derives its own seed from it. 
 
 ## Sending transactions
 
-Onboarding is `onboard`, shown above. It sets `key.identity` and throws `OnboardException` if the node created no stream.
+Onboarding is `onboard`, shown above. It sets `key.identity` and throws `OnboardException` if the reply is not committed or the node created no stream.
 
 For a transaction with one input signed by one key, use `labelledTransaction`:
 

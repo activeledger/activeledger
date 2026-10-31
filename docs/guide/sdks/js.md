@@ -233,7 +233,7 @@ payloads.verify(order, signature, key.key.pub.pkcs8pem, key.type); // true or fa
 - **A key's type cannot change.** It is recorded at onboarding. To move to another type, onboard a new identity.
 - **`JSON.stringify` is key-order sensitive.** Store `payloads.canonical(value)` beside a signature and verify against that. If something rebuilds the object field by field before you verify (a mapper, an ORM, a defaulter), the signature fails and it looks like a bad key.
 - **The transaction must reach the node as it was signed.** `signTransaction` signs `JSON.stringify($tx)`. Do not change `$tx`, including key order, between signing and sending.
-- **Post-quantum signatures are large.** ML-DSA-65 is 3309 bytes. Falcon-512 is 649 to 662 bytes, and the length varies, so do not size a buffer or a column to a fixed width.
+- **Post-quantum signatures are large.** ML-DSA-65 is 3309 bytes. Falcon-512 is about 650 bytes, and the length varies, so do not size a buffer or a column to a fixed width.
 - **A recovery phrase is the identity.** Anyone with the words can sign as you, and a mistyped phrase is refused by the checksum rather than giving a wrong key unless you turn `validate` off.
 - **A resolved `sendTransaction` is not a commit.** Check `isCommitted(response)` every time.
 - **Resending runs it twice** unless the transaction has `$expire`. See [Transactions](../transactions.md).
