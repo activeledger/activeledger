@@ -119,7 +119,7 @@ One phrase can back a key of each type; each type derives its own seed from it. 
 
 ## Sending transactions
 
-Onboarding is `onboard`, shown above. It sets `key.identity` and throws `OnboardException` if the node created no stream.
+Onboarding is `onboard`, shown above. It sets `key.identity` and throws `OnboardException` if the reply is not committed or the node created no stream.
 
 For a transaction with one input signed by one key, use `labelledTransaction`:
 

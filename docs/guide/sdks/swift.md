@@ -228,7 +228,7 @@ let ok = payloads.verify(order, signature: signature, publicKey: key.publicKey, 
 
 - **Key order is part of the signature.** Build `$tx` with `JSONValue.object` and do not reorder it. Swift's `JSONEncoder` does not match `JSON.stringify`, so the SDK has its own `canonicalJSON`. It refuses `NaN`, infinities and integers that a JavaScript number cannot hold, rather than sign something you did not write.
 - **Onboard before building transactions.** `labelledTransaction` throws `invalidArgument` if `key.identity` is nil.
-- **Onboarding keys on the key name.** The onboarding transaction uses `key.name` as its `$i` label, and `onboard` throws `ActiveledgerError.onboard` if the ledger creates no stream.
+- **Onboarding keys on the key name.** The onboarding transaction uses `key.name` as its `$i` label, and `onboard` throws `ActiveledgerError.onboard` if the reply is not committed or the ledger creates no stream.
 - **Onboarding does not check `committed`.** `onboard` only requires that a stream was created. It sets `key.identity` from the first created stream and returns the response without checking `committed`, so a reply that creates a stream but also lists errors is accepted. This is a known gap. Check `committed` on the response `onboard` returns if that matters to you.
 - **The key type is always sent.** The ledger treats a missing `type` as `rsa`; the SDK never omits it, so do the same if you build an envelope by hand.
 - **Falcon needs enabling.** Call `ActiveledgerFalcon.enable()` once, or `.falcon512` throws `keyTypeUnavailable`.
