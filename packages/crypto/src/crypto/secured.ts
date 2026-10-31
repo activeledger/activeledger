@@ -357,15 +357,23 @@ export class Secured {
           }
 
           if (tmpP) {
-            // Remove base64 (Weirdly TS cannot see 2nd argument)
-            tmpP = JSON.parse(Buffer.from(tmpP, "base64").toString("utf8"));
+            // KeyPair.decrypt() returns the plain JSON that encrypt() put in
+            // (there is no base64 layer left to remove)
+            let tmpRoles: any;
+            try {
+              tmpRoles = JSON.parse(tmpP);
+            } catch (e) {
+              return reject(
+                new Error("Secured: cannot read role keys for " + packet.$ADAC[i].ref)
+              );
+            }
 
             // Loop Object with roles
-            let roleKeys = Object.keys(tmpP);
+            let roleKeys = Object.keys(tmpRoles);
             let ii = roleKeys.length;
             while (ii--) {
               if (!passwords[roleKeys[ii]]) {
-                passwords[roleKeys[ii]] = tmpP[roleKeys[ii] as any];
+                passwords[roleKeys[ii]] = tmpRoles[roleKeys[ii]];
               }
             }
           }

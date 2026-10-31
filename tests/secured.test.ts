@@ -23,9 +23,6 @@ const peer = rsa();
 
 /**
  * What a recipient can recover: their role passwords, via their private key.
- * Secured.decrypt() is not used for this because its node branch base64-decodes
- * the already-plain JSON the key returns (reported separately), so the data
- * layer is driven through the same private step decrypt() ends with.
  */
 function recoverPasswords(entry: any, prv: string): any {
   return JSON.parse(new KeyPair("rsa", prv).decrypt(entry.roles));
@@ -171,5 +168,19 @@ describe("Secured ($ADAC envelopes)", () => {
     );
     // $ADAC is processed last-to-first, so the PubKey entry created the password
     expect(recoverPasswords(enc.$ADAC[1], peer.prv)).to.have.property("admin");
+  });
+
+  it("decrypt() opens the data for a node recipient", async () => {
+    const secured = new Secured(db, neighbour, self);
+    const enc: any = await secured.encrypt(
+      packetFor([{ ref: "node0", type: ADACType.Node, roles: ["admin"] }], {
+        open: "visible",
+        vault: { $ADAR: "admin", secret: "s3cret", nested: { n: 1 } },
+      })
+    );
+    const dec: any = await secured.decrypt(enc);
+    expect(dec.data.open).to.equal("visible");
+    expect(dec.data.vault.secret).to.equal("s3cret");
+    expect(dec.data.vault.nested).to.deep.equal({ n: 1 });
   });
 });
