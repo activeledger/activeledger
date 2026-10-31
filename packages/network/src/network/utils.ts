@@ -75,7 +75,8 @@ export class ActiveInterfaces {
    */
   private static findBinding(): void {
     // Return if already bound
-    if (this.bindingHost && this.bindingPort) return;
+    // (a port given without a host leaves the host unset)
+    if (this.bindingPort) return;
 
     // Get Arguments & Configuration
     let argv = ActiveOptions.fetch(true);
@@ -91,7 +92,8 @@ export class ActiveInterfaces {
       // Use port from host string, then from --port argument, then default.
       let port = parseInt(portStr, 10);
       if (isNaN(port)) {
-        port = argv.port;
+        // argv values are strings, so convert before using
+        port = parseInt(argv.port, 10);
       }
       if (isNaN(port)) {
         port = 5260;
