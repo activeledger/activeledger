@@ -1,5 +1,54 @@
 # Activeledger Changelog
 
+## [5.1.4]
+
+### Fixed
+- A POST body of `null` no longer crashes the node, and an empty body is
+  answered straight away with an error instead of leaving the request open.
+- `--port` is read as a number, and a port-only binding is remembered.
+- `activeledger --stats` showed disk size, free and used as `NaN` when `df`
+  padded its columns. The storage database's restart limit allowed six
+  restarts instead of five, and its 24 hour counter never reset.
+- A queued internal transaction that shared a stream with an earlier one was
+  silently dropped. It now stays queued in order and is dispatched when the
+  stream is free, or fails with `IBL01` once the wait limit passes.
+- A POST body that starts like gzip but is not valid gzip left the request
+  open and raised an unhandled rejection. It is now answered with `400`.
+- `$multi` with `$seq` submitted the last transaction first. It now submits
+  them in the order sent; the response order is unchanged.
+- The default setup contract's vote on an assert hung until the contract
+  timeout when none of the configured nodes had signed; it now rejects. Its
+  comparison of neighbourhoods now counts duplicates, so a malformed
+  neighbourhood such as `[A,A,B]` no longer matches `[A,B,C]`. During a
+  rolling upgrade a node that has not been updated may vote differently on
+  such a transaction.
+- A POST to a dead neighbour, outside a bundle, now marks that neighbour
+  unavailable and fails, as the bundled path always did.
+- A transaction whose state document had no stream document raised an uncoded
+  `TypeError`; it now fails with code 950.
+- Encrypting for a node recipient could not be decrypted, a second recipient
+  of the same role received no key, and a tampered ciphertext or a missing
+  `$ADAC` left the call hanging or throwing late. These now work or reject
+  at once. The format on the wire is unchanged.
+- `VirtualMachine.postProcess` threw before any contract was loaded.
+
+### Changed
+- `POST /a/encrypt` and the `Secured` class are deprecated. Encrypt on the
+  client instead. The endpoint still works. Workers and the virtual machine
+  no longer build or carry a `Secured`, and a contract's `attemptDecrypt` now
+  fails with a "deprecated" error; it could not work before.
+- Reading frames from a peer no longer copies the buffer once per frame, which
+  was quadratic when many frames arrived in one chunk (64 small frames: 270
+  microseconds down to 13).
+
+### Added
+- `scripts/sdk-live-matrix.sh` runs every SDK's live tests against a real
+  local test network.
+- A guide section for the nine SDKs, and the hosted documentation is linked
+  from the README.
+- Tests for the storage drivers, the network host, endpoints, worker process,
+  virtual machine, default setup contract, logger and command line tools.
+
 ## [5.1.3]
 
 ### Fixed
