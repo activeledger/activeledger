@@ -715,12 +715,13 @@ export class Endpoints {
         // We can either send them all at once or in seq depends on transaction lets default to all at once
         const results = [] as any[];
         if (body.$seq) {
-          for (let i = body.$multi.length; i--;) {
+          // Submit in the order sent (later transactions may depend on earlier ones)
+          for (let i = 0; i < body.$multi.length; i++) {
             results.push(await process(body.$multi[i]));
             // deal with catch problem
           }
           const response = [];
-          for (let i = results.length; i--;) {
+          for (let i = 0; i < results.length; i++) {
             response.push(results[i].content);
           }
           resolve({
