@@ -319,6 +319,11 @@ exports.default = FakeContract;
       expect(await vm.postProcess(false, "n", umid)).to.equal(undefined);
     });
 
+    it("postProcess on a VM that has run nothing resolves undefined", async () => {
+      const fresh = new VirtualMachine("localhost:5259", {} as any, {} as any);
+      expect(await fresh.postProcess(true, "n", "unknown-umid")).to.equal(undefined);
+    });
+
     it("postProcess does nothing on a dry run", async () => {
       const { umid, contract } = await start("", "ns", {
         __execution: { supernode: true, dryRun: true },
