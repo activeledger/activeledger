@@ -2298,6 +2298,7 @@ export class Host extends Home {
             );
             break;
           case "/a/encrypt":
+            // @deprecated Kept for compatibility, encrypt client side instead
             // Make sure it was encrypted here
             response = Endpoints.ExternalEncrypt(
               this,

@@ -995,6 +995,9 @@ export class Endpoints {
   /**
    * Exposes an endpoint to run through the ADAC encryption
    *
+   * @deprecated The /a/encrypt endpoint is kept for compatibility only; nodes
+   * should not be used as a public encryption oracle. Encrypt client side.
+   *
    * @static
    * @param {Host} host
    * @param {*} body

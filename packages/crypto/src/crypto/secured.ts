@@ -28,6 +28,9 @@ import { KeyPair } from "./keypair";
 /**
  * Manages secured data with role permissions
  *
+ * @deprecated Only used by the public POST /a/encrypt endpoint, which is
+ * itself deprecated. Encrypt client side instead.
+ *
  * @export
  * @class SecuredData
  */

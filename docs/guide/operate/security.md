@@ -33,7 +33,7 @@ Nodes identify each other by address. Each entry in `neighbourhood` has a `host`
 
 | Who may call | Endpoints |
 |---|---|
-| Anyone | `POST /` (send a transaction), `POST /a/encrypt`, `GET /a/status`, `POST /a/stream` (read streams by id; volatile is refused with 403) |
+| Anyone | `POST /` (send a transaction), `POST /a/encrypt` (deprecated: encrypt client side instead), `GET /a/status`, `POST /a/stream` (read streams by id; volatile is refused with 403) |
 | A neighbour, from its listed address | `POST /a/init`, `GET /a/all`, `GET /a/umid/...`, and the TCP stream on `port + 1` |
 | This machine only (loopback) | `GET /a/hybrid/list`, `GET /a/hybrid/feeds`, `POST /a/hybrid/ban`, `POST /a/hybrid/unban` |
 | This machine or a neighbour, with `remote` on | `GET /a/admin-reload` |
