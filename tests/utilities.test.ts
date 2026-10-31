@@ -86,6 +86,26 @@ describe("ActiveFrame (Activeutilities) - hpe-14 regression (857b3e6)", () => {
     expect(r2!.item.toString()).to.equal("second");
   });
 
+  it("drains many frames from one chunk in order, handing out views of that chunk rather than copies", () => {
+    const payloads = Array.from({ length: 100 }, (_, i) => `frame-${i}`);
+    const combined = Buffer.concat(payloads.map(makeFrame));
+
+    let chunks: Buffer[] = [combined];
+    let length = combined.length;
+    const seen: string[] = [];
+    for (;;) {
+      const r = ActiveFrame.read(chunks, length);
+      if (!r) break;
+      // Same backing memory as the received chunk: nothing was copied.
+      expect(r.item.buffer).to.equal(combined.buffer);
+      seen.push(r.item.toString());
+      chunks = r.remaining.length ? [r.remaining] : [];
+      length = r.remaining.length;
+    }
+    expect(seen).to.deep.equal(payloads);
+    expect(length).to.equal(0);
+  });
+
   it("returns null when fewer than 4 bytes are buffered (can't read the length prefix yet)", () => {
     const frame = makeFrame("hello");
     const partial = frame.slice(0, 3);
