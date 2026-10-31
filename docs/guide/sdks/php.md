@@ -60,7 +60,7 @@ Both key classes implement the `Signer` interface, so either can be passed anywh
 | Class | `keyType()` | Public key | Private key | Signature | Encoding |
 |---|---|---|---|---|---|
 | `KeyPair` | `ml-dsa-65` | 1952 bytes | 32-byte seed | 3309 bytes | base64 |
-| `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes, DER | `0x` hex |
+| `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | 68 to 71 bytes, DER, varies | `0x` hex |
 
 ### ml-dsa-65
 
@@ -93,7 +93,7 @@ $restored = Secp256k1KeyPair::fromKeys($key->publicKey(), $key->privateKey());  
 $verifier = Secp256k1KeyPair::fromPublicKey($key->publicKey());
 ```
 
-A secp256k1 transaction is roughly 22 times smaller than an ML-DSA-65 one (the SDK README's figure), and every signature is stored on the ledger for good. Use it unless the identity has to resist quantum computers. It uses PHP's `openssl` extension, the same implementation the node verifies with. Signatures are always low-S.
+A secp256k1 transaction is far smaller than an ML-DSA-65 one (68 to 71 bytes of signature against 3309), and every signature is stored on the ledger for good. Use it unless the identity has to resist quantum computers. It uses PHP's `openssl` extension, the same implementation the node verifies with. Signatures are always low-S.
 
 `fromKeys()` checks that the public key is the one derived from the private key, and throws `InvalidArgumentException` if the pair does not match, rather than signing with one key while publishing another. Public keys that are not a point on the curve are rejected too (checked through OpenSSL), and the DER signature parser is bounds-checked. The ML-DSA `KeyPair` has no two-key loader; restore it from its seed.
 

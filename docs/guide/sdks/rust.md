@@ -54,7 +54,7 @@ Two key types are supported. Both implement the `Signer` trait, so either can be
 | Type | Rust type | Wire string | Public key | Private key | Signature | Encoding |
 |---|---|---|---|---|---|---|
 | ML-DSA-65 | `KeyPair` | `ml-dsa-65` | 1952 bytes | 4032 bytes | 3309 bytes | base64 |
-| secp256k1 | `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | about 70 to 72 bytes | `0x` hex |
+| secp256k1 | `Secp256k1KeyPair` | `secp256k1` | 33 or 65 bytes | 32 bytes | 68 to 71 bytes, varies | `0x` hex |
 
 `rsa` and `falcon-512` are not supported. There is no Falcon key type in this crate, so there is no way to create or load one, and no call returns an error about Falcon. (`KeyError::FalconUnsupported` still exists so that code matching on it compiles, but nothing returns it.) `KeyType::Falcon512` exists only so that `recovery::derive_seed` can produce a Falcon seed.
 
@@ -84,7 +84,7 @@ let ec_public = ec.public_key();                      // "0x02..."
 
 Signing with ML-DSA-65 is hedged: signing the same message twice gives different bytes. Never compare signatures for equality; verify them. secp256k1 signing is deterministic (RFC 6979, low-S). secp256k1 verification accepts high-S signatures, because the node produces them.
 
-If you have no reason to choose ML-DSA-65, use secp256k1. Its signatures are about 22 times smaller, and every signature is stored on the ledger permanently.
+If you have no reason to choose ML-DSA-65, use secp256k1. Its signatures are far smaller, and every signature is stored on the ledger permanently.
 
 ## Seeds and recovery phrases
 

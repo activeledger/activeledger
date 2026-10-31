@@ -53,7 +53,7 @@ A `Key` has a `name`, a `type`, a `key` holding `publicKey` and `privateKey` str
 |---|---|---|---|
 | `.secp256k1` | `secp256k1` | `0x` hex | The default. Signatures are about 70 bytes. |
 | `.mlDsa65` | `ml-dsa-65` | base64 | 3309-byte signatures. In the core product. |
-| `.falcon512` | `falcon-512` | base64 | 649 to 662 byte signatures. Needs `ActiveledgerFalcon`. |
+| `.falcon512` | `falcon-512` | base64 | signatures of about 650 bytes, varying. Needs `ActiveledgerFalcon`. |
 | `.rsa` | `rsa` | PEM | Legacy. Existing PEM keys sign and verify; new ones cannot be generated. |
 
 ```swift
