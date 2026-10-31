@@ -139,23 +139,24 @@ export class ActiveDataStore {
           signal || "No Signal"
         })`
       );
+      // Can we reset the counter? A day since the last restart
+      if (
+        Date.now() >
+        this.lastRestart + MAX_RESTART_RESET_HOURS * 60 * 60 * 1000
+      ) {
+        this.restartCounter = 0;
+      }
+
       // As its an attached process killing activeledger will prevent this restart
       // If killed via activeledger --stop check for SIGTERM signal and don't restart if it is
       if (
         !this.isShuttingDown &&
         signal !== "SIGTERM" &&
-        MAX_RESTARTS >= this.restartCounter
+        MAX_RESTARTS > this.restartCounter
       ) {
         this.restartCounter++;
+        this.lastRestart = Date.now();
         this.launch();
-
-        // Can we reset the counter?
-        if (
-          Date.now() >
-          this.lastRestart + MAX_RESTART_RESET_HOURS * 60 * 60 * 1000
-        ) {
-          this.restartCounter = 0;
-        }
       } else {
         ActiveLogger.error(
           "Not attempting to restart either due to signal or counters reached"
