@@ -75,7 +75,10 @@ export class ActiveFrame {
       return null;
     }
 
-    const fullBuffer = Buffer.concat(chunks);
+    // A lone chunk is already contiguous. Buffer.concat would copy it anyway,
+    // and a chunk holding many frames is re-read once per frame, so that copy
+    // made draining it quadratic. item/remaining are views either way.
+    const fullBuffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
     const item = fullBuffer.slice(4, 4 + length);
     const remaining = fullBuffer.slice(4 + length);
     return {
