@@ -52,6 +52,8 @@ if not response.committed:
 
 For post-quantum keys, swap in `KeyPair.generate(KeyType.ML_DSA_65)`, imported from `activeledger`.
 
+`KeyPair.generate()` makes post-quantum keys only. Passing `KeyType.RSA` or `KeyType.SECP256K1` raises `ValueError`; use `Secp256k1KeyPair.generate()` for secp256k1.
+
 ## Keys
 
 | Class | Key types | Extra | Key encoding |
@@ -74,11 +76,11 @@ full = Secp256k1KeyPair.generate(compressed=False)   # uncompressed
 key.public_key     # "0x02a1b2..." - what the ledger stores
 key.private_key    # "0x..." - 32 bytes; keep it safe
 
-restored = Secp256k1KeyPair.from_keys(key.public_key, key.private_key)
+restored = Secp256k1KeyPair.from_keys(key.public_key, key.private_key)   # ValueError if they do not pair
 verifier = Secp256k1KeyPair.from_public_key(key.public_key)   # verify only
 ```
 
-Keys must carry the `0x` prefix. Public keys are 33 bytes (compressed) or 65 bytes (uncompressed); the ledger accepts both. Signing is deterministic and low-S, and verification accepts high-S signatures, because the ledger produces them.
+Keys must carry the `0x` prefix. Public keys are 33 bytes (compressed) or 65 bytes (uncompressed); the ledger accepts both. A public key that is not a point on the curve is refused with `ValueError`. Signing is deterministic and low-S, and verification accepts high-S signatures, because the ledger produces them.
 
 ### Post-quantum
 
@@ -94,13 +96,13 @@ key.key_type            # KeyType.FALCON_512
 signature = key.sign(b"some bytes")
 key.verify(b"some bytes", signature)     # True
 
-same = KeyPair.from_keys(KeyType.FALCON_512, public_b64, private_b64)
+same = KeyPair.from_keys(KeyType.FALCON_512, public_b64, private_b64)   # ValueError if they do not pair
 checker = KeyPair.from_public(KeyType.FALCON_512, public_b64)   # verify only
 ```
 
 Sizes are 1952-byte public and 4032-byte private keys for ML-DSA-65, and 897 and 1281 bytes for Falcon-512. A Falcon signature is 649 to 662 bytes, so never assume a fixed length. Signing is hedged for both schemes: two signatures over the same message differ and both verify.
 
-`verify()` returns `False` for a malformed signature instead of raising. A verify-only pair raises `ValueError` if you ask it to sign or read its private key. `can_sign` tells you which kind you hold.
+`verify()` returns `False` for a malformed signature instead of raising. `from_keys` checks that the two keys belong together by signing and verifying a fixed message, so building a pair from both keys needs liboqs, as generating does. `from_public` needs no private key and does no such check. A verify-only pair raises `ValueError` if you ask it to sign or read its private key. `can_sign` tells you which kind you hold.
 
 ## Seeds and recovery phrases
 
@@ -144,6 +146,7 @@ response = ledger.submit(tx)
 if not response.committed:
     raise RuntimeError(response.errors)
 
+print(response.status)        # the HTTP status
 print(response.new_streams)   # ids of streams created
 print(response.responses)     # values from returnToRemote
 ```
@@ -151,6 +154,20 @@ print(response.responses)     # values from returnToRemote
 `.input()` takes the stream id, the signer and an optional payload. Each input is signed on `build()`, and `build()` raises `ValueError` if the namespace or contract is missing or no input was given. Key order is kept as you wrote it, because the signature covers the order. `Activeledger.transaction()` is a shortcut for `TransactionBuilder()`.
 
 The builder has no method for `$expire`, and `submit` does not retry. Read the warning about repeats in [Sending a transaction](../transactions.md) before you retry anything. To post an envelope you built yourself, use `ledger.connection.submit_raw(json_string)`.
+
+### When a reply counts as committed
+
+`response.committed` is `True` only when all of these hold:
+
+- the HTTP status is 2xx;
+- the body is a JSON object;
+- it contains a `$summary` object;
+- `$summary.errors` is absent or empty.
+
+Anything else is not committed, and `response.errors` carries an entry saying why, such as `HTTP 502`, `Response body is not a JSON object` or `Response has no $summary`. An empty `{}`, an HTML error page and a reply from something that is not a node all fail this way. The accessors (`errors`, `committed`, `new_streams`, `responses`) never raise; on a reply they cannot read they return an error, `False` or an empty list. `response.raw` keeps the body text.
+
+!!! warning
+    Not committed does not mean not applied. A timeout or a 5xx from a proxy tells you nothing about what the node did. Read [Sending a transaction](../transactions.md) before you resend.
 
 ## Reading state
 
@@ -173,7 +190,7 @@ for value in ledger.submit(tx).responses:
 ## Events
 
 !!! warning
-    Events are deprecated from SDK 1.4.0 and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
+    Events are deprecated from SDK 1.4.0 and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour. `subscribe()` emits a `DeprecationWarning`.
 
 `ledger.events.subscribe()` is a generator over the node's server-sent events. Leaving the loop closes the connection.
 
@@ -212,11 +229,12 @@ tx = TransactionBuilder().namespace("n").contract(contract_id).input(stream_id, 
 
 ## Things that will bite you
 
-- **A rejected transaction is HTTP 200.** Check `response.committed` (or `response.errors`), never the status code.
+- **A rejected transaction is HTTP 200.** Check `response.committed` (or `response.errors`), never the status code alone. A non-2xx status, a body that is not a JSON object and a body with no `$summary` are not committed either (see [When a reply counts as committed](#when-a-reply-counts-as-committed)).
+- **Mismatched keys fail on load.** `from_keys` raises `ValueError` if the private key does not belong to the public key, and an off-curve secp256k1 public key is refused. Both fail locally rather than as a 1220 at the node.
 - **Signature errors are vague.** A wrong key type, a wrong-length key or a single changed byte all come back as 1220 "Signature Incorrect". The SDK checks key lengths and type strings first so most mistakes fail locally with a clear message. When you still get a 1220, compare `tx.signed_bytes()` with what you expect: signatures cover the canonical bytes of `$tx` only, not the envelope.
 - **Always send the key type.** The ledger treats a missing `type` as `rsa`. The SDK always sends it; if you build an envelope by hand, do the same.
 - **Do not use `json.dumps` for signed bytes.** The default escapes non-ASCII, adds spaces and prints `1.0` where JavaScript prints `1`. Use `activeledger.canonical_json` or `canonical_bytes`, which are checked against vectors from the JavaScript SDK.
-- **Importing is lazy.** `from activeledger import KeyPair` works without `[pq]`; the failure (`PostQuantumUnavailable`) arrives when you first generate a key. Likewise `Secp256k1KeyPair` without `[ec]` raises `ImportError`.
+- **Importing is lazy.** `from activeledger import KeyPair` works without `[pq]`; the failure (`PostQuantumUnavailable`) arrives when you first generate a key. Likewise `Secp256k1KeyPair` without `[ec]` raises `ImportError`, as does `activeledger.ec.is_high_s_base64`.
 - **The key is the identity.** Lose the private key (or seed) and nobody can sign for it again. [Identities](../identities.md) covers this.
 
 ## Testing and further reading
