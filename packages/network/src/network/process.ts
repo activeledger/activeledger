@@ -94,14 +94,6 @@ class Processor {
    *
    *
    * @private
-   * @type {ActiveCrypto.Secured}
-   */
-  private secured: ActiveCrypto.Secured;
-
-  /**
-   *
-   *
-   * @private
    * @type {{ [reference: string]: Neighbour }}
    */
   private neighbourhood: { [reference: string]: Neighbour };
@@ -199,8 +191,7 @@ class Processor {
             Home.right,
             this.db,
             this.dbe,
-            this.dbev,
-            this.secured
+            this.dbev
           );
 
           // Listen for unhandledRejects (Most likely thrown by Contract but its a global)
@@ -711,12 +702,6 @@ class Processor {
     // Are we updating the neighbourhood?
     if (neighbours) {
       this.neighbourhood = neighbours;
-
-      this.secured = new ActiveCrypto.Secured(this.db, this.neighbourhood, {
-        reference: Home.reference,
-        public: Home.publicPem,
-        private: Home.identity.pem,
-      });
     }
   }
 }

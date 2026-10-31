@@ -1,6 +1,4 @@
-import { IActiveDSConnect } from "../packages/definitions/lib/definitions";
 import { Process } from "../packages/protocol/src/protocol/process";
-import { ActiveCrypto } from "../packages/crypto/src";
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
@@ -46,7 +44,6 @@ describe("Process.postVote - recording this node's own error (Activeprotocol)", 
         {} as any,
         {} as any,
         {} as any,
-        new ActiveCrypto.Secured({} as IActiveDSConnect, [], {}) as any
       );
 
       // postVote runs the commit / knock-right phase after recording the
