@@ -1904,7 +1904,13 @@ export class Host extends Home {
               if (!v.$broadcast && Home.right.reference != v.$origin) {
                 // Forward on to the next node and compile responses back
                 (async () => {
-                  const next = await Home.right.knock("init", v);
+                  let next: any;
+                  try {
+                    next = await Home.right.knock("init", v);
+                  } catch (e) {
+                    // Right is unreachable, respond with our failure alone
+                    next = { data: {} };
+                  }
                   this.processPending[v.$umid].resolve({
                     status: 200,
                     data: { ...v, ...next.data },
