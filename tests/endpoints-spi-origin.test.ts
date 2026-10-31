@@ -234,3 +234,95 @@ describe("Endpoints.streams - single revision lookups (Activeledger)", () => {
     expect(reply).to.deep.equal({ statusCode: 200, content: [] });
   });
 });
+
+describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", () => {
+  const realRef = Home.reference;
+  const realRepair = (Endpoints as any).repairHistoryInBackground;
+  const realBackfill = Endpoints.backfillUmid;
+  let n = 1000;
+
+  afterEach(() => {
+    Home.reference = realRef;
+    ActiveOptions.set("consensus", undefined);
+    (Endpoints as any).repairHistoryInBackground = realRepair;
+    Endpoints.backfillUmid = realBackfill;
+  });
+
+  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean }) => {
+    Home.reference = "me";
+    ActiveOptions.set("consensus", { reached: 66 });
+    const repaired: string[] = [];
+    const backfilled: string[] = [];
+    (Endpoints as any).repairHistoryInBackground = (_h: any, id: string) =>
+      repaired.push(id);
+    Endpoints.backfillUmid = (async (_h: any, umid: string) => {
+      backfilled.push(umid);
+      return true;
+    }) as any;
+
+    const id = `${++n}`.padStart(64, "n");
+    const winner = { _id: id, _rev: "5-winner" };
+    const puts: any[] = [];
+    const bulk: any[] = [];
+    const errorDocs: any[] = [];
+    const released: any[] = [];
+    const entry: any = { $umid: `umid-${id}`, $tx: {}, $broadcast: true, $unanimous: opts.unanimous };
+    const replies = [
+      () =>
+        Promise.resolve({
+          status: 200,
+          data: {
+            $umid: entry.$umid,
+            $tx: { $contract: "c".repeat(64), $i: { [id]: {} }, $o: {} },
+            // This node disagrees with a network that committed
+            $nodes: {
+              me: { vote: false, commit: false, error: "Stream Position Incorrect" },
+              b: { vote: true, commit: true },
+            },
+          },
+        }),
+    ];
+    const host: any = {
+      reference: "me",
+      pending: () => replies.shift()!(),
+      release: (...a: any[]) => released.push(a),
+      neighbourhood: {
+        count: () => 4,
+        knockAll: async () => [[winner], [winner], [winner]],
+      },
+      dbConnection: {
+        get: async () => (opts.knownRev ? { _id: id, _rev: opts.stale } : {}),
+        put: async (doc: any) => puts.push(doc),
+        bulkDocs: async (docs: any[], o: any) => (bulk.push({ docs, o }), { ok: true }),
+      },
+      dbErrorConnection: { post: async (doc: any) => errorDocs.push(doc) },
+    };
+    const reply = await Endpoints.InternalInitalise(host, entry, "10.0.0.2");
+    // The repair runs a moment after the neighbour has been answered
+    await new Promise((r) => setTimeout(r, 700));
+    return { reply, id, puts, bulk, errorDocs, released, repaired, backfilled, entry };
+  };
+
+  it("answers the neighbour first, then rewrites the stream to the revision the network agreed", async () => {
+    const r = await run({ stale: "4-old", knownRev: true });
+
+    expect(r.reply.statusCode).to.equal(200);
+    expect(r.bulk).to.have.length(1);
+    expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
+    // The stream existed, so no base document is created first
+    expect(r.puts).to.have.length(0);
+    expect(r.repaired).to.deep.equal([r.id]);
+    expect(r.backfilled).to.deep.equal([r.entry.$umid]);
+    // A 950 checker is left so the missing umid is looked for later
+    expect(r.errorDocs).to.have.length(1);
+    expect(r.errorDocs[0]).to.include({ code: 950, processed: false, umid: r.entry.$umid });
+    expect(r.released.map((x: any) => x[0])).to.include(r.entry.$umid);
+  });
+
+  it("creates the stream first when this node had never seen it", async () => {
+    const r = await run({ stale: "", knownRev: false });
+
+    expect(r.puts).to.deep.equal([{ _id: r.id, _rev: "5-winner" }]);
+    expect(r.bulk).to.have.length(1);
+  });
+});
