@@ -23,12 +23,18 @@
 
 /**
  * Coalesces parent<->child IPC messages sent within the same event loop turn
- * into a single child.send / process.send carrying an array.
+ * into a single child.send / process.send.
  *
  * Internal protocol only: both ends run the same node version, nothing in this
- * file reaches another node. A lone message is sent exactly as before; two or
- * more are wrapped in a { type: "batch", msgs: [...] } envelope which the
- * receiver unwraps in order with unbatch().
+ * file reaches another node.
+ *
+ * Messages are serialised when queued, not when flushed. child.send used to
+ * snapshot the message synchronously and callers (e.g. the host's live pending
+ * entry) keep mutating their objects afterwards, so deferring serialisation
+ * would change what the worker receives. A flush therefore sends one string,
+ * a JSON array of the already serialised messages, which the receiver unwraps
+ * in order with unbatch(). Plain object messages are still accepted by
+ * unbatch() so either end can be talked to by an unbatched sender.
  */
 
 /** Anything with the child_process / process IPC send signature */
@@ -37,13 +43,11 @@ export interface IpcChannel {
   connected?: boolean;
 }
 
-export const BATCH_TYPE = "batch";
-
 /** Flush early once this many messages are queued */
 export const BATCH_MAX = 64;
 
 interface Queued {
-  msg: any;
+  json: string;
   cb?: (error: Error | null) => void;
 }
 
@@ -60,14 +64,16 @@ export class IpcBatcher {
   }
 
   /**
-   * Queue a message for this tick's flush. Order is the order of calls.
+   * Queue a message for this tick's flush. Order is the order of calls. A
+   * message that cannot be serialised throws here, to the caller, as
+   * child.send would have.
    */
   public send(msg: any, cb?: (error: Error | null) => void): void {
     if (this.closed) {
       if (cb) cb(new Error("IPC channel closed"));
       return;
     }
-    this.queue.push({ msg, cb });
+    this.queue.push({ json: JSON.stringify(msg), cb });
     if (this.queue.length >= this.max) {
       this.flush();
     } else if (!this.scheduled) {
@@ -77,7 +83,7 @@ export class IpcBatcher {
   }
 
   /**
-   * Send everything queued now. One message goes as-is, more go as a batch.
+   * Send everything queued now as one IPC message.
    */
   public flush(): void {
     this.scheduled = false;
@@ -88,10 +94,9 @@ export class IpcBatcher {
     const done = (error: Error | null) => {
       for (const item of items) item.cb?.(error);
     };
-    const payload =
-      items.length === 1
-        ? items[0].msg
-        : { type: BATCH_TYPE, msgs: items.map((i) => i.msg) };
+    let payload = "[" + items[0].json;
+    for (let i = 1; i < items.length; i++) payload += "," + items[i].json;
+    payload += "]";
 
     try {
       if (this.channel.connected === false) {
@@ -115,23 +120,23 @@ export class IpcBatcher {
 }
 
 /**
- * Call handler once per message, unwrapping a batch envelope in order.
+ * Call handler once per message, in order, unwrapping a batch string.
  */
 export function unbatch(m: any, handler: (m: any) => void): void {
-  if (m && m.type === BATCH_TYPE && Array.isArray(m.msgs)) {
-    for (const inner of m.msgs) {
-      try {
-        handler(inner);
-      } catch (e) {
-        // Keep the remaining messages: as separate IPC messages one throwing
-        // would not have stopped the next. Surface it as uncaught as before.
-        setImmediate(() => {
-          throw e;
-        });
-      }
-    }
-  } else {
+  if (typeof m !== "string") {
     handler(m);
+    return;
+  }
+  for (const inner of JSON.parse(m)) {
+    try {
+      handler(inner);
+    } catch (e) {
+      // Keep the remaining messages: as separate IPC messages one throwing
+      // would not have stopped the next. Surface it as uncaught as before.
+      setImmediate(() => {
+        throw e;
+      });
+    }
   }
 }
 

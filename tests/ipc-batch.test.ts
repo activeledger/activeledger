@@ -4,7 +4,6 @@ import {
   IpcChannel,
   ipcSend,
   unbatch,
-  BATCH_TYPE,
 } from "../packages/network/src/network/ipcbatch";
 
 class FakeChannel implements IpcChannel {
@@ -29,8 +28,10 @@ describe("IpcBatcher", () => {
     b.send(m);
     assert.strictEqual(ch.sent.length, 0, "nothing sent synchronously");
     await tick();
-    assert.deepStrictEqual(ch.sent, [m]);
-    assert.strictEqual(ch.sent[0], m);
+    assert.strictEqual(ch.sent.length, 1);
+    const got: any[] = [];
+    unbatch(ch.sent[0], (x) => got.push(x));
+    assert.deepStrictEqual(got, [m]);
   });
 
   it("coalesces one tick into one send, in order", async () => {
@@ -39,11 +40,9 @@ describe("IpcBatcher", () => {
     for (let i = 0; i < 5; i++) b.send({ type: "broadcast", i });
     await tick();
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0].type, BATCH_TYPE);
-    assert.deepStrictEqual(
-      ch.sent[0].msgs.map((m: any) => m.i),
-      [0, 1, 2, 3, 4]
-    );
+    const got: number[] = [];
+    unbatch(ch.sent[0], (m) => got.push(m.i));
+    assert.deepStrictEqual(got, [0, 1, 2, 3, 4]);
   });
 
   it("separate ticks are separate sends and order holds across them", async () => {
@@ -126,7 +125,9 @@ describe("IpcBatcher", () => {
     b.send({ i: 1 });
     b.close();
     assert.strictEqual(ch.sent.length, 1);
-    assert.strictEqual(ch.sent[0].msgs.length, 2);
+    const got: number[] = [];
+    unbatch(ch.sent[0], (m) => got.push(m.i));
+    assert.deepStrictEqual(got, [0, 1]);
   });
 });
 
@@ -138,12 +139,44 @@ describe("unbatch / ipcSend", () => {
     assert.deepStrictEqual(seen, [m]);
   });
 
-  it("unwraps an envelope in order", () => {
+  it("unwraps a batch string in order", () => {
     const seen: number[] = [];
-    unbatch({ type: BATCH_TYPE, msgs: [{ i: 1 }, { i: 2 }, { i: 3 }] }, (m) =>
+    unbatch(JSON.stringify([{ i: 1 }, { i: 2 }, { i: 3 }]), (m) =>
       seen.push(m.i)
     );
     assert.deepStrictEqual(seen, [1, 2, 3]);
+  });
+
+  it("serialises when queued, so later mutation does not leak into the send", async () => {
+    const ch = new FakeChannel();
+    const b = new IpcBatcher(ch);
+    const entry: any = { $nodes: { a: { vote: true } } };
+    b.send({ type: "tx", entry });
+    entry.$nodes = {};
+    entry.extra = 1;
+    await tick();
+    const got: any[] = [];
+    unbatch(ch.sent[0], (m) => got.push(m));
+    assert.deepStrictEqual(got[0].entry, { $nodes: { a: { vote: true } } });
+  });
+
+  it("a throwing handler does not stop later messages", async () => {
+    const seen: number[] = [];
+    const rethrown: Error[] = [];
+    const onErr = (e: Error) => rethrown.push(e);
+    // mocha owns uncaughtException: swap its listeners out for this test
+    const saved = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    process.on("uncaughtException", onErr);
+    unbatch(JSON.stringify([{ i: 1 }, { i: 2 }]), (m) => {
+      seen.push(m.i);
+      if (m.i === 1) throw new Error("boom");
+    });
+    await tick();
+    process.removeListener("uncaughtException", onErr);
+    saved.forEach((l) => process.on("uncaughtException", l));
+    assert.deepStrictEqual(seen, [1, 2]);
+    assert.strictEqual(rethrown.length, 1);
   });
 
   it("ipcSend uses the batcher when present, else sends directly", async () => {
