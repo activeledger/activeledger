@@ -487,11 +487,11 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
         "pq-a",
       ]);
       expect(host.busyLocksQueue.internal.map((q: any) => q.entry.$umid)).to.not.include("pq-a");
-      // KNOWN BUG, deliberately not asserted: the `continue busyQueueInternal`
-      // that skips pq-b does not push it onto stillPending, so it is dropped
-      // from the queue instead of kept for the next pass (its pending entry is
-      // then never dispatched or rejected). The correct behaviour would be:
-      //   expect(queue.map(q => q.entry.$umid)).to.deep.equal(["pq-b"]);
+      expect(
+        host.busyLocksQueue.internal.map((q: any) => q.entry.$umid)
+      ).to.deep.equal(["pq-b"]);
+      // Still pending, so it can be dispatched once the stream frees
+      expect(host.processPending["pq-b"]).to.not.equal(undefined);
     });
 
     it("re-entrance only holds the new entry and leaves the queue to the running pass", () => {

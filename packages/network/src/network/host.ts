@@ -955,9 +955,12 @@ export class Host extends Home {
             if (e?.code === "ERR_BUFFER_TOO_LARGE") {
               return this.rejectTooLarge(res);
             }
-            // Just incase the magic number still invalid gzip
-            // capture the "incorrect header check" -3 Z_DATA_ERROR and continue
-            // with the original non-gzip compliant data
+            // A body announced as gzip, without the magic number, carries on
+            // as it is. One that has the magic number but will not inflate
+            // can never be read, so say so rather than leave it unanswered.
+            if (body[0] == 0x1f && body[1] == 0x8b) {
+              return this.rejectBadBody(res);
+            }
           }
         }
 
@@ -965,7 +968,17 @@ export class Host extends Home {
         // Fix this makesurenot buffer mess I think it is the sending client
 
         //const bodyString = body.toString();
-        const bodyString = (await this.makeSureNotBuffer(body)) as any;
+        let bodyString: any;
+        try {
+          bodyString = await this.makeSureNotBuffer(body);
+        } catch (e: any) {
+          // Inflating or parsing a wrapped body failed: answer, never throw
+          // out of the async handler (unhandled rejection, request left open)
+          if (e?.code === "ERR_BUFFER_TOO_LARGE") {
+            return this.rejectTooLarge(res);
+          }
+          return this.rejectBadBody(res);
+        }
 
         // could make this nicer
         let bundles: any[]; // = [];
@@ -1107,6 +1120,16 @@ export class Host extends Home {
       res.writeHeader("Content-Type", "application/json");
       res.writeHeader("Connection", "close");
       res.end(JSON.stringify({ error: "Request too large" }), true);
+    });
+  }
+
+  private rejectBadBody(res: HttpResponse): void {
+    if (!res.writable) return;
+    res.writable = false;
+    res.cork(() => {
+      res.writeStatus("400 Bad Request");
+      res.writeHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ error: "Request body could not be read" }));
     });
   }
 
@@ -2061,6 +2084,9 @@ export class Host extends Home {
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           if (labelOrKey?.length) {
             if (labelOrKey.some((io) => checked.has(io))) {
+              // Not tried this pass (an earlier entry owns the stream), but
+              // still waiting: keep it, in order, for the next pass.
+              stillPending.push(this.busyLocksQueue.internal[i]);
               continue busyQueueInternal;
             }
             labelOrKey.forEach((io) => checked.add(io));

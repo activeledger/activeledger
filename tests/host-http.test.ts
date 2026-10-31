@@ -403,13 +403,28 @@ describe("Host HTTP listener (Activeledger)", () => {
       );
     });
 
-    // KNOWN BUG, deliberately not tested: a body that starts with the gzip
-    // magic number (1f 8b) but is not valid gzip is never answered. The
-    // handler's inflate failure is swallowed so the raw bytes carry on, then
-    // makeSureNotBuffer() sees the same magic number, inflates again, and
-    // throws inside the async uWS handler: an unhandled rejection and a
-    // request that hangs with no response. The correct behaviour is a 4xx
-    // reply (or at least a response), so the client is not left waiting.
+    it("answers 400 for a body with the gzip magic number that is not gzip", async () => {
+      const bad = Buffer.concat([
+        Buffer.from([0x1f, 0x8b]),
+        Buffer.from("this is not a gzip stream"),
+      ]);
+      for (const headers of [{}, { "Content-Encoding": "gzip" }]) {
+        const reply = await request("POST", "/", bad, headers);
+        expect(reply.status).to.equal(400);
+        expect(JSON.parse(reply.text)).to.deep.equal({
+          error: "Request body could not be read",
+        });
+      }
+    });
+
+    it("answers 400 for a wrapped Buffer body whose inner gzip is invalid", async () => {
+      const wrapped = JSON.stringify({
+        type: "Buffer",
+        data: [0x1f, 0x8b, 1, 2, 3],
+      });
+      const reply = await request("POST", "/", wrapped);
+      expect(reply.status).to.equal(400);
+    });
 
     it("answers 413 and closes for a body over security.maxRequestBytes", async () => {
       const reply = await request("POST", "/", "x".repeat(5000));
