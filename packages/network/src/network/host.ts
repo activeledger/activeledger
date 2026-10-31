@@ -2061,6 +2061,9 @@ export class Host extends Home {
           const labelOrKey = this.busyLocksQueue.internal[i].entry.$$labelOrKey;
           if (labelOrKey?.length) {
             if (labelOrKey.some((io) => checked.has(io))) {
+              // Not tried this pass (an earlier entry owns the stream), but
+              // still waiting: keep it, in order, for the next pass.
+              stillPending.push(this.busyLocksQueue.internal[i]);
               continue busyQueueInternal;
             }
             labelOrKey.forEach((io) => checked.add(io));
