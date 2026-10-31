@@ -336,6 +336,50 @@ describe("ActiveDataStore (Activestorage)", () => {
     expect(spawned).to.have.length(1);
   });
 
+  describe("restart limit", () => {
+    const realNow = Date.now;
+    let now: number;
+
+    beforeEach(() => {
+      now = realNow();
+      Date.now = () => now;
+    });
+
+    afterEach(() => {
+      Date.now = realNow;
+    });
+
+    // Kill the newest process until no replacement is started
+    const dieUntilRefused = () => {
+      let restarts = 0;
+      for (;;) {
+        const before = spawned.length;
+        spawned[before - 1].proc.emit("exit", 1, null);
+        if (spawned.length === before) return restarts;
+        restarts++;
+      }
+    };
+
+    it("allows exactly five restarts, then refuses", () => {
+      setDb({ dir: "d", port: 5984 });
+      new ActiveDataStore().launch();
+      expect(dieUntilRefused()).to.equal(5);
+      expect(spawned).to.have.length(6);
+    });
+
+    it("allows restarts again 24 hours after the last one", () => {
+      setDb({ dir: "d", port: 5984 });
+      new ActiveDataStore().launch();
+      expect(dieUntilRefused()).to.equal(5);
+      // Just short of a day since the last restart: still refused
+      now += 23 * 60 * 60 * 1000;
+      expect(dieUntilRefused()).to.equal(0);
+      // Past a day since the last restart: the counter starts again
+      now += 2 * 60 * 60 * 1000;
+      expect(dieUntilRefused()).to.equal(5);
+    });
+  });
+
   it("gives up restarting a process that keeps dying", () => {
     setDb({ dir: "d", port: 5984 });
     new ActiveDataStore().launch();

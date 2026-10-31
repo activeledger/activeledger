@@ -228,7 +228,8 @@ export class StatsHandler {
         const diskUsageArray = execSync(`df / --output=size,avail,used`)
           .toString()
           .split("\n")[1]
-          .split(" ");
+          .trim()
+          .split(/\s+/);
 
         const diskStats: IDiskStats = {
           activeledger: parseInt(activeledgerUsage),
