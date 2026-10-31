@@ -48,7 +48,7 @@ if not response.committed:
     raise RuntimeError(response.errors)
 ```
 
-`contract_id` is the stream id of a contract you have deployed. `ledger.onboard` raises `RuntimeError` if the ledger created no identity. Save `key.private_key` somewhere safe first: it is the only way back to the identity (see [Keys](#keys)).
+`contract_id` is the stream id of a contract you have deployed. `ledger.onboard` raises `RuntimeError` if the reply is not committed or the ledger created no identity. Save `key.private_key` somewhere safe first: it is the only way back to the identity (see [Keys](#keys)).
 
 For post-quantum keys, swap in `KeyPair.generate(KeyType.ML_DSA_65)`, imported from `activeledger`.
 
