@@ -31,8 +31,7 @@
 #   scripts/sdk-live-matrix.sh [options] [SDK...]
 #
 #   SDK is any of: js python go jvm csharp rust php dart swift
-#   With no SDK given, all of them run. "js" has no live suite and is reported
-#   as "none".
+#   With no SDK given, all of them run.
 #
 #   Options
 #     -l, --list     list the SDK names and exit
@@ -133,6 +132,7 @@ prep_sdk() { # best-effort: failures here surface later as a build error
   local sdk="$1" d="$WORK/$(sdk_dir_name "$1")" pkg
   cd "$d" || return 1
   case "$sdk" in
+    js) npm ci --no-audit --no-fund && npm run build ;;
     python)
       [ -x "$WORK/venv/bin/pip" ] || "$AL_PYTHON" -m venv "$WORK/venv"
       "$WORK/venv/bin/pip" install -q -e ".[dev,ec]" ;;
@@ -239,7 +239,9 @@ run_sdk() {
   log "running $sdk"
   case "$sdk" in
     js)
-      R_NOTE[$sdk]="no live suite"; R_RC[$sdk]=0; R_P[$sdk]=0; R_F[$sdk]=0; R_S[$sdk]=0; return ;;
+      npx jest --config=jestconfig.json live-network >"$out" 2>&1; rc=$?
+      p=$(last_num "$out" 'Tests:.* [0-9]+ passed'); f=$(last_num "$out" 'Tests:.* [0-9]+ failed')
+      s=$(last_num "$out" 'Tests:.* [0-9]+ skipped') ;;
     python)
       "$WORK/venv/bin/python" -m pytest tests/integration -rs -q -p no:cacheprovider >"$out" 2>&1; rc=$?
       p=$(last_num "$out" '[0-9]+ passed'); f=$(( $(last_num "$out" '[0-9]+ failed') + $(last_num "$out" '[0-9]+ errors?') ))
@@ -291,8 +293,6 @@ print_matrix() {
   echo "SDK       RESULT  PASS  FAIL  SKIP  NOTE"
   echo "--------  ------  ----  ----  ----  ----"
   for sdk in "${SDKS[@]}"; do
-    if [ "$sdk" = js ]; then
-      printf '%-8s  %-6s  %4s  %4s  %4s  %s\n' "$sdk" none - - - "${R_NOTE[$sdk]:-no live suite}"; continue; fi
     p=${R_P[$sdk]:-0}; f=${R_F[$sdk]:-0}; s=${R_S[$sdk]:-0}; rc=${R_RC[$sdk]:-99}; note=${R_NOTE[$sdk]:-}
     if [ "$f" -gt 0 ]; then status=FAIL
     elif [ "$rc" -ne 0 ]; then status=ERROR; note="exit $rc, see logs/$sdk.log${note:+; $note}"
