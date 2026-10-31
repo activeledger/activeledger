@@ -199,4 +199,37 @@ describe("Secured ($ADAC envelopes)", () => {
     expect(dec.data.vault.secret).to.equal("s3cret");
     expect(dec.data.vault.nested).to.deep.equal({ n: 1 });
   });
+
+  it("rejects encrypt() with a clear error when there is no root $ADAC", async () => {
+    let err: any;
+    try {
+      await new Secured(db, neighbour, self).encrypt({ data: { a: 1 } } as any);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).to.be.instanceOf(Error);
+    expect(err.message).to.contain("$ADAC");
+  });
+
+  it("rejects decrypt() promptly when the ciphertext has been tampered with", async function () {
+    this.timeout(3000);
+    const secured = new Secured(db, neighbour, self);
+    const enc: any = await secured.encrypt(
+      packetFor([{ ref: "node0", type: ADACType.Node, roles: ["admin"] }], {
+        vault: { $ADAR: "admin", secret: "s3cret" },
+      })
+    );
+    const raw = Buffer.from(enc.data.vault.$ADENC, "base64");
+    raw[raw.length - 1] ^= 0xff;
+    enc.data.vault.$ADENC = raw.toString("base64");
+
+    let err: any;
+    try {
+      await secured.decrypt(enc);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).to.be.instanceOf(Error);
+    expect(err.message).to.contain("decrypt");
+  });
 });
