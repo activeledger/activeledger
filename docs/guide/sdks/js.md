@@ -1,6 +1,6 @@
 # JavaScript / TypeScript SDK
 
-The JavaScript SDK builds, signs and sends transactions, and makes and recovers keys, from Node.js, browsers and React Native. It ships as three npm packages: `@activeledger/sdk-node`, `@activeledger/sdk-web` and `@activeledger/sdk-core`, which holds the code the other two share. This page covers version 2.6.0. It is written in TypeScript and ships type definitions. It supports `secp256k1` and the post-quantum types `ml-dsa-65` and `falcon-512`; it cannot create `rsa` keys.
+The JavaScript SDK builds, signs and sends transactions, and makes and recovers keys, from Node.js, browsers and React Native. It ships as three npm packages: `@activeledger/sdk-node`, `@activeledger/sdk-web` and `@activeledger/sdk-core`, which holds the code the other two share. This page covers version 2.6.0 plus the changes merged since, which are unreleased: the committed rule and `isCommitted`, `importKey` validation, and the web `fromHex` and `validate: false` fixes. Until they are released, an installed 2.6.0 behaves as before. It is written in TypeScript and ships type definitions. It supports `secp256k1` and the post-quantum types `ml-dsa-65` and `falcon-512`; it cannot create `rsa` keys.
 
 The post-quantum types need **Node 20.19 or later**. The packages declare no `engines` field, so nothing stops an older Node installing them; the SDK's CI tests Node 20.19, 22 and 24 only. Browsers and React Native have no Node requirement. The post-quantum types also need **Activeledger 4.7.0 or later** on the nodes; an older node rejects them at onboarding. This guide covers Activeledger 5.x, which is well past that.
 
@@ -28,7 +28,7 @@ Do not install `@activeledger/sdk-core` yourself. It comes in as a dependency, a
 This onboards a new identity and sends one transaction with it. It needs a running node and a contract; see [Identities](../identities.md) and [Transactions](../transactions.md) for what these mean.
 
 ```typescript
-import { Connection, KeyHandler, TransactionHandler } from "@activeledger/sdk-node";
+import { Connection, KeyHandler, TransactionHandler, isCommitted } from "@activeledger/sdk-node";
 // or "@activeledger/sdk-web": the same names
 
 const connection = new Connection("http", "localhost", 5260);
@@ -47,7 +47,11 @@ const tx = await new TransactionHandler().labelledTransaction({
 });
 
 const response = await connection.sendTransaction(tx);
-console.log(response.$umid, response.$summary.commit);
+const errors = response.$summary.errors; // the ledger's reasons, if it refused
+if (!isCommitted(response)) {
+  throw new Error(`Not committed: ${errors?.join("; ")}`);
+}
+console.log(response.$umid);
 ```
 
 `new Connection(protocol, address, port)` also takes one object, `{ protocol, address, portNumber }`. The default node port is 5260.
@@ -73,7 +77,7 @@ const key = await new KeyHandler().generateKey("quantum-safe", false, KeyType.ML
 
 `POST_QUANTUM_KEY_TYPES` is exported if you need to ask whether a type is post-quantum. For which type to choose and why, see [Identities](../identities.md#key-types).
 
-`onboardKey(key, connection)` registers the public key with the `onboard` contract and sets `key.identity`. If the ledger refuses, the promise rejects with the ledger's reasons and `key.identity` stays unset.
+`onboardKey(key, connection)` registers the public key with the `onboard` contract and sets `key.identity`. It sets it only when the reply is committed (see [Sending transactions](#sending-transactions)) and names the new stream. Otherwise the promise rejects, with the ledger's reasons when it gave any, and `key.identity` stays unset.
 
 `sdk-node` can save and load keys:
 
@@ -83,6 +87,8 @@ const again = await keys.importKey("./keys/mykey.json");
 ```
 
 `exportKey` also accepts `overwrite` and `name`, and refuses to overwrite an existing file unless `overwrite` is true. `sdk-web` has neither method; storing a key is up to your app.
+
+`importKey` treats the file as untrusted. It checks the `type`, the key encodings and lengths, and that the private and public keys belong together, and rejects with a clear error if not. For `secp256k1` it derives the public key from the private scalar and compares; for `ml-dsa-65` and `falcon-512` it signs and verifies a test message. A mismatched pair, or a public key that is not a point on the curve, is refused here and not at first use. A bad key file rejects with, for example, `Invalid secp256k1 key: the private and public keys do not belong together`.
 
 !!! warning
     `exportKey` writes the whole `IKey` as plain JSON, **private key included**. It does not encrypt the file or set its permissions. Protect it yourself.
@@ -103,7 +109,7 @@ Both take an options object as the last argument:
 | `type` | The key type to derive. One phrase can back a `secp256k1`, an `ml-dsa-65` and a `falcon-512` identity; each gets its own seed. |
 | `passphrase` | An optional BIP-39 passphrase. The same words with a different passphrase are a different key. |
 | `compressed` | As for `generateKey`. |
-| `validate` | On by default. The phrase must be 12, 15, 18, 21 or 24 words, from the English list, with a correct checksum. Pass `false` only to derive from something that is not a mnemonic. |
+| `validate` | On by default. The phrase must be 12, 15, 18, 21 or 24 words, from the English list, with a correct checksum. Pass `false` only to derive from something that is not a mnemonic. It gives the same key in `sdk-node` and `sdk-web`. |
 | `legacy` | Reproduces the old `@activeledger/sdk-bip39` package (`SHA256(phrase)` as the private key). For recovering an old phrase only; refused for the post-quantum types and not validated. |
 
 A phrase gives the same key in `sdk-node` and `sdk-web`. For `secp256k1` the SDK takes the BIP-32 master key from the phrase's seed and goes no further; it does not derive child keys. For the post-quantum types it uses HKDF-SHA512 with a different label for each type.
@@ -148,7 +154,18 @@ The signature goes under the key's identity in `$sigs`. There is also a position
 `connection.sendTransaction(tx)` posts it and resolves with the node's reply as an `ILedgerResponse`: `$umid`, `$summary`, `$streams` and optionally `$responses`. [Transactions](../transactions.md#reading-the-reply) explains each field.
 
 !!! warning
-    A refused transaction still resolves. The node answers HTTP 200 and the failure is in the reply. Check `response.$summary.commit` is above zero, and when it is not, read the `errors` the node sends in `$summary`. The `ILedgerResponse` type does not declare them, so cast: `(response.$summary as any).errors`. Only network and non-200 failures reject the promise. `onboardKey` is the exception: it rejects when no identity was created.
+    A refused transaction can still resolve. The node may answer HTTP 200 and put the failure in the reply. Do not treat a resolved promise as success. Pass the reply to `isCommitted(response)`, which is exported from both packages.
+
+A reply counts as **committed** only if the HTTP status is 2xx, the body is a JSON object, it has a `$summary` object, and `$summary.errors` is absent or empty. `commit` is not consulted: the ledger reports a rejection in `errors`. `ILedgerResponse` declares `$summary.errors?: string[]`, so no cast is needed.
+
+| Reply | `sendTransaction` | `isCommitted` |
+|---|---|---|
+| 2xx, `$summary` with no `errors` | resolves | `true` |
+| 2xx, `$summary.errors` not empty | resolves, with the errors in `$summary` | `false` |
+| 2xx, body `{}`, an HTML page or empty | rejects: `Unexpected ledger response (no $summary)` | n/a |
+| non-2xx, or no connection | rejects (the HTTP library's error) | n/a |
+
+`isCommitted` itself never throws; given anything that is not a committed reply it returns `false`. `onboardKey` rejects when the reply is not committed or names no new stream.
 
 For a transaction the helper cannot shape, build the object yourself and sign it with `signTransaction`. This is how to add `$expire`, which `labelledTransaction` has no option for (see [Transactions](../transactions.md) for why you want it on anything you might retry):
 
@@ -218,6 +235,7 @@ payloads.verify(order, signature, key.key.pub.pkcs8pem, key.type); // true or fa
 - **The transaction must reach the node as it was signed.** `signTransaction` signs `JSON.stringify($tx)`. Do not change `$tx`, including key order, between signing and sending.
 - **Post-quantum signatures are large.** ML-DSA-65 is 3309 bytes. Falcon-512 is 649 to 662 bytes, and the length varies, so do not size a buffer or a column to a fixed width.
 - **A recovery phrase is the identity.** Anyone with the words can sign as you, and a mistyped phrase is refused by the checksum rather than giving a wrong key unless you turn `validate` off.
+- **A resolved `sendTransaction` is not a commit.** Check `isCommitted(response)` every time.
 - **Resending runs it twice** unless the transaction has `$expire`. See [Transactions](../transactions.md).
 - **React Native and browsers need a random source.** `sdk-web` calls the global `crypto.getRandomValues` for post-quantum keys and signatures. A browser has it. React Native does not by default; install a polyfill for it before generating or signing.
 - **`sdk-web` is ESM only**, and plain-Node use of the post-quantum types depends on Node being able to `require()` an ES module, which is why Node 20.19 is the floor.
