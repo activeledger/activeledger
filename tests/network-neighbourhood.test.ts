@@ -2,6 +2,7 @@ import { expect } from "chai";
 import "mocha";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
+import "../packages/network/src/network/home";
 import { Neighbour } from "../packages/network/src/network/neighbour";
 import { Neighbourhood } from "../packages/network/src/network/neighbourhood";
 
