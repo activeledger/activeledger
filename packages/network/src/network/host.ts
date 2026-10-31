@@ -43,6 +43,7 @@ import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
+import { IpcBatcher, ipcSend, unbatch } from "./ipcbatch";
 import { PhysicalCores } from "./cpus";
 import * as process from "process";
 import {
@@ -442,7 +443,7 @@ export class Host extends Home {
               );
               // A client resubmission has no $nodes, it isn't a peer broadcast
               if (processor && entry.$nodes) {
-                processor.send({
+                ipcSend(processor, {
                   type: "broadcast",
                   data: {
                     umid: entry.$umid,
@@ -1072,12 +1073,12 @@ export class Host extends Home {
       // Add to list
       this.processors.push(processor);
       // Setup
-      processor.send(latestSetupMsg);
+      ipcSend(processor, latestSetupMsg);
     }
 
     // Create temporary ready to swap out (So it is already set up)
     this.standbyProcess = this.createProcessor(cpuTotal);
-    this.standbyProcess.send(latestSetupMsg);
+    ipcSend(this.standbyProcess, latestSetupMsg);
 
     // Setup Iterator
     this.processorIterator = this.processors[Symbol.iterator]();
@@ -1262,6 +1263,11 @@ export class Host extends Home {
     // Set useful default
     pFork.stop = false;
 
+    // Coalesce this tick's messages to the worker into one IPC send
+    const batcher = new IpcBatcher(pFork);
+    (pFork as any).batcher = batcher;
+    pFork.on("exit", () => batcher.close());
+
     // Prevent multiple runs, Could overwrite method instead
     let unloadHandled = false;
 
@@ -1281,7 +1287,7 @@ export class Host extends Home {
         //this.standbyProcess.send(this.getLatestSetup());
 
         setTimeout(() => {
-          this.standbyProcess.send(this.getLatestSetup(), (e) => {
+          ipcSend(this.standbyProcess, this.getLatestSetup(), (e) => {
             if (e) {
               ActiveLogger.fatal(e as any, "Issue with new Standby Process");
               // Send it again?
@@ -1354,7 +1360,7 @@ export class Host extends Home {
     };
 
     // Listen for message to respond to waiting http
-    pFork.on("message", (m: any) => {
+    pFork.on("message", (batch: any) => unbatch(batch, (m: any) => {
       // Cache Pending Reference
       const pending = this.processPending[m.data.umid];
 
@@ -1467,7 +1473,7 @@ export class Host extends Home {
         case "contractLatestVersion":
           // Let other processes know of new version
           this.processors.forEach((processor) => {
-            processor.send(m);
+            ipcSend(processor, m);
           });
           // No need to send to standby it hasn't processed the transaction
           break;
@@ -1481,7 +1487,7 @@ export class Host extends Home {
           ActiveLogger.fatal(m, "Unknown IPC Call");
           break;
       }
-    });
+    }));
 
     // Recreate a new subprocessor
     pFork.on("error", unloadProcessorSafely);
@@ -1533,9 +1539,9 @@ export class Host extends Home {
           },
         };
         this.processors.forEach((processor) => {
-          processor.send(reloadMsg);
+          ipcSend(processor, reloadMsg);
         });
-        this.standbyProcess.send(reloadMsg);
+        ipcSend(this.standbyProcess, reloadMsg);
       })
       .catch((e: any) => {
         ActiveLogger.info(e, "Failed to reload Neighbourhood");
@@ -1555,13 +1561,16 @@ export class Host extends Home {
       this.processPending[umid].shutdown = true;
 
       // Pass destory message to processor
-      this.findProcessor(this.processPending[umid].pid)?.send({
-        type: "destory",
-        data: {
-          umid,
-          skipTimeout,
-        },
-      });
+      const owner = this.findProcessor(this.processPending[umid].pid);
+      if (owner) {
+        ipcSend(owner, {
+          type: "destory",
+          data: {
+            umid,
+            skipTimeout,
+          },
+        });
+      }
 
       if (!skipTimeout) {
         // Keep in memory to manage inbound broadcasts
@@ -1810,7 +1819,7 @@ export class Host extends Home {
       //setTimeout(() => {
       // Pass transaction to sub processor
       ActiveTiming.mark(v.$umid, "host.dispatch");
-      robin.send({
+      ipcSend(robin, {
         type: "tx",
         entry: this.processPending[v.$umid].entry,
       });
