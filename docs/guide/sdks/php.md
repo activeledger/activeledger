@@ -51,7 +51,7 @@ To restore the identity on a later request:
 $key = KeyPair::fromSeedBase64(file_get_contents('identity.seed'));
 ```
 
-`onboard()` throws a `RuntimeException` if the ledger did not create a stream. The transaction it sends is described in [Identities](../identities.md); the fields of the ones you build yourself are in [Transactions](../transactions.md).
+`onboard()` throws a `RuntimeException` unless the reply is a commit (see `committed()` below) and the ledger created a stream. The transaction it sends is described in [Identities](../identities.md); the fields of the ones you build yourself are in [Transactions](../transactions.md).
 
 ## Keys
 
@@ -89,11 +89,13 @@ $full = Secp256k1KeyPair::generate(compressed: false);  // uncompressed
 $key->publicKey();    // "0x02a1b2..." for the ledger
 $key->privateKey();   // "0x..." 32 bytes; works in the other SDKs too
 
-$restored = Secp256k1KeyPair::fromKeys($key->publicKey(), $key->privateKey());
+$restored = Secp256k1KeyPair::fromKeys($key->publicKey(), $key->privateKey());  // throws if they do not match
 $verifier = Secp256k1KeyPair::fromPublicKey($key->publicKey());
 ```
 
-secp256k1 signatures are about 22 times smaller than ML-DSA-65 ones, and every signature is stored on the ledger for good. Use it unless the identity has to resist quantum computers. It uses PHP's `openssl` extension, the same implementation the node verifies with. Signatures are always low-S.
+A secp256k1 transaction is roughly 22 times smaller than an ML-DSA-65 one (the SDK README's figure), and every signature is stored on the ledger for good. Use it unless the identity has to resist quantum computers. It uses PHP's `openssl` extension, the same implementation the node verifies with. Signatures are always low-S.
+
+`fromKeys()` checks that the public key is the one derived from the private key, and throws `InvalidArgumentException` if the pair does not match, rather than signing with one key while publishing another. Public keys that are not a point on the curve are rejected too (checked through OpenSSL), and the DER signature parser is bounds-checked. The ML-DSA `KeyPair` has no two-key loader; restore it from its seed.
 
 !!! warning
     The private key of an `ml-dsa-65` pair here is a 32-byte seed, not the 4032-byte key the other SDKs export. The underlying library cannot load a 4032-byte key, and the SDK throws if you pass one. It does this deliberately: the library would otherwise accept the bytes as seed material, derive an unrelated identity and sign happily, and the ledger would reject every transaction with `1220 Signature Incorrect`. To move an ML-DSA identity between SDKs, give the other SDK the seed through its seed constructor. secp256k1 private keys move freely in both directions.
@@ -157,14 +159,21 @@ $response = $client->submit($tx);
 
 | Method | Returns |
 |---|---|
-| `committed()` | `true` when `errors()` is empty |
-| `errors()` | the messages from `$summary.errors` |
+| `committed()` | `true` only when `errors()` is empty: the HTTP status is 2xx, the body is a JSON object with a `$summary` object, and the node reported no errors |
+| `errors()` | the messages from `$summary.errors`, or, if there are none, what the SDK found wrong with the reply |
 | `newStreams()` | the ids of streams the transaction created |
 | `responses()` | the values contracts returned, from `$responses` |
-| `decoded()` | the whole reply as an array, or `null` if it was not JSON |
+| `decoded()` | the whole reply as an array, or `null` if it was not a JSON object |
 | `raw()` | the reply body exactly as the node sent it |
 
-`submit()` throws a `RuntimeException` on a transport failure. The `Client` constructor takes a timeout in seconds as its third argument; the default is 30. `submitRaw($json)` sends an envelope you built yourself.
+`submit()` throws a `RuntimeException` on a transport failure. `submitRaw()` reads the HTTP status from curl and does not follow redirects, so a 3xx reply is an error, not a commit.
+
+An empty body, a body that is not JSON, a JSON array or scalar, `{}`, and any object without a `$summary` object are all not committed. `errors()` says why, with entries such as `Response body is not a JSON object`, `Response has no $summary object` and `HTTP status 302`. You can build a `LedgerResponse` yourself from a body and an optional status: `new LedgerResponse($body, 200)`.
+
+!!! warning
+    `new LedgerResponse($body)` without a status cannot check it, so only the body is judged. Pass the status if you have one.
+
+Earlier versions treated any reply without errors as committed, including an empty or non-JSON one. This change is unreleased at the time of writing, so check the version you have installed. The `Client` constructor takes a timeout in seconds as its third argument; the default is 30. `submitRaw($json)` sends an envelope you built yourself.
 
 To see exactly what was signed, which is the quickest way to diagnose a rejected signature:
 
@@ -233,7 +242,7 @@ The `KeyType` enum has the cases `Rsa`, `Secp256k1`, `MlDsa65` and `Falcon512`. 
 ## Things that will bite you
 
 !!! warning
-    **A rejected transaction is an HTTP 200.** The node reports the failure in the body. Check `$response->committed()`, not the HTTP status. `submit()` does not throw for a rejected transaction.
+    **A rejected transaction is an HTTP 200.** The node reports the failure in the body. Check `$response->committed()`, not the HTTP status. `submit()` does not throw for a rejected transaction, or for a non-2xx status or a non-JSON body; those come back as a `LedgerResponse` that is not committed.
 
 - **Every signature problem is reported as `1220 Signature Incorrect`.** A wrong key type, the wrong key material and truly bad bytes all give that one message. Look at `$tx->signedBytes()` first.
 - **Signatures cover exact bytes.** PHP's `json_encode` escapes `/` as `\/` and non-ASCII as `\uXXXX`, which changes the bytes, so the SDK uses its own serialiser, `CanonicalJson`. Array order is insertion order, and that order is what is signed. Do not edit the body after `build()`.
