@@ -51,7 +51,7 @@ func main() {
 }
 ```
 
-`NewClient` takes the address of one node and sets a 30 second timeout on ordinary requests. `Onboard` returns an error if the ledger did not create a stream, so you never get an `Identity` with an empty `StreamID`.
+`NewClient` takes the address of one node and sets a 30 second timeout on ordinary requests. `Onboard` returns an error unless the reply is committed (see [Sending transactions](#sending-transactions)) and created a stream, so you never get an `Identity` with an empty `StreamID`.
 
 ## Keys
 
@@ -73,7 +73,7 @@ full, err := eckeys.GenerateWith(false)  // uncompressed public key
 public := key.PublicKey()                // "0x02a1b2…"
 private, err := key.PrivateKey()
 
-restored, err := eckeys.FromKeys(public, private)
+restored, err := eckeys.FromKeys(public, private) // errors if they are not a pair
 verifier, err := eckeys.FromPublicKey(public) // cannot sign
 ```
 
@@ -85,12 +85,14 @@ key, err := pqkeys.Generate()
 public := key.PublicKey()                // base64
 private, err := key.PrivateKeyB64()
 
-restored, err := pqkeys.FromKeys(public, private)
+restored, err := pqkeys.FromKeys(public, private) // errors if they are not a pair
 verifier, err := pqkeys.FromPublic(public)    // cannot sign
 
 sig, err := key.Sign([]byte("some bytes"))
 ok := key.Verify([]byte("some bytes"), sig)
 ```
+
+`FromKeys` checks that the private key produces the public key you passed, in both packages. A mismatched pair returns an error ("private key does not match the public key") instead of a key that signs for the wrong identity. `eckeys.FromPublicKey` and `eckeys.FromKeys` also reject a public key that is not a point on the secp256k1 curve, and one whose length and SEC1 prefix disagree.
 
 Both key pair types have `CanSign()`, `Sign`, `Verify` and `KeyType()`. `Verify` returns `false` for a malformed signature rather than an error.
 
@@ -157,7 +159,17 @@ fmt.Println(response.Responses())   // values the contract returned
 
 `Build` returns an error if the namespace, the contract or every signer is missing. The `$tx` keys always appear in the order `$entry` (if set), `$namespace`, `$contract`, `$i`, `$o`, `$r`, whatever order you call the methods. Streams inside `$i`, `$o` and `$r` keep the order you added them. The signature covers those exact bytes.
 
-On the response, `Committed()` is true when the node reported no errors. `Errors()`, `NewStreams()` and `Responses()` read the matching parts of the reply described in [Transactions](../transactions.md#reading-the-reply). `Raw` holds the reply text unparsed.
+On the response, `Committed()` is true only when all of these hold:
+
+- the HTTP status is 2xx
+- the body is a JSON object
+- it contains a `$summary` object
+- `$summary.errors` is absent or empty
+
+`Errors()`, `NewStreams()` and `Responses()` read the matching parts of the reply described in [Transactions](../transactions.md#reading-the-reply). `Raw` holds the reply text unparsed.
+
+!!! warning
+    A reply that is not a clear commit is never reported as one. A non-2xx status, a body that is empty, HTML, `[]` or `null`, and a bare `{}` or any object without `$summary` are all not committed. `Errors()` then holds an entry such as `HTTP status 502`, `response body is not a JSON object` or `response has no $summary`. These are usually a proxy or a failed node, not the ledger. The accessors never panic on such a reply: `NewStreams()` and `Responses()` return empty values. `SubmitRaw` records the HTTP status in the same way. The old rule that a commit needs a positive `commit` count no longer applies.
 
 The SDK does not set `$expire`, so a retry of a signed transaction runs it again. See the warning in [Transactions](../transactions.md#the-shape).
 
@@ -192,7 +204,7 @@ The contract must return the values itself. The SDK has no helper for reading a 
 !!! warning
     Events are deprecated from SDK v2.4.0 and will be removed in the next major version. ActiveCore no longer serves events, and a node's event service listens only on the node's own host, so a client has nothing to connect to. Run your own server-sent events listener on the node's host and relay what you need. The rest of this section describes the existing behaviour.
 
-`Subscribe` opens a server-sent events stream and returns two channels. Cancel the context to close the connection.
+`Subscribe` opens a server-sent events stream and returns two channels. A non-2xx reply is sent on the error channel as `event stream refused: HTTP status N`. Cancel the context to close the connection.
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -201,7 +213,7 @@ defer cancel()
 events, errs := client.Subscribe(ctx, "/events")
 for event := range events {
 	fmt.Println(event.Name, event.ID, event.Data)
-	if done {
+	if event.Name == "stop" {
 		cancel()
 	}
 }
@@ -228,7 +240,7 @@ type Signer interface {
 
 ## Things that will bite you
 
-- **A rejected transaction is still HTTP 200.** `Submit` returns no Go error for a rejection. Check `response.Committed()` every time.
+- **A rejected transaction is still HTTP 200.** `Submit` returns no Go error for a rejection, and also none for a 502 or an HTML error page. Check `response.Committed()` every time, never the status code. It is false for a non-2xx status or a reply with no `$summary`; `response.Errors()` says why.
 - **Do not build `$tx` with `map` or `encoding/json`.** Go maps sort their keys and `encoding/json` escapes `<`, `>` and `&`, so the bytes would differ from what the nodes verify. Use `activeledger.NewObject().Set(key, value)`, which keeps insertion order, and `activeledger.CanonicalJSON` to see the output. Whole-number floats print as integers, the way JavaScript prints them.
 - **Signature failures are vague.** A wrong key type, a wrong-length key or one changed byte all come back as 1220 "Signature Incorrect". The SDK checks key lengths before sending so that these fail locally, and `tx.SignedBytes()` shows what you signed.
 - **The key type is always sent.** The ledger treats a missing type as `rsa`. `Onboard` sends the type for you.
