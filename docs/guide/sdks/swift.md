@@ -24,6 +24,9 @@ For Falcon-512 as well, add the add-on:
 
 In Xcode, use **File > Add Package Dependencies** and paste the repository URL.
 
+!!! note
+    The fixes described on this page for response checking, PEM handling, key validation and connection timeouts are on the `main` branch but are not in `v1.0.2`, the latest tag. Until the next tag, depend on `branch: "main"` to get them.
+
 On Apple platforms the SDK sends requests with `URLSession`. On Linux it uses AsyncHTTPClient instead, so a Linux build also pulls in swift-nio. Apple builds do not.
 
 ## Quick start
@@ -88,6 +91,12 @@ let loaded = try keys.importKey("keys/identity.json")
 !!! warning
     The key file contains the private key. `exportKey` refuses to overwrite an existing file unless you pass `overwrite: true`. Keep the file out of version control.
 
+`importKey` checks that the two halves belong together. A secp256k1 key whose public half is not a valid point, or does not match the private scalar, fails to load. So does an ML-DSA-65 pair where a test signature made with the private key does not verify under the public key. A key file with invented keys therefore no longer loads. PEM keys (RSA and older secp256k1 PEM) are not checked at import, and neither is Falcon-512 unless the add-on is enabled.
+
+The public `Key(name:type:key:identity:phrase:)` initialiser does no checking and does not throw. If you build a `Key` by hand from stored strings, you get no consistency check; go through `importKey` or the `KeyHandler` generators when you can.
+
+Public keys are also checked when a signature is verified. A secp256k1 public key that is off the curve, has a coordinate at or above the field prime, is the point at infinity, is all zero or uses the hybrid encoding is rejected, so `verify` returns `false`.
+
 Why the post-quantum types are worth their size, and which to pick, is covered in [Keys, identities and namespaces](../identities.md).
 
 ## Seeds and recovery phrases
@@ -141,7 +150,11 @@ response.created    // [StreamRef] of streams created
 response.updated    // [StreamRef] of streams updated
 ```
 
-`labelledTransaction` also takes `readonly:` (`$r`) and `selfsign:`. `inputData` must be a `.object`.
+`labelledTransaction` also takes `readonly:` (`$r`) and `selfsign:`. `inputData` must be a `.object`. Swift needs labelled arguments in declaration order, so `entry:` goes before `outputs:`, then `readonly:`, then `selfsign:`. Code written with `outputs:` first will not compile.
+
+`committed` is true only when the reply has a `$summary` object and its `errors` are absent or empty. `errors` reports a problem, rather than an empty list, when `$summary` is missing, is not an object, or has an `errors` that is not a list. So a `{}` reply or one without `$summary` is not committed, while `commit: 0` with no errors is. `committed` is always `errors.isEmpty`.
+
+`send` throws `ActiveledgerError.http` for a non-2xx status, and throws if the body is not a JSON object. A connection that is refused fails within about 5 seconds; a request that connects but gets no answer times out after 30 seconds.
 
 JSON values are the `JSONValue` enum: `.null`, `.bool`, `.integer(Int64)`, `.number(Double)`, `.string`, `.array` and `.object`. An object is an ordered array of `(String, JSONValue)` pairs, because the ledger does not sort keys and the signature covers the exact bytes.
 
@@ -173,7 +186,7 @@ let response = try await ledger.send(tx)
 print(response.responses)
 ```
 
-`response.raw` is the decoded JSON dictionary, for anything the typed accessors do not cover. `response.total`, `vote` and `commit` give the consensus totals.
+`response.raw` is the decoded JSON dictionary, for anything the typed accessors do not cover. `response.total`, `vote` and `commit` give the consensus totals; each is `nil` if the reply lacks it.
 
 ## Events
 
@@ -203,12 +216,12 @@ let signature = try payloads.sign(order, key: key)
 let ok = payloads.verify(order, signature: signature, publicKey: key.publicKey, type: .secp256k1)
 ```
 
-`verify` returns `false` for malformed input rather than throwing. `canonical(order)` is the exact string signed. It depends on key order, so store it next to the signature.
+`verify` returns `false` for malformed input rather than throwing, including a malformed RSA PEM key. `sign` with a malformed PEM private key throws `ActiveledgerError.invalidArgument`. On Linux, swift-crypto can abort the whole process on PEM that is framed correctly but is not a real key, so the SDK checks the PEM structure first (`PEMGuard`) and only then hands it on. `try payloads.canonical(order)` is the exact string signed. It depends on key order, so store it next to the signature.
 
 ## Things that will bite you
 
 !!! warning
-    **A rejected transaction is HTTP 200.** `send` only throws (`ActiveledgerError.http`) for a non-2xx status. Always check `response.committed` and read `response.errors`.
+    **A rejected transaction is HTTP 200.** `send` only throws `ActiveledgerError.http` for a non-2xx status. Always check `response.committed` and read `response.errors`. A reply with no `$summary` is not treated as success.
 
 !!! warning
     **Signature errors are vague.** A wrong type string, a key of the wrong length or one stray byte in the signed text all come back as `1220 Signature Incorrect`. Compare `tx.signedString` with what you meant to sign.
@@ -216,6 +229,7 @@ let ok = payloads.verify(order, signature: signature, publicKey: key.publicKey, 
 - **Key order is part of the signature.** Build `$tx` with `JSONValue.object` and do not reorder it. Swift's `JSONEncoder` does not match `JSON.stringify`, so the SDK has its own `canonicalJSON`. It refuses `NaN`, infinities and integers that a JavaScript number cannot hold, rather than sign something you did not write.
 - **Onboard before building transactions.** `labelledTransaction` throws `invalidArgument` if `key.identity` is nil.
 - **Onboarding keys on the key name.** The onboarding transaction uses `key.name` as its `$i` label, and `onboard` throws `ActiveledgerError.onboard` if the ledger creates no stream.
+- **Onboarding does not check `committed`.** `onboard` only requires that a stream was created. It sets `key.identity` from the first created stream and returns the response without checking `committed`, so a reply that creates a stream but also lists errors is accepted. This is a known gap. Check `committed` on the response `onboard` returns if that matters to you.
 - **The key type is always sent.** The ledger treats a missing `type` as `rsa`; the SDK never omits it, so do the same if you build an envelope by hand.
 - **Falcon needs enabling.** Call `ActiveledgerFalcon.enable()` once, or `.falcon512` throws `keyTypeUnavailable`.
 - **Falcon signatures vary in length.** Never assume a fixed width.
