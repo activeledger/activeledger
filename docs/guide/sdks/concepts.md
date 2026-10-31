@@ -2,6 +2,9 @@
 
 The SDKs differ in names and style, but they do the same few jobs. This page describes those jobs once. For the wire formats themselves, see [Identities](../identities.md) and [Sending a transaction](../transactions.md).
 
+!!! note "Which version these pages describe"
+    The behaviour on these pages is what the SDK source did on 31 October 2026. Some of it, for example how a reply is judged to be committed and the checks on imported keys, is in each SDK's next release and not in the versions on the package registries on that date. If you are on an older release, treat a reply that is empty, not JSON, or not a 2xx status as a failure yourself, and check imported keys before you trust them. Each language page says where its behaviour changed.
+
 ## What an SDK does
 
 1. **Makes keys.** It generates a key pair, or loads one you saved earlier.
@@ -18,9 +21,32 @@ The post-quantum types need Activeledger 4.7.0 or later on the node. Their signa
 !!! warning
     Keep the private key somewhere safe. The ledger only ever holds the public key, so a lost private key cannot be recovered from the network.
 
+When you load or import a key, the SDKs check it rather than trust it. A `secp256k1` public key that is not a point on the curve is rejected, in both the compressed and the uncompressed form. Where a loader takes a private and a public key together, it checks that they belong together and fails if they do not, by deriving one from the other for `secp256k1` and by signing and verifying a test message for the post-quantum types. The language pages name the loaders and the error each one raises. Loading a post-quantum pair this way needs the post-quantum library to be present.
+
 ## Signing is exact
 
 A signature covers the JSON text of `$tx` exactly as it will be sent. Change the order of the keys, or the way a number is written, after signing and the signature no longer matches. Each SDK builds the text the same way (a canonical form), so a transaction signed in one language verifies the same on the node as one signed in another. If you sign somewhere else, such as a hardware module, each language page has a "Signing elsewhere" section showing how to get the exact bytes.
+
+## Replies and `committed`
+
+A node answers a rejected transaction with HTTP 200 and the reason in `$summary.errors`, so the status code alone tells you nothing. Every SDK gives you a response with a `committed` result, and it is true only when all of these hold:
+
+1. the HTTP status is 2xx;
+2. the body is a JSON object;
+3. the body has a `$summary` object;
+4. `$summary.errors` is absent or empty.
+
+A reply that is empty, is not JSON, is an HTML error page from a proxy, is `null`, is a list, is `{}`, or has no `$summary` is therefore not committed. `$summary.commit` is not part of the test. Onboarding also needs the new stream id in the reply.
+
+How a failure reaches you differs by SDK:
+
+- **Python, Go, Rust, PHP, C# and the JVM SDK** give you a response that is not committed and carries an error entry saying why, such as "HTTP status 502" or "response has no $summary". Reading it never throws or panics.
+- **JavaScript, Dart and Swift** throw for a non-2xx status. JavaScript also throws for a 2xx reply with no `$summary`, and Dart throws for a 2xx body that is not JSON. A 200 reply of `{}` gives Dart and Swift a response with `committed` false.
+
+The language page has the exact exception names.
+
+!!! warning
+    Always check `committed`. Do not infer success from the absence of an exception.
 
 ## Reading state
 
