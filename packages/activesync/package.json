@@ -37,7 +37,7 @@
   "license": "MIT",
   "devDependencies": {
     "@activeledger/activedefinitions": "5.1.4",
-    "@types/node": "24.10.1",
+    "@types/node": "26.6.6",
     "typescript": "7.0.2"
   },
   "files": [
