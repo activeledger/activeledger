@@ -381,6 +381,55 @@ describe("Default contract entries (Activeledger)", () => {
     });
   });
 
+  // name and version become path segments at commit (ContractFiles.write), which
+  // throws only after consensus. The vote must refuse them first.
+  describe("unsafe names are refused in the vote", () => {
+    const unsafe: [string, string][] = [
+      ["a traversal", "../x"],
+      ["a nested path", "a/b"],
+      ["an absolute path", "/etc/passwd"],
+      ["an empty string", ""],
+      ["a parent reference", ".."],
+      ["a hidden name", ".hidden"],
+      ["an embedded parent reference", "a..b"],
+      ["a NUL byte", "a\u0000b"],
+      ["a backslash", "a\\b"],
+    ];
+    const addInput = (more: any) => ({ namespace: "testns", name: "example", contract: clean, version: "1.0.0", ...more });
+    const updateCtx = (more: any) =>
+      make("update", addInput(more), {
+        $o: { [stream]: {} },
+        streams: { [stream]: { state: { contract: { "0.9.0": "x" } }, authority: "identityStream" } },
+      });
+
+    for (const [method, build] of [
+      ["voteAdd", (m: any) => make("add", addInput(m))],
+      ["voteUpdate", updateCtx],
+    ] as [string, (m: any) => any][]) {
+      for (const [what, value] of unsafe) {
+        it(`${method} refuses ${what} as the name`, async () => {
+          expect(await refusal(run(method, build({ name: value })))).to.match(/^Unsafe contract name/);
+        });
+        it(`${method} refuses ${what} as the version`, async () => {
+          expect(await refusal(run(method, build({ version: value })))).to.match(/^Unsafe version/);
+        });
+      }
+
+      it(`${method} refuses a missing version`, async () => {
+        expect(await refusal(run(method, build({ version: undefined })))).to.match(/^Unsafe version/);
+      });
+
+      it(`${method} still accepts the ordinary labels`, async () => {
+        for (const name of ["example", "my-token_2", "token.v2", "Mixed-Case"]) {
+          expect(await run(method, build({ name })), name).to.equal(true);
+        }
+        for (const version of ["1.0.0", "2.1.0-beta.1", "v3", "1_0"]) {
+          expect(await run(method, build({ version })), version).to.equal(true);
+        }
+      });
+    }
+  });
+
   describe("update", () => {
     const input = (more: any = {}) => ({
       namespace: "testns",
