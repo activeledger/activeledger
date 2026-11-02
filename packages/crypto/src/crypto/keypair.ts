@@ -354,20 +354,39 @@ export class KeyPair {
   /**
    * Reduce string size for concated encryption
    *
+   * Splits on whole characters, never inside a surrogate pair, and also caps
+   * each chunk's UTF-8 size: RSA-OAEP takes only the modulus size minus 42
+   * bytes a block, and 100 characters can be 400 bytes.
+   *
    * @private
    * @param {string} data
-   * @param {number} [size=100]
+   * @param {number} [size=100] Most UTF-16 units in a chunk
+   * @param {number} [maxBytes=Infinity] Most UTF-8 bytes in a chunk
    * @returns {string[]}
    */
-  private chunkString(data: string, size: number = 100): string[] {
-    if (data.length <= size) {
-      return [data];
+  private chunkString(
+    data: string,
+    size: number = 100,
+    maxBytes: number = Infinity
+  ): string[] {
+    const chunks: string[] = [];
+    let chunk = "";
+    let bytes = 0;
+    // Iterating a string yields code points, so a pair is never split
+    for (const char of data) {
+      const charBytes = Buffer.byteLength(char);
+      if (
+        chunk &&
+        (chunk.length + char.length > size || bytes + charBytes > maxBytes)
+      ) {
+        chunks.push(chunk);
+        chunk = "";
+        bytes = 0;
+      }
+      chunk += char;
+      bytes += charBytes;
     }
-    const numChunks = Math.ceil(data.length / size);
-    const chunks = new Array(numChunks);
-    for (let i = 0, o = 0; i < numChunks; ++i, o += size) {
-      chunks[i] = data.substr(o, size);
-    }
+    chunks.push(chunk);
     return chunks;
   }
 
@@ -508,7 +527,15 @@ export class KeyPair {
         );
       } else {
         // Split data
-        let chunked = this.chunkString(this.getString(data));
+        // OAEP (SHA-1) carries the modulus size minus 42 bytes a block
+        const modulusBytes =
+          (crypto.createPublicKey(this.handler.pub.pkcs8pem)
+            .asymmetricKeyDetails?.modulusLength || 2048) / 8;
+        let chunked = this.chunkString(
+          this.getString(data),
+          100,
+          modulusBytes - 42
+        );
         return chunked
           .map((chunk) =>
             crypto
