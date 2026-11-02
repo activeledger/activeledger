@@ -720,6 +720,26 @@ describe("LevelMe store behaviour (Activestorage)", () => {
         .split("\n")
         .filter((l) => l);
       expect(lines).to.have.length(2);
+      expect(lines.map((l) => JSON.parse(l)._id).sort()).to.deep.equal(["b1", "b2"]);
+    });
+
+    it("round-trips documents with newlines in them and documents large enough to be compressed", async () => {
+      const awkward = { _id: "awk", text: "line one\nline two\n", blob: "y".repeat(40000) };
+      await db.bulkDocs([awkward], { new_edits: true });
+      await db.backup(file);
+
+      const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-levelme-restore-"));
+      const target = open(dir2, name + "awk");
+      try {
+        await target.restore(file);
+        const [doc] = await target.getMany(["awk"]);
+        expect(doc.text).to.equal(awkward.text);
+        expect(doc.blob).to.equal(awkward.blob);
+      } finally {
+        await target.close();
+        ActiveCacheManager.fetch(`streams:${name}awk`).clear();
+        fs.rmSync(dir2, { recursive: true, force: true });
+      }
     });
 
     it("what was backed up can be restored into an empty store", async () => {
@@ -736,8 +756,7 @@ describe("LevelMe store behaviour (Activestorage)", () => {
       const target = open(dir2, name + "target");
       try {
         await target.restore(file);
-        // restore() answers when the file has been read; give writes in
-        // flight a moment to land
+        // restore() must not answer until every write has landed
         const docs = await target.getMany(["r1", "r2"]);
         expect(docs.map((d) => d.n).sort()).to.deep.equal([1, 2]);
         expect(fs.existsSync(`${file}.status`)).to.equal(false);

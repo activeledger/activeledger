@@ -266,15 +266,30 @@ export class LevelMe {
     const writer = createWriteStream(filename);
 
     return new Promise((resolve, reject) => {
+      // Values are stored serialised (binary), not as text, so each one is
+      // written as the JSON of its document, one per line - what restore()
+      // reads back. Kept in stream order.
+      let queue: Promise<void> = Promise.resolve();
+      writer.on("error", reject);
       this.driver
         .createValueStream()
-        .on("data", async (data: any) => {
-          writer.write(data.toString() + "\n");
+        .on("data", (data: any) => {
+          queue = queue.then(async () => {
+            const doc = await ActiveClone.deserialize(data);
+            writer.write(JSON.stringify(doc) + "\n");
+          });
+          // Reported by the end handler
+          queue.catch(() => { });
         })
         .on("error", reject)
         .on("end", async () => {
-          writer.end();
           try {
+            await queue;
+            // Resolve only once the file is fully written
+            await new Promise<void>((done, fail) => {
+              writer.on("error", fail);
+              writer.end(done);
+            });
             await fs.promises.unlink(`${filename}.status`);
             resolve(undefined);
           } catch (err) {
@@ -293,20 +308,31 @@ export class LevelMe {
     await fs.promises.writeFile(`${filename}.status`, "running");
 
     return new Promise((resolve, reject) => {
-      createReadStream(filename)
+      // Writes run one after another so the restore has finished when this
+      // resolves, not merely when the file has been read
+      let queue: Promise<void> = Promise.resolve();
+      const reader = createReadStream(filename);
+      // pipe() does not forward a source's errors (a missing file)
+      reader.on("error", reject);
+      reader
         .pipe(newLineTransform())
-        .on("data", async (data: Buffer) => {
-          try {
-            const doc = JSON.parse(data.toString());
-            ActiveLogger.info(`Restoring ${doc._id}`);
-            await this.bulkDocs(doc, { new_edits: true });
-          } catch {
-            ActiveLogger.warn(`Restoring FAILED`);
-          }
+        .on("data", (data: Buffer) => {
+          queue = queue.then(async () => {
+            try {
+              const doc = JSON.parse(data.toString());
+              ActiveLogger.info(`Restoring ${doc._id}`);
+              if (!(await this.bulkDocs([doc], { new_edits: true }))) {
+                throw new Error("write failed");
+              }
+            } catch {
+              ActiveLogger.warn(`Restoring FAILED`);
+            }
+          });
         })
         .on("error", reject)
         .on("end", async () => {
           try {
+            await queue;
             await fs.promises.unlink(`${filename}.status`);
             resolve(undefined);
           } catch (err) {
