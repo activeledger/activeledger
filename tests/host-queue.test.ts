@@ -1018,8 +1018,8 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
           data: { umid: "p-12", nodes: { me2: { vote: true } } },
         },
       ]);
-      // Not marked noreply, so it replies with its own state
-      expect(broadcasts).to.deep.equal([["p-12", false, true]]);
+      // Not marked noreply, so it replies with its own state, to everyone as nobody was identified as the asker
+      expect(broadcasts).to.deep.equal([["p-12", false, true, undefined]]);
       expect(response.dontRelease).to.equal(true);
       expect(response.data).to.equal(e);
     });

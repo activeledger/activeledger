@@ -570,8 +570,8 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         content: { $umid: "int-1", ok: 1 },
       });
       expect(e.$spiRetry).to.equal(false);
-      // internal = true, forceRestart = false, isP2P = false
-      expect(pendingCalls[0].rest).to.deep.equal([true, false, false]);
+      // internal = true, forceRestart = false, isP2P = false, no requester
+      expect(pendingCalls[0].rest).to.deep.equal([true, false, false, undefined]);
       // No votes to look at: locks are released
       expect(released).to.deep.equal([["int-1"]]);
     });
@@ -589,6 +589,14 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       });
       await Endpoints.InternalInitalise(host, entry(), "10.0.0.2");
       expect(released).to.deep.equal([]);
+    });
+
+    it("tells the pending call who sent the frame", async () => {
+      const { host, pendingCalls } = makeHost({
+        replies: [() => Promise.resolve({ status: 200, data: {} })],
+      });
+      await Endpoints.InternalInitalise(host, entry(), "10.0.0.2", false, true, "peer-ref");
+      expect(pendingCalls[0].rest[3]).to.equal("peer-ref");
     });
 
     it("tells the pending call it came by P2P", async () => {
