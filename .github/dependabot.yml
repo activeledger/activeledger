@@ -19,6 +19,18 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Majors that are deliberately held back; each needs work first, not a bump:
+    #  - undici 8: request.ts relies on the shared global-dispatcher symbol and
+    #    pinned Agent timeouts, which a major can change.
+    #  - chai 6: ESM-only, and the tests are mocha/CommonJS.
+    #  - @types/node: stay on the typings of the Node release we target (24).
+    ignore:
+      - dependency-name: "undici"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "chai"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       # These move together and are pointless to review one at a time
       types:
