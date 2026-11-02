@@ -490,3 +490,66 @@ describe("KeyPair - legacy PRIVATE/PUBLIC format keys", () => {
     expect(new KeyPair("secp256k1", legacyPub).verify("pair", sig)).to.equal(true);
   });
 });
+
+/**
+ * The type string travels with the transaction and decides which algorithm
+ * runs; the key is parsed from its own encoding, which says what it is. The
+ * two must agree. node's createVerify("sha256").verify(key, sig) is happy to
+ * check an ECDSA signature against any EC key, or an RSA one against any RSA
+ * key, whatever KeyPair was told - so without a check a P-256 key passes as
+ * secp256k1, and an EC key passes as "rsa".
+ */
+describe("KeyPair - key type and curve must match the declared type", () => {
+  const pem = { publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } } as any;
+  const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, ...pem }) as any;
+  const p256 = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1", ...pem }) as any;
+  const ed = crypto.generateKeyPairSync("ed25519", pem) as any;
+  const sign = (alg: string | null, key: string) =>
+    crypto.sign(alg, Buffer.from("typed"), key).toString("base64");
+
+  const rsaSig = sign("RSA-SHA256", rsa.privateKey);
+  const p256Sig = sign("sha256", p256.privateKey);
+  const ecSig = sign("sha256", EC.prvPkcs8Pem);
+
+  it("accepts each key under its own type (controls for the rejections below)", () => {
+    expect(new KeyPair("rsa", rsa.publicKey).verify("typed", rsaSig)).to.equal(true);
+    for (const type of EC_TYPES) {
+      expect(new KeyPair(type, EC.pubSpkiPem).verify("typed", ecSig)).to.equal(true);
+    }
+  });
+
+  it("will not verify with a key of the wrong algorithm or curve", () => {
+    const cases: [string, string, string][] = [
+      ["secp256k1", rsa.publicKey, rsaSig],
+      ["bitcoin", rsa.publicKey, rsaSig],
+      ["secp256k1", p256.publicKey, p256Sig],
+      ["ethereum", p256.publicKey, p256Sig],
+      ["secp256k1", ed.publicKey, sign(null, ed.privateKey)],
+      ["rsa", EC.pubSpkiPem, ecSig],
+      ["rsa", p256.publicKey, p256Sig],
+      ["rsa", ed.publicKey, sign(null, ed.privateKey)],
+    ];
+    for (const [type, key, sig] of cases) {
+      let result: boolean | string;
+      try { result = new KeyPair(type, key).verify("typed", sig); } catch { result = "threw"; }
+      expect(result, `${type} with ${key.slice(27, 40)}`).to.not.equal(true);
+    }
+  });
+
+  it("will not sign with a key of the wrong algorithm or curve", () => {
+    const cases: [string, string][] = [
+      ["secp256k1", rsa.privateKey],
+      ["bitcoin", rsa.privateKey],
+      ["secp256k1", p256.privateKey],
+      ["ethereum", p256.privateKey],
+      ["secp256k1", ed.privateKey],
+      ["rsa", EC.prvPkcs8Pem],
+      ["rsa", EC.prvSec1Pem],
+      ["rsa", p256.privateKey],
+      ["rsa", ed.privateKey],
+    ];
+    for (const [type, key] of cases) {
+      expect(() => new KeyPair(type, key).sign("typed"), `${type} with ${key.slice(11, 24)}`).to.throw();
+    }
+  });
+});
