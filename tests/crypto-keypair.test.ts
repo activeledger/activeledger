@@ -668,3 +668,26 @@ describe("KeyPair - RSA encrypt chunking is safe for any text", () => {
     expect(k2048.pub.encrypt("x".repeat(300)).split("|")).to.have.length(3);
   });
 });
+
+describe("KeyPair - legacy format keys that do not hold a key", () => {
+  const legacy = (label: string, content: string) =>
+    `-----BEGIN ${label}-----\n${Buffer.from(content).toString("base64")}\n-----END ${label}-----`;
+
+  it("fails with an error, never a signature, on sign", () => {
+    for (const junk of ["not hex at all", "", "zz"]) {
+      expect(
+        () => new KeyPair("secp256k1", legacy("PRIVATE", junk)).sign("x"),
+        junk
+      ).to.throw(/Invalid secp256k1 key|supplied PEM/);
+    }
+  });
+
+  it("fails with an error, never a verdict, on verify", () => {
+    for (const junk of ["not hex at all", "", "04ab"]) {
+      expect(
+        () => new KeyPair("secp256k1", legacy("PUBLIC", junk)).verify("x", EC.signatureB64),
+        junk
+      ).to.throw(/Invalid secp256k1 key|supplied PEM/);
+    }
+  });
+});
