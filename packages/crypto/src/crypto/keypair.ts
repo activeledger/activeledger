@@ -99,6 +99,13 @@ const POST_QUANTUM: {
   "falcon-512": falcon512 as any,
 };
 
+/**
+ * Order of the secp256k1 group: valid private scalars are 1 to this minus 1.
+ */
+const SECP256K1_ORDER = BigInt(
+  "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+);
+
 export class KeyPair {
   /**
    * Holds Public Private Data
@@ -163,7 +170,15 @@ export class KeyPair {
         case "ethereum":
         case "secp256k1":
           if (pem.startsWith("0x")) {
-            // Raw Hex based key
+            // Raw Hex based key. Buffer.from(hex, "hex") stops at the first
+            // character that is not hex without complaint, so a typo, an odd
+            // digit or trailing junk would silently become a different key
+            // (an empty one at worst). Check it is whole bytes of hex first.
+            if (!/^(?:[0-9a-fA-F]{2})+$/.test(pem.slice(2))) {
+              throw ActiveLogger.fatal(
+                `Invalid ${type} key: 0x must be followed by whole bytes of hex`
+              );
+            }
             if (
               //pem.startsWith("0x02") || // compressed y point even
               //pem.startsWith("0x03") || // compressed y point odd
@@ -181,7 +196,14 @@ export class KeyPair {
                 )
               );
             } else {
-              // Private
+              // Private. 0 and anything at or above the group order are not
+              // private keys; OpenSSL will still sign with them.
+              const scalar = BigInt(pem);
+              if (scalar < BigInt(1) || scalar >= SECP256K1_ORDER) {
+                throw ActiveLogger.fatal(
+                  `Invalid ${type} private key: out of range for secp256k1`
+                );
+              }
               this.createHandler(
                 AsnParser.encodeECPrivateKey(
                   Buffer.from(pem.replace("0x", ""), "hex"),
