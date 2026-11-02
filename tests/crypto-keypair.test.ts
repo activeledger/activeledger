@@ -147,6 +147,21 @@ describe("KeyPair - secp256k1 against independent vectors", () => {
     expect((pub.verify as any)(EC.message, tampered, "hex")).to.equal(false);
   });
 
+  it("an instance generated with raw hex keys can sign and verify with them", () => {
+    for (const compressed of [false, true]) {
+      const gen = new KeyPair("secp256k1");
+      const keys = gen.generate(2048, false, compressed);
+      // The instance itself, not a new one built from the returned keys
+      const sig = gen.sign("self");
+      expect(gen.verify("self", sig)).to.equal(true);
+      expect(gen.verify("other", sig)).to.equal(false);
+      // And what it signed checks out against the raw public key it returned
+      expect(new KeyPair("secp256k1", keys.pub.pkcs8pem).verify("self", sig)).to.equal(true);
+      // The hash of each returned key is the hash of the hex text handed out
+      expect(keys.pub.hash).to.equal(crypto.createHash("sha256").update(keys.pub.pkcs8pem).digest("hex"));
+    }
+  });
+
   it("generated keys verify in both encodings and in compressed form", () => {
     const gen = new KeyPair("secp256k1");
     const pemKeys = gen.generate(2048, true);
