@@ -526,6 +526,442 @@ describe("Hybrid processor", function () {
     });
   });
 
+  describe("an item that is already here", () => {
+    it("settles an item whose :umid doc is stored, without executing", async () => {
+      const { item } = committedItem(2);
+      await store.data.bulkDocs([clone(item.umidDoc)], { new_edits: false });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("settled");
+      expect(out.vote).to.equal("yes");
+      expect(out.reasons).to.deep.equal(["already applied"]);
+      expect(executions).to.have.length(0);
+      expect((await get(S))._rev).to.equal("1-aaa");
+    });
+
+    it("saves the received :umid doc and settles when every output is already at its attested revision", async () => {
+      const { item, signed, umid } = committedItem(2);
+      for (const doc of Object.values(signed)) await store.data.bulkDocs([clone(doc)], { new_edits: true, force_rev: doc._rev });
+      const out = await processor.apply(item, from());
+      expect(out.action, out.reasons.join()).to.equal("settled");
+      expect(out.vote).to.equal("yes");
+      expect(out.reasons.join()).to.contain("already at the attested revisions");
+      expect(executions).to.have.length(0);
+      expect(await get(`${umid}:umid`)).to.deep.equal(item.umidDoc);
+    });
+
+    it("does not take outputs at the attested revision but with other content for already applied", async () => {
+      const { item, signed, umid } = committedItem(2);
+      // Same revision, different content: the sha256 in revsOut is what matches
+      for (const doc of [{ ...clone(signed[S]), balance: 999 }, clone(signed[`${S}:stream`])]) {
+        await store.data.bulkDocs([doc], { new_edits: true, force_rev: doc._rev });
+      }
+      supernodes = [new FakeUpstream("sn1", [BEFORE_STATE, BEFORE_META])];
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      const out = await processor.apply(item, from());
+      expect(out.action, out.reasons.join()).to.equal("saved");
+      expect(executions).to.have.length(1);
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+
+    it("drops an item whose :umid doc is not the one the attestation hashes", async () => {
+      const { item } = committedItem(2);
+      item.umidDoc.events = [{ name: "stolen", data: {}, phase: "commit", contract: "pay" }];
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.vote).to.equal("no");
+      expect(executions).to.have.length(0);
+      expect(await get(`${item.umid}:umid`)).to.equal(undefined);
+    });
+
+    it("answers a failure it did not expect as a retryable drop instead of throwing", async () => {
+      const { item } = committedItem(2);
+      const sources = () => ({ peers: [] as any[], supernodes: supernodes as any[] });
+      const broken = new Processor({
+        store: store as any,
+        sources,
+        lookup: { ensure: async () => { throw new Error("lookup exploded"); }, refreshToTip: async () => ({ absent: [] }) } as any,
+        events: { emit: async () => {} },
+        context: () => ctx,
+        contracts: null,
+        execute: async () => result(),
+      });
+      item.$revs = { $i: { other: "1-a:1-b" }, $o: {} };
+      item.nodes = votes(item.umid, item.$revs, 3);
+      item.umidDoc = umidDocFor(item.umid, item.$revs);
+      item.attestation = attest(nodes[0], item);
+      const out = await broken.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.retry).to.equal(true);
+      expect(out.reasons.join()).to.contain("apply failed: lookup exploded");
+    });
+  });
+
+  describe("committed, the received :umid doc against the local execution", () => {
+    const localUmidDoc = (item: any, events: any[]) => ({ ...clone(item.umidDoc), events });
+
+    it("saves the received doc, not the local one, and records a divergence when the events differ", async () => {
+      const { item, umid } = committedItem(2);
+      execute = async () =>
+        result({ documents: localDocs(umid, 2), umidDoc: localUmidDoc(item, [{ name: "other", data: {}, phase: "commit", contract: "pay" }]) });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect(out.vote).to.equal("yes");
+      expect(out.reasons.join()).to.contain("differ from the received doc");
+      expect(out.divergence!.kind).to.equal("umid-doc-mismatch");
+      expect(await get(`${umid}:umid`)).to.deep.equal(item.umidDoc);
+      expect((await listDivergences(store as any)).map((r) => r.kind)).to.deep.equal(["umid-doc-mismatch"]);
+    });
+
+    it("ignores the emitting node's clock in an event id when comparing", async () => {
+      const { item, umid } = committedItem(2);
+      item.umidDoc.events = [{ _id: "ev-1", name: "paid", data: { to: "bob" }, phase: "commit", contract: "pay" }];
+      item.attestation = attest(nodes[0], item);
+      const local = localUmidDoc(item, [{ _id: "ev-2", name: "paid", data: { to: "bob" }, phase: "commit", contract: "pay" }]);
+      execute = async () => result({ documents: localDocs(umid, 2), umidDoc: local });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect(out.divergence).to.equal(undefined);
+    });
+
+    it("does not call a difference a divergence when the execution was supernode-dependent", async () => {
+      const { item, umid } = committedItem(2);
+      execute = async () =>
+        result({
+          documents: localDocs(umid, 2),
+          supernodeDependent: true,
+          umidDoc: localUmidDoc(item, []),
+        });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect(out.divergence).to.equal(undefined);
+    });
+  });
+
+  describe("committed, what is written besides the outputs", () => {
+    it("keeps the execution's volatile on this node only", async () => {
+      const { item, umid } = committedItem(2);
+      execute = async () => result({ documents: localDocs(umid, 2), volatile: { [`${S}:volatile`]: { _id: `${S}:volatile`, secret: 1 } } });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect((await get(`${S}:volatile`)).secret).to.equal(1);
+    });
+
+    it("tells the contract builder which stream states were written, and builds for the entry before executing", async () => {
+      const { item, signed, umid } = committedItem(2);
+      const ensured: any[] = [];
+      const written: any[] = [];
+      const sources = () => ({ peers: [] as any[], supernodes: supernodes as any[] });
+      const withContracts = new Processor({
+        store: store as any,
+        sources,
+        lookup: new SourceLookup({ store: store as any, sources }),
+        events: { emit: async () => {} },
+        context: () => ctx,
+        contracts: {
+          ensureFor: async (entry: any) => void ensured.push(entry.$umid),
+          onWritten: async (docs: any[]) => void written.push(docs.map((d) => d._id)),
+        } as any,
+        execute: async () => result({ documents: localDocs(umid, 2) }),
+      });
+      const out = await withContracts.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect(ensured).to.deep.equal([umid]);
+      // State documents only: the :stream meta is not a contract
+      expect(written).to.deep.equal([[S]]);
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+
+    it("emits an event whose data is not an object as {data}, and skips one with no name", async () => {
+      const { item, umid } = committedItem(2);
+      item.umidDoc.events = [
+        { name: "scalar", data: 5, contract: "pay" },
+        { name: "list", data: [1, 2] },
+        { data: { x: 1 } },
+        null,
+        { name: "plain", data: { y: 2 }, contract: "other" },
+      ];
+      item.attestation = attest(nodes[0], item);
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      await processor.apply(item, from());
+      expect(events.map((e) => [e.type, e.contract, e.payload])).to.deep.equal([
+        ["scalar", "pay", { data: 5 }],
+        ["list", "pay", { data: [1, 2] }],
+        ["plain", "other", { y: 2 }],
+        ["tx.committed", "pay", undefined],
+      ]);
+    });
+
+    it("still applies the item when the event sink fails", async () => {
+      const { item, signed, umid } = committedItem(2);
+      const sources = () => ({ peers: [] as any[], supernodes: supernodes as any[] });
+      const noisy = new Processor({
+        store: store as any,
+        sources,
+        lookup: new SourceLookup({ store: store as any, sources }),
+        events: { emit: async () => { throw new Error("event store full"); } },
+        context: () => ctx,
+        contracts: null,
+        execute: async () => result({ documents: localDocs(umid, 2) }),
+      });
+      const out = await noisy.apply(item, from());
+      expect(out.action).to.equal("saved");
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+  });
+
+  describe("committed, adopt mode failures", () => {
+    const dependent = (umid: string, extra: any = {}) => async () =>
+      result({ documents: { ...localDocs(umid, 2), ...extra }, supernodeDependent: true, dependence: ["isSupernode"] });
+
+    it("drops, retryably, and puts the local result back when no source has the attested outputs", async () => {
+      const { item, umid } = committedItem(5, { quorum: true });
+      peers = [];
+      supernodes = [new FakeUpstream("sn1")];
+      execute = dependent(umid);
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.retry).to.equal(true);
+      expect(out.reasons.join()).to.contain("attested outputs not available");
+      expect(await get(S)).to.deep.equal(BEFORE_STATE);
+      expect(await get(`${S}:stream`)).to.deep.equal(BEFORE_META);
+      expect(await get(`${umid}:umid`)).to.equal(undefined);
+    });
+
+    it("does not take attested outputs from a source that serves other content", async () => {
+      const { item, signed, umid } = committedItem(5, { quorum: true });
+      peers = [new FakeUpstream("p1", [{ ...signed[S], balance: 1000 }, signed[`${S}:stream`]])];
+      supernodes = [new FakeUpstream("sn1")];
+      execute = dependent(umid);
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.reasons.join()).to.contain(S);
+      expect(await get(S)).to.deep.equal(BEFORE_STATE);
+    });
+
+    it("carries on past an upstream that is down, for attestations and for outputs", async () => {
+      const { item, signed, umid } = committedItem(5);
+      const down1 = new FakeUpstream("down-sn");
+      down1.down = true;
+      const sn2 = new FakeUpstream("sn2");
+      sn2.attestations.set(umid, attest(nodes[1], item));
+      const sn3 = new FakeUpstream("sn3");
+      sn3.attestations.set(umid, attest(nodes[2], item));
+      supernodes = [down1, sn2, sn3];
+      const downPeer = new FakeUpstream("down-peer");
+      downPeer.down = true;
+      peers = [downPeer, new FakeUpstream("p1", Object.values(signed))];
+      execute = dependent(umid);
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("adopted");
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+
+    it("puts back a local write that nothing attests", async () => {
+      const { item, signed, umid } = committedItem(5, { quorum: true });
+      peers = [new FakeUpstream("p1", Object.values(signed))];
+      execute = dependent(umid, { stray: { _id: "stray", v: 1 } });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.not.equal("dropped");
+      expect(await get("stray")).to.equal(undefined);
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+  });
+
+  describe("committed, SPI sources", () => {
+    it("takes one supernode's copy when revsOut is quorum-signed and no peer has it", async () => {
+      const { item, signed, umid } = committedItem(5, { quorum: true });
+      peers = [];
+      supernodes = [new FakeUpstream("sn1"), new FakeUpstream("sn2", Object.values(signed)), new FakeUpstream("sn3")];
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("repaired");
+      expect(await get(S)).to.deep.equal(signed[S]);
+    });
+
+    it("does not take one supernode's copy against the others when revsOut is not quorum-signed", async () => {
+      const { item, signed, umid } = committedItem(5);
+      peers = [];
+      supernodes = [new FakeUpstream("sn1"), new FakeUpstream("sn2", Object.values(signed)), new FakeUpstream("sn3")];
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.vote).to.equal("no");
+      expect(out.reasons.join()).to.contain("SPI could not repair");
+      expect(out.divergence!.kind).to.equal("output-mismatch");
+      expect(await get(S)).to.deep.equal(BEFORE_STATE);
+    });
+
+    it("takes the supernodes' majority when the network has moved past the attested revision", async () => {
+      const { item, umid } = committedItem(5);
+      peers = [];
+      const newer = [
+        { ...clone(BEFORE_STATE), _rev: "3-aaaaaaaaaaaa", balance: 8 },
+        { ...clone(BEFORE_META), _rev: "3-bbbbbbbbbbbb", umid: "later" },
+      ];
+      supernodes = [new FakeUpstream("sn1", newer), new FakeUpstream("sn2", newer), new FakeUpstream("sn3")];
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("repaired");
+      expect((await get(S))._rev).to.equal("3-aaaaaaaaaaaa");
+      expect((await get(`${S}:stream`))._rev).to.equal("3-bbbbbbbbbbbb");
+    });
+
+    it("will not move to a majority revision that is older than the attested one", async () => {
+      const { item, umid } = committedItem(5);
+      peers = [];
+      const older = [{ ...clone(BEFORE_STATE), _rev: "1-aaa" }, { ...clone(BEFORE_META), _rev: "1-mmm" }];
+      supernodes = [new FakeUpstream("sn1", older), new FakeUpstream("sn2", older), new FakeUpstream("sn3", older)];
+      execute = async () => result({ documents: localDocs(umid, 2) });
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect((await get(S))._rev).to.equal("1-aaa");
+    });
+  });
+
+  describe("failed items, edge cases", () => {
+    it("drops a failed item that carries no transaction", async () => {
+      const { item } = failedItem();
+      delete item.tx;
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.reasons).to.deep.equal(["failed item carries no transaction"]);
+      expect(executions).to.have.length(0);
+      item.tx = { $umid: "x" };
+      expect((await processor.apply(item, from())).reasons).to.deep.equal(["failed item carries no transaction"]);
+    });
+
+    it("asks the next upstream when the one it asked about a self-contradicting item is down", async () => {
+      const { item, umid } = failedItem(3, 0);
+      const down = new FakeUpstream("sn2");
+      down.down = true;
+      const other = new FakeUpstream("sn3");
+      other.umids.set(umid, umidDocFor(umid));
+      supernodes.push(down, other);
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.reasons.join()).to.contain("sn3 shows it committed");
+    });
+
+    it("drops, retryably, a failed item whose inputs cannot be had", async () => {
+      const { item } = failedItem();
+      item.$revs = { $i: { unknown: "4-x:4-y" }, $o: {} };
+      item.nodes = votes(item.umid, item.$revs, 1, 2);
+      const out = await processor.apply(item, from());
+      expect(out.action).to.equal("dropped");
+      expect(out.retry).to.equal(true);
+      expect(out.reasons.join()).to.contain("unknown");
+      expect(executions).to.have.length(0);
+    });
+
+    it("retries a local execution error once, and then judges the result", async () => {
+      const { item } = failedItem();
+      let n = 0;
+      execute = async () => {
+        if (n++ === 0) throw new Error("boom");
+        return result({ vote: false, committed: false });
+      };
+      const out = await processor.apply(item, from());
+      expect(executions).to.have.length(2);
+      expect(out.action).to.equal("recorded");
+      expect(out.vote).to.equal("no");
+      expect(out.divergence).to.equal(undefined);
+    });
+
+    it("records an execution-error divergence when it fails twice, and still emits tx.failed", async () => {
+      const { item } = failedItem();
+      execute = async () => {
+        throw new Error("boom");
+      };
+      const out = await processor.apply(item, from());
+      expect(executions).to.have.length(2);
+      expect(out.action).to.equal("recorded");
+      expect(out.vote).to.equal("no");
+      expect(out.reasons.join()).to.contain("boom");
+      expect(out.divergence!.kind).to.equal("execution-error");
+      expect(events.map((e) => e.type)).to.deep.equal(["tx.failed", "divergence"]);
+    });
+  });
+
+  describe("is this stream state the one the network agreed (contract source check)", () => {
+    const attested = (p: Processor, state: any, meta: any) => (p as any).streamAttested(state, meta);
+
+    /** Three supernodes that serve the :umid doc and each sign the attestation */
+    const network = (item: any) => {
+      supernodes = nodes.slice(0, 3).map((n, i) => {
+        const sn = new FakeUpstream(`sn${i + 1}`);
+        sn.umids.set(item.umid, item.umidDoc);
+        sn.attestations.set(item.umid, attest(n, item));
+        return sn;
+      });
+    };
+
+    it("accepts a state and meta that a quorum signed, by their hashes", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      expect(await attested(processor, signed[S], signed[`${S}:stream`])).to.equal(true);
+    });
+
+    it("refuses a state whose content is not the attested one", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      expect(await attested(processor, { ...signed[S], balance: 1000 }, signed[`${S}:stream`])).to.equal(false);
+    });
+
+    it("refuses a meta whose content is not the attested one", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      expect(await attested(processor, signed[S], { ...signed[`${S}:stream`], name: "other" })).to.equal(false);
+    });
+
+    it("refuses when fewer than a quorum attested, however many serve the :umid doc", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      supernodes[1].attestations.clear();
+      supernodes[2].attestations.clear();
+      expect(await attested(processor, signed[S], signed[`${S}:stream`])).to.equal(false);
+    });
+
+    it("refuses when no upstream can serve the :umid doc", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      for (const sn of supernodes) sn.umids.clear();
+      expect(await attested(processor, signed[S], signed[`${S}:stream`])).to.equal(false);
+    });
+
+    it("refuses a :umid doc that is not the one the attestations hash", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      for (const sn of supernodes) sn.umids.set(item.umid, { ...item.umidDoc, events: [] });
+      expect(await attested(processor, signed[S], signed[`${S}:stream`])).to.equal(false);
+    });
+
+    it("counts a supernode that is down as no attestation", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      supernodes[0].down = true;
+      supernodes[1].down = true;
+      // One of four is below 60%
+      expect(await attested(processor, signed[S], signed[`${S}:stream`])).to.equal(false);
+    });
+
+    it("refuses a meta with no umid, a state with no id, and any state before bootstrap", async () => {
+      const { item, signed } = committedItem(5);
+      network(item);
+      const { umid: _drop, ...noUmid } = signed[`${S}:stream`];
+      expect(await attested(processor, signed[S], noUmid)).to.equal(false);
+      expect(await attested(processor, undefined, signed[`${S}:stream`])).to.equal(false);
+      const early = new Processor({
+        store: store as any,
+        sources: () => ({ peers: [], supernodes: supernodes as any[] }),
+        lookup: {} as any,
+        events: { emit: async () => {} },
+        context: () => undefined,
+        contracts: null,
+      });
+      expect(await attested(early, signed[S], signed[`${S}:stream`])).to.equal(false);
+    });
+  });
+
   describe("inputs", () => {
     it("fetches a stream that is behind at exactly the item's $revs before executing", async () => {
       const { item, signed, umid } = committedItem(2);

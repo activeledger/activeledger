@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { ActiveCrypto } from "../packages/crypto/src";
-import { checkConfig, init, peers, register, retire, token, update, CommandContext } from "../packages/hybrid/src/commands";
+import { checkConfig, init, peers, pin, register, retire, token, update, CommandContext } from "../packages/hybrid/src/commands";
 import { UpstreamError } from "../packages/hybrid/src/http-upstream";
 import { loadConfig } from "../packages/hybrid/src/config";
 
@@ -174,5 +174,94 @@ describe("activehybrid commands", () => {
     const { ctx, logs } = make(dir, {}, () => fakeSupernode());
     expect(await peers(ctx)).to.equal(0);
     expect(logs[0]).to.contain("h1").and.contain("p2p://x:1");
+  });
+
+  describe("peers, edge cases", () => {
+    const withUpstream = (up: any, flags: Record<string, any> = {}) => {
+      const dir = temp();
+      init(make(dir, { upstream: "s.example:5260" }).ctx);
+      return make(dir, flags, () => up);
+    };
+
+    it("says so when no hybrid is registered", async () => {
+      const { ctx, logs } = withUpstream({ peers: async () => [] });
+      expect(await peers(ctx)).to.equal(0);
+      expect(logs).to.deep.equal(["no hybrids registered"]);
+    });
+
+    it("prints a peer with no label or endpoints without failing, and as JSON on request", async () => {
+      const list = [{ keyHash: "h2" }];
+      const text = withUpstream({ peers: async () => list });
+      expect(await peers(text.ctx)).to.equal(0);
+      expect(text.logs[0]).to.contain("h2");
+      const json = withUpstream({ peers: async () => list }, { json: true });
+      expect(await peers(json.ctx)).to.equal(0);
+      expect(JSON.parse(json.logs[0])).to.deep.equal({ peers: list });
+    });
+
+    it("fails with the reason when the supernode cannot be reached", async () => {
+      const { ctx, errors, logs } = withUpstream({ peers: async () => { throw new Error("connect ECONNREFUSED"); } });
+      expect(await peers(ctx)).to.equal(1);
+      expect(errors).to.deep.equal(["connect ECONNREFUSED"]);
+      expect(logs).to.deep.equal([]);
+    });
+
+    it("fails, as JSON, when no upstream is configured", async () => {
+      const dir = temp();
+      init(make(dir).ctx);
+      const { ctx, errors } = make(dir, { json: true }, () => ({}));
+      expect(await peers(ctx)).to.equal(1);
+      expect(JSON.parse(errors[0]).error).to.match(/no upstream configured/);
+    });
+
+    it("will not use a p2p upstream, and says why", async () => {
+      const dir = temp();
+      init(make(dir, { upstream: "s.example:5260:p2p" }).ctx);
+      const { ctx, errors } = make(dir, {}, () => ({}));
+      expect(await peers(ctx)).to.equal(1);
+      expect(errors[0]).to.match(/no http upstream configured/);
+    });
+  });
+
+  describe("pin", () => {
+    const setup = { _id: "net-1", neighbourhood: [{ host: "a", port: 1 }], consensus: { reached: 60 } };
+    const withBootstrap = (doc: any, flags: Record<string, any> = {}) => {
+      const dir = temp();
+      init(make(dir, { upstream: "s.example:5260" }).ctx);
+      return make(dir, flags, () => ({ bootstrap: async () => ({ setup: doc }) }));
+    };
+
+    it("prints the hash of the setup stream the upstream serves, for the operator to check", async () => {
+      const { ctx, logs } = withBootstrap(setup);
+      expect(await pin(ctx)).to.equal(0);
+      expect(logs[0]).to.match(/^[a-f0-9]{64}\n/);
+      expect(logs[0]).to.contain(`"pin": {"neighbourhoodSha256": "${logs[0].split("\n")[0]}"}`);
+    });
+
+    it("gives a hash that changes with the neighbourhood, the threshold or the security", async () => {
+      const hashOf = async (doc: any) => {
+        const { ctx, logs } = withBootstrap(doc, { json: true });
+        await pin(ctx);
+        return JSON.parse(logs[0]).neighbourhoodSha256 as string;
+      };
+      const base = await hashOf(setup);
+      expect(await hashOf(setup)).to.equal(base);
+      expect(await hashOf({ ...setup, neighbourhood: [{ host: "b", port: 1 }] })).to.not.equal(base);
+      expect(await hashOf({ ...setup, consensus: { reached: 51 } })).to.not.equal(base);
+      expect(await hashOf({ ...setup, security: { deploy: true } })).to.not.equal(base);
+      // The id is reported with it, but is not part of what is pinned
+      const { ctx, logs } = withBootstrap(setup, { json: true });
+      await pin(ctx);
+      expect(JSON.parse(logs[0]).network).to.equal("net-1");
+      expect(await hashOf({ ...setup, _id: "other" })).to.equal(base);
+    });
+
+    it("fails with the reason when the upstream will not bootstrap", async () => {
+      const dir = temp();
+      init(make(dir, { upstream: "s.example:5260" }).ctx);
+      const { ctx, errors } = make(dir, {}, () => ({ bootstrap: async () => { throw new UpstreamError("refused", "refused", 403); } }));
+      expect(await pin(ctx)).to.equal(1);
+      expect(errors).to.have.length(1);
+    });
   });
 });
