@@ -266,15 +266,30 @@ export class LevelMe {
     const writer = createWriteStream(filename);
 
     return new Promise((resolve, reject) => {
+      // Values are stored serialised (binary), not as text, so each one is
+      // written as the JSON of its document, one per line - what restore()
+      // reads back. Kept in stream order.
+      let queue: Promise<void> = Promise.resolve();
+      writer.on("error", reject);
       this.driver
         .createValueStream()
-        .on("data", async (data: any) => {
-          writer.write(data.toString() + "\n");
+        .on("data", (data: any) => {
+          queue = queue.then(async () => {
+            const doc = await ActiveClone.deserialize(data);
+            writer.write(JSON.stringify(doc) + "\n");
+          });
+          // Reported by the end handler
+          queue.catch(() => { });
         })
         .on("error", reject)
         .on("end", async () => {
-          writer.end();
           try {
+            await queue;
+            // Resolve only once the file is fully written
+            await new Promise<void>((done, fail) => {
+              writer.on("error", fail);
+              writer.end(done);
+            });
             await fs.promises.unlink(`${filename}.status`);
             resolve(undefined);
           } catch (err) {
@@ -293,20 +308,31 @@ export class LevelMe {
     await fs.promises.writeFile(`${filename}.status`, "running");
 
     return new Promise((resolve, reject) => {
-      createReadStream(filename)
+      // Writes run one after another so the restore has finished when this
+      // resolves, not merely when the file has been read
+      let queue: Promise<void> = Promise.resolve();
+      const reader = createReadStream(filename);
+      // pipe() does not forward a source's errors (a missing file)
+      reader.on("error", reject);
+      reader
         .pipe(newLineTransform())
-        .on("data", async (data: Buffer) => {
-          try {
-            const doc = JSON.parse(data.toString());
-            ActiveLogger.info(`Restoring ${doc._id}`);
-            await this.bulkDocs(doc, { new_edits: true });
-          } catch {
-            ActiveLogger.warn(`Restoring FAILED`);
-          }
+        .on("data", (data: Buffer) => {
+          queue = queue.then(async () => {
+            try {
+              const doc = JSON.parse(data.toString());
+              ActiveLogger.info(`Restoring ${doc._id}`);
+              if (!(await this.bulkDocs([doc], { new_edits: true }))) {
+                throw new Error("write failed");
+              }
+            } catch {
+              ActiveLogger.warn(`Restoring FAILED`);
+            }
+          });
         })
         .on("error", reject)
         .on("end", async () => {
           try {
+            await queue;
             await fs.promises.unlink(`${filename}.status`);
             resolve(undefined);
           } catch (err) {
@@ -380,35 +406,43 @@ export class LevelMe {
             }
 
             // Push the promise into the array to maintain order
-            docPromises.push(
-              ActiveClone.deserialize(data.value).then((doc: any) => {
-                if (options.include_docs) {
-                  return doc;
-                } else {
-                  return {
-                    _id: doc._id, // Compatibility Trick
-                    id: doc._id,
-                    key: doc._id,
-                    // CouchDB's row shape, which /a/all (and so activerestore)
-                    // reads the revision from
-                    value: { rev: doc._rev },
-                  };
-                }
-              })
-            );
+            const pending = ActiveClone.deserialize(data.value).then((doc: any) => {
+              if (options.include_docs) {
+                return doc;
+              } else {
+                return {
+                  _id: doc._id, // Compatibility Trick
+                  id: doc._id,
+                  key: doc._id,
+                  // CouchDB's row shape, which /a/all (and so activerestore)
+                  // reads the revision from
+                  value: { rev: doc._rev },
+                };
+              }
+            });
+            // The end handler reports a failure; this only stops a rejection
+            // that lands before the stream ends counting as unhandled
+            pending.catch(() => { });
+            docPromises.push(pending);
           })
             .on("error", (err: unknown) => {
               stream.destroy();
               reject(err);
             })
             .on("end", async () => {
-              // Await all promises in the original stream order
-              const rows = await Promise.all(docPromises);
-              resolve({
-                total_rows: rows.length,
-                offset,
-                rows,
-              });
+              // Await all promises in the original stream order. A damaged
+              // value rejects here, which must reach the caller - this is an
+              // event handler, so nothing else would ever catch it.
+              try {
+                const rows = await Promise.all(docPromises);
+                resolve({
+                  total_rows: rows.length,
+                  offset,
+                  rows,
+                });
+              } catch (e) {
+                reject(e);
+              }
             });        }
       } catch (e) {
         reject(e);
@@ -589,7 +623,13 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
+    const result = await this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
+    if (ENABLE_CACHE) {
+      // Whatever was cached for this key is not what is on disk any more
+      this.cache.delete(key);
+      this.cache.delete(`raw:${key}`);
+    }
+    return result;
   }
 
   /**
@@ -930,48 +970,55 @@ export class LevelMe {
       // Read / Search the database as a stream
       this.driver
         .createReadStream(filter)
-        .on("data", async (data: { key: string; value: Buffer }) => {
-          const doc = await ActiveClone.deserialize(data.value) as any;
-          // Get sequence from keyname
-          const seq = parseInt(
-            data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
+        .on("data", (data: { key: string; value: Buffer }) => {
+          // Deserialising is asynchronous (compressed values), so track it:
+          // the stream's end must wait for every row, and a damaged value
+          // must reach the caller. Rows are kept in stream order.
+          const index = promises.length;
+          const pending = ActiveClone.deserialize(data.value).then(
+            (doc: any) => {
+              // Get sequence from keyname
+              const seq = parseInt(
+                data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
+              );
+              const row: any = {
+                id: doc._id,
+                seq,
+                changes: [
+                  {
+                    rev: doc._rev,
+                  },
+                ],
+              };
+              if (
+                options.include_docs &&
+                JSON.parse(options.include_docs.toString())
+              ) {
+                row.doc = doc;
+              }
+              rows[index] = row;
+              return doc as document;
+            }
           );
-          if (
-            options.include_docs &&
-            JSON.parse(options.include_docs.toString())
-          ) {
-            rows.push({
-              id: doc._id,
-              seq,
-              changes: [
-                {
-                  rev: doc._rev,
-                },
-              ],
-              doc,
-            });
-          } else {
-            rows.push({
-              id: doc._id,
-              seq,
-              changes: [
-                {
-                  rev: doc._rev,
-                },
-              ],
-            });
-          }
+          // The end handler is what reports a failure; without this a
+          // rejection landing before the stream ends is reported as unhandled
+          pending.catch(() => { });
+          promises.push(pending);
         })
         .on("error", (err: unknown) => {
           reject(err);
         })
         .on("close", () => { })
         .on("end", async () => {
-          await Promise.all(promises);
-          resolve({
-            results: rows,
-            last_seq: 0,
-          });
+          try {
+            await Promise.all(promises);
+            resolve({
+              results: rows,
+              last_seq: 0,
+            });
+          } catch (e) {
+            reject(e);
+          }
         });
     });
   }
