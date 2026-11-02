@@ -1205,9 +1205,10 @@ export class Process extends EventEmitter {
 
     // Run the verification round
     try {
-      if (continueProcessing)
+      if (continueProcessing) {
         ActiveLogger.debug(`Calling Contract Verify - ${payload.umid}`);
-      await virtualMachine.verify(this.entry.$selfsign, payload.umid);
+        await virtualMachine.verify(this.entry.$selfsign, payload.umid);
+      }
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
@@ -1221,17 +1222,18 @@ export class Process extends EventEmitter {
     if (this.entry.$tx.$i) {
       // Run the vote round
       try {
-        if (continueProcessing)
+        if (continueProcessing) {
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
-        const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
+          const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
 
-        if (typeof vote !== "boolean" && vote.leader) {
-          this.nodeResponse.vote = this.nodeResponse.leader = true;
-          Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
-          // If leader we can run straight to the commit
-          // The data still gets sent on as part of a broadcast commit
-          this.commit(virtualMachine);
-          return;
+          if (typeof vote !== "boolean" && vote.leader) {
+            this.nodeResponse.vote = this.nodeResponse.leader = true;
+            Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
+            // If leader we can run straight to the commit
+            // The data still gets sent on as part of a broadcast commit
+            this.commit(virtualMachine);
+            return;
+          }
         }
       } catch (error) {
         // Do something with the error
