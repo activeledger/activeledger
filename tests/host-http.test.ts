@@ -571,7 +571,7 @@ describe("Host HTTP listener (Activeledger)", () => {
     // A request routed straight at processEndpoints with a fake response
     const route = (
       status: Promise<any>,
-      extra: { from?: string; body?: any } = {}
+      extra: { from?: string; body?: any; noRes?: boolean } = {}
     ) => {
       const real = Endpoints.status;
       Endpoints.status = (() => status) as any;
@@ -590,7 +590,7 @@ describe("Host HTTP listener (Activeledger)", () => {
           url: "/a/status",
           connection: { remoteAddress: "127.0.0.1" },
         },
-        res,
+        extra.noRes ? null : res,
         extra.body,
         extra.from
       );
@@ -622,6 +622,132 @@ describe("Host HTTP listener (Activeledger)", () => {
       } finally {
         host.neighbourhood.get = real;
       }
+    });
+
+    it("writes the exact JSON of the content on the plain HTTP path", async () => {
+      const content = { $umid: "u1", a: [1, "two", { three: 3 }], b: null };
+      const out = await route(Promise.resolve({ statusCode: 200, content }));
+      expect(out.status).to.equal("200");
+      expect(out.ended).to.equal(JSON.stringify(content));
+    });
+
+    it("writes the exact JSON of the encrypted packet on the HTTP path", async () => {
+      const real = host.neighbourhood.get;
+      host.neighbourhood.get = (ref?: string) =>
+        ref === undefined
+          ? real.call(host.neighbourhood)
+          : { encryptKnock: (d: string) => `enc(${d})` };
+      try {
+        const out = await route(
+          Promise.resolve({ statusCode: 200, content: { $encrypt: true, a: 1 } }),
+          { from: "neighbour-1" }
+        );
+        expect(out.ended).to.equal(
+          JSON.stringify({ $packet: 'enc({"$encrypt":true,"a":1})', $enc: true })
+        );
+      } finally {
+        host.neighbourhood.get = real;
+      }
+    });
+
+    it("does not stringify the response of a P2P frame, which has no connection to write to", async () => {
+      const content = { $umid: "p2p-1", $nodes: { n: { vote: true } } };
+      const realStringify = JSON.stringify;
+      const realWrite = host.writeResponse;
+      let stringified = 0;
+      let written = 0;
+      JSON.stringify = ((value: any, ...rest: any[]) => {
+        if (value === content) stringified++;
+        return (realStringify as any)(value, ...rest);
+      }) as any;
+      host.writeResponse = () => {
+        written++;
+      };
+      try {
+        await route(Promise.resolve({ statusCode: 200, content }), {
+          noRes: true,
+        });
+      } finally {
+        JSON.stringify = realStringify;
+        host.writeResponse = realWrite;
+      }
+      expect(stringified).to.equal(0);
+      expect(written).to.equal(0);
+    });
+
+    it("still runs the $encrypt branch for a P2P frame, before skipping the write", async () => {
+      const real = host.neighbourhood.get;
+      const asked: string[] = [];
+      host.neighbourhood.get = (ref?: string) => {
+        if (ref === undefined) return real.call(host.neighbourhood);
+        asked.push(ref);
+        return { encryptKnock: () => "enc" };
+      };
+      try {
+        await route(
+          Promise.resolve({ statusCode: 200, content: { $encrypt: true } }),
+          { from: "neighbour-9", noRes: true }
+        );
+      } finally {
+        host.neighbourhood.get = real;
+      }
+      expect(asked).to.deep.equal(["neighbour-9"]);
+    });
+
+    it("does not stringify for a response that is no longer writable (X-Bundle parts after the early {})", async () => {
+      const content = { $umid: "bundle-1" };
+      const realStringify = JSON.stringify;
+      let stringified = 0;
+      JSON.stringify = ((value: any, ...rest: any[]) => {
+        if (value === content) stringified++;
+        return (realStringify as any)(value, ...rest);
+      }) as any;
+      const out: any = { wrote: 0 };
+      const res: any = {
+        writable: false,
+        cork: () => out.wrote++,
+        writeStatus: () => out.wrote++,
+        writeHeader: () => out.wrote++,
+        end: () => out.wrote++,
+      };
+      const real = Endpoints.status;
+      Endpoints.status = (() =>
+        Promise.resolve({ statusCode: 200, content })) as any;
+      try {
+        host.processEndpoints(
+          {
+            headers: {},
+            method: "GET",
+            url: "/a/status",
+            connection: { remoteAddress: "127.0.0.1" },
+          },
+          res
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        Endpoints.status = real;
+        JSON.stringify = realStringify;
+      }
+      expect(stringified).to.equal(0);
+      expect(out.wrote).to.equal(0);
+    });
+
+    it("still stringifies once, and writes, when there is a connection", async () => {
+      const content = { $umid: "http-1" };
+      const realStringify = JSON.stringify;
+      let stringified = 0;
+      JSON.stringify = ((value: any, ...rest: any[]) => {
+        if (value === content) stringified++;
+        return (realStringify as any)(value, ...rest);
+      }) as any;
+      let out: any;
+      try {
+        out = await route(Promise.resolve({ statusCode: 200, content }));
+      } finally {
+        JSON.stringify = realStringify;
+      }
+      expect(stringified).to.equal(1);
+      expect(out.ended).to.equal(realStringify(content));
     });
 
     it("leaves the content readable when it asks for encryption but nobody is to receive it", async () => {

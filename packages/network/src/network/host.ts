@@ -2397,6 +2397,17 @@ export class Host extends Home {
             );
           }
         }
+
+        // writeResponse() returns immediately for a missing or already
+        // finished response (a P2P frame has none; an X-Bundle request is
+        // answered early with "{}" and marked unwritable) and would discard
+        // the body, so don't pay to stringify it. Keep this condition
+        // identical to writeResponse()'s own guard. The $encrypt branch, the
+        // http.out mark and the [RR] log above still run.
+        if (!res || !res.writable) {
+          return;
+        }
+
         this.writeResponse(
           res,
           response.statusCode,
