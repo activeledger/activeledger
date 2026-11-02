@@ -23,6 +23,7 @@
 
 import * as fs from "fs";
 import { Standard, Activity } from "@activeledger/activecontracts";
+import { safeSegment } from "@activeledger/activecontracts/lib/source";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
 /**
@@ -101,6 +102,14 @@ export default class Namespace extends Standard {
         return reject("Deployer not permitted");
       }
 
+      // The name becomes a directory under rootDir (here and in commit), so
+      // it must be a plain label before anything is looked up or created
+      try {
+        safeSegment(this.namespace, "namespace");
+      } catch (e) {
+        return reject(e.message);
+      }
+
       // Default already protected
       if (this.namespace == "default") return reject("Namespace Reserved");
 
@@ -119,6 +128,14 @@ export default class Namespace extends Standard {
    */
   public commit(): Promise<any> {
     return new Promise<any>((resolve, reject) => {
+      // Vote refuses these; checked again so no path creates a directory
+      // from an unvalidated name
+      try {
+        safeSegment(this.namespace, "namespace");
+      } catch (e) {
+        return reject(e.message);
+      }
+
       // Lets assign to this identity
       // Note: Old method didn't create folders so migration tool needed or can use first come
       fs.mkdirSync(this.rootDir + this.namespace);

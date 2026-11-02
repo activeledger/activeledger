@@ -1500,6 +1500,22 @@ export default class Contract extends Standard {
   }
 
   /**
+   * The name and version of an add or update become path segments when
+   * commit writes the contract (ContractFiles.write), which throws only
+   * after consensus. Refuse them in the vote instead. Unlike a link, a
+   * version here is never optional, so an empty or missing one is refused.
+   *
+   * @throws when the name or version is not a plain label
+   */
+  private assertSafeDeployNames(): void {
+    safeSegment(this.name, "contract name");
+    safeSegment(
+      this.transactions.$i[this.identity.getName()].version,
+      "version"
+    );
+  }
+
+  /**
    * Mostly Testing, So Don't need to check
    *
    * @returns {Promise<boolean>}
@@ -1524,6 +1540,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      this.assertSafeDeployNames();
     } catch (e) {
       return reject(e.message);
     }
@@ -1660,6 +1677,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      this.assertSafeDeployNames();
     } catch (e) {
       return reject(e.message);
     }
