@@ -287,6 +287,14 @@ describe("Default contract entries (Activeledger)", () => {
       expect(fs.existsSync("contracts/other/planted.js")).to.equal(false);
     });
 
+    it("still accepts the ordinary labels a link may be given", async () => {
+      fs.writeFileSync(ref(stream), "");
+      for (const link of ["alias", "my-alias_2", "token.v2", "Mixed-Case"]) {
+        const c = make("link", { namespace: "testns", contract: stream, link });
+        expect(await run("voteLink", c), link).to.equal(true);
+      }
+    });
+
     it("cannot lock or unlock a contract named by a path", async () => {
       fs.writeFileSync("contracts/other/victim.js", "");
       for (const method of ["voteLock", "voteUnlock"]) {
