@@ -221,6 +221,7 @@ activehybrid divergences --since 2026-10-01
 |---|---|
 | `output-mismatch` | The hybrid's outputs differed from the signed outputs. |
 | `umid-doc-mismatch` | The transaction record differed from the signed one. |
+| `output-hash-mismatch` | An output was at the signed revision but its content was not the signed content. |
 | `failed-but-passed` | The network failed the transaction; it passed here. |
 | `execution-error` | The contract could not be run here, twice. |
 | `adopt-rejected` | A supernode-only result did not fit what the contract declared it would write. |

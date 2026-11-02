@@ -993,6 +993,89 @@ describe("Hybrid processor", function () {
       expect(executions).to.have.length(0);
     });
 
+    describe("outputs held when the inputs cannot be had", () => {
+      const META = `${S}:stream`;
+      /** Hold a document at exactly `rev` (its own _rev is replaced) */
+      const hold = async (doc: any, rev: string) => {
+        await store.data.bulkDocs([clone(doc)], { new_edits: true, force_rev: rev });
+      };
+      const noUpstream = () => {
+        peers = [];
+        supernodes = [new FakeUpstream("sn1")];
+      };
+
+      it("settles as superseded when one output is exactly the attested document and another is later", async () => {
+        const { item, signed } = committedItem(2);
+        await hold(signed[META], signed[META]._rev);
+        await hold(signed[S], "99-newer");
+        noUpstream();
+        const out = await processor.apply(item, from());
+        expect(out.action, out.reasons.join()).to.equal("settled");
+        expect(out.vote).to.equal("no");
+        expect(out.reasons.join()).to.contain("superseded");
+        expect(out.divergence).to.equal(undefined);
+        expect(await listDivergences(store as any)).to.have.length(0);
+      });
+
+      it("records a divergence, not progress, when an output has the attested revision but other content", async () => {
+        const { item, signed } = committedItem(2);
+        // Same _rev as attested, different body: what an md5 collision would look like
+        await hold({ ...signed[META], umid: "someone-else" }, signed[META]._rev);
+        await hold(signed[S], "99-newer");
+        expect(await get(META)).to.have.property("_rev", signed[META]._rev);
+        noUpstream();
+        const out = await processor.apply(item, from());
+        expect(out.action).to.equal("settled");
+        expect(out.vote).to.equal("no");
+        expect(out.retry).to.not.equal(true);
+        expect(out.reasons.join()).to.not.contain("superseded");
+        expect(out.reasons.join()).to.contain(META);
+        expect(out.reasons.join()).to.contain("content hash");
+        expect(out.divergence!.kind).to.equal("output-hash-mismatch");
+        const records = await listDivergences(store as any);
+        expect(records.map((r) => r.kind)).to.deep.equal(["output-hash-mismatch"]);
+        expect(records[0].umid).to.equal(item.umid);
+        expect(events.some((e) => e.type === "divergence")).to.equal(true);
+        expect(executions).to.have.length(0);
+      });
+
+      it("names only the output whose hash differs when several are held", async () => {
+        const { item, signed } = committedItem(2);
+        await hold(signed[S], signed[S]._rev);
+        await hold({ ...signed[META], umid: "someone-else" }, signed[META]._rev);
+        noUpstream();
+        const out = await processor.apply(item, from());
+        expect(out.divergence!.kind).to.equal("output-hash-mismatch");
+        expect(out.reasons.join()).to.contain(META);
+        expect(out.reasons.join()).to.not.contain(`${S} `);
+        expect(out.reasons.join()).to.not.contain("superseded");
+      });
+
+      it("treats an output at a later position as superseded without comparing content", async () => {
+        const { item, signed } = committedItem(2);
+        await hold({ ...signed[S], balance: 12345 }, "99-newer");
+        await hold({ ...signed[META], umid: "later" }, "99-newer");
+        noUpstream();
+        const out = await processor.apply(item, from());
+        expect(out.action).to.equal("settled");
+        expect(out.vote).to.equal("no");
+        expect(out.reasons.join()).to.contain("superseded");
+        expect(out.divergence).to.equal(undefined);
+      });
+
+      it("leaves a different revision at the same position alone, to be retried", async () => {
+        const { item, signed } = committedItem(2);
+        await hold(signed[S], signed[S]._rev);
+        await hold(signed[META], "2-forked");
+        noUpstream();
+        const out = await processor.apply(item, from());
+        expect(out.action).to.equal("dropped");
+        expect(out.retry).to.equal(true);
+        expect(out.divergence).to.equal(undefined);
+        expect(await listDivergences(store as any)).to.have.length(0);
+      });
+    });
+
     it("drops an item whose inputs cannot be had", async () => {
       const { item } = committedItem(2);
       item.$revs = { $i: { [S]: "1-mmm:1-aaa", unknown: "4-x:4-y" }, $o: {} };
