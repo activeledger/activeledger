@@ -264,7 +264,14 @@ type ContractTarget = "es2017" | "es2025";
  *
  * @throws when a name is not a plain label
  */
-function assertSafeNames(contract: string, other: string | undefined): void {
+function assertSafeNames(
+  namespace: string,
+  contract: string,
+  other: string | undefined
+): void {
+  // The namespace the identity recorded is a path segment too, and one
+  // recorded before namespaces were validated can still be unsafe
+  safeSegment(namespace, "namespace");
   safeSegment(contract, "contract");
   // A version carries its leading "@"; empty for the contract's own lock
   if (other) safeSegment(other, "name");
@@ -1180,7 +1187,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
-      assertSafeNames(this.contract, this.version);
+      assertSafeNames(this.namespace, this.contract, this.version);
     } catch (e) {
       return reject(e.message);
     }
@@ -1241,7 +1248,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
-      assertSafeNames(this.contract, this.version);
+      assertSafeNames(this.namespace, this.contract, this.version);
     } catch (e) {
       return reject(e.message);
     }
@@ -1340,7 +1347,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
-      assertSafeNames(this.contract, this.link);
+      assertSafeNames(this.namespace, this.contract, this.link);
     } catch (e) {
       return reject(e.message);
     }
@@ -1398,7 +1405,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
-      assertSafeNames(this.contract, this.link);
+      assertSafeNames(this.namespace, this.contract, this.link);
     } catch (e) {
       return reject(e.message);
     }
@@ -1508,6 +1515,7 @@ export default class Contract extends Standard {
    * @throws when the name or version is not a plain label
    */
   private assertSafeDeployNames(): void {
+    safeSegment(this.namespace, "namespace");
     safeSegment(this.name, "contract name");
     safeSegment(
       this.transactions.$i[this.identity.getName()].version,

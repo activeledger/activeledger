@@ -430,6 +430,38 @@ describe("Default contract entries (Activeledger)", () => {
     }
   });
 
+  describe("a recorded namespace that is not a plain label", () => {
+    // An identity can hold a namespace that was recorded before names were
+    // validated; it equals what the transaction names, so the ownership check
+    // alone would let it through
+    const bad = ["../x", "a/b", "/etc/passwd", ".."];
+    const input = (namespace: string) => ({ namespace, name: "example", contract: clean, version: "1.0.0" });
+
+    for (const namespace of bad) {
+      it(`voteAdd refuses ${JSON.stringify(namespace)}`, async () => {
+        const ctx = make("add", input(namespace), { identityState: { namespace } });
+        expect(await refusal(run("voteAdd", ctx))).to.match(/^Unsafe namespace/);
+      });
+      it(`voteUpdate refuses ${JSON.stringify(namespace)}`, async () => {
+        const ctx = make("update", input(namespace), {
+          identityState: { namespace },
+          $o: { [stream]: {} },
+          streams: { [stream]: { state: { contract: { "0.9.0": "x" } }, authority: "identityStream" } },
+        });
+        expect(await refusal(run("voteUpdate", ctx))).to.match(/^Unsafe namespace/);
+      });
+      for (const method of ["voteLink", "voteUnlink", "voteLock", "voteUnlock"]) {
+        it(`${method} refuses ${JSON.stringify(namespace)}`, async () => {
+          const ctx = make("link", { namespace, contract: "example", version: "@1.0.0", link: "latest" }, { identityState: { namespace } });
+          ctx.contract = "example";
+          ctx.link = "latest";
+          ctx.version = "@1.0.0";
+          expect(await refusal(run(method, ctx))).to.match(/^Unsafe namespace/);
+        });
+      }
+    }
+  });
+
   describe("update", () => {
     const input = (more: any = {}) => ({
       namespace: "testns",
