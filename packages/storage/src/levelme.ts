@@ -402,13 +402,19 @@ export class LevelMe {
               reject(err);
             })
             .on("end", async () => {
-              // Await all promises in the original stream order
-              const rows = await Promise.all(docPromises);
-              resolve({
-                total_rows: rows.length,
-                offset,
-                rows,
-              });
+              // Await all promises in the original stream order. A damaged
+              // value rejects here, which must reach the caller - this is an
+              // event handler, so nothing else would ever catch it.
+              try {
+                const rows = await Promise.all(docPromises);
+                resolve({
+                  total_rows: rows.length,
+                  offset,
+                  rows,
+                });
+              } catch (e) {
+                reject(e);
+              }
             });        }
       } catch (e) {
         reject(e);
