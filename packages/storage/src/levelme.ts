@@ -595,7 +595,13 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    return this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
+    const result = await this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
+    if (ENABLE_CACHE) {
+      // Whatever was cached for this key is not what is on disk any more
+      this.cache.delete(key);
+      this.cache.delete(`raw:${key}`);
+    }
+    return result;
   }
 
   /**
