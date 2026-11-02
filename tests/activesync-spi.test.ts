@@ -30,17 +30,34 @@ describe("spiConsensus - the answer must not depend on reply order (Activesync)"
     return { winner: winners[ID]?.rev, abstained: abstained[ID] };
   };
 
-  it("lets a later position break a three-way tie whichever order the nodes answered in", () => {
-    // 39-a, 39-b and 40-c all have two votes. The two at 39 are a fork
-    // with each other, but 40 is a later point than either, so the tie
-    // is broken exactly as it is for any other equal-support pair.
-    const nodes = [[pos39a], [pos39a], [pos39b], [pos39b], [pos40], [pos40]];
-    const forward = outcome(nodes);
-    const reversed = outcome([...nodes].reverse());
+  it("keeps a fork at a lower position when an equally supported revision is at a later one, in every order", () => {
+    // 39-a and 39-b are a fork with two votes each, and 40-c has two as
+    // well. 40 descends from at most one of the 39s, so rewriting to it
+    // would silently overwrite the other branch: abstain, whatever the
+    // order the nodes happened to answer in.
+    const answers = [[pos39a], [pos39a], [pos39b], [pos39b], [pos40], [pos40]];
+    const permute = <T>(items: T[]): T[][] =>
+      items.length <= 1
+        ? [items]
+        : items.flatMap((item, i) =>
+            permute([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [item, ...rest])
+          );
 
-    expect(forward.winner).to.equal("40-cccccccc");
-    expect(forward.abstained).to.equal(undefined);
-    expect(reversed).to.deep.equal(forward);
+    const orders = permute(answers);
+    expect(orders).to.have.length(720);
+    for (const order of orders) {
+      const { winner, abstained } = outcome(order);
+      expect(winner).to.equal(undefined);
+      expect(abstained).to.contain("forked");
+      expect(abstained).to.contain("needs a human");
+    }
+  });
+
+  it("still lets a later position break a tie when there is no fork", () => {
+    const nodes = [[pos39a], [pos39a], [pos40], [pos40]];
+    for (const order of [nodes, [...nodes].reverse()]) {
+      expect(outcome(order).winner).to.equal("40-cccccccc");
+    }
   });
 
   it("does not let a fork between smaller groups veto a revision with more votes", () => {

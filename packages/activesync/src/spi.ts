@@ -237,41 +237,44 @@ export function spiConsensus(
     let max = 0;
     let forked = false;
 
-    const candidates = Object.keys(revisions);
-    for (let x = candidates.length; x--; ) {
-      const rev = candidates[x];
-      if (revisions[rev].votes < consensusReached) {
-        continue;
-      }
+    // Pass one: the most votes any revision that clears the threshold has
+    const candidates = Object.keys(revisions).filter(
+      (rev) => revisions[rev].votes >= consensusReached
+    );
+    for (const rev of candidates) {
+      max = Math.max(max, revisions[rev].votes);
+    }
 
-      if (revisions[rev].votes > max) {
-        // More support supersedes anything found so far, including a
-        // fork between smaller groups - otherwise the answer depends on
-        // the order the revisions happened to be visited in.
-        max = revisions[rev].votes;
-        winner = rev;
-        forked = false;
-      } else if (revisions[rev].votes === max) {
-        // Same support. A later position means the other side simply
-        // applied something this one has not yet - adopting it loses
-        // nothing, because the lagging copy has no history of its own.
-        // It also supersedes a fork at a lower position.
-        if (revPosition(rev) > revPosition(winner)) {
-          winner = rev;
-          forked = false;
-        } else if (
-          revPosition(rev) === revPosition(winner) &&
-          rev !== winner
-        ) {
-          // Same position, different content: not a lag, a genuine fork.
-          // Each side committed something the other did not, at the same
-          // point in the stream's history, so whichever is picked
-          // silently destroys the other's transaction. Revisions are
-          // content addressed (position-md5), so there is nothing here
-          // to tell them apart on merit and no safe automatic answer.
-          forked = true;
-        }
+    // Pass two: only revisions with that many votes compete. More votes
+    // supersede a fork between smaller groups, so those never get here.
+    // The outcome is read off the whole tied set, not built up in visit
+    // order, so it cannot depend on the order nodes replied in.
+    const tied = candidates.filter((rev) => revisions[rev].votes === max);
+    const positions = new Set<number>();
+    for (const rev of tied) {
+      const position = revPosition(rev);
+      if (positions.has(position)) {
+        // Same position, different content: not a lag, a genuine fork.
+        // Each side committed something the other did not, at the same
+        // point in the stream's history, so whichever is picked silently
+        // destroys the other's transaction. Revisions are content
+        // addressed (position-md5), so there is nothing here to tell them
+        // apart on merit and no safe automatic answer.
+        //
+        // A later position with the same support does NOT clear this: it
+        // descends from at most one of the branches, and rewriting to it
+        // would silently overwrite the other.
+        forked = true;
       }
+      positions.add(position);
+    }
+    if (!forked && tied.length) {
+      // Same support, no fork: a later position means the other side
+      // simply applied something this one has not yet - adopting it loses
+      // nothing, because the lagging copy has no history of its own.
+      winner = tied.reduce((best, rev) =>
+        revPosition(rev) > revPosition(best) ? rev : best
+      );
     }
 
     if (forked) {
