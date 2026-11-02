@@ -226,7 +226,23 @@ export class Processor implements ItemProcessor {
       // any more. If the item's outputs are already at or past what it made,
       // newer state covers it.
       const covered = await this.coveredByNewerState(item, revsOut);
-      if (covered) return outcome(umid, "settled", "no", ["superseded: the streams are already past this item"]);
+      if (covered === true) return outcome(umid, "settled", "no", ["superseded: the streams are already past this item"]);
+      if (covered) {
+        // An output has the attested revision but not the attested content: not progress
+        const divergence = await this.diverge(
+          item,
+          "output-hash-mismatch",
+          tallied,
+          { output: covered.id, rev: covered.rev, sha256: covered.sha256, attestedSha256: covered.attestedSha256 },
+          { $i: {}, $o: { [covered.id]: covered.rev } }
+        );
+        return {
+          ...outcome(umid, "settled", "no", [
+            `output ${covered.id} is at the attested revision ${covered.rev} but its content hash differs from the attested one`,
+          ]),
+          divergence,
+        };
+      }
       return transient(umid, [`streams not available at $revs: ${missing.join(", ")}`]);
     }
     const before = await this.snapshot(item, revsOut);
@@ -532,9 +548,15 @@ export class Processor implements ItemProcessor {
   /**
    * Every output of an item (from the signed revsOut) is held here at its
    * attested revision or a later one: later items already moved it on, and
-   * this node learned it from the tip.
+   * this node learned it from the tip. An output at exactly the attested
+   * revision must also have the attested sha256 (the revision's md5 alone is
+   * not collision resistant); if it does not, that output is returned as a
+   * divergence instead.
    */
-  private async coveredByNewerState(item: IFeedItem, revsOut: RevsOut): Promise<boolean> {
+  private async coveredByNewerState(
+    item: IFeedItem,
+    revsOut: RevsOut
+  ): Promise<boolean | { id: string; rev: string; sha256: string; attestedSha256: string }> {
     const ids = Object.keys(revsOut);
     if (!ids.length) return false;
     // Pull any output we do not hold at all (tip), then compare positions
@@ -548,6 +570,9 @@ export class Processor implements ItemProcessor {
       // a fork, not progress, and is left for repair.
       const past = revPosition(local._rev) > revPosition(revsOut[id].rev);
       if (!past && local._rev !== revsOut[id].rev) return false;
+      if (!past && !ActiveProtocol.matchesRevOut(local, revsOut[id])) {
+        return { id, rev: local._rev, sha256: docHash(local), attestedSha256: revsOut[id].sha256 };
+      }
     }
     return true;
   }

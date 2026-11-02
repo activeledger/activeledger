@@ -99,6 +99,7 @@ export interface IFeedItem {
 export type TDivergenceKind =
   | "output-mismatch"
   | "umid-doc-mismatch"
+  | "output-hash-mismatch"
   | "failed-but-passed"
   | "execution-error"
   | "adopt-rejected";
