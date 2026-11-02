@@ -220,7 +220,19 @@ export class KeyPair {
    * @param {string} [pub=""]
    */
   private createHandler(prv: string, pub: string = ""): void {
-    this.handler = {
+    this.handler = this.makeHandler(prv, pub);
+  }
+
+  /**
+   * Builds a key handler without assigning it to this instance
+   *
+   * @private
+   * @param {string} prv
+   * @param {string} [pub=""]
+   * @returns {KeyHandler}
+   */
+  private makeHandler(prv: string, pub: string = ""): KeyHandler {
+    return {
       get pub() {
         return {
           pkcs8pem: pub,
@@ -492,22 +504,26 @@ export class KeyPair {
         // accept.
         const privateKey = this.padPrivateKey(curve.getPrivateKey());
 
+        // sign() and verify() read PEM from the instance's own handler, so
+        // that is always PEM, whichever format is handed back
+        this.createHandler(
+          AsnParser.encodeECPrivateKey(privateKey, curve.getPublicKey()),
+          AsnParser.encodeECPublicKey(curve.getPublicKey())
+        );
+
         if (pem) {
-          // Create Return Object
-          this.createHandler(
-            AsnParser.encodeECPrivateKey(privateKey, curve.getPublicKey()),
-            AsnParser.encodeECPublicKey(curve.getPublicKey())
-          );
-        } else {
-          this.createHandler(
-            "0x" + privateKey.toString("hex"),
-            compressed
-              ? "0x" + curve.getPublicKey("hex", "compressed")
-              : "0x" + curve.getPublicKey("hex", "uncompressed")
-          );
+          return this.handler;
         }
 
-        return this.handler;
+        // Raw hex keys for the caller, as the constructor accepts them. Not
+        // assigned to the instance: it used to be, which left an instance
+        // that could not sign or verify what it had just generated.
+        return this.makeHandler(
+          "0x" + privateKey.toString("hex"),
+          compressed
+            ? "0x" + curve.getPublicKey("hex", "compressed")
+            : "0x" + curve.getPublicKey("hex", "uncompressed")
+        );
       default:
         throw ActiveLogger.fatal(`Cannot generate ${this.type} key pair type`);
     }
