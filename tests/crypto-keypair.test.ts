@@ -619,3 +619,52 @@ describe("KeyPair - raw hex keys are validated, not silently truncated", () => {
     }
   });
 });
+
+/**
+ * encrypt() splits the text into 100 character chunks, each RSA-encrypted on
+ * its own. RSA-OAEP takes only modulus bytes minus 42 per block, so the limit
+ * is on bytes, not characters; and a split by UTF-16 unit can land between
+ * the two halves of an emoji, which then decrypts as two U+FFFD.
+ */
+describe("KeyPair - RSA encrypt chunking is safe for any text", () => {
+  const make = (bits: number) => {
+    const pair = crypto.generateKeyPairSync("rsa", {
+      modulusLength: bits,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    return {
+      pub: new KeyPair("rsa", pair.publicKey),
+      prv: new KeyPair("rsa", pair.privateKey),
+    };
+  };
+  const k2048 = make(2048);
+
+  const roundTrips = (k: { pub: any; prv: any }, text: string) =>
+    k.prv.decrypt(k.pub.encrypt(text)) === text;
+
+  it("keeps an emoji that straddles a chunk boundary whole", () => {
+    for (const lead of [98, 99, 100, 101, 199]) {
+      const text = "a".repeat(lead) + "😀" + "b";
+      expect(roundTrips(k2048, text), `emoji after ${lead} chars`).to.equal(true);
+    }
+  });
+
+  it("encrypts 100 characters of 3-byte text, which is 300 bytes", () => {
+    expect(roundTrips(k2048, "漢".repeat(100))).to.equal(true);
+    expect(roundTrips(k2048, "😀".repeat(120))).to.equal(true);
+  });
+
+  it("encrypts to a smaller key as well", () => {
+    // 1024 bit keys take 86 bytes a block, fewer than 100 ASCII characters
+    const k1024 = make(1024);
+    expect(roundTrips(k1024, "x".repeat(100))).to.equal(true);
+    expect(roundTrips(k1024, "é漢".repeat(80))).to.equal(true);
+  });
+
+  it("leaves ordinary text in the same 100 character chunks as before", () => {
+    expect(k2048.pub.encrypt("x".repeat(100)).split("|")).to.have.length(1);
+    expect(k2048.pub.encrypt("x".repeat(101)).split("|")).to.have.length(2);
+    expect(k2048.pub.encrypt("x".repeat(300)).split("|")).to.have.length(3);
+  });
+});
