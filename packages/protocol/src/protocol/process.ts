@@ -184,17 +184,6 @@ export class Process extends EventEmitter {
   private storeSingleError = false;
 
   /**
-   * Prioritise the error sent to the requestee
-   *
-   * @private
-   */
-  private errorOut = {
-    code: 0,
-    reason: "",
-    priority: 0,
-  };
-
-  /**
    * Holds the broadcast timeout object
    *
    * @private
@@ -1840,7 +1829,7 @@ export class Process extends EventEmitter {
               } else {
                 // No move onto internal attempts
                 // Upgrade error code so restore will process it
-                if (this.errorOut.code === 1505) {
+                if (this.shared.errorOut.code === 1505) {
                   ActiveLogger.info(
                     "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
                   );
@@ -1848,7 +1837,7 @@ export class Process extends EventEmitter {
                   this.shared.storeSingleError = false;
                   // try/catch to finish execution
                   this.shared
-                    .storeError(1001, new Error(this.errorOut.reason), 11)
+                    .storeError(1001, new Error(this.shared.errorOut.reason as string), 11)
                     .then(() => {
                       this.emit("commited");
                     })
