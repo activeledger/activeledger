@@ -99,6 +99,13 @@ const POST_QUANTUM: {
   "falcon-512": falcon512 as any,
 };
 
+/**
+ * Order of the secp256k1 group: valid private scalars are 1 to this minus 1.
+ */
+const SECP256K1_ORDER = BigInt(
+  "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+);
+
 export class KeyPair {
   /**
    * Holds Public Private Data
@@ -177,14 +184,14 @@ export class KeyPair {
               this.createHandler(
                 "",
                 AsnParser.encodeECPublicKey(
-                  Buffer.from(pem.replace("0x", ""), "hex")
+                  this.hexToKey(pem.slice(2), false)
                 )
               );
             } else {
               // Private
               this.createHandler(
                 AsnParser.encodeECPrivateKey(
-                  Buffer.from(pem.replace("0x", ""), "hex"),
+                  this.hexToKey(pem.slice(2), true),
                   Buffer.from("")
                 ),
                 ""
@@ -234,6 +241,35 @@ export class KeyPair {
   }
 
   /**
+   * Hex key text to bytes. Buffer.from(hex, "hex") stops at the first
+   * character that is not hex without complaint, so a typo, an odd digit or
+   * trailing junk would silently become a different key - an empty one at
+   * worst, which node signs with. And a private scalar of 0, or at or above
+   * the group order, is not a private key at all. Refuse both.
+   *
+   * @private
+   * @param {string} hex Without any 0x prefix
+   * @param {boolean} scalar A private key, so range checked
+   * @returns {Buffer}
+   */
+  private hexToKey(hex: string, scalar: boolean): Buffer {
+    if (!/^(?:[0-9a-fA-F]{2})+$/.test(hex)) {
+      throw ActiveLogger.fatal(
+        `Invalid ${this.type} key: expected whole bytes of hex`
+      );
+    }
+    if (scalar) {
+      const value = BigInt("0x" + hex);
+      if (value < BigInt(1) || value >= SECP256K1_ORDER) {
+        throw ActiveLogger.fatal(
+          `Invalid ${this.type} private key: out of range for secp256k1`
+        );
+      }
+    }
+    return Buffer.from(hex, "hex");
+  }
+
+  /**
    * Parse PEM again to convert format
    *
    * @private
@@ -241,44 +277,48 @@ export class KeyPair {
    */
   private enableCompatMode(): boolean {
     if (!this.compatMode) {
+      // handler.pub / handler.prv are getters that return a fresh object on
+      // every read, so assigning to their pkcs8pem changes nothing. Convert
+      // into locals and rebuild the handler at the end.
+      let pub = this.handler.pub.pkcs8pem;
+      let prv = this.handler.prv.pkcs8pem;
+
       // Convert Public if available
-      if (this.handler.pub.pkcs8pem) {
-        if (this.handler.pub.pkcs8pem.indexOf("PUBLIC-") !== -1) {
+      if (pub) {
+        if (pub.indexOf("PUBLIC-") !== -1) {
           // Key should be PEM style with RAW value.
           // Remove Header & Footer & New Lines
-          let pem = this.handler.pub.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+          let pem = pub.replace(/-*[A-Z ]*-|\n/g, "");
 
           // Convert to HEX from base64
           pem = Buffer.from(pem, "base64").toString();
 
           // Encode into valid PEM
-          this.handler.pub.pkcs8pem = AsnParser.encodeECPublicKey(
-            Buffer.from(pem, "hex")
-          );
+          pub = AsnParser.encodeECPublicKey(this.hexToKey(pem, false));
         }
       }
 
       // Convert Private if available
-      if (this.handler.prv.pkcs8pem) {
+      if (prv) {
         // Backwards compatibility mode (NO ASN PEM)
-        if (this.handler.prv.pkcs8pem.indexOf("PRIVATE-") !== -1) {
+        if (prv.indexOf("PRIVATE-") !== -1) {
           // Key should be PEM style with RAW value.
           // Remove Header & Footer & New Lines
-          let pem = this.handler.prv.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+          let pem = prv.replace(/-*[A-Z ]*-|\n/g, "");
 
           // Convert to HEX from base64
           pem = Buffer.from(pem, "base64").toString();
 
           // Encode into valid PEM
-          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
-            Buffer.from(pem, "hex"),
+          prv = AsnParser.encodeECPrivateKey(
+            this.hexToKey(pem, true),
             Buffer.from("")
           );
         } else {
           // Decode Nested Parser into unnested valid PEM
-          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
+          prv = AsnParser.encodeECPrivateKey(
             Buffer.from(
-              AsnParser.decodeECPrivateKey(this.handler.prv.pkcs8pem),
+              AsnParser.decodeECPrivateKey(prv),
               "hex"
             ),
             Buffer.from("")
@@ -287,6 +327,7 @@ export class KeyPair {
       }
 
       // Return from conversion
+      this.createHandler(prv, pub);
       this.compatMode = true;
       return true;
     }
@@ -325,20 +366,39 @@ export class KeyPair {
   /**
    * Reduce string size for concated encryption
    *
+   * Splits on whole characters, never inside a surrogate pair, and also caps
+   * each chunk's UTF-8 size: RSA-OAEP takes only the modulus size minus 42
+   * bytes a block, and 100 characters can be 400 bytes.
+   *
    * @private
    * @param {string} data
-   * @param {number} [size=100]
+   * @param {number} [size=100] Most UTF-16 units in a chunk
+   * @param {number} [maxBytes=Infinity] Most UTF-8 bytes in a chunk
    * @returns {string[]}
    */
-  private chunkString(data: string, size: number = 100): string[] {
-    if (data.length <= size) {
-      return [data];
+  private chunkString(
+    data: string,
+    size: number = 100,
+    maxBytes: number = Infinity
+  ): string[] {
+    const chunks: string[] = [];
+    let chunk = "";
+    let bytes = 0;
+    // Iterating a string yields code points, so a pair is never split
+    for (const char of data) {
+      const charBytes = Buffer.byteLength(char);
+      if (
+        chunk &&
+        (chunk.length + char.length > size || bytes + charBytes > maxBytes)
+      ) {
+        chunks.push(chunk);
+        chunk = "";
+        bytes = 0;
+      }
+      chunk += char;
+      bytes += charBytes;
     }
-    const numChunks = Math.ceil(data.length / size);
-    const chunks = new Array(numChunks);
-    for (let i = 0, o = 0; i < numChunks; ++i, o += size) {
-      chunks[i] = data.substr(o, size);
-    }
+    chunks.push(chunk);
     return chunks;
   }
 
@@ -479,7 +539,15 @@ export class KeyPair {
         );
       } else {
         // Split data
-        let chunked = this.chunkString(this.getString(data));
+        // OAEP (SHA-1) carries the modulus size minus 42 bytes a block
+        const modulusBytes =
+          (crypto.createPublicKey(this.handler.pub.pkcs8pem)
+            .asymmetricKeyDetails?.modulusLength || 2048) / 8;
+        let chunked = this.chunkString(
+          this.getString(data),
+          100,
+          modulusBytes - 42
+        );
         return chunked
           .map((chunk) =>
             crypto
@@ -591,22 +659,21 @@ export class KeyPair {
         sign = crypto.createSign("RSA-SHA256");
         sign.update(data);
         return Buffer.from(
-          sign.sign(this.handler.prv.pkcs8pem, "hex"),
+          sign.sign(this.checkKeyType(
+            crypto.createPrivateKey(this.handler.prv.pkcs8pem),
+            data
+          ), "hex"),
           "hex"
         ).toString(encoding);
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
+        let prvKey: crypto.KeyObject;
         try {
-          sign = crypto.createSign("sha256");
-          sign.update(data);
-          return Buffer.from(
-            sign.sign(this.handler.prv.pkcs8pem, "hex"),
-            "hex"
-          ).toString(encoding);
+          prvKey = crypto.createPrivateKey(this.handler.prv.pkcs8pem);
         } catch {
           if (this.enableCompatMode()) {
-            return this.sign(data);
+            return (this as any).sign(data, encoding);
           } else {
             throw ActiveLogger.fatal(
               data,
@@ -614,9 +681,41 @@ export class KeyPair {
             );
           }
         }
+        sign = crypto.createSign("sha256");
+        sign.update(data);
+        return Buffer.from(
+          sign.sign(this.checkKeyType(prvKey, data), "hex"),
+          "hex"
+        ).toString(encoding);
       default:
         throw ActiveLogger.fatal(data, `Cannot sign with ${this.type}`);
     }
+  }
+
+  /**
+   * The type string travels with the transaction and picks the algorithm,
+   * but node will verify an ECDSA signature against any EC key and an RSA one
+   * against any RSA key whatever was declared - so a P-256 or RSA key would
+   * pass as secp256k1, and an EC key as "rsa". Refuse any key that is not of
+   * the kind the declared type means.
+   *
+   * @private
+   * @param {crypto.KeyObject} key
+   * @param {string} data Logged with the failure
+   * @returns {crypto.KeyObject} The same key
+   */
+  private checkKeyType(key: crypto.KeyObject, data: string): crypto.KeyObject {
+    const found = key.asymmetricKeyType === "ec"
+      ? `ec ${key.asymmetricKeyDetails?.namedCurve}`
+      : key.asymmetricKeyType;
+    const expected = this.type === "rsa" ? "rsa" : "ec secp256k1";
+    if (found !== expected) {
+      throw ActiveLogger.fatal(
+        data,
+        `Cannot use a ${found} key as ${this.type}, expected ${expected}`
+      );
+    }
+    return key;
   }
 
   /**
@@ -685,25 +784,28 @@ export class KeyPair {
       // Data Object to string
       data = this.getString(data);
 
-      // Parsing the PEM/DER into a KeyObject is the expensive part of
-      // verify() - cache it since the public key is immutable per instance.
-      const pubKey = this.getVerifyKeyObject();
-
       switch (this.type) {
         case "rsa":
           verify = crypto.createVerify("RSA-SHA256");
           verify.update(data);
-          return verify.verify(pubKey, Buffer.from(signature, encoding));
+          // Parsing the PEM/DER into a KeyObject is the expensive part of
+          // verify() - getVerifyKeyObject() caches it, the public key being
+          // immutable per instance.
+          return verify.verify(
+            this.checkKeyType(this.getVerifyKeyObject(), data),
+            Buffer.from(signature, encoding)
+          );
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
+          let pubKey: crypto.KeyObject;
           try {
-            verify = crypto.createVerify("sha256");
-            verify.update(data);
-            return verify.verify(pubKey, Buffer.from(signature, encoding));
+            // Parsed inside the try: a first-generation PUBLIC key is not a
+            // PEM node can read until enableCompatMode() has converted it.
+            pubKey = this.getVerifyKeyObject();
           } catch {
             if (this.enableCompatMode()) {
-              return this.verify(data, signature);
+              return (this as any).verify(data, signature, encoding);
             } else {
               throw ActiveLogger.fatal(
                 data,
@@ -711,6 +813,12 @@ export class KeyPair {
               );
             }
           }
+          verify = crypto.createVerify("sha256");
+          verify.update(data);
+          return verify.verify(
+            this.checkKeyType(pubKey, data),
+            Buffer.from(signature, encoding)
+          );
         default:
           throw ActiveLogger.fatal(data, `Cannot verify with ${this.type}`);
       }
