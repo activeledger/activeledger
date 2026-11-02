@@ -441,3 +441,52 @@ describe("KeyPair - post-quantum edge cases", () => {
     expect(() => new KeyPair("dsa", keys.pub.pkcs8pem)).to.throw();
   });
 });
+
+/**
+ * Keys in the first-generation format: "-----BEGIN PRIVATE-----" around the
+ * base64 of the key's hex, rather than a real PEM (see docs/en-gb/crypto.md).
+ * enableCompatMode() converts them on first use.
+ */
+describe("KeyPair - legacy PRIVATE/PUBLIC format keys", () => {
+  const legacy = (label: string, hex: string) =>
+    `-----BEGIN ${label}-----\n${Buffer.from(hex).toString("base64")}\n-----END ${label}-----`;
+  const legacyPrv = legacy("PRIVATE", EC.prvHex);
+  const legacyPub = legacy("PUBLIC", EC.pubUncompressedHex);
+
+  it("signs, and an independent verifier accepts the signature", () => {
+    const verifier = crypto.createPublicKey(EC.pubSpkiPem);
+    const kp = new KeyPair("secp256k1", legacyPrv);
+    // Twice: the converted key has to stick, not be rebuilt and lost.
+    for (const msg of ["first", "second"]) {
+      const sig = kp.sign(msg);
+      expect(
+        crypto.verify("sha256", Buffer.from(msg), verifier, Buffer.from(sig, "base64"))
+      ).to.equal(true, msg);
+    }
+  });
+
+  it("keeps the requested encoding when it had to convert the key", () => {
+    const hex = (new KeyPair("secp256k1", legacyPrv).sign as any)("enc", "hex");
+    expect(hex).to.match(/^30[0-9a-f]+$/);
+    expect(
+      crypto.verify("sha256", Buffer.from("enc"), crypto.createPublicKey(EC.pubSpkiPem), Buffer.from(hex, "hex"))
+    ).to.equal(true);
+  });
+
+  it("verifies a signature made by another implementation, and rejects a changed one", () => {
+    const kp = new KeyPair("secp256k1", legacyPub);
+    expect(kp.verify(EC.message, EC.signatureB64)).to.equal(true);
+    expect(kp.verify(EC.message + "x", EC.signatureB64)).to.equal(false);
+    expect(new KeyPair("secp256k1", legacy("PUBLIC", TWO_G)).verify(EC.message, EC.signatureB64)).to.equal(false);
+  });
+
+  it("verifies in the requested encoding too", () => {
+    const hexSig = Buffer.from(EC.signatureB64, "base64").toString("hex");
+    expect((new KeyPair("secp256k1", legacyPub).verify as any)(EC.message, hexSig, "hex")).to.equal(true);
+  });
+
+  it("round-trips between a legacy private and a legacy public key", () => {
+    const sig = new KeyPair("secp256k1", legacyPrv).sign("pair");
+    expect(new KeyPair("secp256k1", legacyPub).verify("pair", sig)).to.equal(true);
+  });
+});
