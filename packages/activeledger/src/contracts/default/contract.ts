@@ -26,6 +26,7 @@ import * as ts from "typescript-api";
 import {
   ContractFiles,
   ContractSource,
+  safeSegment,
 } from "@activeledger/activecontracts/lib/source";
 import { Standard, Activity } from "@activeledger/activecontracts";
 import { ActiveOptions } from "@activeledger/activeoptions";
@@ -252,6 +253,22 @@ const BANNED_PROPERTIES_SET = new Set(BANNED_PROPERTIES);
  * entry from ES2025_BUILD; absent means es2017.
  */
 type ContractTarget = "es2017" | "es2025";
+
+/**
+ * The contract, link and version names of a lock or link entry become path
+ * segments (rootDir/namespace/<name>.js). Refuse anything that is not a
+ * plain label before it is used, or a namespace's owner could name a path
+ * into another namespace - unlinking (deleting) a contract file there, or
+ * planting a link in it. Add and update are already held to the same rule
+ * by ContractFiles; link and unlink touch the filesystem directly.
+ *
+ * @throws when a name is not a plain label
+ */
+function assertSafeNames(contract: string, other: string | undefined): void {
+  safeSegment(contract, "contract");
+  // A version carries its leading "@"; empty for the contract's own lock
+  if (other) safeSegment(other, "name");
+}
 
 /**
  * Default Onboarding (New Account) contract
@@ -1163,6 +1180,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      assertSafeNames(this.contract, this.version);
     } catch (e) {
       return reject(e.message);
     }
@@ -1223,6 +1241,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      assertSafeNames(this.contract, this.version);
     } catch (e) {
       return reject(e.message);
     }
@@ -1321,6 +1340,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      assertSafeNames(this.contract, this.link);
     } catch (e) {
       return reject(e.message);
     }
@@ -1378,6 +1398,7 @@ export default class Contract extends Standard {
     // Closed-network deploy control (default off; see assertDeployerAllowed)
     try {
       this.assertDeployerAllowed();
+      assertSafeNames(this.contract, this.link);
     } catch (e) {
       return reject(e.message);
     }
