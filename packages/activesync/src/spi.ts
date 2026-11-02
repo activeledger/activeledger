@@ -245,14 +245,20 @@ export function spiConsensus(
       }
 
       if (revisions[rev].votes > max) {
+        // More support supersedes anything found so far, including a
+        // fork between smaller groups - otherwise the answer depends on
+        // the order the revisions happened to be visited in.
         max = revisions[rev].votes;
         winner = rev;
+        forked = false;
       } else if (revisions[rev].votes === max) {
         // Same support. A later position means the other side simply
         // applied something this one has not yet - adopting it loses
         // nothing, because the lagging copy has no history of its own.
+        // It also supersedes a fork at a lower position.
         if (revPosition(rev) > revPosition(winner)) {
           winner = rev;
+          forked = false;
         } else if (
           revPosition(rev) === revPosition(winner) &&
           rev !== winner
@@ -344,6 +350,8 @@ export function previousUmidFor(
     if (!entry) continue;
     // Ids may carry a virtual prefix depending on where they were built.
     const id: string = entry.id || "";
+    // Every string ends with "", so an entry with no id must not match
+    if (!id) continue;
     if (id === streamId || id.endsWith(streamId) || streamId.endsWith(id)) {
       return entry.prev || undefined;
     }
