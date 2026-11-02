@@ -241,44 +241,50 @@ export class KeyPair {
    */
   private enableCompatMode(): boolean {
     if (!this.compatMode) {
+      // handler.pub / handler.prv are getters that return a fresh object on
+      // every read, so assigning to their pkcs8pem changes nothing. Convert
+      // into locals and rebuild the handler at the end.
+      let pub = this.handler.pub.pkcs8pem;
+      let prv = this.handler.prv.pkcs8pem;
+
       // Convert Public if available
-      if (this.handler.pub.pkcs8pem) {
-        if (this.handler.pub.pkcs8pem.indexOf("PUBLIC-") !== -1) {
+      if (pub) {
+        if (pub.indexOf("PUBLIC-") !== -1) {
           // Key should be PEM style with RAW value.
           // Remove Header & Footer & New Lines
-          let pem = this.handler.pub.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+          let pem = pub.replace(/-*[A-Z ]*-|\n/g, "");
 
           // Convert to HEX from base64
           pem = Buffer.from(pem, "base64").toString();
 
           // Encode into valid PEM
-          this.handler.pub.pkcs8pem = AsnParser.encodeECPublicKey(
+          pub = AsnParser.encodeECPublicKey(
             Buffer.from(pem, "hex")
           );
         }
       }
 
       // Convert Private if available
-      if (this.handler.prv.pkcs8pem) {
+      if (prv) {
         // Backwards compatibility mode (NO ASN PEM)
-        if (this.handler.prv.pkcs8pem.indexOf("PRIVATE-") !== -1) {
+        if (prv.indexOf("PRIVATE-") !== -1) {
           // Key should be PEM style with RAW value.
           // Remove Header & Footer & New Lines
-          let pem = this.handler.prv.pkcs8pem.replace(/-*[A-Z ]*-|\n/g, "");
+          let pem = prv.replace(/-*[A-Z ]*-|\n/g, "");
 
           // Convert to HEX from base64
           pem = Buffer.from(pem, "base64").toString();
 
           // Encode into valid PEM
-          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
+          prv = AsnParser.encodeECPrivateKey(
             Buffer.from(pem, "hex"),
             Buffer.from("")
           );
         } else {
           // Decode Nested Parser into unnested valid PEM
-          this.handler.prv.pkcs8pem = AsnParser.encodeECPrivateKey(
+          prv = AsnParser.encodeECPrivateKey(
             Buffer.from(
-              AsnParser.decodeECPrivateKey(this.handler.prv.pkcs8pem),
+              AsnParser.decodeECPrivateKey(prv),
               "hex"
             ),
             Buffer.from("")
@@ -287,6 +293,7 @@ export class KeyPair {
       }
 
       // Return from conversion
+      this.createHandler(prv, pub);
       this.compatMode = true;
       return true;
     }
@@ -606,7 +613,7 @@ export class KeyPair {
           ).toString(encoding);
         } catch {
           if (this.enableCompatMode()) {
-            return this.sign(data);
+            return (this as any).sign(data, encoding);
           } else {
             throw ActiveLogger.fatal(
               data,
@@ -685,25 +692,32 @@ export class KeyPair {
       // Data Object to string
       data = this.getString(data);
 
-      // Parsing the PEM/DER into a KeyObject is the expensive part of
-      // verify() - cache it since the public key is immutable per instance.
-      const pubKey = this.getVerifyKeyObject();
-
       switch (this.type) {
         case "rsa":
           verify = crypto.createVerify("RSA-SHA256");
           verify.update(data);
-          return verify.verify(pubKey, Buffer.from(signature, encoding));
+          // Parsing the PEM/DER into a KeyObject is the expensive part of
+          // verify() - getVerifyKeyObject() caches it, the public key being
+          // immutable per instance.
+          return verify.verify(
+            this.getVerifyKeyObject(),
+            Buffer.from(signature, encoding)
+          );
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
           try {
             verify = crypto.createVerify("sha256");
             verify.update(data);
-            return verify.verify(pubKey, Buffer.from(signature, encoding));
+            // Parsed inside the try: a first-generation PUBLIC key is not a
+            // PEM node can read until enableCompatMode() has converted it.
+            return verify.verify(
+              this.getVerifyKeyObject(),
+              Buffer.from(signature, encoding)
+            );
           } catch {
             if (this.enableCompatMode()) {
-              return this.verify(data, signature);
+              return (this as any).verify(data, signature, encoding);
             } else {
               throw ActiveLogger.fatal(
                 data,
