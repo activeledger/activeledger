@@ -149,6 +149,18 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   private nextSend: NodeJS.Timeout | null;
 
   /**
+   * Serialise params as a P2P frame body (msgpack, gzip over the threshold).
+   * A broadcast calls this once and shares the result between its peers.
+   *
+   * @static
+   * @param {*} params
+   * @returns {Promise<Buffer>}
+   */
+  public static serialiseParams(params: any): Promise<Buffer> {
+    return ActiveClone.serialize(params, { enableCompression: true });
+  }
+
+  /**
    * Send authenticated request to this neighbour (Knock on their door)
    * wrapping http request promise so we can easily log errors and throw whole object
    * without having to always string / parse.
@@ -163,7 +175,8 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     params?: any,
     external?: boolean, // Is this an external-facing endpoint?
     resend?: number, // Max retry attempts for connection resets
-    bundle?: boolean // Should this request be bundled?
+    bundle?: boolean, // Should this request be bundled?
+    serialised?: () => Promise<Buffer> // Pre-serialised params, shared by a broadcast
   ): Promise<any> {
     // Profiling only: pretend this neighbour is far away.
     //
@@ -212,7 +225,11 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       endpoint === 'init' // Other end only calls init
     ) {
       // P2P Messaging
-      this.p2pClient.send(await ActiveClone.serialize(params, { enableCompression: true }), Home.reference);
+      // A broadcast hands every peer the same already-serialised frame body
+      this.p2pClient.send(
+        await (serialised ? serialised() : Neighbour.serialiseParams(params)),
+        Home.reference
+      );
       return Promise.resolve({ ok: 1 });
     } else {
       // Allow us to force http mostly for knock right non broadcast
