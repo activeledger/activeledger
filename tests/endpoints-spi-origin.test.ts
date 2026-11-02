@@ -3,6 +3,7 @@ import "mocha";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { Endpoints } from "../packages/network/src/network/endpoints";
 import { Home } from "../packages/network/src/network/home";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 // The origin node's stream-position self repair (SPI) inside
 // ExternalInitalise: when the network disagrees with this node about a
@@ -34,9 +35,13 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     c: { vote: false, commit: false, error: SPI },
   });
 
-  const fixture = (stale: string, networkAnswers: () => Promise<any[]>) => {
+  const fixture = (
+    stale: string,
+    networkAnswers: () => Promise<any[]>,
+    fixedId?: string
+  ) => {
     // Unique per test: the "already rewrote this" memory is process wide
-    const streamId = `${++n}`.padStart(64, "e");
+    const streamId = fixedId || `${++n}`.padStart(64, "e");
     const written: any[] = [];
     const released: any[] = [];
     const pendingCalls: any[] = [];
@@ -248,6 +253,100 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     expect(f.released[0][0]).to.equal(f.pendingCalls[0].$umid);
     // The client got the answer of the resend, not an empty one
     expect(reply.content.$umid).to.equal("first");
+  });
+
+  describe("fork logging", () => {
+    const realWarn = ActiveLogger.warn;
+    const realError = ActiveLogger.error;
+    const realNow = Date.now;
+    let warns: string[];
+    let errors: string[];
+    let clock: number;
+
+    beforeEach(() => {
+      warns = [];
+      errors = [];
+      clock = 1_000_000;
+      (ActiveLogger as any).warn = (m: any) => warns.push(String(m));
+      (ActiveLogger as any).error = (m: any) => errors.push(String(m));
+      Date.now = () => clock;
+    });
+    afterEach(() => {
+      (ActiveLogger as any).warn = realWarn;
+      (ActiveLogger as any).error = realError;
+      Date.now = realNow;
+    });
+
+    const forked = (id: string) => async () => {
+      const a = { _id: id, _rev: "2-aaaa" };
+      const b = { _id: id, _rev: "2-bbbb" };
+      return [[a], [b], [a], [b]];
+    };
+    const round = async (id: string, answers: (id: string) => any) => {
+      const f = fixture("1-stale", answers(id), id);
+      await submit(f.host);
+      return f;
+    };
+    const forkId = () => `${++n}`.padStart(64, "f");
+
+    it("logs a fork once, at error level, with the readable block and a JSON line", async () => {
+      const id = forkId();
+      const f = await round(id, forked);
+
+      expect(errors).to.have.length(1);
+      expect(warns.filter((w) => w.includes("NOWINNER"))).to.have.length(0);
+      const entry = errors[0];
+      expect(entry).to.contain(`stream ${id}`);
+      expect(entry).to.contain("first"); // the umid that exposed it
+      expect(entry).to.contain("2-aaaa");
+      expect(entry).to.contain("2-bbbb");
+      expect(entry).to.contain("NO action");
+      const json = JSON.parse(entry.split("SPI_FORK ")[1]);
+      expect(json.stream).to.equal(id);
+      expect(json.umid).to.equal("first");
+      expect(json.revisions.map((r: any) => r.nodes)).to.have.deep.members([
+        [0, 2],
+        [1, 3],
+      ]);
+      // Logging only: nothing was rewritten
+      expect(f.written).to.have.length(0);
+    });
+
+    it("rate limits the same fork within the interval, then logs again with a count", async () => {
+      const id = forkId();
+      await round(id, forked);
+      clock += Endpoints.FORK_LOG_INTERVAL_MS - 1;
+      await round(id, forked);
+      await round(id, forked);
+      expect(errors).to.have.length(1);
+
+      clock += 1;
+      await round(id, forked);
+      expect(errors).to.have.length(2);
+      expect(errors[1]).to.contain("Seen 4 times since first logged");
+      expect(errors[1]).to.contain("SPI_FORK ");
+    });
+
+    it("keeps a different forked stream's limit separate", async () => {
+      await round(forkId(), forked);
+      await round(forkId(), forked);
+      expect(errors).to.have.length(2);
+    });
+
+    it("still warns, one line, for an abstention that is not a fork", async () => {
+      const id = forkId();
+      await round(id, (i) => async () => [
+        [{ _id: i, _rev: "2-a" }],
+        [{ _id: i, _rev: "2-b" }],
+        [{ _id: i, _rev: "2-c" }],
+        [{ _id: i, _rev: "2-d" }],
+      ]);
+      expect(errors).to.have.length(0);
+      const w = warns.filter((x) => x.includes("SPI NOWINNER #1"));
+      expect(w).to.have.length(1);
+      expect(w[0]).to.contain(id);
+      expect(w[0]).to.contain("no revision reached consensus");
+    });
   });
 });
 

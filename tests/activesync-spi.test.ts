@@ -88,6 +88,7 @@ describe("spiConsensus - malformed peer answers (Activesync)", () => {
     expect(spiConsensus([], THRESHOLD)).to.deep.equal({
       winners: {},
       abstained: {},
+      forks: {},
     });
   });
 

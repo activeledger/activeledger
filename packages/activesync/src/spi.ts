@@ -135,7 +135,9 @@
  * @static
  * @param {any[]} networkStreams one entry per node, as knockAll returns
  * @param {number} consensusReached votes needed to carry a revision
- * @returns {{ winners: ..., abstained: ... }}
+ * @returns {{ winners: ..., abstained: ..., forks: ... }} forks holds the
+ * detail behind every "forked" abstention (and only those) so it can be
+ * logged with describeFork(). It changes no decision.
  */
 export function spiConsensus(
   networkStreams: any[],
@@ -143,9 +145,12 @@ export function spiConsensus(
 ): {
   winners: { [id: string]: { rev: string; votes: number; doc: any } };
   abstained: { [id: string]: string };
+  forks: { [id: string]: SpiFork };
 } {
   const tally: {
-    [id: string]: { [rev: string]: { votes: number; doc: any } };
+    [id: string]: {
+      [rev: string]: { votes: number; doc: any; nodes: number[] };
+    };
   } = {};
   // Nodes that hold the stream but could not report it this round
   const unreported: { [id: string]: number } = {};
@@ -186,12 +191,16 @@ export function spiConsensus(
       if (!tally[streamDoc._id]) {
         tally[streamDoc._id] = {};
       }
-      tally[streamDoc._id][streamDoc._rev]
-        ? tally[streamDoc._id][streamDoc._rev].votes++
-        : (tally[streamDoc._id][streamDoc._rev] = {
-            votes: 1,
-            doc: streamDoc,
-          });
+      if (tally[streamDoc._id][streamDoc._rev]) {
+        tally[streamDoc._id][streamDoc._rev].votes++;
+        tally[streamDoc._id][streamDoc._rev].nodes.push(i);
+      } else {
+        tally[streamDoc._id][streamDoc._rev] = {
+          votes: 1,
+          doc: streamDoc,
+          nodes: [i],
+        };
+      }
     }
   }
 
@@ -199,6 +208,7 @@ export function spiConsensus(
     [id: string]: { rev: string; votes: number; doc: any };
   } = {};
   const abstained: { [id: string]: string } = {};
+  const forks: { [id: string]: SpiFork } = {};
 
   // Every id anyone mentioned, reported or not
   const ids = Object.keys(tally);
@@ -280,6 +290,22 @@ export function spiConsensus(
     if (forked) {
       abstained[id] =
         "forked - two revisions at the same position, needs a human";
+      // Detail for the operator only. Every revision that cleared the
+      // threshold is listed, most votes first, so the competing ones are
+      // always among them.
+      forks[id] = {
+        revisions: candidates
+          .filter((rev) => revisions[rev].votes >= consensusReached)
+          .map((rev) => ({
+            rev,
+            position: revPosition(rev),
+            votes: revisions[rev].votes,
+            nodes: revisions[rev].nodes.slice().sort((a, b) => a - b),
+          }))
+          .sort((a, b) => b.votes - a.votes || a.rev.localeCompare(b.rev)),
+        silent,
+        consensusReached,
+      };
     } else if (winner && max <= silent) {
       // Enough nodes agreed to clear the threshold, but not enough to
       // outnumber the ones that said nothing. Silence is not evidence
@@ -302,7 +328,103 @@ export function spiConsensus(
     }
   }
 
-  return { winners, abstained };
+  return { winners, abstained, forks };
+}
+
+/**
+ * The facts behind one forked stream, as spiConsensus() found them.
+ * nodes are indexes into the networkStreams array it was given.
+ */
+export interface SpiFork {
+  revisions: Array<{
+    rev: string;
+    position: number;
+    votes: number;
+    nodes: number[];
+  }>;
+  silent: number;
+  consensusReached: number;
+}
+
+/**
+ * Prefix of the one-line JSON a fork log entry ends with, so tooling can
+ * grep for it.
+ */
+export const SPI_FORK_TAG = "SPI_FORK";
+
+/**
+ * A multi-line, human readable account of an SPI fork, for the operator
+ * who has to resolve it. Pure: returns text, logs nothing. The last line
+ * is the same facts as compact JSON, prefixed with SPI_FORK.
+ *
+ * @param {string} streamId
+ * @param {SpiFork} fork
+ * @param {{ umid?: string; nodeNames?: (index: number) => string | undefined; seen?: number; firstSeen?: string }} [opts]
+ *   umid is the transaction that exposed the fork. nodeNames maps a node
+ *   index to a name or address when the caller has that mapping; without
+ *   it the index is printed and the text says so. seen/firstSeen add the
+ *   repeat count for a fork that keeps coming round.
+ * @returns {string}
+ */
+export function describeFork(
+  streamId: string,
+  fork: SpiFork,
+  opts: {
+    umid?: string;
+    nodeNames?: (index: number) => string | undefined;
+    seen?: number;
+    firstSeen?: string;
+  } = {}
+): string {
+  const named = (i: number) => {
+    const name = opts.nodeNames ? opts.nodeNames(i) : undefined;
+    return name ? `${name} (#${i})` : `#${i}`;
+  };
+  const mapped = !!opts.nodeNames;
+  const lines: string[] = [
+    `SPI FORK - stream ${streamId} has diverged and needs a human`,
+    `  Exposed by transaction (umid): ${opts.umid || "unknown"}`,
+  ];
+  if (opts.seen && opts.seen > 1) {
+    lines.push(
+      `  Seen ${opts.seen} times since first logged${
+        opts.firstSeen ? ` at ${opts.firstSeen}` : ""
+      }`
+    );
+  }
+  lines.push(
+    `  Competing revisions (each needed at least ${fork.consensusReached} votes; the tied ones are the fork):`
+  );
+  for (const r of fork.revisions) {
+    lines.push(
+      `    - ${r.rev}  position ${r.position}  ${r.votes} vote(s)  nodes: ${
+        r.nodes.map(named).join(", ") || "none"
+      }`
+    );
+  }
+  lines.push(
+    mapped
+      ? "  Node numbers are positions in the list of nodes this node asked."
+      : "  Node numbers are positions in the list of nodes this node asked (this node's neighbour list order, this node included); no name mapping was available here."
+  );
+  lines.push(
+    `  Silent nodes (could not report, stream locked or unreachable): ${fork.silent}`,
+    "  This node took NO action: it rewrote nothing, forced no revision and changed no data.",
+    "  Next steps:",
+    `    1. Fetch the stream from each listed node (POST /a/stream with {"$streams":["${streamId}"]}) and compare the revisions and the transactions that produced them.`,
+    "    2. Decide which revision is correct. Nothing in Activeledger decides this for you: both revisions committed a transaction the other did not, so one of them will be lost.",
+    "    3. Bring the nodes holding the other revision to the chosen one in their data store, then run activerestore (see docs/guide/operate/restore.md) to confirm and fill any gaps. Restore also leaves a fork alone, so it cannot do step 3 for you.",
+    `  ${SPI_FORK_TAG} ${JSON.stringify({
+      stream: streamId,
+      umid: opts.umid || null,
+      seen: opts.seen || 1,
+      revisions: fork.revisions,
+      silent: fork.silent,
+      consensusReached: fork.consensusReached,
+      action: "none",
+    })}`
+  );
+  return lines.join("\n");
 }
 
 export function bulkWriteFailed(response: any): boolean {

@@ -418,8 +418,12 @@ export class Endpoints {
                                   const undecided = Object.keys(agreed.abstained);
                                   for (let a = undecided.length; a--;) {
                                     if (!rewrote.has(undecided[a])) {
-                                      ActiveLogger.warn(
-                                        `SPI NOWINNER #1 - ${undecided[a]} (${agreed.abstained[undecided[a]]})`
+                                      Endpoints.logAbstention(
+                                        "#1",
+                                        undecided[a],
+                                        agreed.abstained[undecided[a]],
+                                        agreed.forks[undecided[a]],
+                                        tx.$umid
                                       );
                                     }
                                   }
@@ -822,6 +826,70 @@ export class Endpoints {
    * @param {boolean} spi404Error
    * @returns {boolean}
    */
+  /**
+   * How often the same forked stream is written out in full again.
+   * A fork stays a fork until a person fixes it, so SPI finds it again on
+   * every transaction that touches the stream.
+   */
+  public static readonly FORK_LOG_INTERVAL_MS = 60 * 1000;
+
+  /** Most streams remembered for the fork log limit; oldest evicted first */
+  private static readonly FORK_LOG_MAX = 500;
+
+  private static forkLog = new Map<
+    string,
+    { first: number; last: number; seen: number }
+  >();
+
+  /**
+   * Log why SPI abstained on a stream. A genuine fork is an error with the
+   * full account for the operator (see Sync.describeFork), written the
+   * first time and then at most once per FORK_LOG_INTERVAL_MS per stream
+   * with a count of how often it was seen. Every other abstention stays a
+   * one line warning. Logging only: nothing here changes a decision.
+   *
+   * @private
+   * @static
+   */
+  private static logAbstention(
+    site: string,
+    id: string,
+    reason: string,
+    fork: Sync.SpiFork | undefined,
+    umid: string
+  ): void {
+    if (!fork) {
+      ActiveLogger.warn(`SPI NOWINNER ${site} - ${id} (${reason})`);
+      return;
+    }
+
+    const now = Date.now();
+    let seen = Endpoints.forkLog.get(id);
+    if (seen) {
+      seen.seen++;
+      if (now - seen.last < Endpoints.FORK_LOG_INTERVAL_MS) {
+        return;
+      }
+      seen.last = now;
+    } else {
+      seen = { first: now, last: now, seen: 1 };
+      Endpoints.forkLog.set(id, seen);
+      if (Endpoints.forkLog.size > Endpoints.FORK_LOG_MAX) {
+        Endpoints.forkLog.delete(Endpoints.forkLog.keys().next().value as string);
+      }
+    }
+
+    // Nothing here maps a knockAll index to a neighbour name cheaply, so
+    // the indexes are printed as they are.
+    ActiveLogger.error(
+      Sync.describeFork(id, fork, {
+        umid,
+        seen: seen.seen,
+        firstSeen: new Date(seen.first).toISOString(),
+      })
+    );
+  }
+
   /**
    * Decide, per stream, which revision the network agrees on.
    *
@@ -1233,8 +1301,12 @@ export class Endpoints {
                         const undecided = Object.keys(agreed.abstained);
                         for (let a = undecided.length; a--;) {
                           if (!rewrote.has(undecided[a])) {
-                            ActiveLogger.warn(
-                              `SPI NOWINNER #2 - ${undecided[a]} (${agreed.abstained[undecided[a]]})`
+                            Endpoints.logAbstention(
+                              "#2",
+                              undecided[a],
+                              agreed.abstained[undecided[a]],
+                              agreed.forks[undecided[a]],
+                              tx.$umid
                             );
                           }
                         }
