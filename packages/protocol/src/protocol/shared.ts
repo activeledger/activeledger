@@ -120,6 +120,18 @@ export class Shared {
   }
 
   /**
+   * The error that will be sent to the requestee, as set by storeError
+   *
+   */
+  get errorOut(): {
+    code: number;
+    reason: string | Error;
+    priority: number;
+  } {
+    return this._errorOut;
+  }
+
+  /**
    * Set the store single error state
    *
    */

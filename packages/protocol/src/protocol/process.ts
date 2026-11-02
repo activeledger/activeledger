@@ -184,17 +184,6 @@ export class Process extends EventEmitter {
   private storeSingleError = false;
 
   /**
-   * Prioritise the error sent to the requestee
-   *
-   * @private
-   */
-  private errorOut = {
-    code: 0,
-    reason: "",
-    priority: 0,
-  };
-
-  /**
    * Holds the broadcast timeout object
    *
    * @private
@@ -694,7 +683,14 @@ export class Process extends EventEmitter {
                 contract = (
                   (await fs
                     .readdir(namespacePath))
-                    .filter((fn) => fn.includes(this.entry.$tx.$contract))
+                    // The name followed by a version or the extension, so that
+                    // "tok" never picks up "token@2.0.0.js" or a _LOCK file
+                    .filter((fn) =>
+                      this.entry.$tx.$contract.includes("@")
+                        ? fn.startsWith(this.entry.$tx.$contract)
+                        : fn === `${this.entry.$tx.$contract}.js` ||
+                        fn.startsWith(`${this.entry.$tx.$contract}@`)
+                    )
                     .sort(this.sortVersions)
                     .pop() || "notfound.404"
                 ).replace(".js", "");
@@ -1198,9 +1194,10 @@ export class Process extends EventEmitter {
 
     // Run the verification round
     try {
-      if (continueProcessing)
+      if (continueProcessing) {
         ActiveLogger.debug(`Calling Contract Verify - ${payload.umid}`);
-      await virtualMachine.verify(this.entry.$selfsign, payload.umid);
+        await virtualMachine.verify(this.entry.$selfsign, payload.umid);
+      }
     } catch (error) {
       ActiveLogger.debug(error, "Verify Failure");
       // Verification Failure
@@ -1214,17 +1211,18 @@ export class Process extends EventEmitter {
     if (this.entry.$tx.$i) {
       // Run the vote round
       try {
-        if (continueProcessing)
+        if (continueProcessing) {
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
-        const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
+          const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
 
-        if (typeof vote !== "boolean" && vote.leader) {
-          this.nodeResponse.vote = this.nodeResponse.leader = true;
-          Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
-          // If leader we can run straight to the commit
-          // The data still gets sent on as part of a broadcast commit
-          this.commit(virtualMachine);
-          return;
+          if (typeof vote !== "boolean" && vote.leader) {
+            this.nodeResponse.vote = this.nodeResponse.leader = true;
+            Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
+            // If leader we can run straight to the commit
+            // The data still gets sent on as part of a broadcast commit
+            this.commit(virtualMachine);
+            return;
+          }
         }
       } catch (error) {
         // Do something with the error
@@ -1831,7 +1829,7 @@ export class Process extends EventEmitter {
               } else {
                 // No move onto internal attempts
                 // Upgrade error code so restore will process it
-                if (this.errorOut.code === 1505) {
+                if (this.shared.errorOut.code === 1505) {
                   ActiveLogger.info(
                     "Self Reconcile Failed & Upgrading Error Code for Auto Restore"
                   );
@@ -1839,7 +1837,7 @@ export class Process extends EventEmitter {
                   this.shared.storeSingleError = false;
                   // try/catch to finish execution
                   this.shared
-                    .storeError(1001, new Error(this.errorOut.reason), 11)
+                    .storeError(1001, new Error(this.shared.errorOut.reason as string), 11)
                     .then(() => {
                       this.emit("commited");
                     })
