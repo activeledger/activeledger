@@ -380,22 +380,24 @@ export class LevelMe {
             }
 
             // Push the promise into the array to maintain order
-            docPromises.push(
-              ActiveClone.deserialize(data.value).then((doc: any) => {
-                if (options.include_docs) {
-                  return doc;
-                } else {
-                  return {
-                    _id: doc._id, // Compatibility Trick
-                    id: doc._id,
-                    key: doc._id,
-                    // CouchDB's row shape, which /a/all (and so activerestore)
-                    // reads the revision from
-                    value: { rev: doc._rev },
-                  };
-                }
-              })
-            );
+            const pending = ActiveClone.deserialize(data.value).then((doc: any) => {
+              if (options.include_docs) {
+                return doc;
+              } else {
+                return {
+                  _id: doc._id, // Compatibility Trick
+                  id: doc._id,
+                  key: doc._id,
+                  // CouchDB's row shape, which /a/all (and so activerestore)
+                  // reads the revision from
+                  value: { rev: doc._rev },
+                };
+              }
+            });
+            // The end handler reports a failure; this only stops a rejection
+            // that lands before the stream ends counting as unhandled
+            pending.catch(() => { });
+            docPromises.push(pending);
           })
             .on("error", (err: unknown) => {
               stream.destroy();
@@ -942,48 +944,55 @@ export class LevelMe {
       // Read / Search the database as a stream
       this.driver
         .createReadStream(filter)
-        .on("data", async (data: { key: string; value: Buffer }) => {
-          const doc = await ActiveClone.deserialize(data.value) as any;
-          // Get sequence from keyname
-          const seq = parseInt(
-            data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
+        .on("data", (data: { key: string; value: Buffer }) => {
+          // Deserialising is asynchronous (compressed values), so track it:
+          // the stream's end must wait for every row, and a damaged value
+          // must reach the caller. Rows are kept in stream order.
+          const index = promises.length;
+          const pending = ActiveClone.deserialize(data.value).then(
+            (doc: any) => {
+              // Get sequence from keyname
+              const seq = parseInt(
+                data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
+              );
+              const row: any = {
+                id: doc._id,
+                seq,
+                changes: [
+                  {
+                    rev: doc._rev,
+                  },
+                ],
+              };
+              if (
+                options.include_docs &&
+                JSON.parse(options.include_docs.toString())
+              ) {
+                row.doc = doc;
+              }
+              rows[index] = row;
+              return doc as document;
+            }
           );
-          if (
-            options.include_docs &&
-            JSON.parse(options.include_docs.toString())
-          ) {
-            rows.push({
-              id: doc._id,
-              seq,
-              changes: [
-                {
-                  rev: doc._rev,
-                },
-              ],
-              doc,
-            });
-          } else {
-            rows.push({
-              id: doc._id,
-              seq,
-              changes: [
-                {
-                  rev: doc._rev,
-                },
-              ],
-            });
-          }
+          // The end handler is what reports a failure; without this a
+          // rejection landing before the stream ends is reported as unhandled
+          pending.catch(() => { });
+          promises.push(pending);
         })
         .on("error", (err: unknown) => {
           reject(err);
         })
         .on("close", () => { })
         .on("end", async () => {
-          await Promise.all(promises);
-          resolve({
-            results: rows,
-            last_seq: 0,
-          });
+          try {
+            await Promise.all(promises);
+            resolve({
+              results: rows,
+              last_seq: 0,
+            });
+          } catch (e) {
+            reject(e);
+          }
         });
     });
   }
