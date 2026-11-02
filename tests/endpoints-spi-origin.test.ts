@@ -167,6 +167,88 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     expect(repaired).to.deep.equal([]);
     expect(reply.content.$summary.errors).to.deep.equal([SPI, SPI, SPI]);
   });
+
+  it("does not rewrite when the network is forked at the same position", async () => {
+    let id = "";
+    const f = fixture("1-stale", async () => {
+      const a = { _id: id, _rev: "2-aaaa" };
+      const b = { _id: id, _rev: "2-bbbb" };
+      return [[a], [a], [b], [b]];
+    });
+    id = f.streamId;
+
+    const reply = await submit(f.host);
+
+    // Either side's revision would destroy the other's transaction
+    expect(f.written).to.have.length(0);
+    expect(repaired).to.deep.equal([]);
+    expect(f.pendingCalls).to.have.length(1);
+    expect(reply.content.$umid).to.equal("first");
+    expect(reply.content.$summary.errors).to.deep.equal([SPI, SPI, SPI]);
+  });
+
+  it("does not rewrite when the agreeing nodes are outnumbered by silent ones", async () => {
+    let id = "";
+    const f = fixture("1-stale", async () => {
+      const winner = { _id: id, _rev: "2-winner" };
+      const locked = { _id: id, locked: true };
+      return [[winner], [winner], [locked], [locked]];
+    });
+    id = f.streamId;
+
+    const reply = await submit(f.host);
+
+    expect(f.written).to.have.length(0);
+    expect(f.pendingCalls).to.have.length(1);
+    expect(reply.content.$umid).to.equal("first");
+  });
+
+  it("does not ask the network anything when the failure is not a position error", async () => {
+    let asked = 0;
+    const f = fixture("1-stale", async () => (asked++, []));
+    const other = "Deterministic Stream Name Exists";
+    const firstReply = f.host.pending;
+    f.host.pending = (entry: any) =>
+      firstReply(entry).then((r: any) => {
+        for (const k of Object.keys(r.data.$nodes)) {
+          r.data.$nodes[k].error = other;
+        }
+        return r;
+      });
+
+    const reply = await submit(f.host);
+
+    expect(asked).to.equal(0);
+    expect(f.written).to.have.length(0);
+    expect(reply.content.$summary.errors).to.deep.equal([other, other, other]);
+  });
+
+  it("resends the same transaction when a node answers 200 with no data", async () => {
+    const f = fixture("1-stale", async () => []);
+    const real = f.host.pending;
+    let calls = 0;
+    f.host.pending = (entry: any) => {
+      calls++;
+      if (calls === 1) {
+        f.pendingCalls.push(JSON.parse(JSON.stringify(entry)));
+        return Promise.resolve({ status: 200, data: undefined });
+      }
+      // Later calls follow the fixture's script (first round, then retry)
+      return real(entry);
+    };
+    // The script has a "first" and a "second" reply; the empty answer
+    // consumed neither, so the resend gets the SPI-failed first round.
+
+    const reply = await submit(f.host);
+
+    // Resent under the same umid, with the first attempt's node state gone
+    expect(f.pendingCalls[1].$umid).to.equal(f.pendingCalls[0].$umid);
+    expect(f.pendingCalls[1].$nodes).to.equal(undefined);
+    // The empty answer's locks were released before the resend
+    expect(f.released[0][0]).to.equal(f.pendingCalls[0].$umid);
+    // The client got the answer of the resend, not an empty one
+    expect(reply.content.$umid).to.equal("first");
+  });
 });
 
 describe("Endpoints.streams - single revision lookups (Activeledger)", () => {
