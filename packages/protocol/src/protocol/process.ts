@@ -694,7 +694,14 @@ export class Process extends EventEmitter {
                 contract = (
                   (await fs
                     .readdir(namespacePath))
-                    .filter((fn) => fn.includes(this.entry.$tx.$contract))
+                    // The name followed by a version or the extension, so that
+                    // "tok" never picks up "token@2.0.0.js" or a _LOCK file
+                    .filter((fn) =>
+                      this.entry.$tx.$contract.includes("@")
+                        ? fn.startsWith(this.entry.$tx.$contract)
+                        : fn === `${this.entry.$tx.$contract}.js` ||
+                        fn.startsWith(`${this.entry.$tx.$contract}@`)
+                    )
                     .sort(this.sortVersions)
                     .pop() || "notfound.404"
                 ).replace(".js", "");
