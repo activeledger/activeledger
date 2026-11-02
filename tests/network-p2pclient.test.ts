@@ -15,12 +15,21 @@ class FakeSocket extends EventEmitter {
   noDelay: boolean | undefined;
   destroyed = false;
   written: Buffer[] = [];
+  corked = 0;
+  uncorks = 0;
   setNoDelay(v: boolean) {
     this.noDelay = v;
   }
   write(b: Buffer) {
     this.written.push(b);
     return true;
+  }
+  cork() {
+    this.corked++;
+  }
+  uncork() {
+    this.corked--;
+    this.uncorks++;
   }
   destroy() {
     this.destroyed = true;
@@ -125,7 +134,7 @@ describe("P2PClient", () => {
     expect(got).to.deep.equal(["aaaa", "bbbb"]);
   });
 
-  it("send() writes [sender ref padded to 40][length][payload]", () => {
+  it("send() writes [sender ref padded to 40][length][payload]", async () => {
     const c = new P2PClient("peer", 5261);
     c.connect();
     c.send(Buffer.from("payload"), "ref1");
@@ -134,6 +143,11 @@ describe("P2PClient", () => {
     expect(out.slice(0, 40).toString()).to.equal("ref1".padEnd(40, " "));
     expect(out.readUInt32BE(40)).to.equal(7);
     expect(out.slice(44).toString()).to.equal("payload");
+    // Corked for the rest of the turn, released once, from setImmediate
+    expect(sockets[0].corked).to.equal(1);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sockets[0].corked).to.equal(0);
+    expect(sockets[0].uncorks).to.equal(1);
   });
 
   it("send() writes nothing before connect() or on an unwritable socket", () => {

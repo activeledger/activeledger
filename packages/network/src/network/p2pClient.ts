@@ -11,6 +11,7 @@ export class P2PClient extends EventEmitter {
   private chunks: Buffer[] = [];
   private bufferLength: number = 0;
   private reconnectTimer?: NodeJS.Timeout;
+  private corkedSocket?: net.Socket;
 
   constructor(private host: string, private port: number) {
     super();
@@ -90,16 +91,41 @@ export class P2PClient extends EventEmitter {
   }
 
   public send(data: Buffer, senderRef: string): void {
-    if (this.socket && this.socket.writable) {
-      // Frame: [SenderRef (40)][Length (4)][Payload]
-      const refBuf = Buffer.alloc(40);
-      refBuf.write(senderRef.padEnd(40, ' '), 0, 'utf8');
-      
-      const frame = Buffer.alloc(4 + data.length);
-      frame.writeUInt32BE(data.length, 0);
-      data.copy(frame, 4);
+    const socket = this.socket;
+    if (socket && socket.writable) {
+      // Frame: [SenderRef (40)][Length (4)][Payload], built in one allocation.
+      // The ref is space padded to 40 bytes (a longer one is cut at 40), as
+      // it always has been.
+      const frame = Buffer.allocUnsafe(44 + data.length);
+      frame.fill(0, 0, 40);
+      frame.write(senderRef.padEnd(40, " "), 0, 40, "utf8");
+      frame.writeUInt32BE(data.length, 40);
+      data.copy(frame, 44);
 
-      this.socket.write(Buffer.concat([refBuf, frame]));
+      this.write(socket, frame);
     }
+  }
+
+  /**
+   * Hand a frame to the socket, coalescing every frame written in the same
+   * event loop turn into one flush (one syscall, one TCP segment run) rather
+   * than one write per frame. The socket is corked on the first write of a
+   * turn and uncorked from setImmediate(), once the other work queued in that
+   * turn has had its chance to send. Writes to a corked socket are flushed in
+   * order, so frame order is the call order.
+   */
+  private write(socket: net.Socket, frame: Buffer): void {
+    if (this.corkedSocket !== socket) {
+      this.corkedSocket = socket;
+      socket.cork();
+      setImmediate(() => {
+        if (this.corkedSocket === socket) {
+          this.corkedSocket = undefined;
+        }
+        // Uncork is a no-op for a socket that has been destroyed since
+        socket.uncork();
+      });
+    }
+    socket.write(frame);
   }
 }
