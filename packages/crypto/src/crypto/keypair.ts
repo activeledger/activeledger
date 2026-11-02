@@ -598,19 +598,18 @@ export class KeyPair {
         sign = crypto.createSign("RSA-SHA256");
         sign.update(data);
         return Buffer.from(
-          sign.sign(this.handler.prv.pkcs8pem, "hex"),
+          sign.sign(this.checkKeyType(
+            crypto.createPrivateKey(this.handler.prv.pkcs8pem),
+            data
+          ), "hex"),
           "hex"
         ).toString(encoding);
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
+        let prvKey: crypto.KeyObject;
         try {
-          sign = crypto.createSign("sha256");
-          sign.update(data);
-          return Buffer.from(
-            sign.sign(this.handler.prv.pkcs8pem, "hex"),
-            "hex"
-          ).toString(encoding);
+          prvKey = crypto.createPrivateKey(this.handler.prv.pkcs8pem);
         } catch {
           if (this.enableCompatMode()) {
             return (this as any).sign(data, encoding);
@@ -621,9 +620,41 @@ export class KeyPair {
             );
           }
         }
+        sign = crypto.createSign("sha256");
+        sign.update(data);
+        return Buffer.from(
+          sign.sign(this.checkKeyType(prvKey, data), "hex"),
+          "hex"
+        ).toString(encoding);
       default:
         throw ActiveLogger.fatal(data, `Cannot sign with ${this.type}`);
     }
+  }
+
+  /**
+   * The type string travels with the transaction and picks the algorithm,
+   * but node will verify an ECDSA signature against any EC key and an RSA one
+   * against any RSA key whatever was declared - so a P-256 or RSA key would
+   * pass as secp256k1, and an EC key as "rsa". Refuse any key that is not of
+   * the kind the declared type means.
+   *
+   * @private
+   * @param {crypto.KeyObject} key
+   * @param {string} data Logged with the failure
+   * @returns {crypto.KeyObject} The same key
+   */
+  private checkKeyType(key: crypto.KeyObject, data: string): crypto.KeyObject {
+    const found = key.asymmetricKeyType === "ec"
+      ? `ec ${key.asymmetricKeyDetails?.namedCurve}`
+      : key.asymmetricKeyType;
+    const expected = this.type === "rsa" ? "rsa" : "ec secp256k1";
+    if (found !== expected) {
+      throw ActiveLogger.fatal(
+        data,
+        `Cannot use a ${found} key as ${this.type}, expected ${expected}`
+      );
+    }
+    return key;
   }
 
   /**
@@ -700,21 +731,17 @@ export class KeyPair {
           // verify() - getVerifyKeyObject() caches it, the public key being
           // immutable per instance.
           return verify.verify(
-            this.getVerifyKeyObject(),
+            this.checkKeyType(this.getVerifyKeyObject(), data),
             Buffer.from(signature, encoding)
           );
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
+          let pubKey: crypto.KeyObject;
           try {
-            verify = crypto.createVerify("sha256");
-            verify.update(data);
             // Parsed inside the try: a first-generation PUBLIC key is not a
             // PEM node can read until enableCompatMode() has converted it.
-            return verify.verify(
-              this.getVerifyKeyObject(),
-              Buffer.from(signature, encoding)
-            );
+            pubKey = this.getVerifyKeyObject();
           } catch {
             if (this.enableCompatMode()) {
               return (this as any).verify(data, signature, encoding);
@@ -725,6 +752,12 @@ export class KeyPair {
               );
             }
           }
+          verify = crypto.createVerify("sha256");
+          verify.update(data);
+          return verify.verify(
+            this.checkKeyType(pubKey, data),
+            Buffer.from(signature, encoding)
+          );
         default:
           throw ActiveLogger.fatal(data, `Cannot verify with ${this.type}`);
       }
