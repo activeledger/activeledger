@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [5.1.5]
+
+### Security
+- Dependencies updated to clear the open security advisories: `undici`
+  7.30.1 (eight advisories), `serialize-javascript` 7.1.4, `brace-expansion`,
+  `minimist` and `moment`. The one advisory still open, in `minimatch`, is in a
+  development tool and is not part of the published packages.
+
+### Changed
+- `uWebSockets.js` v20.71.0, `msgpackr` 2.1.3 and `minimist` 1.2.8.
+- The workspace lockfile now matches the released package versions.
+
 ## [5.1.4]
 
 ### Fixed
