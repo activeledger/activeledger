@@ -170,15 +170,7 @@ export class KeyPair {
         case "ethereum":
         case "secp256k1":
           if (pem.startsWith("0x")) {
-            // Raw Hex based key. Buffer.from(hex, "hex") stops at the first
-            // character that is not hex without complaint, so a typo, an odd
-            // digit or trailing junk would silently become a different key
-            // (an empty one at worst). Check it is whole bytes of hex first.
-            if (!/^(?:[0-9a-fA-F]{2})+$/.test(pem.slice(2))) {
-              throw ActiveLogger.fatal(
-                `Invalid ${type} key: 0x must be followed by whole bytes of hex`
-              );
-            }
+            // Raw Hex based key
             if (
               //pem.startsWith("0x02") || // compressed y point even
               //pem.startsWith("0x03") || // compressed y point odd
@@ -192,21 +184,14 @@ export class KeyPair {
               this.createHandler(
                 "",
                 AsnParser.encodeECPublicKey(
-                  Buffer.from(pem.replace("0x", ""), "hex")
+                  this.hexToKey(pem.slice(2), false)
                 )
               );
             } else {
-              // Private. 0 and anything at or above the group order are not
-              // private keys; OpenSSL will still sign with them.
-              const scalar = BigInt(pem);
-              if (scalar < BigInt(1) || scalar >= SECP256K1_ORDER) {
-                throw ActiveLogger.fatal(
-                  `Invalid ${type} private key: out of range for secp256k1`
-                );
-              }
+              // Private
               this.createHandler(
                 AsnParser.encodeECPrivateKey(
-                  Buffer.from(pem.replace("0x", ""), "hex"),
+                  this.hexToKey(pem.slice(2), true),
                   Buffer.from("")
                 ),
                 ""
@@ -256,6 +241,35 @@ export class KeyPair {
   }
 
   /**
+   * Hex key text to bytes. Buffer.from(hex, "hex") stops at the first
+   * character that is not hex without complaint, so a typo, an odd digit or
+   * trailing junk would silently become a different key - an empty one at
+   * worst, which node signs with. And a private scalar of 0, or at or above
+   * the group order, is not a private key at all. Refuse both.
+   *
+   * @private
+   * @param {string} hex Without any 0x prefix
+   * @param {boolean} scalar A private key, so range checked
+   * @returns {Buffer}
+   */
+  private hexToKey(hex: string, scalar: boolean): Buffer {
+    if (!/^(?:[0-9a-fA-F]{2})+$/.test(hex)) {
+      throw ActiveLogger.fatal(
+        `Invalid ${this.type} key: expected whole bytes of hex`
+      );
+    }
+    if (scalar) {
+      const value = BigInt("0x" + hex);
+      if (value < BigInt(1) || value >= SECP256K1_ORDER) {
+        throw ActiveLogger.fatal(
+          `Invalid ${this.type} private key: out of range for secp256k1`
+        );
+      }
+    }
+    return Buffer.from(hex, "hex");
+  }
+
+  /**
    * Parse PEM again to convert format
    *
    * @private
@@ -280,9 +294,7 @@ export class KeyPair {
           pem = Buffer.from(pem, "base64").toString();
 
           // Encode into valid PEM
-          pub = AsnParser.encodeECPublicKey(
-            Buffer.from(pem, "hex")
-          );
+          pub = AsnParser.encodeECPublicKey(this.hexToKey(pem, false));
         }
       }
 
@@ -299,7 +311,7 @@ export class KeyPair {
 
           // Encode into valid PEM
           prv = AsnParser.encodeECPrivateKey(
-            Buffer.from(pem, "hex"),
+            this.hexToKey(pem, true),
             Buffer.from("")
           );
         } else {
