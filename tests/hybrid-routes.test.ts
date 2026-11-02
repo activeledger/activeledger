@@ -346,6 +346,15 @@ describe("Hybrid routes (/h/*)", () => {
       expect(r.json().error).to.equal("request too large");
     });
 
+    it("takes a body of exactly the limit and refuses one a byte over", async () => {
+      const body = (n: number) => JSON.stringify([{ id: "a".repeat(n - 11) }]);
+      expect(Buffer.byteLength(body(64))).to.equal(64);
+      const at = await request("POST", "/h/streams", sign(), body(64));
+      expect(at.status).to.equal(200);
+      const over = await request("POST", "/h/streams", sign(), body(65));
+      expect(over.status).to.equal(413);
+    });
+
     it("authenticates a body sent in several chunks only once it is complete", async () => {
       db.put({ _id: "abc", _rev: "1-x" });
       const body = JSON.stringify([{ id: "abc" }]);
