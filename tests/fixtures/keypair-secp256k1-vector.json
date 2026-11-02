@@ -1,0 +1,10 @@
+{
+  "prvHex": "1e99423a4ed27608a15a2616a2b0e9e52ced330ac530edcc32c8ffc6a526aedd",
+  "pubUncompressedHex": "04f028892bad7ed57d2fb57bf33081d5cfcf6f9ed3d3d7f159c2e2fff579dc341a07cf33da18bd734c600b96a72bbc4749d5141c90ec8ac328ae52ddfe2e505bdb",
+  "pubCompressedHex": "03f028892bad7ed57d2fb57bf33081d5cfcf6f9ed3d3d7f159c2e2fff579dc341a",
+  "message": "activeledger independent vector",
+  "signatureB64": "MEUCIFnQ7+vl9gt7Te7nJPrMs3xf/Zd+Q/k8N1Ats+p2hVG6AiEA1HwiecCQC5OHGJngsFKEsEiQ5SInQCGqwGDOIIJc9F8=",
+  "pubSpkiPem": "-----BEGIN PUBLIC KEY-----\nMFYwEAYHKoZIzj0CAQYFK4EEAAoDQgAE8CiJK61+1X0vtXvzMIHVz89vntPT1/FZ\nwuL/9XncNBoHzzPaGL1zTGALlqcrvEdJ1RQckOyKwyiuUt3+LlBb2w==\n-----END PUBLIC KEY-----\n",
+  "prvPkcs8Pem": "-----BEGIN PRIVATE KEY-----\nMIGEAgEAMBAGByqGSM49AgEGBSuBBAAKBG0wawIBAQQgHplCOk7SdgihWiYWorDp\n5SztMwrFMO3MMsj/xqUmrt2hRANCAATwKIkrrX7VfS+1e/MwgdXPz2+e09PX8VnC\n4v/1edw0GgfPM9oYvXNMYAuWpyu8R0nVFByQ7IrDKK5S3f4uUFvb\n-----END PRIVATE KEY-----\n",
+  "prvSec1Pem": "-----BEGIN EC PRIVATE KEY-----\nMHQCAQEEIB6ZQjpO0nYIoVomFqKw6eUs7TMKxTDtzDLI/8alJq7doAcGBSuBBAAK\noUQDQgAE8CiJK61+1X0vtXvzMIHVz89vntPT1/FZwuL/9XncNBoHzzPaGL1zTGAL\nlqcrvEdJ1RQckOyKwyiuUt3+LlBb2w==\n-----END EC PRIVATE KEY-----\n"
+}
