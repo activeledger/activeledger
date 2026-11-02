@@ -185,6 +185,47 @@ interface BusyLockQueue {
 }
 
 /**
+ * The one node a $$noreply=false frame's answer should go to, or undefined
+ * when we cannot be sure who asked (the answer then goes to everyone, as it
+ * always did).
+ *
+ * Trusted only when every check holds: the sender reference the frame
+ * arrived under (P2P header / X-Activeledger) is a home neighbour other
+ * than us, it passes the firewall for the address the frame came from, and
+ * it is the one node the payload speaks for (a peer's own broadcast carries
+ * exactly its own entry in $nodes).
+ */
+function replyRecipientsOf(
+  host: {
+    reference: string;
+    neighbourhood: {
+      get(ref: string): Neighbour | undefined;
+      checkFirewall(remote: string, ref?: string): boolean;
+    };
+  },
+  entry: ActiveDefinitions.LedgerEntry,
+  remoteAddr: string,
+  requester?: string
+): string[] | undefined {
+  if (!requester || requester === "NA" || requester === host.reference) {
+    return undefined;
+  }
+  const nodes = entry.$nodes ? Object.keys(entry.$nodes) : [];
+  if (nodes.length !== 1 || nodes[0] !== requester) {
+    return undefined;
+  }
+  const neighbour = host.neighbourhood.get(requester);
+  if (
+    !neighbour ||
+    !neighbour.isHome ||
+    !host.neighbourhood.checkFirewall(remoteAddr, requester)
+  ) {
+    return undefined;
+  }
+  return [requester];
+}
+
+/**
  * Hosted process for API and Protocol management
  *
  * @export
@@ -376,12 +417,19 @@ export class Host extends Home {
     remoteAddr: string,
     internal = false,
     forceRestart = false,
-    isP2P = false
+    isP2P = false,
+    requester?: string
   ): Promise<any> {
     return new Promise<any>(async (resolve, reject) => {
       // An async executor turns a throw into an unhandled rejection, and an
       // unhandled rejection exits the host. Reject instead, callers catch it.
       try {
+        // Who asked, worked out before the merge below edits entry.$nodes
+        const replyRecipients =
+          entry.$broadcast && !entry.$$noreply
+            ? replyRecipientsOf(this, entry, remoteAddr, requester)
+            : undefined;
+
         // This should only matter to broadcast
         // non-broadcast are direct posts. May still need to add checks there
         // but that occurs at a different location
@@ -466,7 +514,9 @@ export class Host extends Home {
 
             }
             if (!entry.$$noreply) {
-              this.broadcast(entry.$umid, false, true);
+              // Only the node that asked can use our answer, so send it to
+              // that node alone when we can tell who it is, else to everyone.
+              this.broadcast(entry.$umid, false, true, replyRecipients);
             }
             // maybe pass something so the data isn't sent twice?
             return resolve({
@@ -1601,7 +1651,12 @@ export class Host extends Home {
    * @private
    * @param {string} umid
    */
-  private broadcast(umid: string, early = false, noreply = false): void {
+  private broadcast(
+    umid: string,
+    early = false,
+    noreply = false,
+    only?: string[]
+  ): void {
     // Prevent duplicate broadcast loops
     if (this.processPending[umid] && this.processPending[umid].broadcasting) {
       return;
@@ -1618,7 +1673,10 @@ export class Host extends Home {
           "vote" in this.processPending[umid].entry.$nodes[this.reference])) // only return if there is a vote or early
       //(!noreply && !this.processPending[umid].finished) // Only send if not finished, if finished we have no real interest
     ) {
-      this.processPending[umid].broadcasting = true;
+      // A reply to one node does not take the in-flight flag (see below)
+      if (!only) {
+        this.processPending[umid].broadcasting = true;
+      }
       ActiveLogger.debug(`Broadcasting TX ($$NR ${noreply}) : ` + umid);
 
       // Get all the neighbour nodes
@@ -1683,7 +1741,8 @@ export class Host extends Home {
             node.isHome &&
             node.reference !==
             this
-              .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
+              .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/ &&
+            (!only || only.includes(node.reference))
           ) {
             // Need to detect if we have already sent and got response for nodes for performance
             promises.push(node.knock("init", data, false, 0, true, serialiseOnce));
@@ -1691,13 +1750,22 @@ export class Host extends Home {
         }
 
         // Listen for promises
+        //
+        // A reply to a single requester (only) never set the broadcasting
+        // flag, so it must not clear it either: a full broadcast may have
+        // started since, and its flag is not ours to drop. Its failure path
+        // is unchanged.
         Promise.all(promises)
           .then(() => {
-            this.processPending[umid].broadcasting = false;
+            if (!only) {
+              this.processPending[umid].broadcasting = false;
+            }
             // As it is bundled we don't get a response. We need to trigger rebroadcast
           })
           .catch(() => {
-            this.processPending[umid].broadcasting = false;
+            if (!only) {
+              this.processPending[umid].broadcasting = false;
+            }
             // Keep broadcasting until promises fully resolve
             // Could be down nodes (So they can have 5 minute window to get back up)
             // Or connection issues. This doesn't stop commit phase as they will eventually call us.
@@ -2344,7 +2412,7 @@ export class Host extends Home {
             break;
           case "/a/init": // Internal transactions
             if (this.firewallCheck(requester, req.connection.remoteAddress)) {
-              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress, false, isP2P);
+              response = Endpoints.InternalInitalise(this, body, req.connection.remoteAddress, false, isP2P, requester);
             } else {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
             }
