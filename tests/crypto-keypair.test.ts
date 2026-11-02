@@ -553,3 +553,69 @@ describe("KeyPair - key type and curve must match the declared type", () => {
     }
   });
 });
+
+/**
+ * Raw-hex keys. Buffer.from(hex, "hex") never fails: it stops at the first
+ * character that is not hex and returns what it had. So a typo, an odd digit
+ * or trailing junk silently becomes a different, shorter key - at worst an
+ * empty private key, which signs - unless the string is checked first. The
+ * scalar range is a separate hole: 0 and anything at or above the group order
+ * are not private keys at all, and the SDKs refuse them (the C# SDK's
+ * FromKeys, see docs/guide/sdks/csharp.md).
+ */
+describe("KeyPair - raw hex keys are validated, not silently truncated", () => {
+  const nMinus1 = ORDER.slice(0, -1) + "0";
+  const rejected = (pem: string) => {
+    expect(() => new KeyPair("secp256k1", pem)).to.throw();
+  };
+
+  it("rejects private keys with characters that are not hex", () => {
+    rejected("0x" + "zz".repeat(32));
+    rejected("0x" + EC.prvHex.slice(0, 20) + "zz" + EC.prvHex.slice(22));
+    rejected("0x" + EC.prvHex.slice(0, 63) + "g");
+    rejected("0x" + EC.prvHex + " ");
+  });
+
+  it("rejects an empty or odd-length hex key", () => {
+    rejected("0x");
+    rejected("0x" + EC.prvHex.slice(0, 63));
+    rejected("0x" + EC.pubUncompressedHex + "0");
+    rejected("0x" + EC.pubCompressedHex.slice(0, 65));
+  });
+
+  it("rejects a public key with junk after it instead of ignoring the junk", () => {
+    rejected("0x" + EC.pubUncompressedHex + "zz");
+    rejected("0x" + EC.pubUncompressedHex.slice(0, 100) + "zz" + EC.pubUncompressedHex.slice(102));
+  });
+
+  it("rejects private scalars that are zero, or at or above the group order", () => {
+    rejected("0x" + scalar(0));
+    rejected("0x" + ORDER);
+    rejected("0x" + ORDER.slice(0, -1) + "2");
+    rejected("0x" + "ff".repeat(32));
+  });
+
+  it("still accepts the scalars either side of those limits", () => {
+    const ecdh = crypto.createECDH("secp256k1");
+    for (const prv of [scalar(1), nMinus1]) {
+      ecdh.setPrivateKey(Buffer.from(prv, "hex"));
+      const pub = "0x" + ecdh.getPublicKey("hex", "uncompressed");
+      const sig = new KeyPair("secp256k1", "0x" + prv).sign("edge");
+      expect(new KeyPair("secp256k1", pub).verify("edge", sig)).to.equal(true, prv.slice(-4));
+    }
+  });
+
+  it("accepts upper-case hex, the same key as lower-case", () => {
+    expect(
+      new KeyPair("secp256k1", "0x" + EC.pubUncompressedHex.toUpperCase()).verify(EC.message, EC.signatureB64)
+    ).to.equal(true);
+    const sig = new KeyPair("secp256k1", "0x" + EC.prvHex.toUpperCase()).sign("upper");
+    expect(new KeyPair("secp256k1", "0x" + EC.pubCompressedHex).verify("upper", sig)).to.equal(true);
+  });
+
+  it("applies to every type that takes hex keys", () => {
+    for (const type of ["bitcoin", "ethereum", "rsa"]) {
+      expect(() => new KeyPair(type, "0x" + "zz".repeat(32)), type).to.throw();
+    }
+  });
+});
