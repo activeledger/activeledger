@@ -1666,6 +1666,13 @@ export class Host extends Home {
           // If early we don't need a response
           data.$$noreply = true;
         }
+        // Every peer gets the same data, so serialise it once (on the first
+        // peer that takes the P2P path; HTTP peers never ask) and share the
+        // buffer rather than encoding it per peer.
+        let serialised: Promise<Buffer> | undefined;
+        const serialiseOnce = () =>
+          serialised || (serialised = Neighbour.serialiseParams(data));
+
         // Loop them all and broadcast the transaction
         for (let i = nodes.length; i--;) {
           let node = neighbourhood[nodes[i]];
@@ -1679,7 +1686,7 @@ export class Host extends Home {
               .reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/
           ) {
             // Need to detect if we have already sent and got response for nodes for performance
-            promises.push(node.knock("init", data, false, 0, true));
+            promises.push(node.knock("init", data, false, 0, true, serialiseOnce));
           }
         }
 
