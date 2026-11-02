@@ -1,5 +1,68 @@
 # Activeledger Changelog
 
+## [5.1.6]
+
+### Security
+- **Contract names are checked before they become paths.** A namespace owner
+  could name a link or unlink target `../other/victim`: the vote passed because
+  the file existed, and the commit then deleted another namespace's contract
+  file. Link could also plant a symlink outside the namespace directory. Link,
+  unlink, lock, unlock, add and update now refuse a contract name, version,
+  link name or namespace that is not a plain label, in the vote and before any
+  directory is created. This includes a namespace recorded on an identity
+  before namespaces were validated.
+- **`KeyPair` no longer accepts keys it should refuse.**
+  - A key of the wrong kind is refused: a `secp256k1`, `bitcoin` or `ethereum`
+    pair verified signatures with RSA, P-256 and Ed25519 public keys, and an
+    `rsa` pair did the same with EC keys. The key must be RSA, or EC on
+    secp256k1, as declared.
+  - A hex key (`0x...`) must be whole bytes of hex. Before, the first non-hex
+    character ended the key silently, so `0xzzzz...` became an empty private
+    key that the node signed with.
+  - A secp256k1 private scalar of 0, or at or above the curve order, is
+    refused. A 31-byte key with a stripped leading zero is still accepted.
+  - On a network, a verify with a key of the wrong type now throws instead of
+    returning a result. A key that was malformed or of the wrong type and was
+    accepted before is now refused.
+
+### Fixed
+- Storage (`LevelMe`): `allDocs()` hung on a damaged value; `changesFromSeq()`
+  dropped rows whose value deserialises asynchronously and could hang on a
+  damaged one; `writeRaw()` left stale read-cache entries so `get()` returned
+  the old document; `backup()` wrote unreadable files and `restore()` wrote
+  nothing and resolved early. A restored document still gets a new revision.
+- Transaction processing: a contract named `tok` could run `token@2.0.0.js`,
+  because the latest-version lookup matched on a substring. A contract's
+  `verify()` still ran after a failed init, and its `vote()` after a failed
+  verify. When a lost vote and a failed reconcile should have stored the 1001
+  error document for activerestore, it was never stored. It is now.
+- SPI: `spiConsensus` gave different answers depending on the order nodes
+  replied in. A strictly better supported revision now supersedes a fork
+  between smaller groups. When revisions tie, a fork at any position in the
+  tied set persists, so a stream is never rewritten over a fork that a human
+  should settle. `previousUmidFor` matched an entry with no id against every
+  stream.
+- `KeyPair`: first-generation `-----BEGIN PRIVATE-----` and `PUBLIC` keys could
+  never sign or verify. RSA `encrypt` cut text every 100 UTF-16 units, so an
+  emoji at a boundary decrypted as U+FFFD, and long multi-byte text or a small
+  key threw "data too large"; it now splits on whole characters within the
+  key's block size, and ASCII text is chunked as before. `generate(bits,
+  false)` left an instance that could not sign with the key pair it had just
+  made.
+
+### Added
+- A genuine SPI fork is logged as one clear `error` entry: the stream and the
+  transaction that exposed it, each competing revision with its position, votes
+  and nodes, the silent nodes, a statement that the node took no action, and
+  the next steps for an operator, plus a greppable `SPI_FORK {...}` JSON line.
+  The same fork is logged in full once and then at most once a minute, with a
+  count.
+
+### Tests
+- A coverage sweep of the transaction processor, the default contract, key
+  pairs, the embedded store, SPI and activehybrid. Line coverage of those files
+  rose from between 50% and 82% to between 93% and 100%.
+
 ## [5.1.5]
 
 ### Security
