@@ -139,7 +139,12 @@ describe("KeyPair - secp256k1 against independent vectors", () => {
     const hex = (prv.sign as any)(EC.message, "hex");
     expect(hex).to.match(/^30[0-9a-f]+$/);
     expect((pub.verify as any)(EC.message, hex, "hex")).to.equal(true);
-    expect((pub.verify as any)(EC.message, hex.slice(0, -2) + "00", "hex")).to.equal(false);
+    // Change the last byte to a different one. A fixed "00" is a no-op one
+    // time in 256, because the signature is randomised and may end in 00.
+    const last = parseInt(hex.slice(-2), 16);
+    const tampered = hex.slice(0, -2) + ((last ^ 0xff).toString(16).padStart(2, "0"));
+    expect(tampered).to.not.equal(hex);
+    expect((pub.verify as any)(EC.message, tampered, "hex")).to.equal(false);
   });
 
   it("generated keys verify in both encodings and in compressed form", () => {
