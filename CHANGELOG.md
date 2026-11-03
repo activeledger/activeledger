@@ -15,7 +15,7 @@
   duplicates. A node now receives about 11 frames per transaction instead of
   19, and at 4 nodes with 16 clients throughput rose about 15% (562 to 646
   tx/s); at 8 nodes it about doubled. If the asker cannot be identified, the
-  reply still goes to everyone. Nodes on 5.1.6 and 5.1.7 work together.
+  reply still goes to everyone. The frame format is unchanged, only who receives the reply.
 - **A cheaper P2P path.** A response that is never written (every P2P frame)
   is no longer turned into JSON, a broadcast is serialised once instead of once
   per peer, and a turn's socket writes are sent together. Measured on a quiet
