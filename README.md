@@ -170,6 +170,19 @@ npm run test:network  # live 4-node network integration test - boots real nodes 
 
 `npm run test:network` (`tests/network/`) boots a real 4-node bare-host network, runs 100+ real transactions spread across every node as origin, deploys custom contracts and verifies `returnToRemote()`, verifies live event delivery over SSE, and verifies the network's Stream-Position-Incorrect self-healing by directly desyncing one node's local copy of a stream and confirming a transaction still succeeds whether that node is the transaction's origin or not. It prints live progress and a pass/fail summary, and takes well under a minute. Deliberately bare-host rather than Docker, so it doesn't add any requirements beyond what building the repo already needs.
 
+## Stress tests
+
+A third, different kind of test: tools that measure and report rather than pass or fail. They are noisy by nature, want a quiet machine, and never run in `npm test` or CI.
+
+```bash
+npm run stress:throughput  # tx/s and latency on 1, 4 or 8 nodes
+npm run stress:cold-start  # how often a fresh, staggered start leaves a node behind
+npm run stress:memory      # memory and CPU per role, and growth per 10k transactions
+npm run stress:compare     # two result files, and whether the candidate is worse beyond the spread
+```
+
+The default quick profile takes about five to nine minutes per tool and is a smoke check for big regressions; `--profile standard` and `--profile full` resolve smaller differences. See [Stress tests](docs/guide/stress/index.md) in the guide.
+
 ## Profiling
 
 Two profilers, answering different questions. Both drive the same live harness

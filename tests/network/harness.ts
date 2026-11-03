@@ -47,10 +47,19 @@ export interface NetworkHarnessOptions {
    * network or the test measures a rollout bug rather than the feature.
    */
   config?: Record<string, unknown>;
+  /**
+   * Milliseconds to wait before spawning each node, by node index (missing
+   * entries mean no wait). Used by the cold-start stress tool to start a
+   * network from empty data directories with its nodes a little apart, which
+   * is when start-up races show. Setup and merge are unaffected; only the
+   * real start is staggered.
+   */
+  startOffsetsMs?: number[];
 }
 
 const DEFAULTS: Required<NetworkHarnessOptions> = {
   config: undefined as any,
+  startOffsetsMs: undefined as any,
   nodeCount: 4,
   // Not the literal default (5260) - see cli.md's --port gotcha, a
   // non-default port keeps every instance's autostart behaviour identical
@@ -129,6 +138,32 @@ function httpGetJson(url: string, timeoutMs = 2000): Promise<any> {
   });
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Merges `source` into `target` in place. Plain objects merge key by key, so
+ * a scenario can set `{ db: { selfhost: { cache: true } } }` without wiping
+ * the rest of `db`; anything else (arrays, strings, numbers, null) replaces.
+ */
+export function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
+  for (const key of Object.keys(source)) {
+    const value = source[key];
+    if (isPlainObject(value) && isPlainObject(target[key])) {
+      deepMerge(target[key] as Record<string, unknown>, value);
+    } else if (isPlainObject(value)) {
+      target[key] = deepMerge({}, value);
+    } else {
+      target[key] = value;
+    }
+  }
+  return target;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -185,6 +220,11 @@ export class NetworkHarness {
   private opts: Required<NetworkHarnessOptions>;
   private rootDir: string;
 
+  /** The temporary directory holding every instance's data directory. */
+  public get root(): string {
+    return this.rootDir;
+  }
+
   constructor(options: NetworkHarnessOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
     this.rootDir = fs.mkdtempSync(
@@ -236,31 +276,38 @@ export class NetworkHarness {
       for (const dataDir of dataDirs) {
         const configPath = path.join(dataDir, "config.json");
         const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-        Object.assign(config, this.opts.config);
+        deepMerge(config, this.opts.config);
         fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       }
     }
 
-    // Start every node for real.
-    this.nodes = dataDirs.map((dataDir, i) => {
-      const port = basePort + i * portSpacing;
-      const logPath = path.join(dataDir, "node.log");
-      const logFd = fs.openSync(logPath, "a");
-      const child = spawn(process.execPath, [LEDGER_ENTRY, "--port", String(port)], {
-        cwd: dataDir,
-        stdio: ["ignore", logFd, logFd],
-      });
-      return {
-        index: i,
-        port,
-        storagePort: port - 1,
-        dataDir,
-        baseUrl: `http://127.0.0.1:${port}`,
-        storageUrl: `http://127.0.0.1:${port - 1}`,
-        child,
-        logPath,
-      };
-    });
+    // Start every node for real, each after its own start offset if any.
+    const offsets = this.opts.startOffsetsMs || [];
+    this.nodes = await Promise.all(
+      dataDirs.map(async (dataDir, i) => {
+        if (offsets[i] > 0) {
+          await sleep(offsets[i]);
+        }
+        const port = basePort + i * portSpacing;
+        const logPath = path.join(dataDir, "node.log");
+        const logFd = fs.openSync(logPath, "a");
+        const child = spawn(process.execPath, [LEDGER_ENTRY, "--port", String(port)], {
+          cwd: dataDir,
+          stdio: ["ignore", logFd, logFd],
+        });
+        const node: NetworkNode = {
+          index: i,
+          port,
+          storagePort: port - 1,
+          dataDir,
+          baseUrl: `http://127.0.0.1:${port}`,
+          storageUrl: `http://127.0.0.1:${port - 1}`,
+          child,
+          logPath,
+        };
+        return node;
+      })
+    );
 
     await this.waitUntilReady();
     return this.nodes;

@@ -1,0 +1,99 @@
+# Runs one of the stress tools (tests/stress) on a GitHub runner and keeps its
+# JSONL results as an artifact. Manual only: there is no schedule and no push
+# or pull request trigger, because the tools take minutes to hours and their
+# numbers depend on the machine. A shared runner is also a noisy one, so use
+# it to look at a run, or to compare two runs made on the same kind of runner
+# with `npm run stress:compare`, not to judge a small change. See
+# docs/guide/operate/stress-tests.md.
+#
+# The build is the one test.yml does, for the same reason: the tools drive
+# real nodes started from packages/*/lib.
+name: Stress
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: Which stress tool to run
+        type: choice
+        options:
+          - throughput
+          - cold-start
+          - memory
+        default: throughput
+      profile:
+        description: quick (minutes), standard (about half an hour) or full (hours)
+        type: choice
+        options:
+          - quick
+          - standard
+          - full
+        default: quick
+      args:
+        description: Extra flags for the tool, e.g. "--runs 40" or "--nodes 4 --clients 16" (see --help)
+        type: string
+        default: ""
+      label:
+        description: Label stored with each result (baseline, candidate, ...)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    # The full profiles run for hours; this is the most a job may take.
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install workspace
+        run: npm ci
+
+      # Not `npm run build`: see test.yml.
+      - name: Build packages
+        run: |
+          for target in definitions logger utilities httpd options storage \
+                        crypto activesync activep2p query contracts protocol \
+                        network toolkits ledger restore hybrid; do
+            echo "::group::build:$target"
+            npm run "build:$target"
+            echo "::endgroup::"
+          done
+
+      # Inputs go through the environment, not into the script text, so a
+      # flag value cannot become shell syntax.
+      - name: Show the plan
+        env:
+          TOOL: ${{ inputs.tool }}
+          PROFILE: ${{ inputs.profile }}
+          ARGS: ${{ inputs.args }}
+        run: npm run "stress:$TOOL" -- --profile "$PROFILE" --dry-run $ARGS
+
+      - name: Run the stress tool
+        env:
+          TOOL: ${{ inputs.tool }}
+          PROFILE: ${{ inputs.profile }}
+          ARGS: ${{ inputs.args }}
+          LABEL: ${{ inputs.label }}
+        run: |
+          mkdir -p stress-results
+          label_args=()
+          if [ -n "$LABEL" ]; then label_args=(--label "$LABEL"); fi
+          npm run "stress:$TOOL" -- --profile "$PROFILE" "${label_args[@]}" --out "stress-results/$TOOL.jsonl" $ARGS
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-${{ inputs.tool }}-${{ inputs.profile }}
+          path: stress-results/
+          if-no-files-found: warn
