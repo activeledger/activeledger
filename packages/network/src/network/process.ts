@@ -26,6 +26,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
+import { IpcBatcher, unbatch } from "./ipcbatch";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
 
 // Maximum memory used in VM processor
@@ -161,7 +162,7 @@ class Processor {
     process.on("disconnect", () => process.exit(0));
 
     // Listen for IPC (Interprocess Communication)
-    process.on("message", (m: any) => {
+    process.on("message", (batch: any) => unbatch(batch, (m: any) => {
       switch (m.type) {
         case "setup":
           // Set Database (Do we need to?)
@@ -338,7 +339,7 @@ class Processor {
         this.maxMemoryReached = true;
         this.send("memory", process.memoryUsage());
       }
-    });
+    }));
   }
 
   /**
@@ -583,7 +584,9 @@ class Processor {
    * @param {unknown} data
    */
   private send(type: string, data: unknown): void {
-    (process as any)?.send(
+    if (!process.send) return;
+    // Messages sent in the same tick travel to the host as one IPC send
+    (this.hostBatcher ??= new IpcBatcher(process as any)).send(
       {
         type,
         data,
@@ -593,6 +596,8 @@ class Processor {
       }
     );
   }
+
+  private hostBatcher?: IpcBatcher;
 
   /**
    * Memory Management

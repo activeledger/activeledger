@@ -29,6 +29,7 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
+import { ipcSend } from "./ipcbatch";
 /**
  * Represents this Activeledger node's home within the network neighbourhood
  *
@@ -354,11 +355,11 @@ export class Home extends Neighbour {
         },
       };
       this.processors.forEach((processor) => {
-        processor.send(hkMsg);
+        ipcSend(processor, hkMsg);
       });
 
       // Also Send to the standby
-      this.standbyProcess.send(hkMsg);
+      ipcSend(this.standbyProcess, hkMsg);
     }
   }
 
