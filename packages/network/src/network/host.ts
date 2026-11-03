@@ -44,6 +44,7 @@ import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
+import { workerExecArgv } from "./workerheap";
 import * as process from "process";
 import {
   App,
@@ -1329,6 +1330,8 @@ export class Host extends Home {
     // Create Process
     const pFork = fork(`${__dirname}/process.js`, [], {
       cwd: process.cwd(),
+      // V8 flags (worker_semi_space) belong to workers only
+      execArgv: workerExecArgv(),
       stdio: "inherit",
     }) as StoppableChildProcess;
 

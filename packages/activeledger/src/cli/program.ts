@@ -51,6 +51,7 @@ const CONFIG_KEYS = [
   "remote",
   "security",
   "winston",
+  "worker_semi_space",
 ];
 
 export const supernodeProgram = (version: string): Cli.CliProgram => ({
