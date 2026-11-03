@@ -12,3 +12,6 @@ docs/superpowers/
 
 # MkDocs build output
 /site/
+
+# Output of the stress tools (tests/stress)
+stress-results/

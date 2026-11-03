@@ -78,3 +78,6 @@ nav:
       - Restoring a node: operate/restore.md
       - Security: operate/security.md
       - Troubleshooting: operate/troubleshooting.md
+  - Stress tests:
+      - Stress tests and how they differ: stress/index.md
+      - The four tools and their flags: stress/tools.md
