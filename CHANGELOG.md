@@ -1,5 +1,67 @@
 # Activeledger Changelog
 
+## [5.1.7]
+
+### Changed
+- **The storage read cache is now off by default.** On a busy node under 1% of
+  reads found their answer in it, and it held hundreds of MB of documents and
+  one timer per entry. Turning it off saved 280 to 430 MB per node, and
+  throughput and latency were the same or better at one client, one node and
+  four nodes. It can be switched back on with `db.selfhost.cache: true`. The
+  events and error databases are never cached, whichever way it is set.
+- **A node answers a consensus request only to the node that asked.** Before,
+  every "please reply" frame made the receiver send its state to all peers,
+  and only the asker could use it, so about 38% of received frames were exact
+  duplicates. A node now receives about 11 frames per transaction instead of
+  19, and at 4 nodes with 16 clients throughput rose about 15% (562 to 646
+  tx/s); at 8 nodes it about doubled. If the asker cannot be identified, the
+  reply still goes to everyone. Nodes on 5.1.6 and 5.1.7 work together.
+- **A cheaper P2P path.** A response that is never written (every P2P frame)
+  is no longer turned into JSON, a broadcast is serialised once instead of once
+  per peer, and a turn's socket writes are sent together. Measured on a quiet
+  machine at 4 nodes and 16 clients, throughput went from 373 to 498 tx/s
+  (+34%) and p50 from 41.5 to 29.7 ms; at 8 nodes it was +57%. One client, and
+  one node, are unchanged.
+
+### Added
+- `worker_semi_space` sets the young-generation size of each contract worker,
+  in MB (V8 `--max-semi-space-size`). It is off by default. On light contracts
+  a value of 2 or 4 cut a node's memory by about 700 MB (21%) with no loss of
+  speed; on a contract that does real work per transaction it cost 23 to 29%
+  of throughput, which is why it is not on by default. A bad value is ignored
+  with a warning.
+- A **Memory use** page in the operating guide: where a node's memory goes and
+  what `db.selfhost.cache`, `worker_semi_space`, `cpus` and `autostart.restore`
+  change, with the cost of each.
+- A hybrid divergence kind, `output-hash-mismatch`, recorded when an output
+  holds the signed revision but not the signed content.
+
+### Fixed
+- A P2P frame sent to a socket that could not be written was lost without a
+  trace, and the sender was told it had gone. The send now reports the failure,
+  so the 250 ms rebroadcast runs, as it does for an HTTP failure. A frame lost
+  after it was accepted, because the socket died before the flush, is logged
+  and counted by a `dropped` event.
+- A hybrid node settled an item as "superseded" when a local output had the
+  signed revision, without comparing the signed content hash. It now records a
+  divergence and settles it, so a document that matches only on its revision
+  is never treated as already present.
+- `LevelMe.post()` cleared its read cache on a failed write without checking
+  that it had one.
+
+### Tests
+- The `selfsign` live scenario took its baseline before every node had applied
+  the owner's write, so it could fail with nothing wrong in the ledger. It now
+  waits for every node to hold the expected state.
+- A keypair test that tampered with a randomised signature could pass the
+  signature through unchanged one run in 256.
+
+### Known issues
+- On a network whose nodes start within a second or two of each other, about 5%
+  of first transactions time out, and about 1 to 2% of starts leave one node
+  behind. Both exist in 5.1.6 and earlier. They are rare in normal use, where
+  nodes are started further apart.
+
 ## [5.1.6]
 
 ### Security
