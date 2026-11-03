@@ -62,6 +62,12 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // which is how the gateways reach it. Set db.selfhost.host to widen it.
   const BIND_HOST = process.argv[5] || "127.0.0.1";
 
+  // Name of the one database given a read cache, or empty for none. Set
+  // from db.selfhost.cache and only ever the ledger database: the events
+  // and errors databases are written and scanned, never read by key, so a
+  // cache there is filled and expired for nothing.
+  const CACHED_DB = process.argv[6] || "";
+
   // Database Connection Cache
   let dbCache: { [index: string]: LevelMe } = {};
 
@@ -108,7 +114,12 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
     if (!dbCache[name]) {
       try {
-        dbCache[name] = new LevelMe(DIR_PREFIX, name, DS_PROVIDER);
+        dbCache[name] = new LevelMe(
+          DIR_PREFIX,
+          name,
+          DS_PROVIDER,
+          CACHED_DB !== "" && name === CACHED_DB
+        );
       } catch (err) {
         throw err;
       }

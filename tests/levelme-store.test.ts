@@ -20,7 +20,9 @@ import * as path from "path";
  * Every test gets its own directory AND its own database name, because the
  * read cache is shared per name across LevelMe instances in the process.
  */
-describe("LevelMe store behaviour (Activestorage)", () => {
+// Every behaviour here must hold with the read cache off (the default) and on
+// (db.selfhost.cache), so the whole suite runs once for each.
+for (const cacheOn of [false, true]) describe(`LevelMe store behaviour (Activestorage), read cache ${cacheOn ? "on" : "off"}`, () => {
   const SEQ = "ÿby-sequenceÿ";
   const DOC = "ÿdocument-storeÿ";
 
@@ -31,7 +33,7 @@ describe("LevelMe store behaviour (Activestorage)", () => {
   let closed: boolean;
 
   const open = (dir = tmpDir, dbName = name) =>
-    new LevelMe(dir + path.sep, dbName, "level");
+    new LevelMe(dir + path.sep, dbName, "level", cacheOn);
 
   // Put raw bytes straight into the underlying store, bypassing LevelMe
   const rawPut = (key: string, value: Buffer | string) =>

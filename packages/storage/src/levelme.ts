@@ -61,8 +61,6 @@ interface schema extends document {
   _rev: string;
 }
 
-const ENABLE_CACHE = true;
-
 /**
  * LevelUP Wrapper for Activeledger with PouchDB legacy support
  *
@@ -128,13 +126,32 @@ export class LevelMe {
 
   private driver: IStorageDriver;
 
-  private cache: ActiveCache;
+  /**
+   * Read cache. Only present when this database was opened with the cache
+   * switched on (db.selfhost.cache); every use below is guarded by it, so a
+   * store without one behaves exactly as if each read went to disk.
+   */
+  private cache?: ActiveCache;
 
   private openingPromise: Promise<void> | null = null;
 
-  constructor(location: string, private name: string, provider: string) {
+  /**
+   * @param location Data directory prefix
+   * @param name Database name
+   * @param provider Storage driver
+   * @param cache Keep a 30 s read cache for this database. Off by default:
+   * the cache measured a ~0.5% hit rate on a busy node and held hundreds of
+   * MB of documents and timers, and a database that is never read by key
+   * (events, errors) should never be given one.
+   */
+  constructor(
+    location: string,
+    private name: string,
+    provider: string,
+    cache = false
+  ) {
     this.driver = new LevelDBDriver(location + name, provider);
-    if (ENABLE_CACHE) {
+    if (cache) {
       this.cache = ActiveCacheManager.fetch(`streams:${this.name}`, 30000);
     }
   }
@@ -456,7 +473,7 @@ export class LevelMe {
    * @returns
    */
   public async get(key: string, raw = false) {
-    if (ENABLE_CACHE) {
+    if (this.cache) {
       // raw and non-raw reads store different shapes for the same id, so
       // they need distinct cache keys or one mode poisons the other.
       const cacheKey = raw ? `raw:${key}` : key;
@@ -503,14 +520,16 @@ export class LevelMe {
     // whole set from the driver in a single getMany, which cannot straddle
     // a batch. The cost is re-reading a warm key when a sibling is cold,
     // which is one extra key in an existing call.
-    const allCached =
-      ENABLE_CACHE && keys.every((key) => this.cache.has(key));
-
-    if (allCached) {
+    //
+    // With the cache off (the default) there is no cache to probe and every
+    // call takes the single driver read below - the same consistency, with
+    // nothing warm to be torn against.
+    const cache = this.cache;
+    if (cache && keys.every((key) => cache.has(key))) {
       // No defensive copy, matching the driver path below and the previous
       // behaviour - Activity.getState() (contracts/stream.ts) deep-clones
       // before any contract sees state, so this was never load-bearing.
-      return keys.map((key) => this.cache.get(key, 30000));
+      return keys.map((key) => cache.get(key, 30000));
     }
 
     const prefixed = keys.map((key) => LevelMe.DOC_PREFIX + key);
@@ -528,7 +547,7 @@ export class LevelMe {
       if (!data || !data._id) {
         continue;
       }
-      if (ENABLE_CACHE) {
+      if (this.cache) {
         this.cache.set(data._id, data);
       }
       docs.push(data);
@@ -582,7 +601,7 @@ export class LevelMe {
     const writer = await this.prepareForWrite(doc, await this.driver.batch());
     try {
       await writer.chain.write();
-      if (ENABLE_CACHE) {
+      if (this.cache) {
         // Raw root doc shares its cache key with get(key, true) - the write
         // just committed exactly this shape, safe to reuse directly.
         this.cache.set(`raw:${writer.changes.id}`, writer.changes.doc);
@@ -598,7 +617,7 @@ export class LevelMe {
       // was just unreachable dead code because this used to always resolve
       // { ok: true } regardless. May contain multiple documents, Easier &
       // safer to clear the cache.
-      this.cache.clear();
+      this.cache?.clear();
       throw e;
     }
 
@@ -624,7 +643,7 @@ export class LevelMe {
   public async writeRaw(key: string, value: unknown) {
     await this.open();
     const result = await this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
-    if (ENABLE_CACHE) {
+    if (this.cache) {
       // Whatever was cached for this key is not what is on disk any more
       this.cache.delete(key);
       this.cache.delete(`raw:${key}`);
@@ -657,7 +676,7 @@ export class LevelMe {
     // _local_doc_count need to reduce count
     batch.del(LevelMe.DOC_PREFIX + key);
 
-    if (ENABLE_CACHE) {
+    if (this.cache) {
       if (this.cache.has(key)) {
         this.cache.delete(key);
       }
@@ -723,7 +742,7 @@ export class LevelMe {
 
     try {
       await batch.write();
-      if (ENABLE_CACHE) {
+      if (this.cache) {
         for (let i = changes.length; i--;) {
           // See post() - raw shape is safe to reuse directly, resolved
           // shape may need seqDocFromRoot so just drop it and let the next

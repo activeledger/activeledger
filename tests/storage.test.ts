@@ -1,4 +1,6 @@
 import { LevelMe } from "../packages/storage/src/levelme";
+// The same module instance LevelMe resolves, so its registry is the real one
+import { ActiveCacheManager } from "@activeledger/activeoptions";
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
@@ -9,18 +11,20 @@ import * as path from "path";
 // which were previously guarded by anything in this suite - each was only
 // caught by one-off manual verification scripts during that session. See
 // commits 29f6b17, ac05364, e81cd7c.
-describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
+// Run with the read cache off (the default) and on (db.selfhost.cache).
+for (const cacheOn of [false, true]) describe(`LevelMe write path (Activestorage) - hpe-14 regressions, read cache ${cacheOn ? "on" : "off"}`, () => {
   let tmpDir: string;
   let db: LevelMe;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-storage-test-"));
-    db = new LevelMe(tmpDir + path.sep, "activeledger", "level");
+    db = new LevelMe(tmpDir + path.sep, "activeledger", "level", cacheOn);
     await db.open();
   });
 
   afterEach(async () => {
     await db.close();
+    ActiveCacheManager.fetch("streams:activeledger").clear();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
@@ -36,7 +40,10 @@ describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
 
       expect(miss.name).to.equal("alpha");
       expect(hit.name).to.equal("alpha");
-      expect(hit).to.equal(miss); // same reference - the two paths are now consistent
+      // With the cache on the hit is the same reference as the miss; with it
+      // off both come from disk, so they are equal in value, not identity.
+      expect(hit).to.deep.equal(miss);
+      if (cacheOn) expect(hit).to.equal(miss);
     });
 
     it("filters out a genuinely missing key instead of crashing the whole batch", async () => {
@@ -86,7 +93,7 @@ describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
       expect(state).to.not.equal(warm);
     });
 
-    it("still serves from cache when every requested key is warm", async () => {
+    it(`${cacheOn ? "still serves from cache" : "reads from disk each time"} when every requested key is warm`, async () => {
       // The consistency rule must not become "never use the cache" - an
       // all-warm read has nothing to straddle, because nothing can mutate
       // the cache between two synchronous reads.
@@ -103,7 +110,12 @@ describe("LevelMe write path (Activestorage) - hpe-14 regressions", () => {
 
       const firstState = first.find((d: any) => d._id === "streamA");
       const secondState = second.find((d: any) => d._id === "streamA");
-      expect(secondState).to.equal(firstState); // same reference: cache served it
+      if (cacheOn) {
+        expect(secondState).to.equal(firstState); // same reference: cache served it
+      } else {
+        expect(secondState).to.deep.equal(firstState);
+        expect(secondState).to.not.equal(firstState); // no cache: a fresh read
+      }
     });
   });
 
