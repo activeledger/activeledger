@@ -90,7 +90,16 @@ export class P2PClient extends EventEmitter {
     });
   }
 
-  public send(data: Buffer, senderRef: string): void {
+  /**
+   * Send one frame. Returns whether it was handed to a writable socket; false
+   * means it was NOT sent (never connected, socket destroyed or ended, not yet
+   * reconnected) and the caller owns recovering it.
+   *
+   * A frame accepted here can still fail afterwards if the socket dies before
+   * the corked flush. That is reported by the "dropped" event (one per frame),
+   * as the caller has already been told it was accepted.
+   */
+  public send(data: Buffer, senderRef: string): boolean {
     const socket = this.socket;
     if (socket && socket.writable) {
       // Frame: [SenderRef (40)][Length (4)][Payload], built in one allocation.
@@ -103,7 +112,9 @@ export class P2PClient extends EventEmitter {
       data.copy(frame, 44);
 
       this.write(socket, frame);
+      return true;
     }
+    return false;
   }
 
   /**
@@ -126,6 +137,13 @@ export class P2PClient extends EventEmitter {
         socket.uncork();
       });
     }
-    socket.write(frame);
+    socket.write(frame, (err?: Error | null) => {
+      if (err) {
+        ActiveLogger.warn(
+          `P2P frame accepted but not written to ${this.host}:${this.port}: ${err.message}`
+        );
+        this.emit("dropped", 1);
+      }
+    });
   }
 }

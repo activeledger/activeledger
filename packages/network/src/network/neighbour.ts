@@ -226,11 +226,20 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     ) {
       // P2P Messaging
       // A broadcast hands every peer the same already-serialised frame body
-      this.p2pClient.send(
+      const sent = this.p2pClient.send(
         await (serialised ? serialised() : Neighbour.serialiseParams(params)),
         Home.reference
       );
-      return Promise.resolve({ ok: 1 });
+      // The frame never reached a writable socket. Reject, as a failed HTTP
+      // knock does, so the caller (Host.broadcast) can rebroadcast. The
+      // neighbour is not marked unavailable: the P2P socket reconnects by
+      // itself, and the neighbour may be perfectly reachable over HTTP.
+      if (sent === false) {
+        throw new Error(
+          `P2P frame not sent to ${this.host}:${this.port + 1}, socket not writable`
+        );
+      }
+      return { ok: 1 };
     } else {
       // Allow us to force http mostly for knock right non broadcast
       if (endpoint === 'init-legacy') {
