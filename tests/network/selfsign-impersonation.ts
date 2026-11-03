@@ -44,16 +44,29 @@ async function readEverywhere(nodes: { storageUrl: string }[], streamId: string)
   return { states, metas };
 }
 
-/** Waits until every node holds the stream, so a "no change" check is not just a slow read. */
+/**
+ * Waits until every node holds the stream in the state the caller expects,
+ * and all at one revision, so a "no change" check is not just a slow read.
+ *
+ * Holding SOME revision is not enough: a transaction answers once enough
+ * nodes have committed, so a node can still be on the previous revision
+ * (a snapshot taken then makes a later "unchanged" comparison fail when the
+ * node catches up, with nothing wrong in the ledger).
+ */
 async function waitForConvergence(
   nodes: { storageUrl: string }[],
   streamId: string,
+  marker: string,
   timeoutMs = 15000
 ) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const snapshot = await readEverywhere(nodes, streamId);
-    if (snapshot.states.every((s) => s?._rev) || Date.now() > deadline) return snapshot;
+    const revs = snapshot.states.map((s) => s?._rev);
+    const converged =
+      revs.every((r) => r && r === revs[0]) &&
+      snapshot.states.every((s) => s?.marker === marker);
+    if (converged || Date.now() > deadline) return snapshot;
     await new Promise((r) => setTimeout(r, 500));
   }
 }
@@ -102,7 +115,7 @@ async function main(): Promise<boolean> {
     });
     check(!legit.$summary?.errors, `the owner's own transaction committed: ${JSON.stringify(legit.$summary?.errors ?? "no errors")}`);
 
-    const before = await waitForConvergence(nodes, victim.streamId);
+    const before = await waitForConvergence(nodes, victim.streamId, "written-by-owner");
     check(
       before.states.every((s) => s?.marker === "written-by-owner"),
       "every node shows the owner's write, so the contract really does write through an input"
@@ -234,7 +247,7 @@ async function main(): Promise<boolean> {
     });
     check(!stillMine.$summary?.errors, "the owner can still write to their own stream");
 
-    const end = await waitForConvergence(nodes, victim.streamId);
+    const end = await waitForConvergence(nodes, victim.streamId, "still-mine");
     check(
       end.states.every((s) => s?.marker === "still-mine"),
       "every node shows the owner's second write"
