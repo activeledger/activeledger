@@ -1,4 +1,6 @@
 import { LevelMe } from "../packages/storage/src/levelme";
+// The same module instance LevelMe resolves, so its registry is the real one
+import { ActiveCacheManager } from "@activeledger/activeoptions";
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
@@ -23,18 +25,20 @@ import * as path from "path";
  * reader that pairs a pre-batch state with a post-batch meta produces a
  * mismatched meta._rev:state._rev that SPI cannot repair afterwards.
  */
-describe("LevelMe read/write and cache behaviour (Activestorage)", () => {
+// Run with the read cache off (the default) and on (db.selfhost.cache).
+for (const cacheOn of [false, true]) describe(`LevelMe read/write and cache behaviour (Activestorage), read cache ${cacheOn ? "on" : "off"}`, () => {
   let tmpDir: string;
   let db: LevelMe;
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-rw-test-"));
-    db = new LevelMe(tmpDir + path.sep, "activeledger", "level");
+    db = new LevelMe(tmpDir + path.sep, "activeledger", "level", cacheOn);
     await db.open();
   });
 
   afterEach(async () => {
     await db.close();
+    ActiveCacheManager.fetch("streams:activeledger").clear();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

@@ -118,15 +118,22 @@ export class EmbeddedDSConnect implements IDSConnect {
    * @param {string} name Database name, as in config db.database/event/error
    * @param {string} [engine="level"] Storage driver, as db.selfhost.engine
    */
-  constructor(location: string, public readonly name: string, engine = "level") {
+  constructor(
+    location: string,
+    public readonly name: string,
+    engine = "level",
+    cache = false
+  ) {
     if (!isValidDbName(name)) {
       throw new Error(`invalid database - ${name}`);
     }
     // LevelMe's read cache is process-wide per database name. A storage
     // process starts with it empty; so does this, rather than serving
     // whatever an earlier store of the same name left in it.
-    ActiveCacheManager.fetch(`streams:${name}`).clear();
-    this.level = new LevelMe(location, name, engine);
+    if (cache) {
+      ActiveCacheManager.fetch(`streams:${name}`).clear();
+    }
+    this.level = new LevelMe(location, name, engine, cache);
     this.dir = location + name;
   }
 
@@ -271,6 +278,11 @@ export interface IEmbeddedStorageOptions {
   engine?: string;
   /** db.database. Default "activeledger". */
   database?: string;
+  /**
+   * db.selfhost.cache. Keep a 30 s read cache on the ledger database. Off by
+   * default; the events and errors databases never get one.
+   */
+  cache?: boolean;
   /** db.event. Default "activeledgerevents". */
   event?: string;
   /** db.error. Default "activeledgererrors". */
@@ -306,7 +318,13 @@ export async function openEmbeddedStorage(
   const location = path.resolve(dir) + path.sep;
   fs.mkdirSync(location, { recursive: true });
   const engine = options.engine || "level";
-  const data = new EmbeddedDSConnect(location, options.database || "activeledger", engine);
+  // Only the ledger database is ever cached (see IEmbeddedStorageOptions.cache)
+  const data = new EmbeddedDSConnect(
+    location,
+    options.database || "activeledger",
+    engine,
+    options.cache === true
+  );
   const events = new EmbeddedDSConnect(location, options.event || "activeledgerevents", engine);
   const errors = new EmbeddedDSConnect(location, options.error || "activeledgererrors", engine);
   // Not via info(): LevelMe.info() swallows its own open failure.

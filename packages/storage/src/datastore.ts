@@ -116,6 +116,11 @@ export class ActiveDataStore {
         // client connection string; the server ignored it and bound every
         // interface. Now it does what it looks like it does.
         `${dbInfo.selfhost.host || "127.0.0.1"}`,
+        // Read cache, off unless db.selfhost.cache is true. Only the ledger
+        // database is ever cached, so the store is told which one.
+        ...(dbInfo.selfhost.cache === true
+          ? [`${dbInfo.database || "activeledger"}`]
+          : []),
       ],
       {
         stdio: "inherit",

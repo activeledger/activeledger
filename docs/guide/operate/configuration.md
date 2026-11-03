@@ -36,6 +36,7 @@ A node with a `hybrid` section needs `"build": 40300` for it to take effect.
 | `db.selfhost.port` | Port of the embedded store. A node made with `--port` uses `port - 1`. | `"5259"` |
 | `db.selfhost.engine` | Storage driver. | `"level"` |
 | `db.selfhost.dir` | Folder the data lives in. Written only when the node was set up with `--data-dir`. | not written; `./.ds` |
+| `db.selfhost.cache` | `true` keeps a 30 second in-memory read cache of the ledger database. Off by default: on a busy node under 1% of reads hit it and it held hundreds of MB. Turn it on only for a read-heavy workload that re-reads the same streams. The events and error databases are never cached. | `false` |
 | `db.autostart` | `false` means you run the store as a separate process; the node checks it is up and refuses to start if not. | started by the node |
 | `db.url` | CouchDB address with credentials, used when there is no `selfhost`. With `selfhost` the node fills it in itself. | placeholder |
 | `db.database` | Name of the ledger database. | `"activeledger"` |

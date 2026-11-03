@@ -285,6 +285,29 @@ describe("ActiveDataStore (Activestorage)", () => {
     ]);
   });
 
+  it("names the ledger database for the storage process only when db.selfhost.cache is true", () => {
+    config.db = {
+      selfhost: { dir: "d", port: 5986, cache: true },
+      database: "activeledgerx",
+    };
+    new ActiveDataStore().launch();
+    expect(spawned[0].args.slice(1)).to.deep.equal([
+      "d",
+      "5986",
+      "level",
+      "127.0.0.1",
+      "activeledgerx",
+    ]);
+
+    // Anything but a real true leaves the cache off
+    for (const cache of [false, "true", 1, undefined]) {
+      spawned.length = 0;
+      config.db = { selfhost: { dir: "d", port: 5986, cache } };
+      new ActiveDataStore().launch();
+      expect(spawned[0].args, String(cache)).to.have.length(5);
+    }
+  });
+
   it("records the process id in the pid file for --stop", async () => {
     setDb({ dir: "d", port: 5984 });
     fs.writeFileSync(
