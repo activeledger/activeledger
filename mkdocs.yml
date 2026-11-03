@@ -73,6 +73,7 @@ nav:
       - activerestore: cli/activerestore.md
   - Running a network:
       - Configuration: operate/configuration.md
+      - Memory use: operate/memory.md
       - Nodes, consensus and upgrades: operate/nodes.md
       - Restoring a node: operate/restore.md
       - Security: operate/security.md

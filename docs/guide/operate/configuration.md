@@ -36,7 +36,7 @@ A node with a `hybrid` section needs `"build": 40300` for it to take effect.
 | `db.selfhost.port` | Port of the embedded store. A node made with `--port` uses `port - 1`. | `"5259"` |
 | `db.selfhost.engine` | Storage driver. | `"level"` |
 | `db.selfhost.dir` | Folder the data lives in. Written only when the node was set up with `--data-dir`. | not written; `./.ds` |
-| `db.selfhost.cache` | `true` keeps a 30 second in-memory read cache of the ledger database. Off by default: on a busy node under 1% of reads hit it and it held hundreds of MB. Turn it on only for a read-heavy workload that re-reads the same streams. The events and error databases are never cached. | `false` |
+| `db.selfhost.cache` | `true` keeps a 30 second in-memory read cache of the ledger database. Off by default: on a busy node under 1% of reads hit it and it held hundreds of MB. Turn it on only for a read-heavy workload that re-reads the same streams. The events and error databases are never cached. See [Memory use](memory.md). | `false` |
 | `db.autostart` | `false` means you run the store as a separate process; the node checks it is up and refuses to start if not. | started by the node |
 | `db.url` | CouchDB address with credentials, used when there is no `selfhost`. With `selfhost` the node fills it in itself. | placeholder |
 | `db.database` | Name of the ledger database. | `"activeledger"` |
@@ -107,9 +107,9 @@ See [Restoring a node](restore.md) for what these mean in practice.
 
 | Key | What it does | Default |
 |---|---|---|
-| `cpus` | How many worker processes run contracts. | the machine's physical cores |
+| `cpus` | How many worker processes run contracts. Fewer workers use less memory; see [Memory use](memory.md). | the machine's physical cores |
 | `max_memory` | Memory limit of each worker, in MB. | `1500` |
-| `worker_semi_space` | Caps the young-generation size of each worker process, in MB (V8 `--max-semi-space-size`), 1 to 64. Smaller means less memory per worker (about 800 MB less per node with 12 workers, at 4 MB, light contracts) but more frequent garbage collection, which cost 20% throughput on a contract doing real work per transaction. Off by default; try it only if your contracts are light, and measure. `0` leaves V8's own sizing. A value that is not a whole number in range is ignored with a warning in the log. The limit set by `max_memory` is unaffected. | `0` |
+| `worker_semi_space` | Caps the young-generation size of each worker process, in MB (V8 `--max-semi-space-size`), 1 to 64. Smaller means less memory per worker (about 800 MB less per node with 12 workers, at 4 MB, light contracts) but more frequent garbage collection, which cost 23 to 29% of throughput on a contract doing real work per transaction. See [Memory use](memory.md). Off by default; try it only if your contracts are light, and measure. `0` leaves V8's own sizing. A value that is not a whole number in range is ignored with a warning in the log. The limit set by `max_memory` is unaffected. | `0` |
 | `contractMaxTimeout` | The longest a contract may run, in minutes. | `20` |
 | `contractCheckTimeout` | How often a running contract is checked against its timeout, in ms. | `10000` |
 | `winston` | Also write logs to rotating files under `./winstonlogs/`. | `false` |
