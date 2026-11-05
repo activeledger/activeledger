@@ -628,11 +628,7 @@ export class LevelMe {
     // exception by default though, so this is its own try/catch too -
     // otherwise a listener throwing would propagate straight out and
     // reject this call, the same class of bug being fixed here.
-    try {
-      this.changeEmitter.emit("change", writer.changes);
-    } catch (listenerError) {
-      ActiveLogger.error(listenerError, "change listener threw");
-    }
+    this.emitChange(writer.changes);
 
     return {
       ok: true,
@@ -804,19 +800,33 @@ export class LevelMe {
     // /events client stayed connected.
     //
     // EventEmitter doesn't isolate a listener's own exception by default -
-    // a synchronous throw inside emit() propagates straight out to us, so
-    // being outside the write's try/catch above isn't enough on its own to
-    // fully protect the return value. Each emit is individually try/caught
-    // here too, so one listener throwing can't stop the rest from being
-    // notified, and can never turn into bulkDocs() itself rejecting.
+    // a synchronous throw inside emit() propagates straight out and stops
+    // the later listeners. emitChange() calls each listener in its own
+    // try/catch, so one throwing can't stop the rest from being notified,
+    // and can never turn into bulkDocs() itself rejecting.
     for (let i = changes.length; i--;) {
+      this.emitChange(changes[i]);
+    }
+    return true;
+  }
+
+  /**
+   * Notifies every "change" listener, each in its own try/catch so one that
+   * throws cannot stop the ones registered after it. emit() alone stops at
+   * the first throw. rawListeners() keeps registration order and the once()
+   * wrappers, which remove themselves when called.
+   *
+   * @private
+   * @param {*} change
+   */
+  private emitChange(change: any): void {
+    for (const listener of this.changeEmitter.rawListeners("change")) {
       try {
-        this.changeEmitter.emit("change", changes[i]);
+        listener.call(this.changeEmitter, change);
       } catch (listenerError) {
         ActiveLogger.error(listenerError, "change listener threw");
       }
     }
-    return true;
   }
 
   /**

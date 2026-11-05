@@ -182,6 +182,44 @@ describe("Storage error paths", () => {
       }
     });
 
+    it("listeners after one that throws still run, in registration order, for post() and bulkDocs()", async () => {
+      const db = open();
+      try {
+        const order: string[] = [];
+        db.changes().on("change", (c: any) => order.push(`first:${c.id}`));
+        db.changes().on("change", () => {
+          throw new Error("listener bug");
+        });
+        db.changes().on("change", (c: any) => order.push(`third:${c.id}`));
+        await db.post({ _id: "o1", v: 1 });
+        expect(order).to.deep.equal(["first:o1", "third:o1"]);
+        order.length = 0;
+        expect(await db.bulkDocs([{ _id: "o2" }] as any, { new_edits: true })).to.equal(true);
+        expect(order).to.deep.equal(["first:o2", "third:o2"]);
+      } finally {
+        db.changes().removeAllListeners("change");
+        await db.close();
+      }
+    });
+
+    it("a once listener fires once, even after an earlier listener threw", async () => {
+      const db = open();
+      try {
+        const seen: string[] = [];
+        db.changes().on("change", () => {
+          throw new Error("listener bug");
+        });
+        db.changes().once("change", (c: any) => seen.push(c.id));
+        await db.post({ _id: "n1", v: 1 });
+        await db.post({ _id: "n2", v: 1 });
+        expect(seen).to.deep.equal(["n1"]);
+        expect(db.changes().listenerCount("change")).to.equal(1);
+      } finally {
+        db.changes().removeAllListeners("change");
+        await db.close();
+      }
+    });
+
     it("allDocs rejects when the keys cannot be read", async () => {
       const db = open();
       try {
