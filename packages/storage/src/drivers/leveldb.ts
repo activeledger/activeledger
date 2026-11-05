@@ -11,10 +11,14 @@ const MB = 1024 * 1024;
  * db.selfhost.writeBufferMb / cacheMb when it starts the storage process),
  * or the default. Not a positive number means the default.
  */
-const megabytes = (name: string, fallback: number): number => {
+export const megabytes = (name: string, fallback: number): number => {
   const n = Number(process.env[name]);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) * MB : fallback * MB;
+  // Positive, and never more than 4 GB: a typo of 1e9 must not become a
+  // request for a petabyte
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), MAX_MB) * MB : fallback * MB;
 };
+
+const MAX_MB = 4096;
 
 /**
  * LevelDB's own defaults (a 4 MB write buffer, an 8 MB block cache) suit a
@@ -27,12 +31,18 @@ const megabytes = (name: string, fallback: number): number => {
  */
 export const LEVELDB_DEFAULT_WRITE_BUFFER_MB = 64;
 export const LEVELDB_DEFAULT_CACHE_MB = 256;
+/**
+ * The event and error databases are written and scanned, never read by key
+ * (see selfhost.ts), so a big block cache would only sit empty. They keep the
+ * write buffer and a small cache.
+ */
+export const LEVELDB_LOG_CACHE_MB = 16;
 
 export class LevelDBDriver implements IStorageDriver {
   private db: any = null;
   private opening: boolean = false;
 
-  constructor(private location: string, provider: string) {
+  constructor(private location: string, provider: string, private logDatabase = false) {
     mkdirSync(location, { recursive: true });
   }
 
@@ -154,7 +164,7 @@ export class LevelDBDriver implements IStorageDriver {
         this.db = new ClassicLevel(this.location, {
           valueEncoding: 'binary',
           writeBufferSize: megabytes("ACTIVE_LEVEL_WRITE_BUFFER_MB", LEVELDB_DEFAULT_WRITE_BUFFER_MB),
-          cacheSize: megabytes("ACTIVE_LEVEL_CACHE_MB", LEVELDB_DEFAULT_CACHE_MB),
+          cacheSize: megabytes("ACTIVE_LEVEL_CACHE_MB", this.logDatabase ? LEVELDB_LOG_CACHE_MB : LEVELDB_DEFAULT_CACHE_MB),
         });
         await this.db.open();
       } catch (e) {

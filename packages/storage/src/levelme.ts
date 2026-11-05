@@ -160,7 +160,7 @@ export class LevelMe {
     provider: string,
     cache = false
   ) {
-    this.driver = new LevelDBDriver(location + name, provider);
+    this.driver = new LevelDBDriver(location + name, provider, /(event|error)/i.test(name));
     if (cache) {
       this.cache = ActiveCacheManager.fetch(`streams:${this.name}`, 30000);
     }
@@ -758,12 +758,19 @@ export class LevelMe {
       // others, so do them together instead of one threadpool round trip
       // after another. The puts go into the same batch (the writer chain is
       // the batch itself), and the changes keep their original order.
-      const writers = await Promise.all(
+      const settled = await Promise.allSettled(
         docs.map((doc) => this.prepareForWrite(doc, batch, options))
       );
-      for (let i = writers.length; i--;) {
-        batch = writers[i].chain;
-        collect(writers[i]);
+      // The serial loop below went from the last document to the first and
+      // stopped at the first failure; report the same one, not whichever read
+      // happened to finish first.
+      for (let i = settled.length; i--;) {
+        const result = settled[i];
+        if (result.status === "rejected") {
+          throw result.reason;
+        }
+        batch = result.value.chain;
+        collect(result.value);
       }
     } else {
       for (let i = docs.length; i--;) {
