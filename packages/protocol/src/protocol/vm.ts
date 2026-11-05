@@ -712,7 +712,7 @@ export class VirtualMachine
 
       try {
         // Get Commit
-        const contract = this.getContract(umid, "read"); if (!contract) return reject("VM Error : Contract not found"); const read = this.sandboxed(umid, () => (contract as any)[readMethod]?.());
+        const contract = this.getContract(umid, "read"); if (!contract) return reject("VM Error : Contract not found"); const read = await this.sandboxed(umid, () => (contract as any)[readMethod]?.());
         resolve(read ? read : false);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Read - Error`);
@@ -753,7 +753,7 @@ export class VirtualMachine
 
       try {
         // Run Verify Phase
-        const contract = this.getContract(umid, "verify"); if (!contract) return reject("VM Error : Contract not found"); const verify = this.sandboxed(umid, () => contract.verify?.(sigless));
+        const contract = this.getContract(umid, "verify"); if (!contract) return reject("VM Error : Contract not found"); const verify = await this.sandboxed(umid, () => contract.verify?.(sigless));
         resolve(verify ? verify : true);
       } catch (error) {
         ActiveLogger.debug(error, `VM Contract Verify - Error`);

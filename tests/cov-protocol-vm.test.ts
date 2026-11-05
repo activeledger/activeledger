@@ -15,7 +15,8 @@ class FakeContract {
   }
   sysConfig(c) { this.configs.push(c); }
   configReload() { return true; }
-  verify() { return true; }
+  verify() { if (this.mode === "hang:verify") return new Promise(() => {}); return true; }
+  readHang() { return new Promise(() => {}); }
   async vote() { return true; }
   async commit() { if (this.mode === "hang:commit") return new Promise(() => {}); }
   async reconcile() { if (this.mode === "hang:reconcile") return new Promise(() => {}); return true; }
@@ -105,6 +106,16 @@ describe("VirtualMachine (cov)", () => {
     it("rejects a post process that never finishes", async () => {
       const { umid } = await start("hang:post");
       expect(await rejected(vm.postProcess(true, "me", umid))).to.equal("VM Error : Post phase timeout");
+    });
+
+    it("rejects a verify that never finishes", async () => {
+      const { umid } = await start("hang:verify");
+      expect(await rejected(vm.verify(false, umid))).to.equal("VM Error : Verify phase timeout");
+    });
+
+    it("rejects a read that never finishes", async () => {
+      const { umid } = await start();
+      expect(await rejected(vm.read(umid, "readHang"))).to.equal("VM Error : Read phase timeout");
     });
 
     it("does not reject phases that finish in time", async () => {
