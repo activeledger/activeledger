@@ -25,6 +25,7 @@ const SPECS: FlagSpec[] = [
   { name: "contract", type: "string", default: "returner", choices: Object.keys(CONTRACT_FILES), description: "contract the load runs" },
   { name: "cpus", type: "number", description: "set the nodes' cpus config (size of the contract worker pool)" },
   { name: "worker-semi-space", type: "number", description: "set the nodes' worker_semi_space config (MB)" },
+  { name: "node-config", type: "string", description: "JSON merged into every node's config.json before it starts, e.g. '{\"releaseTailSeconds\":30}' (recorded in the results)" },
   { name: "reps", type: "number", default: 1, description: "repeat the whole run on fresh networks (more reps give the compare tool a spread)" },
   { name: "fail-on-uncommitted", type: "boolean", default: false, description: "exit 1 if any transaction did not commit (always reported either way)" },
   { name: "max-growth-mb-per-10k", type: "number", description: "fail (exit 1) if any role's anonymous memory grows faster than this, MB per 10k tx" },
@@ -61,6 +62,7 @@ async function oneRep(f: any, out: string, rep: number): Promise<{ failed: boole
   const config: Record<string, unknown> = {};
   if (f.cpus) config.cpus = f.cpus;
   if (f.workerSemiSpace !== undefined) config.worker_semi_space = f.workerSemiSpace;
+  if (f.nodeConfig) Object.assign(config, JSON.parse(f.nodeConfig));
 
   const result = await withNetwork(
     { nodeCount: f.nodes, basePort: f.basePort, readyTimeoutMs: 60000, config: Object.keys(config).length ? config : undefined },
@@ -161,6 +163,7 @@ async function oneRep(f: any, out: string, rep: number): Promise<{ failed: boole
     kind: "run",
     ts: new Date().toISOString(),
     label: f.label,
+    nodeConfig: f.nodeConfig,
     profile: f.profile,
     growthVerdict: level,
     group: `nodes=${f.nodes} clients=${f.clients} contract=${f.contract} cpus=${f.cpus ?? "default"} semi=${f.workerSemiSpace ?? "default"}`,
