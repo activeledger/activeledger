@@ -88,6 +88,22 @@ for (const cacheOn of [false, true]) describe(`LevelMe store behaviour (Activest
     });
   });
 
+  describe("a batch in which several documents conflict", () => {
+    it("reports the last document's conflict, as the one-at-a-time loop always did", async () => {
+      await db.bulkDocs([{ _id: "c-a", v: 1 }, { _id: "c-b", v: 1 }, { _id: "c-c", v: 1 }] as any, { new_edits: true });
+      const stale = (id: string) => ({ _id: id, _rev: "9-" + "0".repeat(32), v: 2 });
+      let caught: any;
+      try {
+        await db.bulkDocs([stale("c-a"), stale("c-b"), stale("c-c")] as any, { new_edits: false });
+      } catch (e) {
+        caught = e;
+      }
+      expect(String(caught && caught.message)).to.contain("c-c");
+      // and nothing was written
+      expect((await db.get("c-a")).v).to.equal(1);
+    });
+  });
+
   describe("opening, closing and reopening", () => {
     it("info() names the database", async () => {
       const info = await db.info();
@@ -849,5 +865,28 @@ describe("LevelDB memory settings (Activestorage)", () => {
       delete process.env.ACTIVE_LEVEL_CACHE_MB;
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+import { megabytes } from "../packages/storage/src/drivers/leveldb";
+describe("LevelDB memory sizes (Activestorage)", () => {
+  const key = "ACTIVE_LEVEL_TEST_MB";
+  afterEach(() => delete process.env[key]);
+
+  it("uses the fallback when the value is missing, zero, negative or not a number", () => {
+    for (const v of [undefined, "0", "-5", "banana", ""]) {
+      if (v === undefined) delete process.env[key]; else process.env[key] = v;
+      expect(megabytes(key, 64)).to.equal(64 * 1024 * 1024);
+    }
+  });
+
+  it("takes a sensible value as given, rounded down", () => {
+    process.env[key] = "128.9";
+    expect(megabytes(key, 64)).to.equal(128 * 1024 * 1024);
+  });
+
+  it("never allows more than 4 GB, whatever it is told", () => {
+    process.env[key] = "1000000000";
+    expect(megabytes(key, 64)).to.equal(4096 * 1024 * 1024);
   });
 });
