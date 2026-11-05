@@ -17,9 +17,9 @@ hardware should do better. The numbers come from the new `npm run stress:peak`.
 ### Before you upgrade
 - **LevelDB now uses more memory by default.** Each database gets up to **64 MB
   of write buffer and 256 MB of block cache** (5.1.7: 4 MB and 8 MB); the event
-  and error databases get a 16 MB cache. A node opens at least three databases,
-  so allow roughly 1 GB more per node at the limit, and more than that if several
-  nodes share a host. They are limits, not reservations: memory is used as the
+  and error databases get a 16 MB cache. A node opens at least three databases
+  (ledger, events, errors), so allow about 450 MB more per node at the limit, and
+  more than that if several nodes share a host. They are limits, not reservations: memory is used as the
   database fills. On a small VM, set `db.selfhost.writeBufferMb` and
   `db.selfhost.cacheMb` lower in the `db.selfhost` section of `config.json` before
   upgrading (values are capped at 4096). Write durability is unchanged.
