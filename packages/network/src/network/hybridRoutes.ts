@@ -82,6 +82,9 @@ export class FeedSession {
   /** Send the first heartbeat and begin polling */
   public async start(): Promise<void> {
     await this.beat();
+    // beat() stops the session (unauthorised key, failed write); a stopped
+    // session must not schedule a poll timer nothing would ever clear
+    if (this.stopped) return;
     this.timer = setInterval(() => void this.tick(), this.pollMs);
   }
 
