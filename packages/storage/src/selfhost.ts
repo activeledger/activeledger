@@ -316,7 +316,14 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     } else {
       incoming.query["startkey"] = `umid:${incoming.query["from"]}`;
     }
-    const txs = (await db.allDocs(prepareAllDocs(incoming.query))) as any;
+    const options = prepareAllDocs(incoming.query);
+    // Stop at the first key past every "umid:" id (";" follows ":"), as the
+    // events reader does, or documents sorting after the prefix come back as
+    // garbage rows
+    if (!options.endkey) {
+      options.endkey = "umid;";
+    }
+    const txs = (await db.allDocs(options)) as any;
     for (let i = txs.rows.length; i--;) {
       const [timestamp, umid] = txs.rows[i]._id.split(",");
       txs.rows[i] = {

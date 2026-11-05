@@ -426,6 +426,9 @@ describe("Storage process HTTP API (selfhost)", function () {
       await s.req("POST", `/${db}`, { _id: "umid:100,aaa", t: 1 });
       await s.req("POST", `/${db}`, { _id: "umid:200,bbb", t: 2 });
       await s.req("POST", `/${db}`, { _id: "umid:300,ccc", t: 3 });
+      // Documents that sort after every umid: key must not come back as rows
+      await s.req("POST", `/${db}`, { _id: "with space", t: 4 });
+      await s.req("POST", `/${db}`, { _id: "zzz", t: 5 });
     });
 
     it("lists transaction rows from a timestamp as umid and timestamp", async () => {
@@ -447,6 +450,15 @@ describe("Storage process HTTP API (selfhost)", function () {
       expect(r.json.rows).to.deep.equal([
         { umid: "aaa", timestamp: "100" },
         { umid: "bbb", timestamp: "200" },
+      ]);
+    });
+
+    it("stops at the end of the umid: keys instead of returning other documents", async () => {
+      const r = await s.req("GET", `/${db}/umids?from=100`);
+      expect(r.json.rows).to.deep.equal([
+        { umid: "aaa", timestamp: "100" },
+        { umid: "bbb", timestamp: "200" },
+        { umid: "ccc", timestamp: "300" },
       ]);
     });
 
