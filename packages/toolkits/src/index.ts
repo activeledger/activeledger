@@ -22,5 +22,4 @@
  */
 
 import { ActiveRequest as HTTP } from "@activeledger/activeutilities";
-import { PDF } from "./pdf";
-export { PDF, HTTP };
+export { HTTP };
