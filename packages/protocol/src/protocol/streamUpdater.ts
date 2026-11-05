@@ -506,9 +506,31 @@ export class StreamUpdater {
   private recordAfterCommit(): void {
     const umid = this.entry.$umid;
     const id = `umid:${new Date(this.entry.$datetime).getTime()},${umid}`;
-    this.dbev.post({ _id: id }).catch((error: unknown) => {
-      ActiveLogger.error({ umid, error }, "Event record failed after commit (streams are written)");
-    });
+    const posted: Promise<unknown> = this.dbev
+      .post({ _id: id })
+      .catch((error: unknown) => {
+        ActiveLogger.error({ umid, error }, "Event record failed after commit (streams are written)");
+      })
+      .then(() => {
+        StreamUpdater.pendingEventPosts.delete(posted);
+      });
+    StreamUpdater.pendingEventPosts.add(posted);
+  }
+
+  /** Event rows posted after their commit was answered and not yet confirmed by storage. */
+  private static pendingEventPosts = new Set<Promise<unknown>>();
+
+  /**
+   * Waits (up to `timeoutMs`) for the event rows still being posted. A worker
+   * that is about to exit calls this first: an answered transaction must not
+   * lose its event row because the node was stopped a moment after answering.
+   */
+  public static async flushEventPosts(timeoutMs = 3000): Promise<void> {
+    if (!StreamUpdater.pendingEventPosts.size) return;
+    await Promise.race([
+      Promise.all([...StreamUpdater.pendingEventPosts]),
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs).unref()),
+    ]);
   }
 
   private async append() {

@@ -988,6 +988,11 @@ export class Process extends EventEmitter {
    * @param {*} node
    * @returns {void}
    */
+  /** Waits for event rows still being posted after answered commits (see StreamUpdater.flushEventPosts). */
+  public static flushEventRecords(timeoutMs?: number): Promise<void> {
+    return StreamUpdater.flushEventPosts(timeoutMs);
+  }
+
   public updatedFromBroadcast(node?: any): void {
     // Nothing to merge (and node[this.reference] below would throw)
     if (!node || this.isCommiting()) {
