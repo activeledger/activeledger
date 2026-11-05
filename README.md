@@ -23,13 +23,6 @@ Please see the hosted documentation for detailed instructions.
 - [Activeledger guide](https://activeledger.github.io/activeledger/) - running, operating and using Activeledger
 - [SDKs](https://activeledger.github.io/activeledger/sdks/) - one page per language: [JavaScript](https://activeledger.github.io/activeledger/sdks/js/), [Python](https://activeledger.github.io/activeledger/sdks/python/), [Go](https://activeledger.github.io/activeledger/sdks/go/), [JVM](https://activeledger.github.io/activeledger/sdks/jvm/), [C#](https://activeledger.github.io/activeledger/sdks/csharp/), [Rust](https://activeledger.github.io/activeledger/sdks/rust/), [PHP](https://activeledger.github.io/activeledger/sdks/php/), [Dart](https://activeledger.github.io/activeledger/sdks/dart/), [Swift](https://activeledger.github.io/activeledger/sdks/swift/)
 
-The earlier per-language documents remain in the repository:
-
-|Language| |
-|--------|-|
-|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/README.md)|
-|Chinese| [说明文档](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/README.md)|
-
 
 ## Quickstart Guide
 
@@ -117,8 +110,6 @@ For a Docker build, pass the token in as a build secret (e.g. `--secret id=npmrc
 ## Developer Tools
 
 We have created an IDE for developers to create and manage Activeledger smart contracts across multiple networks. This IDE helps manage the private keys for developers to sign their contracts with and the namespaces their contracts will be stored under in each specific network. This tool is currently in beta but is available for Linux, Windows and OSX.
-
-[IDE User Guide](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/ide/README.md) | [用户指南](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/ide/README.md)
 
 ![Activeledger IDE](docs/assets/developer-tools-demo.gif)
 

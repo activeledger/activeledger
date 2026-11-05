@@ -19,6 +19,4 @@ The supernodes need build `40300`. See the documentation for the network setting
 
 `activehybrid --help` lists every command and flag.
 
-|Language| |
-|--------|-|
-|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/hybrid.md)|
+[Documentation](https://activeledger.github.io/activeledger/)
