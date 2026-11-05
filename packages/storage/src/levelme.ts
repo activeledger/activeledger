@@ -545,15 +545,20 @@ export class LevelMe {
     const prefixed = keys.map((key) => LevelMe.DOC_PREFIX + key);
     const result = await this.driver.getMany(prefixed);
 
+    // Ungzip/decode the documents together (a gzipped one is a threadpool
+    // hop), then keep the order of the keys as before.
+    const decoded = await Promise.all(
+      result.map((raw: any) =>
+        // A key this node does not hold comes back undefined. Deserializing
+        // that threw, so a single absent stream failed the whole read - and
+        // SPI asks about streams a node may legitimately not have.
+        raw === undefined || raw === null
+          ? undefined
+          : (ActiveClone.deserialize(raw) as Promise<any>)
+      )
+    );
     const docs: any[] = [];
-    for (let i = 0; i < result.length; i++) {
-      // A key this node does not hold comes back undefined. Deserializing
-      // that threw, so a single absent stream failed the whole read - and
-      // SPI asks about streams a node may legitimately not have.
-      if (result[i] === undefined || result[i] === null) {
-        continue;
-      }
-      const data = (await ActiveClone.deserialize(result[i])) as any;
+    for (const data of decoded) {
       if (!data || !data._id) {
         continue;
       }
