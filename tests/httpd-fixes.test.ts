@@ -31,6 +31,11 @@ describe("ActiveHttpd fixes", () => {
   before(async () => {
     httpd = new ActiveHttpd();
     httpd.use("/none", "GET", async () => undefined);
+    httpd.use("/any", "ALL", async (i: any, r: any) => ({ route: "any-all", method: r.method }));
+    httpd.use("/mixed", "ALL", async () => ({ route: "mixed-all" }));
+    httpd.use("/mixed", "GET", async () => ({ route: "mixed-get" }));
+    httpd.use("/mixed2", "GET", async () => ({ route: "mixed2-get" }));
+    httpd.use("/mixed2", "ALL", async () => ({ route: "mixed2-all" }));
     httpd.use("/echo", "POST", async (incoming: any) => ({ got: incoming.body }));
     httpd.use("/echo", "PUT", async (incoming: any) => ({ put: incoming.body }));
     httpd.listen(0);
@@ -74,6 +79,23 @@ describe("ActiveHttpd fixes", () => {
         expect(JSON.parse(r.body).error).to.be.a("string");
       }
       expect((await request(port, "POST", "/echo", "{}")).status).to.equal(200);
+    });
+  });
+
+  describe("ALL routes", () => {
+    it("answer every method", async () => {
+      for (const method of ["GET", "POST", "PUT"]) {
+        const r = await request(port, method, "/any", method === "GET" ? undefined : "{}");
+        expect(r.status, method).to.equal(200);
+        expect(JSON.parse(r.body), method).to.deep.equal({ route: "any-all", method });
+      }
+    });
+
+    it("a method specific route still wins over ALL, whichever was registered first", async () => {
+      expect(JSON.parse((await request(port, "GET", "/mixed")).body).route).to.equal("mixed-get");
+      expect(JSON.parse((await request(port, "GET", "/mixed2")).body).route).to.equal("mixed2-get");
+      expect(JSON.parse((await request(port, "POST", "/mixed", "{}")).body).route).to.equal("mixed-all");
+      expect(JSON.parse((await request(port, "PUT", "/mixed2", "{}")).body).route).to.equal("mixed2-all");
     });
   });
 });

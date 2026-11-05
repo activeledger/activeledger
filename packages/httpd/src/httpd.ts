@@ -138,6 +138,18 @@ export class ActiveHttpd {
     this.routes.forEach((route: any) => {
       (this.compiled[route.method] = this.compiled[route.method] || []).push(route);
     });
+
+    // ALL routes answer every method: add them to each method's list (before
+    // its own routes, so a method specific route wins a tie). Methods with no
+    // routes of their own fall back to the ALL list in processListen.
+    const all = this.compiled["ALL"];
+    if (all) {
+      for (const method of Object.keys(this.compiled)) {
+        if (method !== "ALL") {
+          this.compiled[method] = all.concat(this.compiled[method]);
+        }
+      }
+    }
   }
 
   /**
@@ -368,7 +380,7 @@ export class ActiveHttpd {
     let handler = this.findHandler(
       incoming.url.slice(0),
       req.method,
-      this.compiled[req.method] || []
+      this.compiled[req.method] || this.compiled["ALL"] || []
     );
     if (handler) {
       try {
@@ -518,6 +530,10 @@ export class ActiveHttpd {
         handlers = handlers.sort((a, b) => {
           if (a.pac > b.pac) {
             return -1;
+          }
+          // Same weight: ALL ranks below a method specific route
+          if (a.pac == b.pac && a.method != b.method) {
+            return a.method == "ALL" ? -1 : 1;
           }
           return 1;
         });
