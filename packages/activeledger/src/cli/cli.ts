@@ -204,7 +204,10 @@ export class CLIHandler {
 
       ActiveLogger.info("Shutdown complete, reseting PID file");
       try {
-        CLIHandler.pidHandler.resetPidFile();
+        // Wait for it: a restart writes its own pids the moment this returns, and a
+        // reset still in flight would overwrite them (and a failed write could not
+        // be caught here at all)
+        await CLIHandler.pidHandler.resetPidFile();
       } catch (error) {
         ActiveLogger.error(error, "Error reseting PID file");
       }
