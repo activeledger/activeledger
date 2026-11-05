@@ -137,6 +137,9 @@ export class KeyPair {
    */
   private cachedVerifyKey?: { pem: string; key: crypto.KeyObject };
 
+  /** The same for sign(): the private KeyObject, parsed once per pem. */
+  private cachedSignKey?: { pem: string; key: crypto.KeyObject };
+
   /**
    * Creates an instance of KeyPair.
    * @param {*} [type="rsa"]
@@ -676,7 +679,7 @@ export class KeyPair {
         sign.update(data);
         return Buffer.from(
           sign.sign(this.checkKeyType(
-            crypto.createPrivateKey(this.handler.prv.pkcs8pem),
+            this.getSignKeyObject(),
             data
           ), "hex"),
           "hex"
@@ -686,7 +689,7 @@ export class KeyPair {
       case "secp256k1":
         let prvKey: crypto.KeyObject;
         try {
-          prvKey = crypto.createPrivateKey(this.handler.prv.pkcs8pem);
+          prvKey = this.getSignKeyObject();
         } catch {
           if (this.enableCompatMode()) {
             return (this as any).sign(data, encoding);
@@ -740,6 +743,14 @@ export class KeyPair {
    *
    * @private
    */
+  private getSignKeyObject(): crypto.KeyObject {
+    const pem = this.handler.prv.pkcs8pem;
+    if (!this.cachedSignKey || this.cachedSignKey.pem !== pem) {
+      this.cachedSignKey = { pem, key: crypto.createPrivateKey(pem) };
+    }
+    return this.cachedSignKey.key;
+  }
+
   private getVerifyKeyObject(): crypto.KeyObject {
     const pem = this.handler.pub.pkcs8pem;
     if (!this.cachedVerifyKey || this.cachedVerifyKey.pem !== pem) {
