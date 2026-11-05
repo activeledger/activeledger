@@ -48,6 +48,8 @@ const CONFIG_KEYS = [
   "proxy",
   "queue_retry",
   "rebaseThrottle",
+  "releaseHoldSeconds",
+  "releaseTailSeconds",
   "remote",
   "security",
   "worker_semi_space",
