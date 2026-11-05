@@ -224,6 +224,24 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       expect((await rejection(pc.process([STREAM], true, LAST))).code).to.equal(1220);
     });
 
+    it("a stream that is NOT sigOnly must have its state document: meta alone is rejected (950)", async () => {
+      // Valid signature, valid meta, but the state document is missing and the
+      // transaction did not ask for sigOnly. Nothing would then check its position,
+      // so it must fail rather than be treated as if it were signature only.
+      const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }), { $i: { [STREAM]: {} } });
+      const { pc } = checker(e, dbOf([meta()]));
+      const err = await rejection(pc.process([STREAM], true, LAST));
+      expect(err.code).to.equal(950);
+    });
+
+    it("the same stream marked sigOnly is still accepted without a state document", async () => {
+      const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }), { $i: { [STREAM]: { $sigOnly: true } } });
+      const sh = new Shared(false, e, {} as any, null as any);
+      sh.sigOnly[STREAM] = true;
+      const { pc } = checker(e, dbOf([meta()]), {}, sh);
+      expect(await pc.process([STREAM], true, LAST)).to.deep.equal([]);
+    });
+
     it("do not need the revisions to agree", async () => {
       const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }), { $i: { [STREAM]: {} } }, {
         $i: { [STREAM]: "9-x:9-y" },

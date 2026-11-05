@@ -302,6 +302,26 @@ export class PermissionsChecker {
         };
       }
 
+      // The reverse: a :stream document with no state. Only a sigOnly stream is
+      // fetched without its state (it is deliberately not read), so for any other
+      // stream a missing state is a missing stream and nothing would check its
+      // position. Without this it would pass the length check below (one result
+      // counts as two keys).
+      if (
+        results.some(
+          (result) =>
+            !result.state &&
+            !this.shared.sigOnly[
+              this.shared.filterPrefix(String(result.meta._id).replace(/:stream$/, ""), true)
+            ]
+        )
+      ) {
+        throw {
+          code: 950,
+          reason: "Stream(s) not found",
+        };
+      }
+
       const sigOnlyAdjustment = this.data.filter(id => this.shared.sigOnly[this.shared.filterPrefix(id, true)]).length;
       // lengths should match then have all streams and meta data
       // wonder why it added contractdataincluded! (and it doesn't stop the tx? )
