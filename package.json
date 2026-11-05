@@ -42,6 +42,7 @@
     "stress:cold-start": "tsx tests/stress/cold-start.ts",
     "stress:memory": "tsx tests/stress/memory.ts",
     "stress:realistic": "tsx tests/stress/realistic.ts",
+    "stress:peak": "tsx tests/stress/realistic.ts --contract no-write --rates 300,500,700,900,1100,1300 --users 300 --label peak-reads --out stress-results/peak-reads.jsonl && tsx tests/stress/realistic.ts --contract returner --rates 300,500,600,700,800,900 --users 300 --label peak-writes --out stress-results/peak-writes.jsonl && tsx tests/stress/realistic.ts --from stress-results/peak-reads.jsonl,stress-results/peak-writes.jsonl --pdf stress-results/peak-load-test.pdf",
     "stress:compare": "tsx tests/stress/compare.ts",
     "version:set": "node scripts/set-version.mjs",
     "test:network:hybrid": "tsx tests/network/hybrid.ts",
