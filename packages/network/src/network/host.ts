@@ -47,6 +47,7 @@ import { PhysicalCores } from "./cpus";
 import { workerExecArgv } from "./workerheap";
 import { reportedUpdatedStreams } from "./updatedstreams";
 import { changedNodes } from "./nodedelta";
+import { releaseHoldMs, releaseTailMs } from "./releasetimes";
 import * as process from "process";
 import {
   App,
@@ -66,10 +67,6 @@ const GZIP_MIN_RESPONSE_BYTES = 16384;
 
 const gunzipAsync = promisify(gunzip);
 
-const RELEASE_SHUTDOWN_TIMEOUT = 1 * 60 * 1000;
-const RELEASE_DELETE_TIMEOUT = 2 * 60 * 1000;
-// const RELEASE_SHUTDOWN_TIMEOUT = 5000;
-// const RELEASE_DELETE_TIMEOUT = 2000;
 const TIMER_QUEUE_INTERVAL = 2 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
@@ -1511,7 +1508,7 @@ export class Host extends Home {
         // Keep in memory to manage inbound broadcasts
         setTimeout(() => {
           delete this.processPending[umid];
-        }, RELEASE_DELETE_TIMEOUT);
+        }, releaseTailMs());
       }
     }
   }
@@ -1968,12 +1965,13 @@ export class Host extends Home {
         entry.$umid
       );
 
-      // Keep transaction in memory for a bit (5 Minutes)
+      // Keep the transaction in memory for a while (releaseHoldSeconds, 1 minute by
+      // default) so a late peer vote still finds it
       setTimeout(() => {
         if (entry) {
           this.destroy(entry.$umid);
         }
-      }, RELEASE_SHUTDOWN_TIMEOUT);
+      }, releaseHoldMs());
 
       // Re-check the queue now that these locks are free.
       //
