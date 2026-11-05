@@ -259,6 +259,10 @@ export class LevelMe {
    *
    */
   public async close() {
+    // A database nothing ever opened has nothing to close
+    if (!this.driver.isOpen()) {
+      return;
+    }
     await this.driver.close();
   }
 
@@ -965,7 +969,7 @@ export class LevelMe {
    * @param {string} options
    * @returns {*}
    */
-  public changesFromSeq(options: changesOptions): Promise<{
+  public async changesFromSeq(options: changesOptions): Promise<{
     results: {
       id: string;
       changes: { rev: string }[];
@@ -974,6 +978,10 @@ export class LevelMe {
     }[];
     last_seq: number;
   }> {
+    // since="now" needs no data, so it must not open (create) a database
+    if (options.since !== "now") {
+      await this.open();
+    }
     return new Promise((resolve, reject) => {
       // since="now" (nano-gateway's ChangesWatcher default for a fresh
       // subscription with no Last-Event-ID to resume from -

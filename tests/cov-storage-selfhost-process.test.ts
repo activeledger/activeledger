@@ -142,16 +142,22 @@ describe("Storage process lifecycle (selfhost)", function () {
       }
     });
 
-    it("reports a database it cannot close and still exits cleanly", async () => {
+    it("answers _changes on a freshly started process and closes the untouched database quietly", async () => {
       const s = await startStorage(["level"]);
       try {
-        // _changes never opens the database, so closing it later fails
-        const r = await s.req("GET", "/activeledgerunopened/_changes?since=now");
+        // Nothing has opened this database yet
+        const r = await s.req("GET", "/activeledgerunopened/_changes?since=1");
         expect(r.status).to.equal(200);
+        expect(r.json).to.deep.equal({ results: [], last_seq: 0 });
+        // since=now never needs the database, so it stays unopened
+        const n = await s.req("GET", "/activeledgeruntouched/_changes?since=now");
+        expect(n.status).to.equal(200);
         await s.req("POST", "/activeledger", { _id: "a", v: 1 });
         s.proc.kill("SIGTERM");
         expect(await s.exit).to.deep.equal({ code: 0, signal: null });
-        expect(s.output()).to.contain("Error closing database activeledgerunopened");
+        expect(s.output()).to.not.contain("Error closing database");
+        expect(s.output()).to.contain("Closed database: activeledgerunopened");
+        expect(s.output()).to.contain("Closed database: activeledgeruntouched");
         expect(s.output()).to.contain("Closed database: activeledger");
       } finally {
         await s.stop();
@@ -234,7 +240,8 @@ describe("Storage process lifecycle (selfhost)", function () {
     it("the other process still shuts down cleanly", async () => {
       b.proc.kill("SIGTERM");
       expect(await b.exit).to.deep.equal({ code: 0, signal: null });
-      expect(b.output()).to.contain("Error closing database activeledger");
+      // Its open failed, so there is nothing to close and that is not an error
+      expect(b.output()).to.not.contain("Error closing database");
     });
   });
 
