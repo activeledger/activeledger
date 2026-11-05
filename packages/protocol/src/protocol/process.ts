@@ -732,13 +732,17 @@ export class Process extends EventEmitter {
         // contract id and version that is actually being run.
         const dir = this.contractLocation.slice(0, this.contractLocation.lastIndexOf("/"));
         const file = this.contractLocation.slice(this.contractLocation.lastIndexOf("/") + 1).replace(/\.js$/, "");
-        const ids = new Set([this.contractId, file.split("@")[0]]);
-        for (const id of ids) {
-          if (await fs.stat(`${dir}/_LOCK.${id}`).catch(() => false)) {
-            throw new Error("Contract Global Lock");
-          }
+        const ids = [...new Set([this.contractId, file.split("@")[0]])];
+        // One round of stats, not three in a row; the error order is unchanged
+        // (a global lock beats a version lock).
+        const [globals, versionLocked] = await Promise.all([
+          Promise.all(ids.map((id) => fs.stat(`${dir}/_LOCK.${id}`).then(() => true, () => false))),
+          fs.stat(`${dir}/_LOCK.${file}`).then(() => true, () => false),
+        ]);
+        if (globals.some(Boolean)) {
+          throw new Error("Contract Global Lock");
         }
-        if (await fs.stat(`${dir}/_LOCK.${file}`).catch(() => false)) {
+        if (versionLocked) {
           throw new Error(
             `Contract Version Lock ${file.substring(file.indexOf("@") + 1)}`
           );
