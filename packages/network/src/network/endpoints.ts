@@ -2093,8 +2093,9 @@ export class Endpoints {
    * @static
    * @param {Host} host
    * @param {string} umid the transaction just committed here
+   * @param {string[]} [updatedStreams] the stream ids this node's commit updated, when the caller already holds them (the worker reports them). Saves the local read of the umid document; an empty list means the transaction touched no stream, so there is nothing to repair.
    */
-  public static repairHistoryAfterCommit(host: Host, umid: string): Promise<void> {
+  public static repairHistoryAfterCommit(host: Host, umid: string, updatedStreams?: string[]): Promise<void> {
     if (!umid) {
       return Promise.resolve();
     }
@@ -2127,6 +2128,11 @@ export class Endpoints {
     if (Endpoints.historyRepairInFlight.has(umid)) {
       return Promise.resolve();
     }
+    // Told it touched no stream (a read, a check): no chain moved, so there
+    // is no gap to look for and no reason to ask the network.
+    if (updatedStreams && !updatedStreams.length) {
+      return Promise.resolve();
+    }
     Endpoints.historyRepairInFlight.add(umid);
 
     return (async () => {
@@ -2136,14 +2142,23 @@ export class Endpoints {
         // was behind; only `prev` is stale, which is why the authoritative
         // fetch below still happens. Doing it in this order means a stream
         // inside its cooldown costs one local read and no network at all.
-        let localStreams: string[] = [];
-        try {
-          const localDoc = await host.dbConnection.get(`${umid}:umid`);
-          localStreams = (localDoc?.streams?.updated || [])
-            .map((entry: any) => entry?.id)
-            .filter(Boolean);
-        } catch {
-          // No local copy - fall through and let the network decide
+        let localStreams: string[] = updatedStreams ? [...updatedStreams] : [];
+        if (!updatedStreams) {
+          try {
+            const localDoc = await host.dbConnection.get(`${umid}:umid`);
+            localStreams = (localDoc?.streams?.updated || [])
+              .map((entry: any) => entry?.id)
+              .filter(Boolean);
+            // We hold the transaction and it updated no stream: no chain
+            // moved, so no gap to look for. (Falling through here asked all
+            // the peers for it, on every such commit: the cooldown below is
+            // per stream, and there is no stream.)
+            if (localDoc && localDoc._id && !localStreams.length) {
+              return;
+            }
+          } catch {
+            // No local copy - fall through and let the network decide
+          }
         }
 
         if (localStreams.length) {

@@ -45,6 +45,7 @@ import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import { workerExecArgv } from "./workerheap";
+import { reportedUpdatedStreams } from "./updatedstreams";
 import * as process from "process";
 import {
   App,
@@ -1489,7 +1490,16 @@ export class Host extends Home {
           // and wanted - but it then holds one umid and none of the history
           // behind it. Check for that gap here rather than only on the SPI
           // path, which this case never touches.
-          Endpoints.repairHistoryAfterCommit(this, pending.entry.$umid);
+          Endpoints.repairHistoryAfterCommit(
+            this,
+            pending.entry.$umid,
+            // The worker reports which streams this commit updated, so the
+            // repair need not read the umid document back to find out. Only
+            // when it said so: a reply without streams is unknown, not
+            // "none" (a node that is behind replies that way too, and it is
+            // the one that needs the repair).
+            reportedUpdatedStreams(pending.entry.$nodes?.[this.reference])
+          );
           break;
         case "broadcast":
           this.broadcast(m.data.umid, m.data.early);
