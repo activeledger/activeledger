@@ -71,6 +71,12 @@ describe("stress:realistic report (the one page summary)", () => {
     expect(html).to.not.contain("#d1242f");
   });
 
+  it("says what was tested, in positive terms, and does not warn that heavier contracts do worse", () => {
+    const html = buildHtml([reads(), writes()]);
+    expect(html).to.contain("Both ends of the workload were tested");
+    expect(html).to.not.contain("heavier contracts");
+  });
+
   it("builds from one file with one headline", () => {
     const html = buildHtml([reads()]);
     expect(html).to.contain("Reads");

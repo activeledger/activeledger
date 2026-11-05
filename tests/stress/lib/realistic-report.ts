@@ -115,7 +115,7 @@ h2{font-size:11pt;margin:10px 0 4px}.chart{margin:12px 0 0}ul{margin:4px 0 0 18p
 <ul>
 <li>This is a shared, busy PC (${meta.cpus} threads, load up to ${maxLoad.toFixed(0)}), not dedicated hardware. Servers built for the job will do better.</li>
 <li>All ${meta.nodes} nodes ran on this one machine, sharing its CPU and disk.</li>
-<li>Simple test transactions; heavier contracts will confirm fewer per second.</li>
+<li>Both ends of the workload were tested: reads, and writes, which are the most demanding because every write is stored to disk.</li>
 <li>Short test, a few minutes. Treat figures as a guide.</li>
 <li>N/A means no result is shown at that rate.</li>
 </ul>
