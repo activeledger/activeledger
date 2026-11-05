@@ -140,7 +140,7 @@ describe("Host broadcast serialises once", () => {
   });
 
   it("encodes once and shares the compressed body when the entry is big enough to gzip", async () => {
-    const big = entryOf({ $tx: { $namespace: "ns", pad: "x".repeat(10000) } });
+    const big = entryOf({ $tx: { $namespace: "ns", pad: "x".repeat(40000) } });
     const peers = [p2pPeer(7021), p2pPeer(7022), p2pPeer(7023)];
     await run(fakeHost(peers.map((p) => p.peer), big));
 
@@ -174,7 +174,7 @@ describe("Host broadcast serialises once", () => {
   });
 
   it("gives a gzipped entry the same bytes the per-peer path produced", async () => {
-    const entry = entryOf({ $tx: { $namespace: "ns", pad: "y".repeat(9000) } });
+    const entry = entryOf({ $tx: { $namespace: "ns", pad: "y".repeat(40000) } });
     const peers = [p2pPeer(7071), p2pPeer(7072)];
     const old = await realSerialize.call(ActiveClone, JSON.parse(JSON.stringify({ ...entry, $$noreply: false })), {
       enableCompression: true,

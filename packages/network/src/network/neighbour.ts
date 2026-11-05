@@ -43,6 +43,8 @@ const RECOVERY_CHECK_INTERVAL = 3 * 1000;
  * @export
  * @class Neighbour
  */
+const P2P_COMPRESSION_THRESHOLD = 16 * 1024;
+
 export class Neighbour implements ActiveDefinitions.INeighbourBase {
   /** See knock(). Profiling affordance, read once at startup. */
   public static simulatedRttMs: number = Number(
@@ -157,7 +159,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @returns {Promise<Buffer>}
    */
   public static serialiseParams(params: any): Promise<Buffer> {
-    return ActiveClone.serialize(params, { enableCompression: true });
+    // Frames go over loopback or a LAN to every peer, each of which must gunzip
+    // its copy on the threadpool; below 16 KB that costs more CPU than the
+    // bytes it saves (the HTTP path made the same call).
+    return ActiveClone.serialize(params, { enableCompression: true, compressionThreshold: P2P_COMPRESSION_THRESHOLD });
   }
 
   /**
