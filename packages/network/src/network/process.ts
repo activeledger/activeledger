@@ -480,60 +480,6 @@ class Processor {
   }
 
   /**
-   * Process throwing transactions to other ledgers with event tracking
-   *
-   * Disabled
-   *
-   * @private
-   * @param {*} entry
-   * @param {*} response
-   */
-  // private throw(entry: any, response: any): void {
-  //   // We can throw from here
-  //   ActiveLogger.info(response, "Throwing Transaction");
-
-  //   // Prepare event emitter for response management
-  //   const eventEngine = new EventEngine(this.dbev, entry.$tx.$contract, entry.$tx.umid);
-
-  //   // Unique Phase
-  //   eventEngine.setPhase("throw");
-
-  //   if (response.locations && response.locations.length) {
-  //     // Throw transaction to those locations
-  //     let i = response.locations.length;
-  //     while (i--) {
-  //       // Cache Location
-  //       let location = response.locations[i];
-  //       ActiveRequest.send(location, "POST", [], {
-  //         $tx: entry.$tx,
-  //         $selfsign: entry.$selfsign,
-  //         $sigs: entry.$sigs,
-  //       })
-  //         .then((resp: any) => {
-  //           // Emit Event of successful connection to the ledger (May still have failed on the ledger)
-  //           eventEngine.emit("throw", {
-  //             success: true,
-  //             sentFrom: Home.host,
-  //             sentTo: location,
-  //             $umid: entry.$umid,
-  //             response: resp.data,
-  //           });
-  //         })
-  //         .catch((error: any) => {
-  //           // Emit Event of error sending to the ledger
-  //           eventEngine.emit("throw", {
-  //             success: false,
-  //             sentFrom: Home.host,
-  //             sentTo: location,
-  //             $umid: entry.$umid,
-  //             response: error?.toString(),
-  //           });
-  //         });
-  //     }
-  //   }
-  // }
-
-  /**
    * Process unhandledrejections back to main thread
    *
    * @private

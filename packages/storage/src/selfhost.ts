@@ -515,34 +515,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   // };
 
   /**
-   * Pouchdb Metadoc rewrite (trimming)
-   *
-   * @param {*} metaDoc
-   * @param {string} position
-   * @returns
-   */
-  // const prepareArchiveDoc = (metaDoc: any, position: number) => {
-  //   // Time to modify!
-  //   const newMetaDoc = {
-  //     _id: metaDoc._id,
-  //     rev_tree: [
-  //       {
-  //         // pos: metaDoc.rev_tree[0].pos,
-  //         pos: position - 1, // Get parent starting pos
-  //         ids: getLastInTree(metaDoc.rev_tree[0].ids),
-  //       },
-  //     ],
-  //     rev_map: {
-  //       [metaDoc.winningRev]: metaDoc.rev_map[metaDoc.winningRev],
-  //     },
-  //     winningRev: metaDoc.winningRev,
-  //     deleted: metaDoc.deleted,
-  //     seq: metaDoc.seq,
-  //   };
-  //   return newMetaDoc;
-  // };
-
-  /**
    * Create Archive Database
    *
    * @param {string} name

@@ -94,25 +94,6 @@ export class Interagent {
   }
 
   /**
-   * Clears Cache
-   *
-   * @private
-   */
-  // private timerUnCache() {
-  //   setTimeout(() => {
-  //     const umids = Object.keys(this.processedUmid);
-  //     const nowMinus = new Date(Date.now() - REMOVE_CACHE_TIMER);
-  //     for (let i = umids.length; i--; ) {
-  //       if (this.processedUmid[umids[i]] < nowMinus) {
-  //         // 30 seconds has passed without accessing it so lets clear
-  //         delete this.processedUmid[umids[i]];
-  //       }
-  //     }
-  //     this.timerUnCache();
-  //   }, REMOVE_CACHE_TIMER);
-  // }
-
-  /**
    * Get documents that are pending to be checked
    *
    * @private
@@ -236,7 +217,6 @@ export class Interagent {
           ActiveLogger.error(`UMID ${changeDoc.umid} not found #2`);
           return await this.setProcessed(changeDoc, false);
         }
-        //}
       } else {
         ActiveLogger.info(`UMID ${changeDoc.umid} already exists`);
       }
