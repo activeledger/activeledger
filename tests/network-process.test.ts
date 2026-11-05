@@ -157,12 +157,40 @@ describe("Network worker Processor (process.ts)", () => {
   });
 
   describe("lifecycle", () => {
-    it("exits when the host disconnects", () => {
+    it("exits when the host disconnects, once pending event rows have been given their moment", async () => {
       let code: number | undefined;
       process.exit = ((c?: number) => {
         code = c;
       }) as any;
-      disconnect();
+      const flushed: string[] = [];
+      const real = (ActiveProtocol.Process as any).flushEventRecords;
+      (ActiveProtocol.Process as any).flushEventRecords = () => {
+        flushed.push("flush");
+        return Promise.resolve();
+      };
+      try {
+        disconnect();
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        (ActiveProtocol.Process as any).flushEventRecords = real;
+      }
+      expect(flushed).to.deep.equal(["flush"]);
+      expect(code).to.equal(0);
+    });
+
+    it("exits even if flushing the event rows fails", async () => {
+      let code: number | undefined;
+      process.exit = ((c?: number) => {
+        code = c;
+      }) as any;
+      const real = (ActiveProtocol.Process as any).flushEventRecords;
+      (ActiveProtocol.Process as any).flushEventRecords = () => Promise.reject(new Error("storage gone"));
+      try {
+        disconnect();
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        (ActiveProtocol.Process as any).flushEventRecords = real;
+      }
       expect(code).to.equal(0);
     });
 
@@ -679,6 +707,14 @@ describe("Network worker Processor (process.ts)", () => {
         const out = lastSent("unhandledrejection")!.data;
         expect(out.nodes).to.equal(undefined);
         expect(out.recoverable).to.equal(false);
+      });
+
+      it("says so, rather than swallowing it, when nothing is in flight to blame", () => {
+        tx(entryFor("x8"));
+        handler({ type: "destory", data: { umid: "x8", skipTimeout: true } });
+        logged.length = 0;
+        processListener()(new Error("idle rejection"));
+        expect(logged.some((l: any) => l.level === "error" && /no transaction in flight/.test(String(l.msg)))).to.equal(true);
       });
 
       it("does nothing once the transaction was destroyed", () => {

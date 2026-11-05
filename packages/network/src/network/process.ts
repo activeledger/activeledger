@@ -160,7 +160,14 @@ class Processor {
     // The host is gone (stopped, crashed or killed), so there is nobody left
     // to take work from. Without this a worker outlives its host and keeps
     // holding what it opened.
-    process.on("disconnect", () => process.exit(0));
+    process.on("disconnect", () => {
+      // First let the event rows of answered transactions reach storage, so a
+      // node stopped a moment after answering does not lose them.
+      ActiveProtocol.Process.flushEventRecords().then(
+        () => process.exit(0),
+        () => process.exit(0)
+      );
+    });
 
     // Listen for IPC (Interprocess Communication)
     process.on("message", (m: any) => {
@@ -636,8 +643,21 @@ class Processor {
     if (this.unhandledRejectionListening) return;
     this.unhandledRejectionListening = true;
     process.on("unhandledRejection", (reason: Error) => {
-      for (const handler of Object.values(this.unhandledRejection)) {
-        handler(reason);
+      const handlers = Object.values(this.unhandledRejection);
+      if (!handlers.length) {
+        // Nothing is in flight to blame (a contract's late rejection after its
+        // transaction was cleared, or one in idle time). Say so rather than
+        // swallow it.
+        ActiveLogger.error(reason, "UnhandledRejection (no transaction in flight)");
+        return;
+      }
+      for (const handler of handlers) {
+        // One transaction's handler failing must not stop the others hearing it
+        try {
+          handler(reason);
+        } catch (error) {
+          ActiveLogger.error(error, "UnhandledRejection handler failed");
+        }
       }
     });
   }
