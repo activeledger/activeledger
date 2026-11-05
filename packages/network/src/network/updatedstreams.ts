@@ -5,8 +5,8 @@
  * behind and is catching up through an ordinary commit can reply without
  * streams too, and the history repair exists for exactly that node.
  *
- * One reply does say none: a commit that completed (commit: true) without ever
- * reaching the step that writes streams, which is what a contract that writes
+ * One reply does say none: a commit that completed (commit: true, no error)
+ * without ever reaching the step that writes streams, which is what a contract that writes
  * nothing (a check, a lookup) does. There is no chain to repair after it.
  */
 export function reportedUpdatedStreams(response: any): string[] | undefined {
@@ -14,7 +14,7 @@ export function reportedUpdatedStreams(response: any): string[] | undefined {
   if (Array.isArray(updated)) {
     return updated.map((s: { id?: string }) => s?.id as string).filter(Boolean);
   }
-  if (response && response.commit === true && response.streams === undefined) {
+  if (response && response.commit === true && !response.error && response.streams === undefined) {
     return [];
   }
   return undefined;
