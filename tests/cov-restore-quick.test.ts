@@ -14,6 +14,17 @@ import "mocha";
 describe("QuickRestore (cov)", () => {
   const realExit = process.exit;
   const realSetTimeout = global.setTimeout;
+  // Make quick-restore's own retry waits instant, optionally recording them. Only
+  // timers requested from the module under test are touched or counted: the global
+  // is patched, so anything else running at the same moment (another test's leftover
+  // timers, background work) would otherwise be counted in `waits` and shortened.
+  const fastRetries = (waits?: number[]) => {
+    (global as any).setTimeout = (fn: Function, ms?: number, ...args: any[]) => {
+      if (!new Error().stack?.includes("quick-restore")) return (realSetTimeout as any)(fn, ms, ...args);
+      waits?.push(ms as number);
+      return realSetTimeout(fn, 0);
+    };
+  };
   const keep: any = {};
   let opts: Record<string, any>;
   let logs: { l: string; m: string }[];
@@ -135,7 +146,13 @@ describe("QuickRestore (cov)", () => {
       const real = proto.runQuickFullRestore;
       proto.runQuickFullRestore = async () => ok;
       const timers: [Function, number][] = [];
-      (global as any).setTimeout = (fn: Function, ms: number) => (timers.push([fn, ms]), 0 as any);
+      // Only the module under test's timers are held back and recorded; any other
+      // timer requested while the global is patched keeps running as normal.
+      (global as any).setTimeout = (fn: Function, ms: number, ...args: any[]) => {
+        if (!new Error().stack?.includes("quick-restore")) return (realSetTimeout as any)(fn, ms, ...args);
+        timers.push([fn, ms]);
+        return 0 as any;
+      };
       try {
         new QuickRestore();
         await new Promise((r) => setImmediate(r));
@@ -473,7 +490,7 @@ describe("QuickRestore (cov)", () => {
     });
     it("asks again when no neighbour answers, then reports it unrestored", async () => {
       const waits: number[] = [];
-      (global as any).setTimeout = (fn: Function, ms: number) => (waits.push(ms), realSetTimeout(fn, 0));
+      fastRetries(waits);
       await fetch([{ stream: "gone", revision: "1-a" }]);
       (global as any).setTimeout = realSetTimeout;
       expect(knocks.length).to.equal(3);
@@ -485,7 +502,7 @@ describe("QuickRestore (cov)", () => {
     it("stops asking once an attempt succeeds", async () => {
       let n = 0;
       streamAnswers = (b) => (++n < 2 ? [] : [doc(b.$stream, b.$rev)]);
-      (global as any).setTimeout = (fn: Function) => realSetTimeout(fn, 0);
+      fastRetries();
       await fetch([{ stream: "late", revision: "1-a" }]);
       (global as any).setTimeout = realSetTimeout;
       expect(knocks.length).to.equal(2);
@@ -497,7 +514,7 @@ describe("QuickRestore (cov)", () => {
         if (++n === 1) throw new Error("net");
         return [doc(b.$stream, b.$rev)];
       };
-      (global as any).setTimeout = (fn: Function) => realSetTimeout(fn, 0);
+      fastRetries();
       await fetch([{ stream: "x", revision: "1-a" }]);
       (global as any).setTimeout = realSetTimeout;
       expect(store.has("x")).to.equal(true);
