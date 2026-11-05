@@ -55,8 +55,10 @@ let sysConfigSnapshot: Buffer | undefined;
 let sysConfigSnapshotVersion = -1;
 const sysConfigCopy = (): any => {
   if (!sysConfigSnapshot || sysConfigSnapshotVersion !== ActiveOptions.configVersion) {
-    sysConfigSnapshotVersion = ActiveOptions.configVersion;
+    const version = ActiveOptions.configVersion;
     sysConfigSnapshot = v8Serialize(ActiveOptions.fetch(false));
+    // Only once it worked: a throw above must not leave a stale snapshot marked current
+    sysConfigSnapshotVersion = version;
   }
   return v8Deserialize(sysConfigSnapshot);
 };

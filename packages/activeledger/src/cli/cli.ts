@@ -626,10 +626,12 @@ export class CLIHandler {
 
           // Rewrite config for this process
           ActiveOptions.get<any>("db", {}).url = datastore.launch();
+          ActiveOptions.configVersion++; // written in place, so say it changed
         } else {
           // We should have it running as another process so can assume
           ActiveOptions.get<any>("db", {}).url =
             "http://127.0.0.1:" + dbConfig.selfhost.port;
+          ActiveOptions.configVersion++; // written in place, so say it changed
 
           // Lets check the database is running
           ActiveRequest.send(ActiveOptions.get<any>("db", {}).url, "GET").catch(
