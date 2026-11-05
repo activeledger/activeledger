@@ -67,4 +67,43 @@ describe("Maintain.rebaseNeighbourhood retry (cov)", () => {
     expect(knocks).to.equal(0);
     expect(timers.map((t) => t.ms)).to.deep.equal([2000, 2000]);
   });
+
+  it("a Recognised node also rebases on the retry once the running check has finished", async () => {
+    M.home.getStatus = () => NeighbourStatus.Recognised;
+    M.checking = true;
+    Maintain.rebaseNeighbourhood();
+    expect(knocks).to.equal(0);
+    expect(timers.map((t) => t.ms)).to.deep.equal([2000]);
+
+    // a second request while one is pending does not add another
+    Maintain.rebaseNeighbourhood();
+    expect(timers).to.have.length(1);
+
+    M.checking = false;
+    timers[0].fn();
+    expect(knocks).to.equal(1);
+    expect(M.rebasing).to.equal(false);
+    await new Promise<void>((r) => setImmediate(r));
+  });
+
+  it("a Recognised node keeps waiting while the check is still running at the retry", () => {
+    M.home.getStatus = () => NeighbourStatus.Recognised;
+    M.checking = true;
+    Maintain.rebaseNeighbourhood();
+    timers[0].fn();
+    expect(knocks).to.equal(0);
+    expect(timers.map((t) => t.ms)).to.deep.equal([2000, 2000]);
+    expect(M.rebasing).to.equal(true);
+  });
+
+  it("a retry that is no longer needed releases the rebasing flag without checking", () => {
+    M.home.getStatus = () => NeighbourStatus.Recognised;
+    M.checking = true;
+    Maintain.rebaseNeighbourhood();
+    M.home.getStatus = () => NeighbourStatus.Stable;
+    M.checking = false;
+    timers[0].fn();
+    expect(knocks).to.equal(0);
+    expect(M.rebasing).to.equal(false);
+  });
 });
