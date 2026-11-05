@@ -993,6 +993,12 @@ export class Process extends EventEmitter {
     return StreamUpdater.flushEventPosts(timeoutMs);
   }
 
+  /** True once a peer has reported its streams, which settles a failure that was waiting on one. */
+  private peerReportedStreams(): boolean {
+    const nodes = this.entry.$nodes || {};
+    return Object.keys(nodes).some((ref) => nodes[ref] && nodes[ref].streams);
+  }
+
   public updatedFromBroadcast(node?: any): void {
     // Nothing to merge (and node[this.reference] below would throw)
     if (!node || this.isCommiting()) {
@@ -1570,10 +1576,18 @@ export class Process extends EventEmitter {
         this.entry.$broadcast &&
         (this.hasOutstandingVotes() || this.canCommit())
       ) {
-        this.willEmitData = data;
-        this.willEmit = setTimeout(() => {
-          this.emit("failed", this.willEmitData);
-        }, 10000);
+        // A peer's commit (with its streams) can reach us before we get here,
+        // and the broadcast that would have set the failure off may already
+        // have been and gone (a repeat of it is not forwarded). It is settled
+        // now, so do not wait for a trigger that will not come.
+        if (this.peerReportedStreams()) {
+          this.emit("failed", data);
+        } else {
+          this.willEmitData = data;
+          this.willEmit = setTimeout(() => {
+            this.emit("failed", this.willEmitData);
+          }, 10000);
+        }
       } else {
         this.emit("failed", data); //
       }

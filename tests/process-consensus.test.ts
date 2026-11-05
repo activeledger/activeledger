@@ -81,6 +81,46 @@ describe("Process - consensus bookkeeping (Activeprotocol)", () => {
     });
   });
 
+  describe("emitFailed when a peer's commit has already arrived", () => {
+    it("reports the failure at once instead of waiting ten seconds for a broadcast that was not forwarded", () => {
+      const f = build("yn", { $broadcast: true }, 4);
+      // A peer's response with its streams reached us before we failed
+      f.entry.$nodes.n1.streams = { new: [], updated: [] };
+      const failure = { status: 1200, error: "behind" };
+      const timers: number[] = [];
+      const original = global.setTimeout;
+      (global as any).setTimeout = (fn: Function, ms: number) => {
+        timers.push(ms);
+        return original(() => undefined, 100000);
+      };
+      try {
+        f.proc.emitFailed(failure);
+      } finally {
+        global.setTimeout = original;
+      }
+
+      expect(timers).to.not.include(10000);
+      expect(f.events).to.deep.equal([{ event: "failed", payload: failure }]);
+    });
+
+    it("still holds a failure for ten seconds when no peer has reported streams", () => {
+      const f = build("yn", { $broadcast: true }, 4);
+      const timers: number[] = [];
+      const original = global.setTimeout;
+      (global as any).setTimeout = (fn: Function, ms: number) => {
+        timers.push(ms);
+        return original(() => undefined, 100000);
+      };
+      try {
+        f.proc.emitFailed({ status: 1200, error: "behind" });
+      } finally {
+        global.setTimeout = original;
+      }
+      expect(timers).to.deep.equal([10000]);
+      expect(f.events).to.deep.equal([]);
+    });
+  });
+
   describe("the right knock", () => {
     const withRight = (knock: (...a: any[]) => Promise<any>) => {
       const f = build("yn");
