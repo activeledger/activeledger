@@ -275,7 +275,7 @@ export class PermissionsChecker {
       // If contract data is being dealt with we need to handle meta ourselves
       if (contractDataIncluded) {
         for (let i = results.length; i--;) {
-          const sId = results[i].state._id;
+          const sId = results[i].state?._id;
 
           if (sId && sId.split(":")[1] === "data") {
             let cRes = results[i];
@@ -348,7 +348,12 @@ export class PermissionsChecker {
       let i = stream.length;
       while (i--) {
         // Quick Reference
-        let streamId: string = stream[i].state._id as string;
+        // A sigOnly stream is deliberately not fetched, so it has no state
+        // document, only the meta (`<id>:stream`)
+        const hasState = !!stream[i].state;
+        let streamId: string = (hasState
+          ? stream[i].state._id
+          : (stream[i].meta._id as string).replace(":stream", "")) as string;
         // filterPrefix() only memoizes ids >64 chars (prefixed ids) - a
         // bare 64-char id (the common case) redoes its split() every call.
         // streamId doesn't change within this iteration, so compute it
@@ -359,11 +364,16 @@ export class PermissionsChecker {
         // Get revision type
         const revType = this.inputs ? this.entry.$revs.$i : this.entry.$revs.$o;
         // Build comparison ID from metadata
-        const currentRevision =
-          stream[i].meta._rev + ":" + stream[i].state._rev;
+        const currentRevision = hasState
+          ? stream[i].meta._rev + ":" + stream[i].state._rev
+          : "";
 
-        // Check that the revisions match between nodes
-        if (revType && revType[streamId]) {
+        // Check that the revisions match between nodes. Without the state
+        // document there is no position to compare or record, the signature
+        // alone is what is verified
+        if (!hasState) {
+          // Nothing to compare
+        } else if (revType && revType[streamId]) {
           // Don't really need to compare stream data if sigOnly signature itself verifies it (maybe throw warning)
           // reason sig verifies if I mod 1 node to different pubkey the others don't mind they will false it as sig wont match
           if ((revType[streamId] !== currentRevision) && !this.shared.sigOnly[filteredStreamId]) { //prefix maybe here?
