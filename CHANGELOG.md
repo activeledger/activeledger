@@ -14,6 +14,16 @@ contract that writes no state) held 1,100 tx/s with a p99 of 32 ms, and writes
 held 800 tx/s. The nodes used about 10% less CPU per transaction. Dedicated
 hardware should do better. The numbers come from the new `npm run stress:peak`.
 
+### Before you upgrade
+- **LevelDB now uses more memory by default.** Each database gets up to **64 MB
+  of write buffer and 256 MB of block cache** (5.1.7: 4 MB and 8 MB); the event
+  and error databases get a 16 MB cache. A node opens at least three databases,
+  so allow roughly 1 GB more per node at the limit, and more than that if several
+  nodes share a host. They are limits, not reservations: memory is used as the
+  database fills. On a small VM, set `db.selfhost.writeBufferMb` and
+  `db.selfhost.cacheMb` lower in the `db.selfhost` section of `config.json` before
+  upgrading (values are capped at 4096). Write durability is unchanged.
+
 ### Changed
 - **A client's answer no longer waits for work that does not need to be in it.**
   The event row is posted after the answer, not before it. A worker that is told
@@ -36,13 +46,10 @@ hardware should do better. The numbers come from the new `npm run stress:peak`.
   Error, `bulkDocs` and `getMany` work on their documents together, a plain JSON
   request body is parsed once instead of through two UTF-8 conversions, and a
   frame that arrives whole is not copied.
-- **LevelDB has room to work.** The defaults rise from 4 MB of write buffer and
-  8 MB of block cache to **64 MB and 256 MB per database** (the event and error
-  databases, which are never read by key, get a 16 MB cache). They are limits, not
-  reservations: memory is used as the database fills. On a small VM set
-  `db.selfhost.writeBufferMb` and `db.selfhost.cacheMb` lower, in the storage
-  section of `config.json`. Values are capped at 4096. Write durability is
-  unchanged.
+- **LevelDB has room to work.** Larger write buffer and block cache by default
+  (see *Before you upgrade* above for the sizes and how to set them). This lets it
+  flush and compact less often under sustained writes and keep the hot working set
+  in memory.
 - **A failure that is waiting on late answers settles at once** when a peer's
   commit has already arrived, where it could wait the full ten seconds for a
   broadcast that is no longer re-sent. Under contention on one stream a refused
