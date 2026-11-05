@@ -42,6 +42,24 @@ import {
 import { runSandboxed, runUnsandboxed } from "./sandbox";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
+import { serialize as v8Serialize, deserialize as v8Deserialize } from "v8";
+
+/**
+ * Each default contract is handed its own copy of the system configuration (it
+ * may change what it was handed, and must not change another's). The copy is
+ * made from a snapshot serialised once and rebuilt whenever ActiveOptions
+ * reports a change (a reload, a ledger update of security or consensus), so
+ * a contract is never handed stale security settings.
+ */
+let sysConfigSnapshot: Buffer | undefined;
+let sysConfigSnapshotVersion = -1;
+const sysConfigCopy = (): any => {
+  if (!sysConfigSnapshot || sysConfigSnapshotVersion !== ActiveOptions.configVersion) {
+    sysConfigSnapshotVersion = ActiveOptions.configVersion;
+    sysConfigSnapshot = v8Serialize(ActiveOptions.fetch(false));
+  }
+  return v8Deserialize(sysConfigSnapshot);
+};
 //import { ContractControl } from "./vmscript";
 
 /**
@@ -636,7 +654,7 @@ export class VirtualMachine
         if (payload.transaction.$namespace === "default") {
           if ("sysConfig" in this.smartContracts[payload.umid]) {
             (this.smartContracts[payload.umid] as unknown as any).sysConfig(
-              ActiveClone.clone(ActiveOptions.fetch(false))
+              sysConfigCopy()
             );
           }
         }
