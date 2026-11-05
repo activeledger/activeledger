@@ -61,6 +61,33 @@ for (const cacheOn of [false, true]) describe(`LevelMe store behaviour (Activest
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  describe("writing a document that is not there yet", () => {
+    it("does not go through the driver's throwing get() for a new document", async () => {
+      const driver = (db as any).driver;
+      let throwingGets = 0;
+      const realGet = driver.get.bind(driver);
+      driver.get = async (k: string) => {
+        throwingGets++;
+        return realGet(k);
+      };
+      await db.bulkDocs([{ _id: "fresh-1", v: 1 }] as any, { new_edits: true });
+      expect(throwingGets).to.equal(0);
+      expect((await db.get("fresh-1")).v).to.equal(1);
+      // and an update to it is still an update, not a second creation
+      const stored: any = await db.get("fresh-1");
+      await db.bulkDocs([{ ...stored, v: 2 }] as any, { new_edits: true });
+      expect((await db.get("fresh-1")).v).to.equal(2);
+      expect(((await db.get("fresh-1")) as any)._rev.startsWith("2-")).to.equal(true);
+    });
+
+    it("still works on a driver that only has the throwing get()", async () => {
+      const driver = (db as any).driver;
+      driver.getOrUndefined = undefined;
+      await db.bulkDocs([{ _id: "legacy-1", v: 1 }] as any, { new_edits: true });
+      expect((await db.get("legacy-1")).v).to.equal(1);
+    });
+  });
+
   describe("opening, closing and reopening", () => {
     it("info() names the database", async () => {
       const info = await db.info();

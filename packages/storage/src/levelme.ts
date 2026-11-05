@@ -860,12 +860,27 @@ export class LevelMe {
     const md5 = createHash("md5").update(JSON.stringify({ ...doc, _rev: null })).digest("hex");
     let newRev = "";
 
-    // Does Document eixst?
+    // Does Document exist? A driver that can answer "no" without throwing does
+    // (every new document and every event row is a miss, and a thrown Error
+    // costs a stack capture just to be caught here).
+    let currentDocRoot: schema | undefined;
     try {
+      const key = LevelMe.DOC_PREFIX + doc._id;
+      const raw = this.driver.getOrUndefined
+        ? await this.driver.getOrUndefined(key)
+        : await this.driver.get(key);
+      if (raw !== undefined) {
+        currentDocRoot = (await ActiveClone.deserialize(raw)) as schema;
+      }
+    } catch (error) {
+      // A driver that throws for a missing key marks it notFound
+      if (!error.notFound) {
+        throw error;
+      }
+    }
+
+    if (currentDocRoot) {
       // Document exists, handle update
-      const currentDocRoot = await ActiveClone.deserialize(
-        await this.driver.get(LevelMe.DOC_PREFIX + doc._id)
-      ) as schema;
 
       if (doc._rev !== currentDocRoot._rev && !options.new_edits) {
         // Already holding exactly this content means this write already
@@ -916,20 +931,15 @@ export class LevelMe {
         chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
       }
 
-    } catch (error) {
+    } else {
       // Document doesn't exist, handle creation
-      if (error.notFound) {
-        if (!options.new_edits && doc._rev) {
-          newRev = doc._rev;
-        } else {
-          newRev = `1-${md5}`;
-        }
-        doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+      if (!options.new_edits && doc._rev) {
+        newRev = doc._rev;
       } else {
-        // Re-throw other errors (like revision mismatch)
-        throw error;
+        newRev = `1-${md5}`;
       }
+      doc._rev = newRev;
+      chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
     }
 
     return {
