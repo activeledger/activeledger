@@ -44,6 +44,7 @@ import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
+import { workerCount } from "./workercount";
 import { workerExecArgv } from "./workerheap";
 import { reportedUpdatedStreams } from "./updatedstreams";
 import { changedNodes } from "./nodedelta";
@@ -1000,8 +1001,10 @@ export class Host extends Home {
     });
 
     // How many threads (Cache so we can check on ready)
-    const cpuTotal =
-      parseInt(ActiveOptions.get<string>("cpus", "0")) || PhysicalCores.count();
+    const cpuTotal = workerCount(
+      ActiveOptions.get<string | number>("cpus", 0),
+      PhysicalCores.count()
+    );
 
     // Setup Processors
     const latestSetupMsg = this.getLatestSetup();
