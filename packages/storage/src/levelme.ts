@@ -729,14 +729,32 @@ export class LevelMe {
   ): Promise<boolean> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.driver.batch();
-    const changes = [];
-    for (let i = docs.length; i--;) {
-      const writer = await this.prepareForWrite(docs[i], batch, options);
-      batch = writer.chain; // Do I need do do this, Reference kept?
+    const changes: any[] = [];
+    const collect = (writer: { unchanged?: boolean; changes: any }) => {
       // A resend of a write that already landed changed nothing, so it is
       // neither cached nor announced a second time
       if (!writer.unchanged) {
         changes.push(writer.changes);
+      }
+    };
+    const distinct = new Set(docs.map((d) => d._id)).size === docs.length;
+    if (distinct && docs.length > 1) {
+      // Each document's read of its current state is independent of the
+      // others, so do them together instead of one threadpool round trip
+      // after another. The puts go into the same batch (the writer chain is
+      // the batch itself), and the changes keep their original order.
+      const writers = await Promise.all(
+        docs.map((doc) => this.prepareForWrite(doc, batch, options))
+      );
+      for (let i = writers.length; i--;) {
+        batch = writers[i].chain;
+        collect(writers[i]);
+      }
+    } else {
+      for (let i = docs.length; i--;) {
+        const writer = await this.prepareForWrite(docs[i], batch, options);
+        batch = writer.chain; // Do I need do do this, Reference kept?
+        collect(writer);
       }
     }
 
