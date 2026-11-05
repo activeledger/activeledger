@@ -216,7 +216,14 @@ export class ActiveHttpd {
             // with the original non-gzip compliant data
           }
         }
-        body = JSON.parse(body.toString());
+        // An empty body is an empty object, anything else must be valid JSON
+        const text = body.toString();
+        try {
+          body = text.length ? JSON.parse(text) : {};
+        } catch (e) {
+          httpd.writeResponse(res, 400, {}, { error: "Invalid JSON body" } as any);
+          return;
+        }
         httpd.processListen(
           {
             url: pathSegments,
