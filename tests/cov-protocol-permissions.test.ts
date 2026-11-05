@@ -205,12 +205,14 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       const db: any = {
         allDocs: async ({ keys }: any) => {
           requested = keys;
-          return { rows: [state(), meta()] };
+          return { rows: [meta()] };
         },
       };
       const { pc } = checker(e, db, {}, sh);
       expect(await pc.process([STREAM], true, LAST)).to.deep.equal([]);
       expect(requested).to.deep.equal([`${STREAM}:stream`]);
+      // no state document was read, so no position can be recorded for it
+      expect(e.$revs.$i[STREAM]).to.equal(undefined);
     });
 
     it("are still rejected when the signature is wrong (1220)", async () => {
@@ -218,7 +220,7 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       e.$sigs[STREAM] = "bad" + e.$sigs[STREAM];
       const sh = new Shared(false, e, {} as any, null as any);
       sh.sigOnly[STREAM] = true;
-      const { pc } = checker(e, dbOf([state(), meta()]), {}, sh);
+      const { pc } = checker(e, dbOf([meta()]), {}, sh);
       expect((await rejection(pc.process([STREAM], true, LAST))).code).to.equal(1220);
     });
 
@@ -229,7 +231,7 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       });
       const sh = new Shared(false, e, {} as any, null as any);
       sh.sigOnly[STREAM] = true;
-      const { pc } = checker(e, dbOf([state(), meta()]), {}, sh);
+      const { pc } = checker(e, dbOf([meta()]), {}, sh);
       expect(await pc.process([STREAM], true, LAST)).to.deep.equal([]);
     });
   });
