@@ -663,7 +663,8 @@ export class Host extends Home {
             if (bufferLength >= 44 + length) {
               // Frame complete - now it's safe/necessary to do the one
               // full concat needed to slice out the item.
-              const fullBuffer = Buffer.concat(chunks);
+              // (a single chunk, the usual case, needs no copy at all)
+              const fullBuffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
               const senderRef = fullBuffer.slice(0, 40).toString().trim();
               const item = fullBuffer.slice(44, 44 + length);
 
