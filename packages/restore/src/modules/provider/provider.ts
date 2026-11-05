@@ -123,11 +123,15 @@ export class Provider {
         ? this.setConfigData("config", path + config)
         : Helper.output("No path provided");
 
-      !fs.existsSync(config)
-        ? () => {
-            throw ActiveLogger.fatal(`No config file found (${config})`);
-          }
-        : Helper.output("Config file found");
+      // The file parseConfig is about to read: the path prefix, when given,
+      // is part of where it lives
+      const configFile = path ? path + config : config;
+      if (!fs.existsSync(configFile)) {
+        return reject(
+          ActiveLogger.fatal(`No config file found (${configFile})`)
+        );
+      }
+      Helper.output("Config file found");
 
       Helper.output("Parsing Config");
       ActiveOptions.parseConfig();
@@ -152,21 +156,24 @@ export class Provider {
    * @returns {Promise<void>}
    */
   private static getIdentity(): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       Helper.output("Getting Identity");
 
       const identity = ActiveOptions.get<string | boolean>("identity", false);
       const path = ActiveOptions.get<string>("path", ".") + "/.identity";
 
-      identity
-        ? this.setConfigData("identity", path)
-        : Helper.output("No identity found");
+      // A node that was not asked to use an identity needs no file
+      if (!identity) {
+        Helper.output("No identity found");
+        return resolve();
+      }
 
-      !fs.existsSync(path)
-        ? () => {
-            throw ActiveLogger.fatal(`No Identity file found (${path})`);
-          }
-        : Helper.output("Identity path found");
+      this.setConfigData("identity", path);
+
+      if (!fs.existsSync(path)) {
+        return reject(ActiveLogger.fatal(`No Identity file found (${path})`));
+      }
+      Helper.output("Identity path found");
 
       resolve();
     });
