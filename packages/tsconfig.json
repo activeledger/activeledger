@@ -1,7 +1,6 @@
 {
     "references": [
         { "path": "contracts" },
-        { "path": "core" },
         { "path": "crypto" },
         { "path": "definitions" },
         { "path": "hybrid" },
