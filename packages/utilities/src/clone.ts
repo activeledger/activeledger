@@ -34,6 +34,8 @@ export const COMPRESSION_THRESHOLD = 2048; // 2KB
 
 export interface SerializationOptions {
   enableCompression?: boolean;
+  /** Gzip only bodies larger than this many bytes (default COMPRESSION_THRESHOLD). The receiver reads the flag byte, so any value is wire compatible. */
+  compressionThreshold?: number;
 }
 
 export const DEFAULT_SERIALIZATION_OPTIONS: SerializationOptions = {
@@ -79,7 +81,7 @@ export class ActiveClone {
   ): Promise<Buffer> {
     const binary = packr.pack(obj);
 
-    if (options.enableCompression && binary.length > COMPRESSION_THRESHOLD) {
+    if (options.enableCompression && binary.length > (options.compressionThreshold ?? COMPRESSION_THRESHOLD)) {
       const compressed = await ActiveGZip.gzip(binary);
       return this.prefixFlag(SerializationType.Gzip, compressed);
     }
