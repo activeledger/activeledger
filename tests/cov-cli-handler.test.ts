@@ -149,6 +149,19 @@ describe("CLIHandler (in-process)", () => {
       });
     });
 
+    it("has reset the pid file by the time stop() returns", async () => {
+      writePids({ activeledger: 101, activestorage: 102, activerestore: 103 });
+      killRecorder();
+      await CLIHandler.stop(true);
+      // Read at once, with no waiting: a restart writes its own pids the moment
+      // stop() resolves, so a reset still in flight would overwrite them with zeros.
+      expect(readJson(".PID")).to.deep.equal({
+        activeledger: 0,
+        activestorage: 0,
+        activerestore: 0,
+      });
+    });
+
     it("warns instead of killing for a child with no pid", async () => {
       writePids({ activeledger: 0, activestorage: 0, activerestore: 0 });
       const killed = killRecorder();
