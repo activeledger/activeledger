@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import "mocha";
 import { ActiveOptions } from "@activeledger/activeoptions";
-import { releaseHoldMs, releaseTailMs } from "../packages/network/src/network/releasetimes";
+import { releaseHoldMs, releaseStubMs, releaseTailMs } from "../packages/network/src/network/releasetimes";
 
 describe("release timings (how long a finished transaction is kept)", () => {
   // Through set(), not a held reference: other test files replace the config object
@@ -45,5 +45,14 @@ describe("release timings (how long a finished transaction is kept)", () => {
     tail(10);
     expect(releaseHoldMs()).to.equal(60_000);
     expect(releaseTailMs()).to.equal(10_000);
+  });
+
+  it("keeps the stub delay at 5 seconds by default and reads it as configured", () => {
+    expect(releaseStubMs()).to.equal(5_000);
+    ActiveOptions.set("releaseStubSeconds", "2");
+    expect(releaseStubMs()).to.equal(2_000);
+    ActiveOptions.set("releaseStubSeconds", -1);
+    expect(releaseStubMs()).to.equal(5_000);
+    ActiveOptions.set("releaseStubSeconds", undefined);
   });
 });

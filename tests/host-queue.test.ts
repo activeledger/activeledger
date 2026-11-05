@@ -1,3 +1,4 @@
+import { voteOnlyRecord } from "../packages/network/src/network/voteonly";
 import { expect } from "chai";
 import "mocha";
 import { Host } from "../packages/network/src/network/host";
@@ -559,13 +560,74 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
       expect(Locker.has(S("out-rel-1"))).to.equal(false);
       // Destroy after a minute, queue re-check after the short delay
       const destroyTimer = timers.find((t) => t.ms === 60_000)!;
-      const queueTimer = timers.find((t) => t.ms !== 60_000)!;
+      const queueTimer = timers.find((t) => t.ms !== 60_000 && t.ms !== 5_000)!;
       expect(destroyTimer).to.not.equal(undefined);
       expect(destroyed).to.deep.equal([]);
       destroyTimer.fn();
       expect(destroyed).to.deep.equal(["rel-1"]);
       queueTimer.fn();
       expect(queueChecks).to.equal(1);
+    });
+
+    describe("vote only after releaseStubSeconds", () => {
+      const released = (umid: string) => {
+        const host = makeHost();
+        const e = entry(umid, { $nodes: { me: { vote: true, commit: true }, other: { vote: true } } });
+        addPending(host, e);
+        host.processPending[umid].pid = 4242;
+        host.processQueue = () => undefined;
+        host.release(umid);
+        return host;
+      };
+
+      it("swaps the record for this node's answer after 5 seconds, keeping the processor to tell", () => {
+        const host = released("vs-1");
+        const stubTimer = timers.find((t) => t.ms === 5_000)!;
+        expect(stubTimer).to.not.equal(undefined);
+        // Until then the whole entry is there
+        expect(host.processPending["vs-1"].entry.$tx).to.not.equal(undefined);
+
+        stubTimer.fn();
+
+        const kept = host.processPending["vs-1"];
+        expect(kept.voteOnly).to.equal(true);
+        expect(kept.pid).to.equal(4242);
+        expect(kept.entry).to.deep.equal({
+          $umid: "vs-1",
+          $broadcast: true,
+          $nodes: { me: { vote: true, commit: true } },
+        });
+      });
+
+      it("still tells the processor when the hold ends", () => {
+        const proc = makeRobin();
+        const host = released("vs-2");
+        host.findProcessor = (pid: number) => (pid === 4242 ? proc : undefined);
+        timers.find((t) => t.ms === 5_000)!.fn();
+        timers.find((t) => t.ms === 60_000)!.fn();
+        expect(proc.sent).to.deep.equal([
+          { type: "destory", data: { umid: "vs-2", skipTimeout: false } },
+        ]);
+      });
+
+      it("a second release of a stubbed transaction does nothing", () => {
+        const host = released("vs-3");
+        timers.find((t) => t.ms === 5_000)!.fn();
+        const before = timers.length;
+        expect(() => host.release("vs-3")).to.not.throw();
+        expect(timers.length).to.equal(before);
+      });
+
+      it("is skipped when it would not come before the hold ends", () => {
+        ActiveOptions.set("releaseStubSeconds", 60);
+        try {
+          released("vs-4");
+          expect(timers.filter((t) => t.ms === 60_000)).to.have.length(1);
+          expect(timers.find((t) => t.ms === 5_000)).to.equal(undefined);
+        } finally {
+          ActiveOptions.set("releaseStubSeconds", undefined);
+        }
+      });
     });
 
     it("uses the cached lock keys, not the transaction body", () => {
@@ -647,6 +709,28 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
       expect(host.processPending["d-1"]).to.equal(undefined);
     });
 
+    it("keeps only this node's answer while it waits to be deleted", () => {
+      const proc = makeRobin();
+      const host = makeHost({ findProcessor: () => proc });
+      const e: any = entry("d-vo");
+      e.$nodes = {
+        me: { vote: true, commit: true },
+        other: { vote: false, commit: false },
+      };
+      addPending(host, e);
+
+      host.destroy("d-vo");
+
+      const kept = host.processPending["d-vo"];
+      expect(kept.voteOnly).to.equal(true);
+      expect(kept.entry).to.deep.equal({
+        $umid: "d-vo",
+        $broadcast: true,
+        $nodes: { me: { vote: true, commit: true } },
+      });
+      expect(Host.hasVotedAgainst(kept.entry, "me")).to.equal(false);
+    });
+
     it("skipTimeout leaves removal to the caller", () => {
       const proc = makeRobin();
       const host = makeHost({ findProcessor: () => proc });
@@ -657,6 +741,7 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
       expect(proc.sent[0].data.skipTimeout).to.equal(true);
       expect(timers).to.have.length(0);
       expect(host.processPending["d-2"]).to.not.equal(undefined);
+      expect(host.processPending["d-2"].voteOnly).to.equal(undefined);
     });
 
     it("ignores an umid that is already gone", () => {
@@ -845,6 +930,40 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
         .catch((e: any) => (caught = e));
       expect(caught).to.equal("Bad Neighbour Payload");
       expect(host.processPending["p-1"]).to.equal(undefined);
+    });
+
+    it("ignores a peer's answer with no transaction in it for one it no longer holds", async () => {
+      const host = pendingHost();
+      const queued: any[] = [];
+      host.processQueue = (...a: any[]) => queued.push(a);
+
+      const response = await host.pending(
+        { $umid: "p-gone", $broadcast: true, $nodes: { peer: { vote: true } } },
+        "1.2.3.4",
+        false,
+        false,
+        true
+      );
+
+      expect(response.data).to.deep.equal({ ok: true });
+      expect(host.processPending["p-gone"]).to.equal(undefined);
+      expect(queued).to.deep.equal([]);
+    });
+
+    it("does not merge a late peer's answers into a vote only record", async () => {
+      const host = pendingHost();
+      host.broadcast = () => undefined;
+      host.processPending["p-vo"] = voteOnlyRecord("p-vo", { $nodes: { me: { vote: true } } } as any, "me");
+
+      await host.pending(
+        { $umid: "p-vo", $broadcast: true, $nodes: { peer: { vote: true } }, $tx: {} },
+        "1.2.3.4",
+        false,
+        false,
+        true
+      );
+
+      expect(Object.keys(host.processPending["p-vo"].entry.$nodes)).to.deep.equal(["me"]);
     });
 
     it("registers a new transaction and queues it for locks", () => {

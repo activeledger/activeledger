@@ -47,7 +47,8 @@ import { PhysicalCores } from "./cpus";
 import { workerExecArgv } from "./workerheap";
 import { reportedUpdatedStreams } from "./updatedstreams";
 import { changedNodes } from "./nodedelta";
-import { releaseHoldMs, releaseTailMs } from "./releasetimes";
+import { releaseHoldMs, releaseStubMs, releaseTailMs } from "./releasetimes";
+import { voteOnlyRecord } from "./voteonly";
 import * as process from "process";
 import {
   App,
@@ -142,6 +143,8 @@ interface process {
   finished: boolean;
   responded: boolean;
   shutdown?: boolean;
+  /** Only this node's answer is kept, see voteonly.ts */
+  voteOnly?: boolean;
   broadcasting?: boolean;
   /** signatures of the node responses already forwarded to the worker (see nodedelta.ts) */
   sentNodes?: { [reference: string]: string };
@@ -515,7 +518,11 @@ export class Host extends Home {
               const pendingEntry = this.processPending[entry.$umid]?.entry;
               // A client resubmitting the same bytes also lands here (it has
               // $broadcast set by the endpoint) but carries no $nodes to merge.
-              if (pendingEntry && entry.$nodes) {
+              if (
+                pendingEntry &&
+                entry.$nodes &&
+                !this.processPending[entry.$umid].voteOnly
+              ) {
                 // Don't overwrite self from a broadcast
                 delete entry.$nodes[this.reference];
                 // Merge new node data into existing entry
@@ -537,6 +544,16 @@ export class Host extends Home {
               dontRelease: true,
             });
           }
+        }
+
+        // A peer's answer for a transaction we no longer hold carries no
+        // transaction to run (only the vote is kept), so there is nothing to do
+        if (entry.$broadcast && !entry.$tx && !this.processPending[entry.$umid]) {
+          return resolve({
+            status: 200,
+            data: { ok: true },
+            dontRelease: true,
+          });
         }
 
         // Check we don't have it, Process finding may have failed.
@@ -1484,6 +1501,25 @@ export class Host extends Home {
   }
 
   /**
+   * Let go of everything about a finished transaction except this node's
+   * answer (see voteonly.ts). Safe to call more than once.
+   *
+   * @private
+   * @param {string} umid
+   */
+  private keepVoteOnly(umid: string): void {
+    const pending = this.processPending[umid];
+    if (pending && !pending.voteOnly) {
+      this.processPending[umid] = voteOnlyRecord(
+        umid,
+        pending.entry,
+        this.reference,
+        pending.pid
+      );
+    }
+  }
+
+  /**
    * Attempt to clear memory for GV
    *
    * @private
@@ -1505,7 +1541,9 @@ export class Host extends Home {
       });
 
       if (!skipTimeout) {
-        // Keep in memory to manage inbound broadcasts
+        // Keep in memory to manage inbound broadcasts, but only this node's
+        // answer: a late peer needs nothing else
+        this.keepVoteOnly(umid);
         setTimeout(() => {
           delete this.processPending[umid];
         }, releaseTailMs());
@@ -1950,6 +1988,10 @@ export class Host extends Home {
       ActiveLogger.warn(umid, "Not releasing, pending entry belongs to another submission");
       return;
     }
+    // Already down to the vote, there are no locks left to free
+    if (this.processPending[umid]?.voteOnly) {
+      return;
+    }
     if (this.processPending[umid]) {
       const entry = this.processPending[umid].entry;
       // Ask for releases - hold() already computed and cached this on the
@@ -1967,11 +2009,19 @@ export class Host extends Home {
 
       // Keep the transaction in memory for a while (releaseHoldSeconds, 1 minute by
       // default) so a late peer vote still finds it
+      //
+      // Only the umid is captured, the timers must not keep the entry alive.
+      // A little after the transaction finishes (releaseStubSeconds, once the
+      // worker has had time to send everything it is going to) only this
+      // node's answer is kept for the rest of the hold.
+      const hold = releaseHoldMs();
+      const stub = releaseStubMs();
+      if (stub < hold) {
+        setTimeout(() => this.keepVoteOnly(umid), stub);
+      }
       setTimeout(() => {
-        if (entry) {
-          this.destroy(entry.$umid);
-        }
-      }, releaseHoldMs());
+        this.destroy(umid);
+      }, hold);
 
       // Re-check the queue now that these locks are free.
       //
