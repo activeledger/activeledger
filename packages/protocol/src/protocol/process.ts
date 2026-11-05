@@ -621,17 +621,24 @@ export class Process extends EventEmitter {
       // Set isDefault flag to true
       this.isDefault = true;
 
-      // Allow for individual default contrack locking
-      if (await fs.stat(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`).catch(() => false)) {
+      // Allow for individual default contrack locking, and resolve the
+      // location (wrapped in realpath to resolve symbolic links, which
+      // prevents issues with cached contracts) in the same round: the lock
+      // still wins if both would fail.
+      const [locked, resolved] = await Promise.all([
+        fs.stat(`${process.cwd()}/default_contracts/_LOCK.${this.entry.$tx.$contract}`).then(() => true, () => false),
+        fs.realpath(`${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`).then(
+          (location) => ({ location }),
+          (error) => ({ error })
+        ),
+      ]);
+      if (locked) {
         throw new Error("Contract Global Lock");
       }
-
-      // Default Contract Location
-      // Wrapped in realpathSync to resolve symbolic links
-      // This prevents issues with cached contracts
-      this.contractLocation = await fs.realpath(
-        `${process.cwd()}/default_contracts/${this.entry.$tx.$contract}.js`
-      );
+      if ("error" in resolved) {
+        throw resolved.error;
+      }
+      this.contractLocation = resolved.location;
     };
 
     // Ledger Transpiled Contract Location
