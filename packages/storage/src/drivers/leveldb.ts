@@ -27,6 +27,12 @@ export class LevelDBDriver implements IStorageDriver {
     return Buffer.isBuffer(val) ? val : Buffer.from(val);
   }
 
+  public async getOrUndefined(key: string): Promise<Buffer | undefined> {
+    const val = await this.db.get(key);
+    if (val === undefined) return undefined;
+    return Buffer.isBuffer(val) ? val : Buffer.from(val);
+  }
+
   public async getMany(keys: string[]): Promise<Buffer[]> {
     const vals = await this.db.getMany(keys);
     // classic-level resolves undefined per-key for anything missing from

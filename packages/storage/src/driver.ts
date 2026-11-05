@@ -5,6 +5,8 @@ import { LevelUpChain } from "levelup";
  */
 export interface IStorageDriver {
   get(key: string): Promise<Buffer>;
+  /** Like get(), but resolves undefined for a missing key instead of throwing (optional: a driver without it is read through get()). */
+  getOrUndefined?(key: string): Promise<Buffer | undefined>;
   getMany(keys: string[]): Promise<Buffer[]>;
   put(key: string, value: any): Promise<void>;
   del(key: string): Promise<void>;
