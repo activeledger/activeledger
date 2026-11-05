@@ -78,6 +78,38 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       expect(e.$revs.$o[dataId]).to.equal(`0-context:${REV}`);
     });
 
+    describe("mixed with ordinary streams", () => {
+      const run = async (ids: string[]) => {
+        const e = entry(() => ({}), { $i: {}, $o: { [dataId]: {}, [OTHER]: {} } });
+        const db = dbOf([
+          { doc: { _id: dataId, _rev: REV } },
+          state(OTHER),
+          meta({}, OTHER),
+        ]);
+        const { pc } = checker(e, db);
+        return pc.process(ids, false);
+      };
+
+      for (const ids of [[dataId, OTHER], [OTHER, dataId]]) {
+        it(`accepts ${ids.map((i) => (i === dataId ? "data" : "plain")).join(" then ")} and keeps the real meta of the plain stream`, async () => {
+          const out = await run(ids);
+          expect(out).to.have.length(2);
+          const plain = out.find((r) => r.state._id === OTHER)!;
+          const data = out.find((r) => r.state._id === dataId)!;
+          expect(plain.meta._id).to.equal(`${OTHER}:stream`);
+          expect(plain.meta._rev).to.equal(REV);
+          expect(data.meta).to.deep.equal({ _id: `${dataId}:meta`, _rev: "0-context" });
+        });
+      }
+
+      it("does not invent meta for an ordinary stream when only data ids sit elsewhere in the list", async () => {
+        const e = entry(() => ({}), { $i: {}, $o: { [OTHER]: {} } });
+        const { pc } = checker(e, dbOf([state(OTHER)]));
+        const err = await rejection(pc.process([OTHER], false, LAST));
+        expect(err.code).to.equal(950);
+      });
+    });
+
     it("is still a missing stream (950) when the data document does not exist", async () => {
       const e = entry(() => ({}), { $i: {}, $o: { [dataId]: {} } });
       const { pc } = checker(e, dbOf([]));
