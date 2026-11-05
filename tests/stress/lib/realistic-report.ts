@@ -70,6 +70,7 @@ export function buildHtml(file: string): string {
   const cores = meta.cpus;
   const cpuRows = (best || peak).cpuCores;
   const totalCores = Object.values(cpuRows).reduce((a, b) => a + b, 0);
+  const dropped = runs.reduce((a, r) => a + (r.poolExhausted || 0), 0);
   const lagWarn = runs.some((r) => r.generatorLagP99Ms > 50);
   const date = new Date(meta.ts).toISOString().slice(0, 16).replace("T", " ") + " UTC";
   const headline = best
@@ -110,6 +111,7 @@ tr.no td{color:#a40e26}.cols{display:flex;gap:14px}.cols>div{flex:1}ul{margin:3p
 <li>The contract is deliberately light${meta.contract === "returner" ? "" : " and writes no state"}; contracts that write state, compute heavily or touch many streams will commit fewer transactions per second. There is no rate limit on users: the many distinct users keep lock contention low, as a real population does.</li>
 <li>A single short run per step: a few minutes in all. Expect a few percent of run-to-run variation; the tool's other modes (<code>stress:throughput</code>, <code>stress:compare</code>) quantify that spread.</li>
 <li>Nodes are on one host, so there is no wide-area latency in these figures; users' own network latency adds to what they see.</li>
+${dropped ? `<li class="warn">${dropped} arrivals were dropped because every user in the pool already had a transaction in flight. The network was saturated at those steps, so committed tx/s is its real throughput.</li>` : ""}
 ${lagWarn ? '<li class="warn">At some steps the load generator\'s own timer ran late, so the machine was too busy to offer that rate cleanly; those steps understate the network.</li>' : ""}
 </ul>
 <div class="small" style="margin-top:6px">Reproduce: <code>npm run build && npm run stress:realistic -- --pdf report.pdf</code> (tests/stress/realistic.ts). Raw results: ${esc(path.basename(file))}.</div>
