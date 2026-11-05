@@ -203,6 +203,7 @@ describe("Endpoints - a rejected replay doesn't release the original (Activenetw
     }
     host.pending = Host.prototype.pending.bind(host);
     host.release = Host.prototype.release.bind(host);
+    host.keepVoteOnly = (Host.prototype as any).keepVoteOnly.bind(host);
     return host;
   };
 

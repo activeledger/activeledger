@@ -24,3 +24,6 @@ const seconds = (key: string, fallback: number): number => {
 
 export const releaseHoldMs = (): number => seconds("releaseHoldSeconds", 60) * 1000;
 export const releaseTailMs = (): number => seconds("releaseTailSeconds", 10) * 1000;
+
+/** How long after a transaction finishes before only this node's answer is kept (see voteonly.ts) */
+export const releaseStubMs = (): number => seconds("releaseStubSeconds", 5) * 1000;

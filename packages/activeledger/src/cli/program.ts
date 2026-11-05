@@ -49,6 +49,7 @@ const CONFIG_KEYS = [
   "queue_retry",
   "rebaseThrottle",
   "releaseHoldSeconds",
+  "releaseStubSeconds",
   "releaseTailSeconds",
   "remote",
   "security",
