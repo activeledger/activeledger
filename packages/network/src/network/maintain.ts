@@ -272,11 +272,28 @@ export class Maintain {
    * @public
    */
   public static rebaseNeighbourhood(): void {
+    Maintain.attemptRebase(false);
+  }
+
+  /**
+   * One rebase attempt. A fresh request from a Recognised node is ignored
+   * while one is already pending (rebasing). The 2 second retry of that
+   * pending request is the pending request itself, so it must not be
+   * ignored by the same flag or a Recognised node would never rebase after
+   * waiting for a running check. checkNeighbourhood() does not run twice
+   * at once, so retries cannot start concurrent rebases.
+   *
+   * @private
+   * @param {boolean} isRetry
+   */
+  private static attemptRebase(isRetry: boolean): void {
+    const status = Maintain.home.getStatus();
+
     // Only Rebase if recognised
     if (
-      (!Maintain.rebasing &&
-        Maintain.home.getStatus() == NeighbourStatus.Recognised) ||
-      Maintain.home.getStatus() == NeighbourStatus.Unrecognised
+      (status == NeighbourStatus.Recognised &&
+        (isRetry || !Maintain.rebasing)) ||
+      status == NeighbourStatus.Unrecognised
     ) {
       ActiveLogger.debug("Rebase Request");
       Maintain.rebasing = true;
@@ -284,13 +301,16 @@ export class Maintain {
       if (Maintain.checking) {
         ActiveLogger.debug("Waiting to Rebase");
         setTimeout(() => {
-          Maintain.rebaseNeighbourhood();
+          Maintain.attemptRebase(true);
         }, 2000);
       } else {
         ActiveLogger.debug("Starting Rebase");
         Maintain.checkNeighbourhood();
         Maintain.rebasing = false;
       }
+    } else if (isRetry) {
+      // No longer needs a rebase, don't leave later requests blocked
+      Maintain.rebasing = false;
     }
   }
 
