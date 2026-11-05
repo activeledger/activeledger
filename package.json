@@ -44,7 +44,9 @@
     "stress:realistic": "tsx tests/stress/realistic.ts",
     "stress:compare": "tsx tests/stress/compare.ts",
     "version:set": "node scripts/set-version.mjs",
-    "test:network:hybrid": "tsx tests/network/hybrid.ts"
+    "test:network:hybrid": "tsx tests/network/hybrid.ts",
+    "test:behaviour": "tsx tests/network/behaviour-snapshot.ts",
+    "test:behaviour:compare": "tsx tests/network/behaviour-compare.ts"
   },
   "devDependencies": {
     "@types/chai": "4.3.1",
