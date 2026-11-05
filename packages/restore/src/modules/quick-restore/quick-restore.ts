@@ -36,7 +36,7 @@ import {
 import { Helper } from "../helper/helper";
 import { Contract } from "../contract/contract";
 import { Throttle } from "../helper/throttle";
-import { SyncContext, walkUmidHistory } from "@activeledger/activesync";
+import { SyncContext, walkUmidHistory, bulkWriteFailed } from "@activeledger/activesync";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
 /** How many times a stream is asked for before it is reported as not restored */
@@ -403,7 +403,10 @@ export class QuickRestore {
     }
 
     if (!local || !local._rev) {
-      await Provider.database.bulkDocs([doc], { new_edits: false });
+      QuickRestore.assertWritten(
+        doc,
+        await Provider.database.bulkDocs([doc], { new_edits: false })
+      );
       return;
     }
 
@@ -411,10 +414,23 @@ export class QuickRestore {
       ActiveLogger.warn(
         `[Diverged] ${doc._id} local ${local._rev} -> network ${doc._rev}`
       );
-      await Provider.database.bulkDocs([doc], {
-        new_edits: true,
-        force_rev: doc._rev
-      });
+      QuickRestore.assertWritten(
+        doc,
+        await Provider.database.bulkDocs([doc], {
+          new_edits: true,
+          force_rev: doc._rev
+        })
+      );
+    }
+  }
+
+  /**
+   * The store reports a failed write as {ok:false} or {} rather than by
+   * throwing. Treat that as the failure it is, the same as a thrown error.
+   */
+  private static assertWritten(doc: IBaseData, written: unknown): void {
+    if (bulkWriteFailed(written)) {
+      throw new Error(`Write of ${doc._id} was not confirmed by the store`);
     }
   }
 

@@ -40,7 +40,12 @@ describe("Restore recovers what a node lost (Activerestore)", () => {
     await db.open();
 
     events = [];
-    (Provider as any).database = db;
+    // What restore really talks to answers { ok } (embedded.ts, ActiveDSConnect),
+    // where LevelMe itself answers a bare boolean.
+    (Provider as any).database = {
+      get: (id: string) => db.get(id),
+      bulkDocs: async (docs: any[], options: any) => ({ ok: await db.bulkDocs(docs, options) }),
+    };
     (Provider as any).eventDatabase = {
       post: async (doc: any) => {
         events.push(doc);

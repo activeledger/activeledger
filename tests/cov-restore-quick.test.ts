@@ -542,7 +542,7 @@ describe("QuickRestore (cov)", () => {
     it("replays a umid's events before writing the umid document", async () => {
       const order: string[] = [];
       (Provider as any).eventDatabase.post = async (e: any) => order.push("event:" + e._id);
-      (Provider as any).database.bulkDocs = async (d: any[]) => order.push("write:" + d[0]._id);
+      (Provider as any).database.bulkDocs = async (d: any[]) => (order.push("write:" + d[0]._id), { ok: true });
       await make().uploadData({ documents: [{ _id: "U:umid", events: [{ _id: "e1" }] }], contracts: [] });
       expect(order).to.deep.equal(["event:e1", "write:U:umid"]);
     });
