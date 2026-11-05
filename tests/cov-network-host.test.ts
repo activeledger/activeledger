@@ -276,6 +276,23 @@ describe("Host with P2P and hybrid listeners (cov)", () => {
       expect(seen.map((x) => x[3])).to.deep.equal(["d".repeat(40), "e".repeat(40)]);
     });
 
+    it("drops a frame with a malformed body and still processes the next frame on the socket", async () => {
+      const s = await connect();
+      const junk = Buffer.from("this is not gzip or msgpack");
+      const header = Buffer.alloc(44);
+      header.write("f".repeat(40), 0);
+      header.writeUInt32BE(junk.length, 40);
+      const good = await frame("g".repeat(40), { $umid: "after-bad" });
+      s.write(Buffer.concat([header, junk, good]));
+      await until(() => seen.length === 1);
+      expect(seen[0][2].$umid).to.equal("after-bad");
+      expect(seen[0][3]).to.equal("g".repeat(40));
+      // a later frame in a separate write is still handled
+      s.write(await frame("h".repeat(40), { $umid: "later" }));
+      await until(() => seen.length === 2);
+      expect(seen[1][2].$umid).to.equal("later");
+    });
+
     it("logs a socket error instead of crashing", async () => {
       const s = await connect();
       await new Promise((r) => setTimeout(r, 30));

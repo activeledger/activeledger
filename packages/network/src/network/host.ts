@@ -685,7 +685,19 @@ export class Host extends Home {
               chunks = remaining.length > 0 ? [remaining] : [];
               bufferLength = remaining.length;
 
-              const tx = await ActiveClone.deserialize(item);
+              // The frame is already consumed above, so a body that cannot
+              // be decoded is dropped here without desyncing the stream or
+              // becoming an unhandled rejection from this async handler.
+              let tx: any;
+              try {
+                tx = await ActiveClone.deserialize(item);
+              } catch (error) {
+                ActiveLogger.warn(
+                  error,
+                  `P2P dropped malformed frame from ${socket.remoteAddress} (sender ${senderRef})`
+                );
+                continue;
+              }
               this.processEndpoints(
                 {
                   headers: { "X-Activeledger": senderRef },
