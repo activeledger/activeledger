@@ -407,6 +407,25 @@ describe("Storage process lifecycle (selfhost)", function () {
       expect(r.status).to.equal(500);
     });
 
+    it("answers a missing restore file with a 404 JSON error and stays alive", async () => {
+      const r = await s.req("POST", "/activeledgerrefused/_restore", { filename: "absent.alb" });
+      expect(r.status).to.equal(404);
+      expect(r.json).to.have.property("error");
+      expect(s.exited()).to.equal(false);
+      const h = await s.req("GET", "/activeledger/bk1");
+      expect(h.status).to.equal(200);
+    });
+
+    it("answers a backup that cannot be written with a JSON error and stays alive", async () => {
+      // A directory in the way of the file makes the write fail
+      fs.mkdirSync(path.join(s.dir, "blocked.alb"));
+      const r = await s.req("POST", "/activeledger/_backup", { filename: "blocked.alb" });
+      expect(r.status).to.equal(500);
+      expect(r.json).to.have.property("error");
+      expect(s.exited()).to.equal(false);
+      expect((await s.req("GET", "/activeledger/bk1")).status).to.equal(200);
+    });
+
     it("a refused restore does not change the database", async () => {
       await s.req("POST", "/activeledgerrefused/_restore", { filename: "../x" });
       const all = await s.req("GET", "/activeledgerrefused/_all_docs");
