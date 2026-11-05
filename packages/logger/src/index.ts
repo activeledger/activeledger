@@ -48,14 +48,6 @@ export class ActiveLogger {
 
 
   /**
-   * Winston file logger for Datadog integration
-   *
-   * @static
-   * @type {winston}
-   */
-  public static WinstonLogger: any;
-
-  /**
    * When set, receives each formatted line instead of the console. The
    * start-up display uses it to keep log lines above its own line.
    */
@@ -113,9 +105,6 @@ export class ActiveLogger {
   public static debug(msg: string, ...args: any[]): void;
   public static debug(p1: any, p2: any, args: any): void {
     if (ActiveLogger.enableDebug) {
-      if (ActiveLogger.WinstonLogger) {
-        ActiveLogger.WinstonLogger.debug(p1, p2);
-      }
       // Get Output String
       this.log("DEBUG", 46, console.debug, p1, p2);
     }
@@ -145,9 +134,6 @@ export class ActiveLogger {
   public static info(obj: object, msg?: string, ...args: any[]): void;
   public static info(msg: string, ...args: any[]): void;
   public static info(p1: any, p2: any, args: any): void {
-    if (ActiveLogger.WinstonLogger) {
-      ActiveLogger.WinstonLogger.info(p1, p2);
-    }
     this.log("INFO ", 92, console.info, p1, p2);
   }
 
@@ -175,9 +161,6 @@ export class ActiveLogger {
   public static warn(obj: object, msg?: string, ...args: any[]): void;
   public static warn(msg: string, ...args: any[]): void;
   public static warn(p1: any, p2: any, args: any): void {
-    if (ActiveLogger.WinstonLogger) {
-      ActiveLogger.WinstonLogger.warn(p1, p2);
-    }
     this.log("WARN ", 93, console.warn, p1, p2);
   }
 
@@ -205,9 +188,6 @@ export class ActiveLogger {
   public static error(obj: object, msg?: string, ...args: any[]): void;
   public static error(msg: string, ...args: any[]): void;
   public static error(p1: any, p2: any, args: any): void {
-    if (ActiveLogger.WinstonLogger) {
-      ActiveLogger.WinstonLogger.error(p1, p2);
-    }
     this.log("ERROR", 91, console.error, p1, p2);
   }
 
@@ -236,9 +216,6 @@ export class ActiveLogger {
   public static fatal(obj: object, msg?: string, ...args: any[]): Error;
   public static fatal(msg: string, ...args: any[]): Error;
   public static fatal(p1: any, p2: any, args: any): Error {
-    if (ActiveLogger.WinstonLogger) {
-      ActiveLogger.WinstonLogger.error(p1, p2);
-    }
     this.log("FATAL", 41, console.error, p1, p2);
 
     // Return Error Object

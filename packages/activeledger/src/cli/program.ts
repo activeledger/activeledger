@@ -50,7 +50,6 @@ const CONFIG_KEYS = [
   "rebaseThrottle",
   "remote",
   "security",
-  "winston",
   "worker_semi_space",
 ];
 

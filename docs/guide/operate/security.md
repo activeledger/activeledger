@@ -81,6 +81,4 @@ The node logs to the console, one line per event, with a level (`INFO`, `WARN`, 
 
 `"debug": true` adds `DEBUG` and `TRACE` lines, which include transaction ids as they arrive, and also returns full contract error text to the client. Keep it off in production.
 
-`"winston": true` writes the same lines to rotating files in `./winstonlogs/`: a new file every hour, zipped, 20 MB each at most, kept for 14 days. Protect that folder like any log.
-
 The ledger itself records the sender's address with each transaction it commits. That is part of the data, not the log.

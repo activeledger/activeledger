@@ -108,44 +108,6 @@ export class ActiveOptions {
       let network = ActiveOptions.get<string>("network", "");
       network = network.substr(0, network.indexOf("@"));
 
-      if (ActiveOptions.get<boolean>("winston", false) && !ActiveLogger.WinstonLogger) {
-        setTimeout(async () => {
-          try {
-            const winston = require("winston");
-            require("winston-daily-rotate-file");
-            const transport = new winston.transports.DailyRotateFile({
-              filename: `./winstonlogs/application-${process.pid}-%DATE%.log`,
-              datePattern: "YYYY-MM-DD-HH",
-              zippedArchive: true,
-              maxSize: "20m",
-              maxFiles: "14d",
-              level: 'debug'
-            });
-
-            transport.on("error", (error: any) => {
-              ActiveLogger.warn(error, "ERROR WITH WINSTON FILE SYSTEM");
-            });
-
-            transport.on(
-              "rotate",
-              (oldFilename: string, newFilename: string) => {
-                ActiveLogger.info(
-                  `Winston Roated ${oldFilename} -> ${newFilename}`
-                );
-              }
-            );
-
-            ActiveLogger.WinstonLogger = winston.createLogger({
-              transports: [transport],
-            });
-
-            ActiveLogger.debug("Winston File Setup");
-          } catch (e) {
-            ActiveLogger.error(e, "Winston Setup Failed");
-          }
-        }, 1000);
-      }
-
       tmpDb
         .get(network)
         .then((config: any) => {

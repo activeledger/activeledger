@@ -9,33 +9,22 @@ const strip = (s: string) => s.replace(/\x1b\[\d+m/g, "");
 
 describe("ActiveLogger", () => {
   const lines: string[] = [];
-  let winston: { level: string; args: any[] }[];
-  const savedWinston = ActiveLogger.WinstonLogger;
   const savedSink = ActiveLogger.sink;
   const savedDebug = ActiveLogger.enableDebug;
   const savedVM = ActiveLogger.isVMRuntime;
 
   beforeEach(() => {
     lines.length = 0;
-    winston = [];
     ActiveLogger.sink = (line: string) => lines.push(line);
-    ActiveLogger.WinstonLogger = undefined;
     ActiveLogger.enableDebug = false;
     ActiveLogger.isVMRuntime = false;
   });
 
   afterEach(() => {
     ActiveLogger.sink = savedSink;
-    ActiveLogger.WinstonLogger = savedWinston;
     ActiveLogger.enableDebug = savedDebug;
     ActiveLogger.isVMRuntime = savedVM;
   });
-
-  const fakeWinston = () =>
-    ["debug", "info", "warn", "error"].reduce((w: any, level) => {
-      w[level] = (...args: any[]) => winston.push({ level, args });
-      return w;
-    }, {});
 
   describe("line format", () => {
     it("carries timestamp, level, padded pid and message", () => {
@@ -181,36 +170,10 @@ describe("ActiveLogger", () => {
     });
   });
 
-  describe("winston mirror", () => {
-    it("forwards levels to the winston logger", () => {
-      ActiveLogger.WinstonLogger = fakeWinston();
-      ActiveLogger.enableDebug = true;
-      ActiveLogger.debug({ d: 1 }, "dbg");
-      ActiveLogger.info({ i: 1 }, "inf");
-      ActiveLogger.warn({ w: 1 }, "wrn");
-      ActiveLogger.error({ e: 1 }, "err");
-      ActiveLogger.fatal({ f: 1 }, "ftl");
-      expect(winston).to.deep.equal([
-        { level: "debug", args: [{ d: 1 }, "dbg"] },
-        { level: "info", args: [{ i: 1 }, "inf"] },
-        { level: "warn", args: [{ w: 1 }, "wrn"] },
-        { level: "error", args: [{ e: 1 }, "err"] },
-        { level: "error", args: [{ f: 1 }, "ftl"] },
-      ]);
-    });
-
-    it("does not forward debug when debug is off", () => {
-      ActiveLogger.WinstonLogger = fakeWinston();
-      ActiveLogger.debug("no");
-      expect(winston).to.have.length(0);
-    });
-  });
-
   describe("instance proxies", () => {
     it("behave like the static methods", () => {
       const logger = new ActiveLogger();
       ActiveLogger.enableDebug = true;
-      ActiveLogger.WinstonLogger = fakeWinston();
       const savedTrace = console.trace;
       console.trace = () => undefined;
       try {
@@ -231,13 +194,6 @@ describe("ActiveLogger", () => {
         "WARN",
         "ERROR",
         "FATAL",
-      ]);
-      expect(winston.map((w) => w.level)).to.deep.equal([
-        "debug",
-        "info",
-        "warn",
-        "error",
-        "error",
       ]);
       logger.setVMRuntime(true);
       expect(ActiveLogger.isVMRuntime).to.equal(true);
