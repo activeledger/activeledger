@@ -60,7 +60,16 @@ export class ActiveOptions {
    *
    * @static
    */
+  /**
+   * Counts every change made through this class (parseConfig, set, and so
+   * extendConfig, which merges the ledger's security/consensus/hybrid settings
+   * with set). A holder of a copy of the configuration compares it to know the
+   * copy is stale; nothing may keep a copy past a change without checking.
+   */
+  public static configVersion = 0;
+
   public static parseConfig() {
+    ActiveOptions.configVersion++;
     // Parse Configuration
     ActiveOptions.config = JSON.parse(
       fs.readFileSync(
@@ -191,6 +200,7 @@ export class ActiveOptions {
   public static set(name: string, value: any, reload: boolean = false): void {
     // Set Configuration
     ActiveOptions.config[name] = value;
+    ActiveOptions.configVersion++;
 
     // Update All Process
     if (reload) {
