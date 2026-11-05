@@ -973,3 +973,46 @@ describe("SPI history repair - a partial walk leaves a durable record", () => {
     expect(errors).to.deep.equal([]);
   });
 });
+
+describe("Endpoints.repairHistoryAfterCommit - stream ids handed in", () => {
+  it("does nothing, and asks no one, when the commit updated no stream", async () => {
+    let asked = 0;
+    const host: any = {
+      dbConnection: { get: async () => { asked++; throw new Error("no read expected"); } },
+      neighbourhood: { knockAll: async () => { asked++; return []; } },
+    };
+    await Endpoints.repairHistoryAfterCommit(host, `hint-empty-${Date.now()}`, []);
+    expect(asked).to.equal(0);
+  });
+
+  it("does not read the umid document back when the stream ids are given", async () => {
+    let localReads = 0;
+    const host: any = {
+      dbConnection: { get: async () => { localReads++; throw new Error("missing"); } },
+      neighbourhood: { knockAll: async () => [] },
+    };
+    await Endpoints.repairHistoryAfterCommit(host, `hint-given-${Date.now()}`, [`s-${Date.now()}`]);
+    expect(localReads).to.equal(0);
+  });
+
+  it("asks no peer when it holds the transaction and it updated no stream", async () => {
+    let knocks = 0;
+    const id = `held-empty-${Date.now()}`;
+    const host: any = {
+      dbConnection: { get: async () => ({ _id: `${id}:umid`, streams: { new: [], updated: [] } }) },
+      neighbourhood: { knockAll: async () => { knocks++; return []; } },
+    };
+    await Endpoints.repairHistoryAfterCommit(host, id);
+    expect(knocks).to.equal(0);
+  });
+
+  it("still lets the network decide when it has no copy of the transaction", async () => {
+    let knocks = 0;
+    const host: any = {
+      dbConnection: { get: async () => { throw new Error("missing"); } },
+      neighbourhood: { knockAll: async () => { knocks++; return []; } },
+    };
+    await Endpoints.repairHistoryAfterCommit(host, `no-copy-${Date.now()}`);
+    expect(knocks).to.equal(1);
+  });
+});
