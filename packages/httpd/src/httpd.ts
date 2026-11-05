@@ -619,8 +619,11 @@ export class ActiveHttpd {
           res.writeHeader("Content-Encoding", "gzip");
         }
         res.end(content);
-        res.writable = false;
+      } else {
+        // No body (404s, handlers returning nothing) must still finish
+        res.end();
       }
+      res.writable = false;
     });
   }
 }

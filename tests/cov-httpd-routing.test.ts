@@ -92,9 +92,7 @@ describe("ActiveHttpd routing and bodies", () => {
     expect(await statusOf("DELETE", ["a", "b"])).to.equal("404");
   });
 
-  // NOTE: 404 responses are driven through processListen with a fake response,
-  // because writeResponse never calls res.end() for empty content, so a real
-  // client would hang (see report: httpd.ts writeResponse empty-content path).
+  // Drives processListen with a fake response and returns the status written.
   const statusOf = async (method: string, url: string[]): Promise<string | undefined> => {
     const log: any[] = [];
     const res: any = {
@@ -245,11 +243,11 @@ describe("ActiveHttpd routing and bodies", () => {
       expect(res.writable).to.equal(false);
     });
 
-    it("writeResponse with empty content writes a status only and stays writable", async () => {
+    it("writeResponse with empty content writes a status and finishes the response", async () => {
       const { res, log } = fakeRes();
       await (httpd as any).writeResponse(res, 404, {}, "");
-      expect(log.find((l) => l[0] === "end")).to.equal(undefined);
-      expect(res.writable).to.equal(true);
+      expect(log.filter((l) => l[0] === "end")).to.deep.equal([["end", undefined]]);
+      expect(res.writable).to.equal(false);
       expect(log[0]).to.deep.equal(["status", "404"]);
     });
 
