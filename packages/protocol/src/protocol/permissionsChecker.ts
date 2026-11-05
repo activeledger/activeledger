@@ -138,7 +138,7 @@ export class PermissionsChecker {
     for (const streamId of data) {
       const filteredPrefix = this.shared.filterPrefix(streamId, true);
       const suffix = streamId.split(":")[1];
-      contractDataIncluded = suffix === "data";
+      if (suffix === "data") contractDataIncluded = true;
 
       if (suffix !== "data") {
         keys.add(filteredPrefix + ":stream");
@@ -277,7 +277,7 @@ export class PermissionsChecker {
         for (let i = results.length; i--;) {
           const sId = results[i].state._id;
 
-          if (sId && sId.indexOf(":data")) {
+          if (sId && sId.split(":")[1] === "data") {
             let cRes = results[i];
             cRes.meta = {
               _id: `${cRes.state._id}:meta`,
