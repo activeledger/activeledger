@@ -95,11 +95,35 @@ describe("Default onboard contract", () => {
       expect(created).to.have.length(0);
     });
 
-    it("a volatile failure is swallowed after resolve and does not set volatile", async () => {
+    it("a volatile failure rejects the commit and does not set volatile", async () => {
       const { c, created } = build({ a: { publicKey: "P", type: "rsa" } }, "ns", new Error("nope"));
-      expect(await c.commit()).to.equal(true);
-      await tick();
+      let err: any;
+      try {
+        await c.commit();
+      } catch (e) {
+        err = e;
+      }
+      expect(err && err.message).to.equal("nope");
       expect(created[0].volatileSet).to.equal(null);
+    });
+
+    it("has made every volatile write by the time commit resolves, even a slow one", async () => {
+      const { c, created } = build({
+        a: { publicKey: "PA", type: "rsa" },
+        b: { publicKey: "PB", type: "rsa" },
+      });
+      const make = c.newActivityStream;
+      let n = 0;
+      c.newActivityStream = (name: string) => {
+        const act = make(name);
+        const delay = ++n * 20;
+        const original = act.getVolatile;
+        act.getVolatile = () => new Promise((r) => setTimeout(r, delay)).then(original);
+        return act;
+      };
+      expect(await c.commit()).to.equal(true);
+      // No tick: the writes must already be there
+      for (const a of created) expect(a.volatileSet && a.volatileSet.now).to.be.instanceOf(Date);
     });
   });
 });

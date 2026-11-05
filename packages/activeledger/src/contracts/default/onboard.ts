@@ -68,6 +68,8 @@ export default class Onboard extends Standard {
     return new Promise<any>((resolve, reject) => {
       // Get Inputs
       let inputs = Object.keys(this.transactions.$i);
+      // Every volatile write, so commit only resolves once they are all made
+      const volatileWrites: Promise<void>[] = [];
       if (inputs.length) {
         let i = inputs.length;
         while (i--) {
@@ -88,19 +90,18 @@ export default class Onboard extends Standard {
           activity.setState(state);
 
           // Volatile Fun
-          activity
-            .getVolatile()
-            .then((volatile: any) => {
+          volatileWrites.push(
+            activity.getVolatile().then((volatile: any) => {
               volatile.now = new Date();
               activity.setVolatile(volatile);
             })
-            .catch((error: Error) => {
-              reject(error);
-            });
+          );
         }
       }
 
-      resolve(true);
+      // Resolve after the volatile writes are made; a failed one fails the
+      // commit rather than leaving an identity without its volatile now
+      Promise.all(volatileWrites).then(() => resolve(true), reject);
     });
   }
 }
