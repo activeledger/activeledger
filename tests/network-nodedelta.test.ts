@@ -49,4 +49,14 @@ describe("nodedelta (what a worker has not been told yet)", () => {
     changedNodes({ a: voted }, one);
     expect(changedNodes({ a: voted }, two)).to.deep.equal({ a: voted });
   });
+
+  it("sees a change in inter-node comms, a falsy return, and an object error", () => {
+    const sent = {};
+    changedNodes({ a: { vote: true, commit: true, incomms: { x: 1 } } }, sent);
+    expect(changedNodes({ a: { vote: true, commit: true, incomms: { x: 2 } } }, sent)).to.not.equal(undefined);
+    expect(changedNodes({ a: { vote: true, commit: true, incomms: { x: 2 }, return: 0 } }, sent)).to.not.equal(undefined);
+    expect(changedNodes({ a: { vote: true, commit: true, incomms: { x: 2 }, return: false } }, sent)).to.not.equal(undefined);
+    changedNodes({ b: { vote: false, error: { code: 1 } } }, sent);
+    expect(changedNodes({ b: { vote: false, error: { code: 2 } } }, sent)).to.not.equal(undefined);
+  });
 });
