@@ -85,17 +85,25 @@ describe("Restore Provider (cov)", () => {
 
   describe("getConfig", () => {
     it("uses the default config name and no path, then parses and extends in order", async () => {
-      await P.getConfig();
+      const cwd = process.cwd();
+      fs.writeFileSync(path.join(tmp, "config.json"), "{}");
+      process.chdir(tmp);
+      try {
+        await P.getConfig();
+      } finally {
+        process.chdir(cwd);
+      }
       expect(sets).to.deep.equal([]);
       expect(calls).to.deep.equal(["parse", "extend"]);
       expect(output).to.include("Using default config");
       expect(output).to.include("No path provided");
     });
     it("prefixes a given path onto the config name", async () => {
-      opts.path = "/etc/al/";
+      fs.writeFileSync(path.join(tmp, "my.json"), "{}");
+      opts.path = tmp + "/";
       opts.config = "my.json";
       await P.getConfig();
-      expect(sets).to.deep.equal([["config", "/etc/al/my.json"]]);
+      expect(sets).to.deep.equal([["config", tmp + "/my.json"]]);
       expect(output).to.include("Config provided");
     });
     it("reports a config file that exists", async () => {
@@ -105,7 +113,34 @@ describe("Restore Provider (cov)", () => {
       await P.getConfig();
       expect(output).to.include("Config file found");
     });
+    it("rejects with the fatal when the config file is missing, and never parses", async () => {
+      (ActiveLogger as any).fatal = (m: string) => new Error(m);
+      opts.config = path.join(tmp, "absent.json");
+      let err: any;
+      try {
+        await P.getConfig();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).to.be.an("error");
+      expect(err.message).to.contain("No config file found");
+      expect(calls).to.deep.equal([]);
+    });
+    it("looks for the config under the given path, not in the working directory", async () => {
+      (ActiveLogger as any).fatal = (m: string) => new Error(m);
+      opts.path = tmp + "/";
+      opts.config = "absent.json";
+      let err: any;
+      try {
+        await P.getConfig();
+      } catch (e) {
+        err = e;
+      }
+      expect(err.message).to.contain(tmp + "/absent.json");
+    });
     it("rejects when extending the config fails", async () => {
+      fs.writeFileSync(path.join(tmp, "c2.json"), "{}");
+      opts.config = path.join(tmp, "c2.json");
       extendFails = new Error("bad config");
       let err: any;
       try {
@@ -126,6 +161,19 @@ describe("Restore Provider (cov)", () => {
       await P.getIdentity();
       expect(sets).to.deep.equal([["identity", tmp + "/.identity"]]);
       expect(output).to.include("Identity path found");
+    });
+    it("rejects with the fatal when an identity is asked for but its file is missing", async () => {
+      (ActiveLogger as any).fatal = (m: string) => new Error(m);
+      opts.identity = true;
+      opts.path = tmp;
+      let err: any;
+      try {
+        await P.getIdentity();
+      } catch (e) {
+        err = e;
+      }
+      expect(err).to.be.an("error");
+      expect(err.message).to.contain("No Identity file found");
     });
     it("only reports when no identity is asked for", async () => {
       await P.getIdentity();
@@ -207,7 +255,8 @@ describe("Restore Provider (cov)", () => {
       opts.identity = identityFile;
       opts.neighbourhood = [];
       fs.writeFileSync(path.join(tmp, ".identity"), fs.readFileSync(identityFile));
-      opts.path = tmp;
+      fs.writeFileSync(path.join(tmp, "config.json"), "{}");
+      opts.path = tmp + "/";
       opts.consensus = { reached: 51 };
       await Provider.initialise();
       expect(calls).to.deep.equal(["init", "parse", "extend"]);
@@ -217,6 +266,8 @@ describe("Restore Provider (cov)", () => {
     });
     it("logs the error and never resolves when a step fails", async () => {
       extendFails = new Error("bad");
+      fs.writeFileSync(path.join(tmp, "c3.json"), "{}");
+      opts.config = path.join(tmp, "c3.json");
       let resolved = false;
       Provider.initialise().then(() => (resolved = true));
       await new Promise((r) => setTimeout(r, 30));
