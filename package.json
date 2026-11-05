@@ -41,6 +41,7 @@
     "stress:throughput": "tsx tests/stress/throughput.ts",
     "stress:cold-start": "tsx tests/stress/cold-start.ts",
     "stress:memory": "tsx tests/stress/memory.ts",
+    "stress:realistic": "tsx tests/stress/realistic.ts",
     "stress:compare": "tsx tests/stress/compare.ts",
     "version:set": "node scripts/set-version.mjs",
     "test:network:hybrid": "tsx tests/network/hybrid.ts"

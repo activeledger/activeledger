@@ -10,7 +10,7 @@ import * as path from "path";
 import { spawnSync } from "child_process";
 import { LoadAverages } from "./loadgate";
 
-export type Tool = "throughput" | "cold-start" | "memory";
+export type Tool = "throughput" | "cold-start" | "memory" | "realistic";
 
 /** Fields every record carries. */
 export interface BaseRecord {
