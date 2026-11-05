@@ -127,8 +127,8 @@ core per node is its ceiling. Two notes the tool prints matter:
 
 **The PDF** is one A4 page for someone who will not read the numbers: a headline
 for reads and for writes (the highest sustained step, with the latency 99% of
-transactions beat), a table of confirmed tx/s by rate, a chart and four short
-caveats. Only steps the network held are shown; a rate with no result shows
+transactions beat), a table of confirmed tx/s by rate, a chart and five short
+notes. Only steps the network held are shown; a rate with no result shows
 N/A. Confirmed is shown as what the network committed, never above what was
 sent (the difference is timing noise at the edges of the window). It is printed
 by a headless Chrome or Chromium, found from `CHROME_BIN`, the `PATH`, or the

@@ -113,10 +113,10 @@ h2{font-size:11pt;margin:10px 0 4px}.chart{margin:12px 0 0}ul{margin:4px 0 0 18p
 <div class="chart">${chart(series)}</div>
 <h2>Please note</h2>
 <ul>
-<li>This is a shared, busy PC (${meta.cpus} threads, load up to ${maxLoad.toFixed(0)}), not dedicated hardware. Servers built for the job will do better.</li>
-<li>All ${meta.nodes} nodes ran on this one machine, sharing its CPU and disk.</li>
-<li>Both ends of the workload were tested: reads, and writes, which are the most demanding because every write is stored to disk.</li>
-<li>Short test, a few minutes. Treat figures as a guide.</li>
+<li>Measured on a shared, busy PC (${meta.cpus} threads, load average up to ${maxLoad.toFixed(0)}); dedicated servers built for the job will deliver more.</li>
+<li>All ${meta.nodes} nodes of the network ran on this one machine, sharing its CPU and disk.</li>
+<li>Reads and writes were both tested; writes are the most demanding because every write is stored to disk.</li>
+<li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
 <li>N/A means no result is shown at that rate.</li>
 </ul>
 <div class="small">Activeledger ${esc(meta.commit || "")} &middot; stress:realistic</div>

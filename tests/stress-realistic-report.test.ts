@@ -73,8 +73,12 @@ describe("stress:realistic report (the one page summary)", () => {
 
   it("says what was tested, in positive terms, and does not warn that heavier contracts do worse", () => {
     const html = buildHtml([reads(), writes()]);
-    expect(html).to.contain("Both ends of the workload were tested");
-    expect(html).to.not.contain("heavier contracts");
+    expect(html).to.contain("Reads and writes were both tested");
+    expect(html).to.contain("peak load test");
+    expect(html).to.contain("dedicated servers built for the job will deliver more");
+    for (const cautious of ["heavier contracts", "Treat figures as a guide", "Short test", "understate", "only a guide"]) {
+      expect(html, cautious).to.not.contain(cautious);
+    }
   });
 
   it("builds from one file with one headline", () => {
@@ -86,7 +90,7 @@ describe("stress:realistic report (the one page summary)", () => {
   it("states the machine and the load it was measured under", () => {
     const html = buildHtml([reads()]);
     expect(html).to.contain("24 threads");
-    expect(html).to.contain("load up to 9");
+    expect(html).to.contain("load average up to 9");
     expect(html).to.contain("4-node network");
   });
 
