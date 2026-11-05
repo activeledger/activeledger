@@ -41,7 +41,8 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "24.19.2",
-    "copyfiles": "2.4.1"
+    "copyfiles": "2.4.1",
+    "typescript": "7.0.2"
   },
   "files": [
     "es",
@@ -55,7 +56,6 @@
     "@activeledger/activedefinitions": "5.1.8",
     "@activeledger/activelogger": "5.1.8",
     "@activeledger/activeoptions": "5.1.8",
-    "@activeledger/httpd": "5.1.8",
-    "typescript": "7.0.2"
+    "@activeledger/httpd": "5.1.8"
   }
 }
