@@ -36,7 +36,7 @@ const SPECS: FlagSpec[] = [
   { name: "stop-after", type: "number", default: 2, description: "stop climbing after this many unsustained steps in a row" },
   { name: "node-config", type: "string", description: "JSON merged into every node's config.json before it starts, e.g. '{\"debug\":false}' (recorded in the results)" },
   { name: "pdf", type: "string", description: "write a one page PDF summary to this path" },
-  { name: "from", type: "string", description: "do not run: build the --pdf from an existing results file" },
+  { name: "from", type: "string", description: "do not run: build the --pdf from existing results file(s); give a reads file and a writes file separated by a comma for two headlines" },
   ...COMMON_FLAGS,
 ];
 
