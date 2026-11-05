@@ -19,8 +19,9 @@
  */
 export function nodeSignature(node: any): string {
   if (!node || typeof node !== "object") return String(node);
-  const head = `${node.vote}|${node.commit}|${node.early}|${node.leader}|${node.error || ""}|${node.sig || ""}`;
-  if (node.streams || node.return || node.post || node.datetime) {
+  const text = (v: unknown) => (v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v));
+  const head = `${node.vote}|${node.commit}|${node.early}|${node.leader}|${text(node.error)}|${text(node.sig)}|${text(node.incomms)}`;
+  if (node.streams !== undefined || node.return !== undefined || node.post !== undefined || node.datetime !== undefined) {
     return head + "|" + JSON.stringify([node.streams, node.return, node.post, node.datetime]);
   }
   return head;
