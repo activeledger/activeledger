@@ -498,26 +498,38 @@ export class StreamUpdater {
     }
   }
 
+  /**
+   * The event row, only ever after a successful bulk write, off the response
+   * path. A failure here cannot undo a write that landed, so it is logged
+   * loudly rather than failing the transaction.
+   */
+  private recordAfterCommit(): void {
+    const umid = this.entry.$umid;
+    const id = `umid:${new Date(this.entry.$datetime).getTime()},${umid}`;
+    this.dbev.post({ _id: id }).catch((error: unknown) => {
+      ActiveLogger.error({ umid, error }, "Event record failed after commit (streams are written)");
+    });
+  }
+
   private async append() {
     try {
       ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
       await this.saveDocs();
       ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
 
-      // Only post to event db if bulk write was successful
-      await this.dbev.post({
-        _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid
-          }`,
-      });
-
-      // Sign what was committed, for hybrids (build 40300 and later)
-      await Attestation.commit(
-        this.db,
-        this.dbev,
-        this.reference,
-        this.entry,
-        this.docs
-      );
+      if (Attestation.enabled()) {
+        // Hybrids (build 40300 and later) rely on the attestation, which
+        // reads the votes as they stand now, so this keeps its order.
+        await this.dbev.post({
+          _id: `umid:${new Date(this.entry.$datetime).getTime()},${this.entry.$umid}`,
+        });
+        await Attestation.commit(this.db, this.dbev, this.reference, this.entry, this.docs);
+      } else {
+        // The streams are written, which is what the answer depends on. The
+        // event row follows on its own, so the response does not wait on
+        // another round trip to storage.
+        this.recordAfterCommit();
+      }
     } catch (error) {
       ActiveLogger.error(error, "Datastore Failure");
       this.shared.raiseLedgerError(1510, new Error("Failed to save streams"));
