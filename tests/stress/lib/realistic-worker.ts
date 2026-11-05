@@ -79,11 +79,13 @@ const init: WorkerInit = workerData;
 
 /**
  * Connections are kept alive and reused, as a load balancer or any real client
- * library would. A fresh TCP connection per request leaves thousands in
+ * library would, with a cap per node so a node that stalls makes requests wait
+ * rather than opening connections without end (every timed-out request throws
+ * its socket away, and a storm of replacements exhausts the local ports). A fresh TCP connection per request leaves thousands in
  * TIME_WAIT and runs a machine out of local ports (EADDRNOTAVAIL) at a few
  * hundred requests a second, which measures the generator, not the network.
  */
-const agent = new http.Agent({ keepAlive: true, maxSockets: 1024 });
+const agent = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 64 });
 const submit = (baseUrl: string, tx: unknown): Promise<any> => requestJson(baseUrl + "/", "POST", tx, 20000, agent);
 const users: User[] = [];
 let seq = 0;
