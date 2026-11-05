@@ -851,6 +851,25 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       expect(out).to.deep.equal({ body: { a: 1 } });
     });
 
+    it("gives the same result for a big body on the direct route as on the general one", async () => {
+      const big = JSON.stringify({ $tx: { pad: "é\u2603 ".repeat(20000), n: [1, 2, { x: null }] } });
+      const direct = await Endpoints.postConvertor(host(), big, false);
+      // Buffer input never takes the direct route
+      const general = await Endpoints.postConvertor(host(), Buffer.from(big), false);
+      expect(direct).to.deep.equal(general);
+      expect(direct.body.$tx.n).to.deep.equal([1, 2, { x: null }]);
+    });
+
+    it("falls back to the general route when a big body is not valid JSON", async () => {
+      let caught: any;
+      try {
+        await Endpoints.postConvertor(host(), "{" + "x".repeat(20000), false);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught.statusCode).to.equal(500);
+    });
+
     it("parses a Buffer body too", async () => {
       const out = await Endpoints.postConvertor(host(), Buffer.from('{"a":2}'), false);
       expect(out).to.deep.equal({ body: { a: 2 } });
