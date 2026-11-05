@@ -11,7 +11,8 @@
 
 import { parentPort, workerData } from "worker_threads";
 import { ActiveCrypto } from "../../../packages/crypto/src";
-import { submit } from "../../network/http";
+import * as http from "http";
+import { requestJson } from "../../network/http";
 import { isCommitted, reasonOf } from "./workload";
 
 /** Committed: streams were written, or (a contract that writes no state) the summary shows a commit and no errors. */
@@ -75,6 +76,15 @@ interface User {
 }
 
 const init: WorkerInit = workerData;
+
+/**
+ * Connections are kept alive and reused, as a load balancer or any real client
+ * library would. A fresh TCP connection per request leaves thousands in
+ * TIME_WAIT and runs a machine out of local ports (EADDRNOTAVAIL) at a few
+ * hundred requests a second, which measures the generator, not the network.
+ */
+const agent = new http.Agent({ keepAlive: true, maxSockets: 1024 });
+const submit = (baseUrl: string, tx: unknown): Promise<any> => requestJson(baseUrl + "/", "POST", tx, 20000, agent);
 const users: User[] = [];
 let seq = 0;
 
