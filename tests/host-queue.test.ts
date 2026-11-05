@@ -642,7 +642,7 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
         { type: "destory", data: { umid: "d-1", skipTimeout: false } },
       ]);
       expect(timers).to.have.length(1);
-      expect(timers[0].ms).to.equal(2 * 60 * 1000);
+      expect(timers[0].ms).to.equal(10 * 1000);
       timers[0].fn();
       expect(host.processPending["d-1"]).to.equal(undefined);
     });
