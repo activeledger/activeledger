@@ -531,6 +531,15 @@ describe("Storage process HTTP API (selfhost)", function () {
           rev_tree: [{ pos: 1, ids: ["aaa", {}, []] }],
           seq: 2,
         });
+        // The sequence numbers in a rev_map are plain numbers, as the reader
+        // (findCachedBranchEnd) assumes by padding them itself
+        await lm.writeRaw("legacy3", {
+          _id: "legacy3",
+          winningRev: "1-ccc",
+          rev_map: { "1-ccc": 3 },
+          rev_tree: [{ pos: 1, ids: ["ccc", {}, []] }],
+          seq: 3,
+        });
         await lm.close();
         const driver = new LevelDBDriver(prefix + "activeledger", "level");
         await driver.open();
@@ -576,6 +585,22 @@ describe("Storage process HTTP API (selfhost)", function () {
       });
       const doc = await ActiveClone.deserialize(raw);
       expect(doc).to.deep.include({ _rev: "1-aaa", v: "one" });
+    });
+
+    it("_raw with @revision finds the entry when rev_map holds an unpadded number", async () => {
+      const { ActiveClone } = require("../packages/utilities/src/clone");
+      const raw = await new Promise<Buffer>((resolve, reject) => {
+        const http = require("http");
+        http.get(
+          { host: "127.0.0.1", port: legacy.port, path: "/activeledger/_raw/legacy3@1-ccc", agent: false },
+          (res: any) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (c: Buffer) => chunks.push(c));
+            res.on("end", () => resolve(Buffer.concat(chunks)));
+          }
+        ).on("error", reject);
+      });
+      expect(await ActiveClone.deserialize(raw)).to.deep.include({ _rev: "1-ccc", v: "three" });
     });
 
     it("_raw with an @revision the root does not know fails", async () => {
