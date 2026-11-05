@@ -21,4 +21,9 @@ describe("reportedUpdatedStreams", () => {
   it("says none for a commit that completed without ever writing streams (a contract that writes nothing)", () => {
     expect(reportedUpdatedStreams({ vote: true, commit: true, return: { via: "x" } })).to.deep.equal([]);
   });
+
+  it("does not say none for a commit that failed locally: it wrote nothing it could report, but that is not 'touched no stream'", () => {
+    expect(reportedUpdatedStreams({ vote: true, commit: true, error: "Failed to save streams" })).to.equal(undefined);
+    expect(reportedUpdatedStreams({ vote: true, commit: true, error: { code: 1510 } })).to.equal(undefined);
+  });
 });
