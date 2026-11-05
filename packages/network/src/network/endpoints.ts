@@ -2511,8 +2511,31 @@ export class Endpoints {
     return new Promise(async (resolve, reject) => {
       let data: Buffer;
 
+      // A plain JSON body arrives here already decoded to a string. The general
+      // route below would encode it to a Buffer only for deserialize to decode
+      // it again (two UTF-8 decodes and an encode for nothing: the binary
+      // formats deserialize sniffs for cannot survive having been a string).
+      // So parse the string we have. Anything else, a Buffer or an encrypted
+      // body or text that is not a JSON object, keeps the general route.
+      let bodyObject: any;
+      let parsedDirect = false;
+      if (
+        !encryptHeader &&
+        typeof body === "string" &&
+        body.charCodeAt(0) === 0x7b // {
+      ) {
+        try {
+          bodyObject = JSON.parse(body);
+          parsedDirect = true;
+        } catch {
+          // Not valid JSON as it stands: let the general route decide
+        }
+      }
+
       // Handle Decryption if needed
-      if (encryptHeader) {
+      if (parsedDirect) {
+        data = Buffer.alloc(0);
+      } else if (encryptHeader) {
         ActiveLogger.info("Encrypted Transaction Inbound");
         try {
           data = Buffer.from(host.decrypt(body as string), "base64");
@@ -2528,8 +2551,10 @@ export class Endpoints {
       }
 
       try {
-        const bodyObject = await ActiveClone.deserialize(data);
-        
+        if (!parsedDirect) {
+          bodyObject = await ActiveClone.deserialize(data);
+        }
+
         // Internal Transaction Messaging (Encrypted & Signing Security)
         if (bodyObject && (bodyObject as any).$neighbour && (bodyObject as any).$packet) {
           const bodyObj = bodyObject as any;
