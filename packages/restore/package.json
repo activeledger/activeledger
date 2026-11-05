@@ -54,8 +54,7 @@
     "@activeledger/activelogger": "5.1.8",
     "@activeledger/activenetwork": "5.1.8",
     "@activeledger/activeoptions": "5.1.8",
-    "@activeledger/activesync": "5.1.8",
-    "typescript-api": "npm:typescript@6.0.3"
+    "@activeledger/activesync": "5.1.8"
   },
   "gitHead": "0e3737c01cf21565ceee635a5b912af3020a5fd6"
 }

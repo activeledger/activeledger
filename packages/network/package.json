@@ -52,7 +52,6 @@
     "@activeledger/activeoptions": "5.1.8",
     "@activeledger/activep2p": "5.1.8",
     "@activeledger/activeprotocol": "5.1.8",
-    "@activeledger/activequery": "5.1.8",
     "@activeledger/activesync": "5.1.8",
     "@activeledger/activeutilities": "5.1.8",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.71.0"
