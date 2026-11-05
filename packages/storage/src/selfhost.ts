@@ -415,12 +415,28 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     filename.length > 0 &&
     path.basename(filename) === filename;
 
+  // Runs a backup/restore and turns a failure into an HTTP error answer. It
+  // used to be fired without await or catch, so a missing restore file was an
+  // unhandled rejection that killed the whole storage process. A missing file
+  // is the caller's mistake (404); anything else is a server-side failure (500).
+  const runFileJob = async (label: string, job: () => Promise<unknown>) => {
+    try {
+      await job();
+    } catch (e: any) {
+      ActiveLogger.error(e, `${label} failed`);
+      throw {
+        status: e?.code === "ENOENT" ? 404 : 500,
+        error: `${label} failed: ${e?.message ?? String(e)}`,
+      };
+    }
+  };
+
   http.use("*/_backup", "POST", async (incoming: IActiveHttpIncoming) => {
     const filename = incoming.body?.filename;
     if (filename !== undefined && !isSafeFilename(filename)) {
       throw new Error("Invalid backup filename");
     }
-    getDB(incoming.url[0]).backup(filename);
+    await runFileJob("Backup", () => getDB(incoming.url[0]).backup(filename));
     return { status: "started" };
   });
 
@@ -429,7 +445,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     if (!isSafeFilename(filename)) {
       throw new Error("Invalid restore filename");
     }
-    getDB(incoming.url[0]).restore(filename);
+    await runFileJob("Restore", () => getDB(incoming.url[0]).restore(filename));
     return { status: "started" };
   });
 
