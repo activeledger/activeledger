@@ -44,13 +44,16 @@ describe("Network worker Processor (process.ts)", () => {
   const live = new Set<string>();
   const rejection: { [umid: string]: (reason: any) => void } = {};
 
+  // The processor keeps one process listener for all transactions; a rejection
+  // reaches a given transaction through it, so this fires that listener.
+  const baselineListeners = new Set(rejectionListeners());
+  const processListener = () =>
+    rejectionListeners().find((l) => !baselineListeners.has(l)) as any;
+
   const tx = (entry: any): any => {
-    const known = new Set(rejectionListeners());
     handler({ type: "tx", entry });
     live.add(entry.$umid);
-    rejection[entry.$umid] = rejectionListeners().find(
-      (l) => !known.has(l)
-    ) as any;
+    rejection[entry.$umid] = (reason: any) => processListener()(reason);
     return lastProtocol;
   };
 
@@ -435,10 +438,12 @@ describe("Network worker Processor (process.ts)", () => {
       handler({ type: "contractData", data: { contract: "a".repeat(64), data: null } });
     });
 
-    it("registers one rejection listener per transaction and removes it on destroy", () => {
-      const before = rejectionListeners().length;
+    it("keeps one rejection listener however many transactions are in flight, and stops serving one on destroy", () => {
       const p = tx(entryFor("u3"));
-      expect(rejectionListeners().length).to.equal(before + 1);
+      const before = rejectionListeners().length;
+      tx(entryFor("u3b"));
+      tx(entryFor("u3c"));
+      expect(rejectionListeners().length).to.equal(before);
       handler({ type: "destory", data: { umid: "u3", skipTimeout: true } });
       expect(rejectionListeners().length).to.equal(before);
       expect(destroyed).to.deep.equal(["u3"]);
@@ -678,9 +683,8 @@ describe("Network worker Processor (process.ts)", () => {
 
       it("does nothing once the transaction was destroyed", () => {
         tx(entryFor("x7"));
-        const fn = listenerFor("x7");
         handler({ type: "destory", data: { umid: "x7", skipTimeout: true } });
-        fn(new Error("late"));
+        processListener()(new Error("late"));
         expect(sent.some((m) => m.type === "unhandledrejection")).to.equal(false);
       });
     });

@@ -110,6 +110,8 @@ class Processor {
     [umid: string]: any;
   } = {};
 
+  private unhandledRejectionListening = false;
+
   /**
    *
    *
@@ -217,11 +219,9 @@ class Processor {
             }
           };
 
-          // Event: Manage Unhandled Rejections from VM
-          process.on(
-            "unhandledRejection",
-            this.unhandledRejection[m.entry.$umid]
-          );
+          // Unhandled rejections reach this transaction through the one
+          // process listener, via this.unhandledRejection.
+          this.listenForRejections();
 
           // Event: Manage Commits
           this.protocols[m.entry.$umid].on("commited", (response: any) => {
@@ -613,7 +613,6 @@ class Processor {
 
       // No longer need to handle unhandled rejections
       if (this.unhandledRejection[umid]) {
-        process.off("unhandledRejection", this.unhandledRejection[umid]);
         delete this.unhandledRejection[umid];
       }
     };
@@ -628,6 +627,22 @@ class Processor {
   }
 
   /**
+   * One listener for every transaction in flight, not one added and removed
+   * per transaction (thousands live at once under load, each add/remove
+   * walking the list). A rejection reaches each in-flight transaction's
+   * handler in the order they arrived, as it did with a listener each.
+   */
+  private listenForRejections(): void {
+    if (this.unhandledRejectionListening) return;
+    this.unhandledRejectionListening = true;
+    process.on("unhandledRejection", (reason: Error) => {
+      for (const handler of Object.values(this.unhandledRejection)) {
+        handler(reason);
+      }
+    });
+  }
+
+  /**
    * Process setup of the processor from main thread
    *
    * @private
@@ -636,8 +651,6 @@ class Processor {
   private setup(setup: ISetup) {
     // Manage False postive warnings.
     // Find alternative way to capture rejections per message
-    process.setMaxListeners(300);
-
     // Create connection string
     this.db = new ActiveDSConnect(setup.db.url + "/" + setup.db.database);
 
