@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeprotocol",
-  "version": "5.1.7",
+  "version": "5.1.8",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -42,13 +42,13 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecontracts": "5.1.7",
-    "@activeledger/activecrypto": "5.1.7",
-    "@activeledger/activedefinitions": "5.1.7",
-    "@activeledger/activelogger": "5.1.7",
-    "@activeledger/activeoptions": "5.1.7",
-    "@activeledger/activequery": "5.1.7",
-    "@activeledger/activetoolkits": "5.1.7",
+    "@activeledger/activecontracts": "5.1.8",
+    "@activeledger/activecrypto": "5.1.8",
+    "@activeledger/activedefinitions": "5.1.8",
+    "@activeledger/activelogger": "5.1.8",
+    "@activeledger/activeoptions": "5.1.8",
+    "@activeledger/activequery": "5.1.8",
+    "@activeledger/activetoolkits": "5.1.8",
     "@types/node": "24.19.2",
     "typescript": "7.0.2"
   }
