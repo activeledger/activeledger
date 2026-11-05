@@ -26,7 +26,7 @@ const SPECS: FlagSpec[] = [
   { name: "duration", type: "number", default: 45, description: "seconds per step, warm-up included" },
   { name: "warmup", type: "number", default: 10, description: "seconds at the start of each step excluded from the figures" },
   { name: "settle", type: "number", default: 5, description: "seconds of quiet between steps" },
-  { name: "users", type: "number", default: 6000, description: "distinct users (each with its own key and stream); a user is not used again while its previous transaction is in flight" },
+  { name: "users", type: "number", default: 1000, description: "distinct users (each with its own key and stream); a user is not used again while its previous transaction is in flight" },
   { name: "contract", type: "string", default: "no-write", choices: ["no-write", "returner"], description: "no-write: validates and returns, writes no state; returner: writes a message onto the user's stream" },
   { name: "join-pct", type: "number", default: 5, description: "percent of arrivals that are a new user joining (onboard); the rest are contract transactions on the user's own stream" },
   { name: "workers", type: "number", default: 6, description: "load-generator threads" },
@@ -177,6 +177,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
         records.push(rec);
         console.log(`  offered ${rate} tx/s: committed ${rec.committedTps} (${rec.committedPctOfOffered}%)  fail ${rec.failedPct}%  p50 ${rec.p50Ms} ms  p99 ${rec.p99Ms} ms  load ${loadBefore.load1}->${rec.loadAfter.load1}  ${rec.sustained ? "SUSTAINED" : "not sustained"}`);
         for (const [k, v] of Object.entries(reasons).slice(0, 3)) console.log(`    ${v} x ${k}`);
+        if (rec.poolExhausted > 0) console.log(`    note: ${rec.poolExhausted} arrivals were dropped because every user already had a transaction in flight; use more --users`);
         if (rec.generatorLagP99Ms > 50) console.log(`    note: the generator's own timer ran ${rec.generatorLagP99Ms} ms late at p99; this machine is too busy to offer the rate cleanly`);
         failedInARow = rec.sustained ? 0 : failedInARow + 1;
         if (failedInARow >= f.stopAfter) {
