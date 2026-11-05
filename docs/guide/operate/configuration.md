@@ -37,6 +37,8 @@ A node with a `hybrid` section needs `"build": 40300` for it to take effect.
 | `db.selfhost.engine` | Storage driver. | `"level"` |
 | `db.selfhost.dir` | Folder the data lives in. Written only when the node was set up with `--data-dir`. | not written; `./.ds` |
 | `db.selfhost.cache` | `true` keeps a 30 second in-memory read cache of the ledger database. Off by default: on a busy node under 1% of reads hit it and it held hundreds of MB. Turn it on only for a read-heavy workload that re-reads the same streams. The events and error databases are never cached. See [Memory use](memory.md). | `false` |
+| `db.selfhost.writeBufferMb` | Megabytes of LevelDB write buffer, per database. A bigger buffer flushes and compacts less often under sustained writes. Takes effect when the storage process starts. | `64` |
+| `db.selfhost.cacheMb` | Megabytes of LevelDB block cache, per database, so the hot working set stays in memory. Takes effect when the storage process starts. | `256` |
 | `db.autostart` | `false` means you run the store as a separate process; the node checks it is up and refuses to start if not. | started by the node |
 | `db.url` | CouchDB address with credentials, used when there is no `selfhost`. With `selfhost` the node fills it in itself. | placeholder |
 | `db.database` | Name of the ledger database. | `"activeledger"` |

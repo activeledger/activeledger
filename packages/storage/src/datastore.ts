@@ -124,6 +124,17 @@ export class ActiveDataStore {
       ],
       {
         stdio: "inherit",
+        // LevelDB memory (db.selfhost.writeBufferMb, db.selfhost.cacheMb),
+        // when set; the storage process has its own larger defaults
+        env: {
+          ...process.env,
+          ...(dbInfo.selfhost.writeBufferMb > 0
+            ? { ACTIVE_LEVEL_WRITE_BUFFER_MB: `${dbInfo.selfhost.writeBufferMb}` }
+            : {}),
+          ...(dbInfo.selfhost.cacheMb > 0
+            ? { ACTIVE_LEVEL_CACHE_MB: `${dbInfo.selfhost.cacheMb}` }
+            : {}),
+        },
       }
     );
 

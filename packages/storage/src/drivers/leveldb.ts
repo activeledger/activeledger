@@ -4,6 +4,30 @@ import { mkdirSync } from "fs";
 import { ClassicLevel } from "classic-level";
 import { Readable } from "stream";
 
+const MB = 1024 * 1024;
+
+/**
+ * A size in megabytes from the environment (set by the node from
+ * db.selfhost.writeBufferMb / cacheMb when it starts the storage process),
+ * or the default. Not a positive number means the default.
+ */
+const megabytes = (name: string, fallback: number): number => {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) * MB : fallback * MB;
+};
+
+/**
+ * LevelDB's own defaults (a 4 MB write buffer, an 8 MB block cache) suit a
+ * small embedded store, not a ledger taking hundreds of writes a second: the
+ * memtable fills and flushes over and over, compaction competes for the
+ * threadpool, and the hot working set never fits the cache. One storage
+ * process runs per node and nodes have the memory, so default to 64 MB of
+ * write buffer and 256 MB of block cache per database. Durability is untouched
+ * (writes are still not synced per batch; that has never changed).
+ */
+export const LEVELDB_DEFAULT_WRITE_BUFFER_MB = 64;
+export const LEVELDB_DEFAULT_CACHE_MB = 256;
+
 export class LevelDBDriver implements IStorageDriver {
   private db: any = null;
   private opening: boolean = false;
@@ -127,7 +151,11 @@ export class LevelDBDriver implements IStorageDriver {
     if (this.db?.status !== 'open' && !this.opening) {
       this.opening = true;
       try {
-        this.db = new ClassicLevel(this.location, { valueEncoding: 'binary' });
+        this.db = new ClassicLevel(this.location, {
+          valueEncoding: 'binary',
+          writeBufferSize: megabytes("ACTIVE_LEVEL_WRITE_BUFFER_MB", LEVELDB_DEFAULT_WRITE_BUFFER_MB),
+          cacheSize: megabytes("ACTIVE_LEVEL_CACHE_MB", LEVELDB_DEFAULT_CACHE_MB),
+        });
         await this.db.open();
       } catch (e) {
         // If opening fails, ensure the DB instance is cleared so it doesn't hold resources/locks
