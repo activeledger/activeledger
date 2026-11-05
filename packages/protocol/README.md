@@ -4,7 +4,4 @@
 
 Underlying protocol which handles consensus and the smart contract virtual machine
 
-|Language| |
-|--------|-|
-|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/README.md)|
-|Chinese| [说明文档](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/README.md)|
+[Documentation](https://activeledger.github.io/activeledger/)

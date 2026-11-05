@@ -4,7 +4,4 @@
 
 This package contains the base classes that smart contracts must inherit from.
 
-|Language| |
-|--------|-|
-|English| [documentation](https://github.com/activeledger/activeledger/tree/master/docs/en-gb/contracts/README.md)|
-|Chinese| [说明文档](https://github.com/activeledger/activeledger/tree/master/docs/zh-cn/contracts/README.md)|
+[Documentation](https://activeledger.github.io/activeledger/)
