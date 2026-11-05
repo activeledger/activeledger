@@ -48,6 +48,18 @@ first, outside the timed section.
 
 ## Realistic users (peak throughput)
 
+This is the **peak load test**. One command runs the whole thing, reads and then
+writes, and prints a one page PDF:
+
+```
+npm run stress:peak
+```
+
+It takes about twelve minutes and leaves `stress-results/peak-load-test.pdf`
+(with the raw numbers in `peak-reads.jsonl` and `peak-writes.jsonl`). Run it on a
+quiet machine from a checkout after `npm ci` and a build. To choose the rates
+yourself, or to run one kind only, use the tool directly:
+
 ```
 npm run stress:realistic -- --pdf tps.pdf
 npm run stress:realistic -- --contract no-write --rates 300,500,700,900,1100,1300 --out stress-results/reads.jsonl
@@ -95,6 +107,7 @@ unsustained steps in a row.
 | `--rates` | 300,500,700,900,1100 | offered tx/s steps, ascending |
 | `--duration` | 45 | seconds per step, warm-up included |
 | `--warmup` | 10 | seconds at the start of each step excluded from the figures |
+| `--startup-wait` | 20 | seconds to wait after the nodes report ready before the first transaction; one retry follows if it still does not get through |
 | `--settle` | 5 | seconds of quiet between steps |
 | `--users` | 1000 | distinct users; use more if a step reports dropped arrivals |
 | `--contract` | `no-write` | `no-write` (reads) or `returner` (writes) |
@@ -136,8 +149,8 @@ Playwright and Puppeteer caches; the HTML is kept beside it if none is found.
 
 Run it on a quiet machine and say so on the page: the figures are for the
 machine they were measured on, and a shared development PC understates a
-dedicated server. A first-transaction timeout while the network starts (see the
-cold-start tool) ends the run with exit status 2 before any step; run it again.
+dedicated server. A freshly started network can take a moment to settle, so the tool waits
+`--startup-wait` seconds before the first transaction and retries it once.
 
 ## Cold start
 

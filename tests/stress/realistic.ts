@@ -25,6 +25,7 @@ const SPECS: FlagSpec[] = [
   { name: "rates", type: "string", default: "300,500,700,900,1100", description: "offered tx/s steps, comma separated, ascending" },
   { name: "duration", type: "number", default: 45, description: "seconds per step, warm-up included" },
   { name: "warmup", type: "number", default: 10, description: "seconds at the start of each step excluded from the figures" },
+  { name: "startup-wait", type: "number", default: 20, description: "seconds to wait after the nodes report ready before the first transaction (a freshly started network can take a moment to settle)" },
   { name: "settle", type: "number", default: 5, description: "seconds of quiet between steps" },
   { name: "users", type: "number", default: 1000, description: "distinct users (each with its own key and stream); a user is not used again while its previous transaction is in flight" },
   { name: "contract", type: "string", default: "no-write", choices: ["no-write", "returner"], description: "no-write: validates and returns, writes no state; returner: writes a message onto the user's stream" },
@@ -76,7 +77,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
   const env = environment();
   const maxUsers = f.users;
   const perWorker = Math.ceil(maxUsers / f.workers);
-  const estMin = (rates.length * (f.duration + f.settle) + 60 + maxUsers / 400) / 60;
+  const estMin = (rates.length * (f.duration + f.settle) + 60 + f.startupWait + maxUsers / 400) / 60;
   console.log(`stress:realistic: ${f.nodes} nodes, steps ${rates.join(", ")} tx/s, ${f.duration}s each (${f.warmup}s warm-up), ${maxUsers} users, ${f.joinPct}% joins`);
   console.log(`about ${estMin.toFixed(1)} minutes; results in ${out}`);
   if (f.dryRun) return 0;
@@ -96,7 +97,16 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
 
   await withNetwork({ nodeCount: f.nodes, basePort: f.basePort, readyTimeoutMs: 90000, config: f.nodeConfig ? JSON.parse(f.nodeConfig) : undefined }, async (_h, nodes) => {
     const handles = () => nodes.map((n) => ({ index: n.index, pid: n.child.pid!, dataDir: n.dataDir }));
-    const workload = await setupWorkload(nodes, f.contract, 0);
+    if (f.startupWait > 0) {
+      console.log(`waiting ${f.startupWait}s for the network to settle ...`);
+      await sleep(f.startupWait * 1000);
+    }
+    // One retry: the very first transaction on a fresh network can still time out
+    const workload = await setupWorkload(nodes, f.contract, 0).catch(async (e) => {
+      console.log(`  first transaction did not get through (${String(e && e.message ? e.message : e).slice(0, 80)}); trying once more in 10s`);
+      await sleep(10000);
+      return setupWorkload(nodes, f.contract, 0);
+    });
     console.log(`onboarding ${maxUsers} users over ${f.workers} threads ...`);
     const t0 = Date.now();
     const workers: Worker[] = [];

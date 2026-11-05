@@ -6,7 +6,7 @@
  * a node that stored something different from its neighbours is a consensus
  * bug in whichever build wrote the file.
  *
- *   npm run test:behaviour -- --out /tmp/candidate.json
+ *   npm run test:behaviour -- --out /tmp/candidate.json [--startup-wait 20]
  *
  * Not part of npm test (it boots a network and takes about a minute).
  */
@@ -92,6 +92,11 @@ async function main() {
   let nodes: NetworkNode[] = [];
   try {
     nodes = await harness.start();
+    // A freshly started network can take a moment to settle (a node a little behind,
+    // a first transaction that times out); wait before the scenario begins
+    const wait = process.argv.includes("--startup-wait") ? Number(process.argv[process.argv.indexOf("--startup-wait") + 1]) : 20;
+    console.log(`  waiting ${wait}s for the network to settle`);
+    await sleep(wait * 1000);
     const url = (i: number) => nodes[i % nodes.length].baseUrl;
 
     // Setup: an admin, a namespace, two contracts and four users
