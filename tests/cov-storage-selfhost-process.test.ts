@@ -786,18 +786,11 @@ describe("Storage process /events and longpoll feeds (selfhost)", function () {
       bad?.cleanup();
     });
 
-    // _changes reads the sequence entries without opening the database
-    // itself, so another request has to have opened it first
-    beforeEach(async () => {
-      expect((await bad.req("GET", "/activeledger")).status).to.equal(200);
-    });
-
     it("answers a longpoll with a 500 carrying the error", async () => {
       const st = await openStream(bad.port, "/activeledger/_changes?feed=longpoll&since=1");
       try {
         await st.until(() => st.ended());
-        // (the status line is already sent as 200 by then, so only the body
-        // is a reliable signal of the failure)
+        expect(st.status).to.equal(500);
         const body = JSON.parse(st.body());
         expect(body).to.have.property("error").that.is.a("string");
         expect(body.results).to.equal(undefined);

@@ -757,9 +757,18 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
           // any client ever got as far as trying to parse a body - so nothing
           // ever actually exercised this branch successfully until all of
           // them were fixed together.
-          res.cork(() => {
+          // uWS needs the status line before any header, and the first write
+          // sends them both, so the headers are written by whichever branch
+          // below starts the response - after the status is known. Written up
+          // front (as this used to) the error branch could only set its 500
+          // after the 200 was already committed.
+          let headSent = false;
+          const writeHead = (status?: string) => {
+            if (headSent) return;
+            headSent = true;
+            if (status) res.writeStatus(status);
             res.writeHeader("Content-type", ActiveHttpd.mimeType[".json"]);
-          });
+          };
 
           // Read Type
           incoming.query.live = incoming.query.continuous = false;
@@ -768,6 +777,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
             if (complete.results.length) {
               if (res.writable) {
                 res.cork(() => {
+                  writeHead();
                   res.write(JSON.stringify(complete));
                   res.end();
                 });
@@ -778,6 +788,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
               // mimicking CouchDB, start sending the JSON immediately
               if (res.writable) {
                 res.cork(() => {
+                  writeHead();
                   res.write('{"results":[\n');
                 });
               }
@@ -916,7 +927,9 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
             // of leaving it hanging or silently swallowed.
             if (res.writable) {
               res.cork(() => {
-                res.writeStatus("500");
+                // Only possible while nothing has been sent; a body already
+                // streaming keeps its 200 and just ends with the error
+                writeHead("500");
                 res.write(JSON.stringify({ error: String(error) }));
                 res.end();
               });
