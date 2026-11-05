@@ -477,7 +477,10 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     // If getting revision we need sequence
     if (revision) {
       try {
-        return await db.getSeq(rootDoc.rev_map[revision]);
+        return await db.getSeq(
+          // Sequence keys are 16 digit padded; rev_map holds the plain number
+          String(rootDoc.rev_map[revision]).padStart(16, "0")
+        );
       } catch (e) {
         throw new Error("Revision Fetch Failed");
       }
