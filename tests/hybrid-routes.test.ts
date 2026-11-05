@@ -39,10 +39,14 @@ const otherKp = new ActiveCrypto.KeyPair("rsa");
 const otherPem = otherKp.generate().pub.pkcs8pem;
 const otherHash = ActiveCrypto.keyHash(otherPem);
 
-let clock = Date.now();
+let clock = 0;
 const sign = (pair = kp, hash = keyHash) => {
-  // Every request needs its own timestamp: a repeat is refused as a replay
-  const r = ActiveCrypto.signRequest(pair, hash, ++clock);
+  // Every request needs its own timestamp (a repeat is refused as a replay) and
+  // a fresh one: mocha loads every test file before running any, so a clock read
+  // once at load time would be older than the server's 60 s window by the time a
+  // long suite reaches these tests. Strictly increasing, and never behind now.
+  clock = Math.max(clock + 1, Date.now());
+  const r = ActiveCrypto.signRequest(pair, hash, clock);
   return { "x-hybrid-key": r.key, "x-hybrid-timestamp": String(r.timestamp), "x-hybrid-signature": r.signature };
 };
 
