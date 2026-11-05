@@ -12,7 +12,8 @@ export function requestJson(
   url: string,
   method: string,
   body?: unknown,
-  timeoutMs = 20000
+  timeoutMs = 20000,
+  agent?: http.Agent
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
@@ -24,6 +25,7 @@ export function requestJson(
         path: target.pathname + target.search,
         method,
         timeout: timeoutMs,
+        agent,
         headers: data
           ? { "Content-Type": "application/json", "Content-Length": data.length }
           : undefined,
