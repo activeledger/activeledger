@@ -12,11 +12,11 @@ describe("release timings (how long a finished transaction is kept)", () => {
     tail(undefined);
   });
 
-  it("keeps today's values when nothing is configured: 1 minute whole, then 2 minutes", () => {
+  it("keeps the defaults when nothing is configured: 1 minute whole, then a 10 second tail", () => {
     hold(undefined);
     tail(undefined);
     expect(releaseHoldMs()).to.equal(60_000);
-    expect(releaseTailMs()).to.equal(120_000);
+    expect(releaseTailMs()).to.equal(10_000);
   });
 
   it("uses the configured seconds, and 0 is allowed", () => {
@@ -36,7 +36,7 @@ describe("release timings (how long a finished transaction is kept)", () => {
       hold(bad);
       tail(bad);
       expect(releaseHoldMs(), String(bad)).to.equal(60_000);
-      expect(releaseTailMs(), String(bad)).to.equal(120_000);
+      expect(releaseTailMs(), String(bad)).to.equal(10_000);
     }
   });
 
