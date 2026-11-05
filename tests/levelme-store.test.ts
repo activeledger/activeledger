@@ -818,3 +818,36 @@ for (const cacheOn of [false, true]) describe(`LevelMe store behaviour (Activest
     });
   });
 });
+
+describe("LevelDB memory settings (Activestorage)", () => {
+  it("opens and serves reads and writes with sizes set from the environment", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-leveldb-mem-"));
+    const before = [process.env.ACTIVE_LEVEL_WRITE_BUFFER_MB, process.env.ACTIVE_LEVEL_CACHE_MB];
+    process.env.ACTIVE_LEVEL_WRITE_BUFFER_MB = "8";
+    process.env.ACTIVE_LEVEL_CACHE_MB = "16";
+    const db = new LevelMe(dir + path.sep, "levelmemory1", "level");
+    try {
+      await db.bulkDocs([{ _id: "m-1", v: 1 }] as any, { new_edits: true });
+      expect((await db.get("m-1")).v).to.equal(1);
+    } finally {
+      await db.close();
+      if (before[0] === undefined) delete process.env.ACTIVE_LEVEL_WRITE_BUFFER_MB; else process.env.ACTIVE_LEVEL_WRITE_BUFFER_MB = before[0];
+      if (before[1] === undefined) delete process.env.ACTIVE_LEVEL_CACHE_MB; else process.env.ACTIVE_LEVEL_CACHE_MB = before[1];
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("opens with the defaults when the environment says nothing or nonsense", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "activeledger-leveldb-mem-"));
+    process.env.ACTIVE_LEVEL_CACHE_MB = "banana";
+    const db = new LevelMe(dir + path.sep, "levelmemory2", "level");
+    try {
+      await db.bulkDocs([{ _id: "m-2", v: 2 }] as any, { new_edits: true });
+      expect((await db.get("m-2")).v).to.equal(2);
+    } finally {
+      await db.close();
+      delete process.env.ACTIVE_LEVEL_CACHE_MB;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

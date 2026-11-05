@@ -271,7 +271,18 @@ describe("ActiveDataStore (Activestorage)", () => {
       "rocksdb",
       "10.0.0.5",
     ]);
-    expect(spawned[0].opts).to.deep.equal({ stdio: "inherit" });
+    expect(spawned[0].opts.stdio).to.equal("inherit");
+    // The storage process inherits the environment and, with nothing set in
+    // the config, is not told any LevelDB sizes (it has its own defaults)
+    expect(spawned[0].opts.env.ACTIVE_LEVEL_WRITE_BUFFER_MB).to.equal(process.env.ACTIVE_LEVEL_WRITE_BUFFER_MB);
+    expect(spawned[0].opts.env.ACTIVE_LEVEL_CACHE_MB).to.equal(process.env.ACTIVE_LEVEL_CACHE_MB);
+  });
+
+  it("passes db.selfhost.writeBufferMb and cacheMb to the storage process", () => {
+    setDb({ dir: "d", port: 5987, writeBufferMb: 128, cacheMb: 512 });
+    new ActiveDataStore().launch();
+    expect(spawned[0].opts.env.ACTIVE_LEVEL_WRITE_BUFFER_MB).to.equal("128");
+    expect(spawned[0].opts.env.ACTIVE_LEVEL_CACHE_MB).to.equal("512");
   });
 
   it("defaults the engine to level and binds to loopback", () => {

@@ -20,6 +20,8 @@ Memory reached its plateau after about five minutes and did not grow over a 25 m
 | Key | Default | What it changes |
 |---|---|---|
 | `db.selfhost.cache` | `false` | A 30 second read cache on the ledger database. |
+| `db.selfhost.writeBufferMb` | `64` | LevelDB write buffer per database (LevelDB's own default is 4). Resident memory grows as it fills. |
+| `db.selfhost.cacheMb` | `256` | LevelDB block cache per database (LevelDB's own default is 8). Used up to this size and no more. |
 | `worker_semi_space` | `0` (off) | The size of each worker's young generation, in MB. |
 | `cpus` | physical cores | How many workers run contracts. |
 | `autostart.restore` | `true` | Whether the restore engine runs beside the node. |
