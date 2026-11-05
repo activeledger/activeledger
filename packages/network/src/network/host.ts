@@ -2474,16 +2474,20 @@ export class Host extends Home {
 
         // Write Header 
         // All outputs are JSON and
+        // The client's answer goes first; the timing line is only a log and
+        // is written (a synchronous console write) once it has been sent.
+        let logRR: (() => void) | undefined;
         if (data.$umid) {
           ActiveTiming.mark(data.$umid, "http.out");
           const TT = Date.now() - started;
           if (TT > 5) {
             // Only output if umid reduce internal 0ms spam (brtoadcast has to respond now for SPI)
-            ActiveLogger.info(
-              `[RR] ${data.$umid ? data.$umid : "No Umid"
-              } : S=${started}, TT=${TT}ms ${TT > 30000 ? "TTLR" : " OK"
-              }`
-            );
+            logRR = () =>
+              ActiveLogger.info(
+                `[RR] ${data.$umid ? data.$umid : "No Umid"
+                } : S=${started}, TT=${TT}ms ${TT > 30000 ? "TTLR" : " OK"
+                }`
+              );
           }
         }
 
@@ -2492,8 +2496,9 @@ export class Host extends Home {
         // answered early with "{}" and marked unwritable) and would discard
         // the body, so don't pay to stringify it. Keep this condition
         // identical to writeResponse()'s own guard. The $encrypt branch, the
-        // http.out mark and the [RR] log above still run.
+        // http.out mark and the [RR] log still run.
         if (!res || !res.writable) {
+          logRR?.();
           return;
         }
 
@@ -2503,6 +2508,7 @@ export class Host extends Home {
           JSON.stringify(data),
           gzipAccepted
         );
+        logRR?.();
       })
       .catch((error: any) => {
         // Write Header
