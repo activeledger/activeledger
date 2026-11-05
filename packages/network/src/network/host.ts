@@ -46,6 +46,7 @@ import { Locker } from "./locker";
 import { PhysicalCores } from "./cpus";
 import { workerExecArgv } from "./workerheap";
 import { reportedUpdatedStreams } from "./updatedstreams";
+import { changedNodes } from "./nodedelta";
 import * as process from "process";
 import {
   App,
@@ -145,6 +146,8 @@ interface process {
   responded: boolean;
   shutdown?: boolean;
   broadcasting?: boolean;
+  /** signatures of the node responses already forwarded to the worker (see nodedelta.ts) */
+  sentNodes?: { [reference: string]: string };
 }
 
 /**
@@ -492,13 +495,21 @@ export class Host extends Home {
               );
               // A client resubmission has no $nodes, it isn't a peer broadcast
               if (processor && entry.$nodes) {
-                processor.send({
-                  type: "broadcast",
-                  data: {
-                    umid: entry.$umid,
-                    nodes: entry.$nodes,
-                  },
-                });
+                // Only what the worker has not been told already (and nothing
+                // at all for a repeat of the last vote)
+                const news = changedNodes(
+                  entry.$nodes,
+                  (this.processPending[entry.$umid].sentNodes ||= {})
+                );
+                if (news) {
+                  processor.send({
+                    type: "broadcast",
+                    data: {
+                      umid: entry.$umid,
+                      nodes: news,
+                    },
+                  });
+                }
               } else {
                 // Not found, Lets just return the umid anyway it may confirm or will timeout
               }
