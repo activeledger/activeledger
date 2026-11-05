@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - throughput
+          - realistic
           - cold-start
           - memory
         default: throughput
@@ -30,7 +31,7 @@ on:
           - full
         default: quick
       args:
-        description: Extra flags for the tool, e.g. "--runs 40" or "--nodes 4 --clients 16" (see --help)
+        description: Extra flags for the tool, e.g. "--runs 40", "--nodes 4 --clients 16" or, for realistic, "--rates 500,700 --pdf stress-results/tps.pdf" (see --help)
         type: string
         default: ""
       label:

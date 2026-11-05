@@ -1,7 +1,7 @@
-# The four tools and their flags
+# The five tools and their flags
 
 Each tool takes `--help`, which prints the same flags with their defaults. All
-three network tools also take the [common flags](#common-flags). For what the
+four network tools also take the [common flags](#common-flags). For what the
 profiles do and how to read the output, see [Stress tests](index.md).
 
 ## Throughput
@@ -45,6 +45,99 @@ with the default onboard contract.
 In duration mode transactions are signed just before they are sent, which is
 cheap beside a network round trip. In `--tx-per-client` mode they are signed
 first, outside the timed section.
+
+## Realistic users (peak throughput)
+
+```
+npm run stress:realistic -- --pdf tps.pdf
+npm run stress:realistic -- --contract no-write --rates 300,500,700,900,1100,1300 --out stress-results/reads.jsonl
+npm run stress:realistic -- --contract returner --rates 300,500,600,700,800,900 --out stress-results/writes.jsonl
+npm run stress:realistic -- --from stress-results/reads.jsonl,stress-results/writes.jsonl --pdf tps.pdf
+```
+
+Answers "what rate can this network confirm?", which the closed-loop
+[throughput](#throughput) tool cannot: that one lets the clients set the pace,
+so a slow network just looks like a slow test. This one **offers a fixed rate
+whether or not earlier transactions have been answered** (open loop), steps
+through a ladder of rates, and reports for each step how many transactions the
+network confirmed (committed, final) and how long users waited. A network that
+cannot keep up shows as confirmed below offered, with latency climbing, instead
+of as a quietly longer run.
+
+How it loads the network:
+
+* a pool of `--users` distinct users, each with its own key and stream, all
+  onboarded before the first step. A user is not picked again while its previous
+  transaction is in flight, and there is no per-user rate limit
+* arrivals are random (Poisson) at the step's rate, spread over `--workers`
+  generator threads, entering at the nodes in turn
+* every transaction is **signed in advance**, before the step's clock starts:
+  signing costs about 0.7 ms and a real client does it on its own hardware, so
+  it should not take the machine's CPU away from the nodes. Each is unique and
+  the nodes still verify every signature
+* connections are kept alive and capped per node, as a load balancer would. A
+  new connection per request runs the machine out of local ports (`EADDRNOTAVAIL`)
+  at a few hundred requests a second and measures the tool, not the network
+
+`--contract no-write` is a contract that validates and returns without writing
+state (checks and lookups: the **reads** figure); `--contract returner` writes
+a message onto the user's own stream (the **writes** figure). `--join-pct`
+mixes in new users joining (onboards).
+
+A step is **sustained** if the network confirmed at least `--sustain-pct` of the
+offered rate, no more than `--max-fail-pct` of transactions failed, and p99
+latency stayed under `--max-p99-ms`. The climb stops after `--stop-after`
+unsustained steps in a row.
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--nodes` | 4 | nodes in the network |
+| `--rates` | 300,500,700,900,1100 | offered tx/s steps, ascending |
+| `--duration` | 45 | seconds per step, warm-up included |
+| `--warmup` | 10 | seconds at the start of each step excluded from the figures |
+| `--settle` | 5 | seconds of quiet between steps |
+| `--users` | 1000 | distinct users; use more if a step reports dropped arrivals |
+| `--contract` | `no-write` | `no-write` (reads) or `returner` (writes) |
+| `--join-pct` | 5 | percent of arrivals that are a new user joining |
+| `--workers` | 6 | load-generator threads |
+| `--sustain-pct` | 97 | sustained: at least this percent of the offered rate confirmed |
+| `--max-fail-pct` | 0.5 | ... and no more than this percent failed |
+| `--max-p99-ms` | 3000 | ... and p99 under this |
+| `--stop-after` | 2 | stop climbing after this many unsustained steps in a row |
+| `--node-config` | none | JSON merged into every node's `config.json` (for an A/B of a setting) |
+| `--pdf` | none | write a one page PDF summary |
+| `--from` | none | do not run: build `--pdf` from results file(s); a reads file and a writes file separated by a comma give two headlines |
+
+A step takes `--duration` plus `--settle` seconds, and the tool needs a minute
+or two to start the network and onboard the users, so the default ladder takes
+about six minutes. The common flags apply, except that `--profile` does nothing
+here: the ladder is set by `--rates` and `--duration`.
+
+**Reading the output.** Each step prints what was offered, what was confirmed,
+the failure rate, p50 and p99, and the load average before and after. The
+results file also holds CPU cores per role (host, storage, workers), so you can
+see which process runs out first: each node's host is one thread, so about one
+core per node is its ceiling. Two notes the tool prints matter:
+
+* *arrivals were dropped because every user already had a transaction in
+  flight*: the network was saturated and the pool ran dry. Confirmed tx/s is
+  still its real throughput, but use more `--users` to see how it fails
+* *the generator's own timer ran late*: the machine was too busy to offer that
+  rate cleanly, and the step understates the network
+
+**The PDF** is one A4 page for someone who will not read the numbers: a headline
+for reads and for writes (the highest sustained step, with the latency 99% of
+transactions beat), a table of confirmed tx/s by rate, a chart and four short
+caveats. Only steps the network held are shown; a rate with no result shows
+N/A. Confirmed is shown as what the network committed, never above what was
+sent (the difference is timing noise at the edges of the window). It is printed
+by a headless Chrome or Chromium, found from `CHROME_BIN`, the `PATH`, or the
+Playwright and Puppeteer caches; the HTML is kept beside it if none is found.
+
+Run it on a quiet machine and say so on the page: the figures are for the
+machine they were measured on, and a shared development PC understates a
+dedicated server. A first-transaction timeout while the network starts (see the
+cold-start tool) ends the run with exit status 2 before any step; run it again.
 
 ## Cold start
 

@@ -4,7 +4,7 @@ The stress tools are a third kind of test, for people who change Activeledger
 itself. They boot real nodes on one machine, push load through them and
 **report values**. This page says how they differ from the other tests, which
 profile to pick, how to read what they print and how to compare two builds.
-[The four tools and their flags](tools.md) lists every flag.
+[The five tools and their flags](tools.md) lists every flag.
 
 ## How this differs from `npm test` and `test:network`
 
@@ -51,7 +51,7 @@ difference, a rare failure or slow growth.
 
 ## Profiles
 
-Every network tool takes `--profile quick|standard|full`, or the environment
+Every network tool except `stress:realistic` (which is set by its `--rates` and `--duration`) takes `--profile quick|standard|full`, or the environment
 variable `STRESS_PROFILE`. The default is `quick`. A flag you give on the
 command line overrides what the profile sets. `--dry-run` prints what a profile
 would do, with an estimate of the time, without starting anything.
