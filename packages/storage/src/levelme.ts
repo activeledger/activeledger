@@ -168,24 +168,6 @@ export class LevelMe {
 
 
   /**
-   * Attempts to fetch document, If fails returns default
-   *
-   * @private
-   * @template T
-   * @param {string} document
-   * @param {T} defaultvalue
-   * @returns
-   */
-  private async levelUpGet<T>(document: string, defaultvalue: T) {
-    try {
-      await this.open();
-      return (await this.driver.get(document)) as unknown as T;
-    } catch {
-      return defaultvalue;
-    }
-  }
-
-  /**
    * Jump straight to the cached wining branch end
    *
    * @private

@@ -472,13 +472,6 @@ export class PermissionsChecker {
    * @returns {void}
    */
   private signatureCheck(streamId: string, filteredStreamId: string, stream: ActiveDefinitions.LedgerStream, nhpkCheck: boolean, nhpkCheckIO: ActiveDefinitions.LedgerIORputs, reject: (value?: any) => void): void {
-    const sigCheck = (authority: ActiveDefinitions.ILedgerAuthority): boolean =>
-      this.shared.signatureCheck(
-        authority.public,
-        this.entry.$sigs[filteredStreamId] as string,
-        authority.type
-      );
-
     const signatureContainer = this.entry.$sigs[filteredStreamId];
 
     if (ActiveDefinitions.LedgerTypeChecks.isLedgerAuthSignatures(signatureContainer)) {

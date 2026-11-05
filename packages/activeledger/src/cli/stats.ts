@@ -259,20 +259,6 @@ export class StatsHandler {
   }
 
   /**
-   * Possible future extension
-   *
-   * @private
-   * @returns {Promise<number>}
-   */
-  private async getIO(): Promise<number> {
-    if (os.type() !== "Windows_NT") {
-      return 1;
-    } else {
-      return 0;
-    }
-  }
-
-  /**
    * Check for the stats file
    *
    * @private

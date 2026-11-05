@@ -345,25 +345,6 @@ export class Process extends EventEmitter {
    *
    */
   public destroy(umid: string): void {
-    // Record un commited transactions as an error
-    // No longer needed with "trust the network"
-    // Keeping as comments for reference as we may need it but should already have an error log
-    // try {
-    //   if (!this.nodeResponse.commit) {
-    //     this.shared.raiseLedgerError(
-    //       1600,
-    //       new Error("Failed to commit before timeout"),
-    //       true
-    //     );
-    //   }
-    // } catch (e) {
-    //   // Something is wrong with node response, Lets still log and continue
-    //   this.shared.raiseLedgerError(
-    //     1605,
-    //     new Error("Failed to commit lacking this node response"),
-    //     true
-    //   );
-    // }
 
     if (this.localOnly) {
       // Nothing waits on a dry run; phases still in flight after its
@@ -1004,32 +985,6 @@ export class Process extends EventEmitter {
     if (!node || this.isCommiting()) {
       return;
     }
-
-    // Just wamring up (This should be an object so uselss being herE?)
-    // Actually think this will never run like this, Where is it actually filtered? (I think on send!)
-    // if (node.early) {
-    //   // Copy paste testing
-    //   // if (!this.nodeResponse.vote && this.broadcastTimeout) {
-    //   //   clearInterval(this.broadcastTimeout);
-    //   //   this.broadcastTimeout = setTimeout(
-    //   //     () => {
-    //   //       if (!this.isCommiting()) {
-    //   //         // Entire Network didn't reach consensus in time
-    //   //         ActiveLogger.debug("VM Commit Failure, NETWORK Timeout");
-    //   //         return this.shared.raiseLedgerError(
-    //   //           1510,
-    //   //           new Error(
-    //   //             "Failed Network Voting Timeout - Voters Timed Out"
-    //   //           )
-    //   //         );
-    //   //       }
-    //   //     },
-    //   //     // Longer timeout to allow for longer voting round
-    //   //     BROADCAST_TIMEOUT_EARLY
-    //   //   );
-    //   // }
-    //   return;
-    // }
 
     // Don't overwrite self
     if (node[this.reference]) {
