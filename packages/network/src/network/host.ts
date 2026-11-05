@@ -145,6 +145,8 @@ interface process {
   shutdown?: boolean;
   /** Only this node's answer is kept, see voteonly.ts */
   voteOnly?: boolean;
+  /** Set when released, so its timers only act on this record and not a later one under the same umid */
+  token?: object;
   broadcasting?: boolean;
   /** signatures of the node responses already forwarded to the worker (see nodedelta.ts) */
   sentNodes?: { [reference: string]: string };
@@ -1516,6 +1518,7 @@ export class Host extends Home {
         this.reference,
         pending.pid
       );
+      this.processPending[umid].token = pending.token;
     }
   }
 
@@ -2016,11 +2019,17 @@ export class Host extends Home {
       // node's answer is kept for the rest of the hold.
       const hold = releaseHoldMs();
       const stub = releaseStubMs();
+      // A forced restart can put a new record under this umid before these
+      // fire, they must leave it alone
+      const token = (this.processPending[umid].token ||= {});
+      const mine = () => this.processPending[umid]?.token === token;
       if (stub < hold) {
-        setTimeout(() => this.keepVoteOnly(umid), stub);
+        setTimeout(() => mine() && this.keepVoteOnly(umid), stub);
       }
       setTimeout(() => {
-        this.destroy(umid);
+        if (mine()) {
+          this.destroy(umid);
+        }
       }, hold);
 
       // Re-check the queue now that these locks are free.
