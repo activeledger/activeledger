@@ -50,6 +50,7 @@ describe("FeedSession end conditions (cov)", () => {
     await s.start();
     expect(events.map((e) => e.type)).to.deep.equal(["heartbeat"]);
     expect(stops).to.equal(1);
+    expect((s as any).timer, "a stopped session must not keep a poll timer").to.equal(undefined);
     s.stop();
     expect(stops).to.equal(1);
   });
@@ -72,6 +73,7 @@ describe("FeedSession end conditions (cov)", () => {
     expect(events).to.deep.equal([{ type: "error", error: "not authorised" }]);
     expect(heads).to.equal(0);
     expect(stops).to.equal(1);
+    expect((s as any).timer, "a stopped session must not keep a poll timer").to.equal(undefined);
     s.stop();
   });
 });
