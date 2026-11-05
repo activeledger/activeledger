@@ -16,7 +16,7 @@ npm run build
 ```
 
 ## Stress tests
-`npm run stress:throughput`, `stress:cold-start`, `stress:memory` and
+`npm run stress:throughput`, `stress:realistic`, `stress:cold-start`, `stress:memory` and
 `stress:compare` measure throughput, start-up reliability and memory on a real
 local network. They never run in `npm test`. Run the quick profile before and
 after a change to the peer-to-peer or consensus path, storage or worker

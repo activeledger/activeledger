@@ -176,6 +176,7 @@ A third, different kind of test: tools that measure and report rather than pass 
 
 ```bash
 npm run stress:throughput  # tx/s and latency on 1, 4 or 8 nodes
+npm run stress:realistic   # what rate a network confirms: stepped open-loop load from many users, with a one page PDF
 npm run stress:cold-start  # how often a fresh, staggered start leaves a node behind
 npm run stress:memory      # memory and CPU per role, and growth per 10k transactions
 npm run stress:compare     # two result files, and whether the candidate is worse beyond the spread
