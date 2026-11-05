@@ -618,6 +618,22 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
         expect(timers.length).to.equal(before);
       });
 
+      it("leave a new record under the same umid alone (forced restart)", () => {
+        const host = released("vs-5");
+        const destroyed: string[] = [];
+        host.destroy = (u: string) => destroyed.push(u);
+        // The transaction is restarted: a fresh record replaces the released one
+        const fresh = entry("vs-5");
+        addPending(host, fresh);
+
+        timers.find((t) => t.ms === 5_000)!.fn();
+        timers.find((t) => t.ms === 60_000)!.fn();
+
+        expect(host.processPending["vs-5"].entry).to.equal(fresh);
+        expect(host.processPending["vs-5"].voteOnly).to.equal(undefined);
+        expect(destroyed).to.deep.equal([]);
+      });
+
       it("is skipped when it would not come before the hold ends", () => {
         ActiveOptions.set("releaseStubSeconds", 60);
         try {
