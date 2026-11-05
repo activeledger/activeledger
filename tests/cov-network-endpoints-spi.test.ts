@@ -257,6 +257,37 @@ describe("Non-origin SPI repair paths (cov)", () => {
       expect(s.bulk).to.have.length(0);
     });
 
+    describe("a waiting unanimous transaction is always answered", () => {
+      const answered = async (o: Opts) => {
+        const s = setup({ unanimous: true, ...o });
+        const reply = await Promise.race([
+          Endpoints.InternalInitalise(s.host, s.entry, "10.0.0.2"),
+          new Promise((r) => setTimeout(() => r("NEVER ANSWERED"), 300)),
+        ]);
+        return { s, reply: reply as any };
+      };
+      const cases: [string, Opts][] = [
+        ["a non position failure", { meError: "Some other failure" }],
+        ["a plain position error nobody else committed", { nodes: { me: { vote: false, commit: false, error: "Output Position Incorrect" }, b: { vote: false, commit: false } } }],
+        ["no stream to check", { tx: { $contract: "c".repeat(64), $i: { short: {} }, $o: {} } }],
+      ];
+      for (const [name, o] of cases) {
+        it("when the response is " + name, async () => {
+          const { s, reply } = await answered(o);
+          expect(reply).to.not.equal("NEVER ANSWERED");
+          expect(reply.statusCode).to.equal(200);
+          expect(s.released.map((r: any) => r[0])).to.deep.equal([s.entry.$umid]);
+        });
+      }
+      it("when the umid was already rewritten", async () => {
+        const first = setup({ id: "r".repeat(64), known: true, entry: { $umid: "rw-umid", $tx: {}, $broadcast: true, $unanimous: false } });
+        await Endpoints.InternalInitalise(first.host, first.entry, "10.0.0.2");
+        await settle(5);
+        const { reply } = await answered({ id: "r".repeat(64), known: true, entry: { $umid: "rw-umid", $tx: {}, $broadcast: true, $unanimous: true } });
+        expect(reply).to.not.equal("NEVER ANSWERED");
+      });
+    });
+
     it("leaves the release to the owner when told not to release", async () => {
       const { s } = await run({ meError: "Some other failure", dontRelease: true });
       expect(s.released).to.deep.equal([]);
