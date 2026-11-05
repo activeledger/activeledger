@@ -34,6 +34,7 @@ const SPECS: FlagSpec[] = [
   { name: "max-fail-pct", type: "number", default: 0.5, description: "... and no more than this percent of transactions failed" },
   { name: "max-p99-ms", type: "number", default: 3000, description: "... and p99 latency stayed under this" },
   { name: "stop-after", type: "number", default: 2, description: "stop climbing after this many unsustained steps in a row" },
+  { name: "node-config", type: "string", description: "JSON merged into every node's config.json before it starts, e.g. '{\"debug\":false}' (recorded in the results)" },
   { name: "pdf", type: "string", description: "write a one page PDF summary to this path" },
   { name: "from", type: "string", description: "do not run: build the --pdf from an existing results file" },
   ...COMMON_FLAGS,
@@ -84,7 +85,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
   const loadStart = loadNow();
   appendRecord(out, {
     tool: "realistic", kind: "meta", ts: new Date().toISOString(), label: f.label, group: "meta", ...env,
-    nodes: f.nodes, rates, durationSec: f.duration, warmupSec: f.warmup, joinPct: f.joinPct, contract: f.contract, sustainPct: f.sustainPct, maxFailPct: f.maxFailPct, maxP99Ms: f.maxP99Ms,
+    nodes: f.nodes, rates, durationSec: f.duration, warmupSec: f.warmup, joinPct: f.joinPct, contract: f.contract, nodeConfig: f.nodeConfig, sustainPct: f.sustainPct, maxFailPct: f.maxFailPct, maxP99Ms: f.maxP99Ms,
     users: maxUsers, workers: f.workers, cpuModel: os.cpus()[0] && os.cpus()[0].model, totalMemGb: +(os.totalmem() / 2 ** 30).toFixed(1),
     gateQuiet: gateResult ? gateResult.quiet : undefined, loadStart,
   });
@@ -93,7 +94,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
   let status = 0;
   const records: any[] = [];
 
-  await withNetwork({ nodeCount: f.nodes, basePort: f.basePort, readyTimeoutMs: 90000 }, async (_h, nodes) => {
+  await withNetwork({ nodeCount: f.nodes, basePort: f.basePort, readyTimeoutMs: 90000, config: f.nodeConfig ? JSON.parse(f.nodeConfig) : undefined }, async (_h, nodes) => {
     const handles = () => nodes.map((n) => ({ index: n.index, pid: n.child.pid!, dataDir: n.dataDir }));
     const workload = await setupWorkload(nodes, f.contract, 0);
     console.log(`onboarding ${maxUsers} users over ${f.workers} threads ...`);
