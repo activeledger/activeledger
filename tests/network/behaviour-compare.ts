@@ -12,7 +12,21 @@ if (!a || !b) {
   console.error("usage: behaviour-compare <release.json> <candidate.json>");
   process.exit(2);
 }
-const load = (f: string): { name: string; result: any }[] => JSON.parse(fs.readFileSync(f, "utf8")).steps;
+/**
+ * What differs between two runs of the same build and so is not a difference:
+ * a millisecond timestamp the engine appends to some error texts, and, for the
+ * step that fires eight transactions at one stream at once, which refusals the
+ * race produced (compared by kind: how many nodes lost each way is chance).
+ */
+const quiet = (step: { name: string; result: any }) => {
+  const text = JSON.stringify(step.result).replace(/:\d{12,}/g, ":<ms>");
+  const result = JSON.parse(text);
+  if (step.name === "eight at once on one stream" && Array.isArray(result.refusals)) {
+    result.refusals = [...new Set<string>(result.refusals.map((r: string) => r.replace(/ - Error.*$/, "").replace(/ \(.*$/, "")))].sort();
+  }
+  return { name: step.name, result };
+};
+const load = (f: string): { name: string; result: any }[] => JSON.parse(fs.readFileSync(f, "utf8")).steps.map(quiet);
 const A = load(a);
 const B = load(b);
 let differences = 0;
