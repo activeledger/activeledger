@@ -1,5 +1,66 @@
 # Activeledger Changelog
 
+## [5.1.8]
+
+A throughput release. Nothing in the wire format or the stored document format
+changes: peer frames and stored documents are read by their flag byte, so a
+network can run 5.1.7 and 5.1.8 nodes together while it is upgraded, and a node
+can be rolled back.
+
+Measured on one shared 24-thread development PC with four nodes on it, 200 users
+and a contract that writes state: 5.1.8 confirmed the full 700 tx/s offered with
+a p99 of 82 ms where 5.1.7 confirmed 560 tx/s with a p99 of 577 ms. Reads (a
+contract that writes no state) held 1,100 tx/s with a p99 of 32 ms, and writes
+held 800 tx/s. The nodes used about 10% less CPU per transaction. Dedicated
+hardware should do better. The numbers come from the new `npm run stress:peak`.
+
+### Changed
+- **A client's answer no longer waits for work that does not need to be in it.**
+  The event row is posted after the answer, not before it. A worker that is told
+  to exit (a node being stopped) gives pending rows up to three seconds to reach
+  storage first, so an answered transaction does not lose its row. When hybrid
+  attestations are enabled (build 40300 and later) the old order is kept.
+- **Less work per transaction on the node.** Only votes the worker has not seen
+  are forwarded to it (about a quarter of the messages were repeats, each
+  carrying every node's response). The post-commit history check uses the stream
+  ids the worker reports instead of reading the umid document back, and no longer
+  asks all the peers for a transaction that updated no stream. The contract lock
+  files and the contract path are checked in one round. The transaction is
+  stringified once for its signature checks, the private key is parsed once per
+  key, the system configuration is copied from one snapshot (rebuilt whenever
+  the configuration changes), and one process listener serves all in-flight
+  transactions instead of one each.
+- **Cheaper I/O.** Peer frames and stored documents are gzipped only above 16 KB
+  (5.1.7: above 2 KB), which saved a gzip and a gunzip on the shared threadpool for
+  the ordinary transaction. A write to a new key no longer builds and throws an
+  Error, `bulkDocs` and `getMany` work on their documents together, a plain JSON
+  request body is parsed once instead of through two UTF-8 conversions, and a
+  frame that arrives whole is not copied.
+- **LevelDB has room to work.** The defaults rise from 4 MB of write buffer and
+  8 MB of block cache to **64 MB and 256 MB per database** (the event and error
+  databases, which are never read by key, get a 16 MB cache). They are limits, not
+  reservations: memory is used as the database fills. On a small VM set
+  `db.selfhost.writeBufferMb` and `db.selfhost.cacheMb` lower, in the storage
+  section of `config.json`. Values are capped at 4096. Write durability is
+  unchanged.
+- **A failure that is waiting on late answers settles at once** when a peer's
+  commit has already arrived, where it could wait the full ten seconds for a
+  broadcast that is no longer re-sent. Under contention on one stream a refused
+  transaction may now say "No Quorum" in place of "No More Voters": both are the
+  same refusal, reached a little earlier.
+- An unhandled rejection that arrives with nothing in flight is logged, and one
+  failing handler no longer stops the others from hearing it.
+
+### Added
+- **`npm run stress:peak`** runs the peak load test (reads, then writes, then a
+  one page PDF) and `stress:realistic` for choosing rates. They offer a fixed rate
+  from many users, whether or not earlier transactions were answered, and report
+  what the network confirmed and how long users waited. See the stress tests page.
+- **`npm run test:behaviour`** runs one fixed scenario on a real network and
+  records what a client saw and what every node stored; `test:behaviour:compare`
+  diffs two builds. It is how this release was checked against 5.1.7.
+- `db.selfhost.writeBufferMb` and `db.selfhost.cacheMb` (see above).
+
 ## [5.1.7]
 
 ### Changed
