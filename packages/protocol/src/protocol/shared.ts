@@ -46,6 +46,9 @@ export class Shared {
    */
   public ioLabelMap: any = { i: {}, o: {} };
 
+  private txJsonOf?: unknown;
+  private txJson?: string;
+
   /**
    * Holds reference to inputs there for just sig only
    *
@@ -390,7 +393,13 @@ export class Shared {
       }
 
       // Return Valid or not
-      return key.verify(this.entry.$tx, signature);
+      // The same $tx is checked once per signature; stringify it once. (Nothing
+      // writes to $tx between receipt and the contract, which is when this runs.)
+      if (this.txJsonOf !== this.entry.$tx) {
+        this.txJsonOf = this.entry.$tx;
+        this.txJson = JSON.stringify(this.entry.$tx);
+      }
+      return key.verify(this.txJson as string, signature);
     } catch (error) {
       ActiveLogger.error(error, "Signature Check Error");
       return false;
