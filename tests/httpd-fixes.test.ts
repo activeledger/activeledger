@@ -31,6 +31,8 @@ describe("ActiveHttpd fixes", () => {
   before(async () => {
     httpd = new ActiveHttpd();
     httpd.use("/none", "GET", async () => undefined);
+    httpd.use("/echo", "POST", async (incoming: any) => ({ got: incoming.body }));
+    httpd.use("/echo", "PUT", async (incoming: any) => ({ put: incoming.body }));
     httpd.listen(0);
     await new Promise((r) => setTimeout(r, 200));
     port = us_socket_local_port((httpd as any).listenSocket);
@@ -47,6 +49,31 @@ describe("ActiveHttpd fixes", () => {
 
     it("handler returning nothing answers 404 and completes", async () => {
       expect((await request(port, "GET", "/none")).status).to.equal(404);
+    });
+  });
+
+  describe("POST and PUT body parsing", () => {
+    it("an empty POST or PUT body is an empty object", async () => {
+      const a = await request(port, "POST", "/echo");
+      expect(a.status).to.equal(200);
+      expect(JSON.parse(a.body)).to.deep.equal({ got: {} });
+      const b = await request(port, "PUT", "/echo");
+      expect(JSON.parse(b.body)).to.deep.equal({ put: {} });
+    });
+
+    it("a valid JSON body still parses", async () => {
+      const r = await request(port, "POST", "/echo", JSON.stringify({ a: 1 }));
+      expect(JSON.parse(r.body)).to.deep.equal({ got: { a: 1 } });
+    });
+
+    it("a non-empty body that is not JSON is a 400 with a JSON error, and the server stays up", async () => {
+      for (const method of ["POST", "PUT"]) {
+        const r = await request(port, method, "/echo", "{not json");
+        expect(r.status, method).to.equal(400);
+        expect(r.headers["content-type"]).to.equal("application/json");
+        expect(JSON.parse(r.body).error).to.be.a("string");
+      }
+      expect((await request(port, "POST", "/echo", "{}")).status).to.equal(200);
     });
   });
 });
