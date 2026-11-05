@@ -1166,6 +1166,23 @@ export class Endpoints {
             });
           }
 
+          // Nothing to repair on this path: release the umid, and answer a
+          // $unanimous caller that was held back waiting for a possible SPI
+          // repair (the others were already answered above). Without this
+          // the held-back promise never settled.
+          const releaseAndAnswer = () => {
+            if (!ledger.dontRelease) {
+              host.release(tx.$umid);
+            }
+            if (!resolved) {
+              resolved = true;
+              resolve({
+                statusCode: ledger.status,
+                content: ledger.data,
+              });
+            }
+          };
+
           // Runs the risk of breaking the network
           // Maybe go back to restore for this?
           // Only safe to run if we can get a lock
@@ -1441,27 +1458,19 @@ export class Endpoints {
                         }
                       }
                     } else {
-                      if (!ledger.dontRelease) {
-                        host.release(tx.$umid);
-                      }
+                      releaseAndAnswer();
                     }
                   } else {
-                    if (!ledger.dontRelease) {
-                      host.release(tx.$umid);
-                    }
+                    releaseAndAnswer();
                   }
                   // Faster they're processing without us
                   // Need the delay big files stops the response!
                   //}, 200);
                 } else {
-                  if (!ledger.dontRelease) {
-                    host.release(tx.$umid);
-                  }
+                  releaseAndAnswer();
                 }
               } else {
-                if (!ledger.dontRelease) {
-                  host.release(tx.$umid);
-                }
+                releaseAndAnswer();
               }
             } else {
               if (!ledger.dontRelease) {
@@ -1477,9 +1486,7 @@ export class Endpoints {
               }
             }
           } else {
-            if (!ledger.dontRelease) {
-              host.release(tx.$umid);
-            }
+            releaseAndAnswer();
           }
         })
         .catch((error: any) => {
