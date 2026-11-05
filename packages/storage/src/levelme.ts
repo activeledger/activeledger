@@ -69,6 +69,16 @@ interface schema extends document {
  */
 export class LevelMe {
   /**
+   * Documents are gzipped on write only above this size. The :umid document
+   * carries the whole transaction and its signatures, so a couple of KB is
+   * ordinary, and gzipping each on the libuv threadpool (shared with LevelDB
+   * itself) on write and again on read cost more than the disk it saved: the
+   * database compresses its blocks anyway. Reads see a flag byte, so old and
+   * new documents mix freely.
+   */
+  private static readonly COMPRESS_ABOVE = 16 * 1024;
+
+  /**
    * PouchDb Legacy Support
    * Database metadata key
    *
@@ -642,7 +652,7 @@ export class LevelMe {
 
   public async writeRaw(key: string, value: unknown) {
     await this.open();
-    const result = await this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true }));
+    const result = await this.driver.put(LevelMe.DOC_PREFIX + key, await ActiveClone.serialize(value, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
     if (this.cache) {
       // Whatever was cached for this key is not what is on disk any more
       this.cache.delete(key);
@@ -898,7 +908,7 @@ export class LevelMe {
 
       if (newRev) {
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true }));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
       }
 
     } catch (error) {
@@ -910,7 +920,7 @@ export class LevelMe {
           newRev = `1-${md5}`;
         }
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true }));
+        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
       } else {
         // Re-throw other errors (like revision mismatch)
         throw error;
