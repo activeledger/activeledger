@@ -38,9 +38,10 @@ A stream is one record on the ledger, with a position that moves on each time it
 |---|---|
 | `40100` | Authority expiry is enforced (an authority with an `expire` date stops signing after it). Contract source is stored once, as a reference to the deploying transaction, instead of a copy in the contract stream. |
 | `40200` | New contract versions compile to ES2025 (newer JavaScript) instead of ES2017. |
+| `40250` | Two fixes to the stream permission check, which make it accept transactions an older node rejects: a transaction that names a contract `:data` stream together with an ordinary stream, and an input marked `$sigOnly` (which used to fail on every node). A stream that is not `$sigOnly` and has no state document is rejected with 950. |
 | `40300` | Hybrid nodes: each node signs its vote and its commit, the `hybrid` section is asserted on-ledger, hybrids can register, and the `/h/*` API serves them. A contract `update` can `lock` older versions, and locks are recorded on the contract stream so a restore brings them back. |
 
-A new node's generated `config.json` has `40200`. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300`.
+A new node's generated `config.json` has `40250`, so a new network has the stream fixes on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300`.
 
 ## Upgrading the network
 

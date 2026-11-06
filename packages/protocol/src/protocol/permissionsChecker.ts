@@ -138,7 +138,13 @@ export class PermissionsChecker {
     for (const streamId of data) {
       const filteredPrefix = this.shared.filterPrefix(streamId, true);
       const suffix = streamId.split(":")[1];
-      if (suffix === "data") contractDataIncluded = true;
+      // Before the build the last id decided it, so a :data id followed by
+      // an ordinary one was a missing stream
+      if (this.streamChecksFixed()) {
+        if (suffix === "data") contractDataIncluded = true;
+      } else {
+        contractDataIncluded = suffix === "data";
+      }
 
       if (suffix !== "data") {
         keys.add(filteredPrefix + ":stream");
@@ -275,9 +281,12 @@ export class PermissionsChecker {
       // If contract data is being dealt with we need to handle meta ourselves
       if (contractDataIncluded) {
         for (let i = results.length; i--;) {
-          const sId = results[i].state?._id;
+          const fixed = this.streamChecksFixed();
+          const sId = fixed ? results[i].state?._id : results[i].state._id;
 
-          if (sId && sId.split(":")[1] === "data") {
+          // Before the build every state got the synthetic meta
+          // (indexOf() is truthy for -1 as well)
+          if (sId && (fixed ? sId.split(":")[1] === "data" : sId.indexOf(":data"))) {
             let cRes = results[i];
             cRes.meta = {
               _id: `${cRes.state._id}:meta`,
@@ -308,6 +317,7 @@ export class PermissionsChecker {
       // position. Without this it would pass the length check below (one result
       // counts as two keys).
       if (
+        this.streamChecksFixed() &&
         results.some(
           (result) =>
             !result.state &&
@@ -371,6 +381,10 @@ export class PermissionsChecker {
         // A sigOnly stream is deliberately not fetched, so it has no state
         // document, only the meta (`<id>:stream`)
         const hasState = !!stream[i].state;
+        if (!hasState && !this.streamChecksFixed()) {
+          // Before the build a missing state document was a TypeError here
+          void stream[i].state._id;
+        }
         let streamId: string = (hasState
           ? stream[i].state._id
           : (stream[i].meta._id as string).replace(":stream", "")) as string;
@@ -560,6 +574,23 @@ export class PermissionsChecker {
    * fault. Operators raise build only once every node understands it.
    */
   private static readonly EXPIRY_BUILD = 40100;
+
+  /**
+   * Three fixes that make this check accept transactions it used to reject:
+   * a transaction naming a contract :data stream together with an ordinary
+   * stream, and a sigOnly input (which has no state document, so it used to
+   * throw). A node that accepts what another rejects splits the vote, so
+   * like expiry they only apply from this build, which operators raise once
+   * every node understands it. A new node's config has it.
+   */
+  public static readonly STREAM_CHECKS_BUILD = 40250;
+
+  private streamChecksFixed(): boolean {
+    return (
+      ActiveOptions.get<number>("build", 0) >=
+      PermissionsChecker.STREAM_CHECKS_BUILD
+    );
+  }
 
   private expiryEnforced(): boolean {
     return (
