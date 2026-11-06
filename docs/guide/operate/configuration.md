@@ -13,7 +13,7 @@ The node reads `./config.json` from the folder it is started in (or the file giv
 | `neighbourhood` | The list of every node in the network, including this one. See [Neighbourhood](#neighbourhood). | this node only |
 | `consensus.reached` | The percentage of nodes that must vote yes before a transaction is committed. See [Nodes](nodes.md). | `60` |
 | `security` | Switches that change how transactions are checked. See [Security](#security). | all off |
-| `build` | The protocol level the node runs at. Raise it only after every node is upgraded. See [Nodes](nodes.md). | `40200` for a new node |
+| `build` | The protocol level the node runs at. Raise it only after every node is upgraded. See [Nodes](nodes.md). | `40250` for a new node |
 | `hybrid` | Rules for hybrid nodes that follow this network. See [Hybrid](#hybrid). | open admission |
 | `restore` | How gently a full restore treats the network. See [Restore](#restore). | not written; throttled, with history |
 | `autostart.restore` | Start the restore engine (`activerestore`) beside the node. It repairs streams the node missed. Leave it `true`. | `true` |

@@ -1,6 +1,7 @@
 import { PermissionsChecker } from "../packages/protocol/src/protocol/permissionsChecker";
 import { Shared } from "../packages/protocol/src/protocol/shared";
 import { ActiveCrypto } from "../packages/crypto/src";
+import { ActiveOptions } from "@activeledger/activeoptions";
 import { expect } from "chai";
 import "mocha";
 
@@ -64,6 +65,18 @@ async function rejection(p: Promise<any>): Promise<any> {
 }
 
 describe("PermissionsChecker extra behaviour (cov)", () => {
+  // The :data and sigOnly fixes apply from build 40250 (see the last group
+  // for what happens below it)
+  const LEVEL = PermissionsChecker.STREAM_CHECKS_BUILD;
+  let before: unknown;
+  beforeEach(() => {
+    before = ActiveOptions.get("build", 0);
+    ActiveOptions.set("build", LEVEL);
+  });
+  afterEach(() => {
+    ActiveOptions.set("build", before);
+  });
+
   describe("contract :data streams", () => {
     const dataId = `${STREAM}:data`;
 
@@ -251,6 +264,53 @@ describe("PermissionsChecker extra behaviour (cov)", () => {
       sh.sigOnly[STREAM] = true;
       const { pc } = checker(e, dbOf([meta()]), {}, sh);
       expect(await pc.process([STREAM], true, LAST)).to.deep.equal([]);
+    });
+  });
+
+  describe("below the stream checks build (an older network)", () => {
+    beforeEach(() => ActiveOptions.set("build", LEVEL - 1));
+
+    it("the level is between a new node's default and the hybrid build", () => {
+      expect(LEVEL).to.be.greaterThan(40200);
+      expect(LEVEL).to.be.lessThan(40300);
+    });
+
+    for (const ids of [
+      [`${STREAM}:data`, OTHER],
+      [OTHER, `${STREAM}:data`],
+    ]) {
+      it(`still rejects a :data and an ordinary stream together (${ids[0].endsWith(":data") ? "data first" : "plain first"})`, async () => {
+        const dataId = `${STREAM}:data`;
+        const e = entry(() => ({}), { $i: {}, $o: { [dataId]: {}, [OTHER]: {} } });
+        const db = dbOf([{ doc: { _id: dataId, _rev: REV } }, state(OTHER), meta({}, OTHER)]);
+        const { pc } = checker(e, db);
+        const err = await rejection(pc.process(ids, false, LAST));
+        expect(err.code).to.equal(950);
+      });
+    }
+
+    it("still rejects a sigOnly input without a state document (as an error, not accepted)", async () => {
+      const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }), {
+        $i: { [STREAM]: { $sigOnly: true } },
+      });
+      const sh = new Shared(false, e, {} as any, null as any);
+      sh.sigOnly[STREAM] = true;
+      const { pc } = checker(e, dbOf([meta()]), {}, sh);
+      const err = await rejection(pc.process([STREAM], true, LAST));
+      expect(err).to.be.instanceOf(TypeError);
+    });
+
+    it("fails a stream with no state document the way it always did, not with the new 950", async () => {
+      const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }), { $i: { [STREAM]: {} } });
+      const { pc } = checker(e, dbOf([meta()]));
+      const err = await rejection(pc.process([STREAM], true, LAST));
+      expect(err).to.be.instanceOf(TypeError);
+    });
+
+    it("an ordinary transaction is unaffected", async () => {
+      const e = entry((tx) => ({ [STREAM]: alice.kp.sign(tx) }));
+      const { pc } = checker(e, dbOf([state(), meta()]));
+      expect(await pc.process([STREAM], true)).to.have.length(1);
     });
   });
 });
