@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activesync",
-  "version": "5.1.8",
+  "version": "5.2.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -47,7 +47,7 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activecrypto": "5.1.8",
-    "@activeledger/activelogger": "5.1.8"
+    "@activeledger/activecrypto": "5.2.0",
+    "@activeledger/activelogger": "5.2.0"
   }
 }
