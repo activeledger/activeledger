@@ -26,6 +26,8 @@
     "build:ledger": "cd ./packages/activeledger/ && npm run build",
     "build:restore": "cd ./packages/restore/ && npm run build",
     "test": "mocha --node-option import=tsx tests/*.ts --exit -- --no-warnings",
+    "coverage": "node scripts/coverage.mjs",
+    "coverage:full": "node scripts/coverage.mjs --full",
     "test:network": "tsx tests/network/run.ts",
     "test:network:serve": "tsx tests/network/serve.ts",
     "test:network:pq": "tsx tests/network/pq-identity.ts",

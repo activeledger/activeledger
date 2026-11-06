@@ -1,0 +1,35 @@
+{
+  "all": true,
+  "src": ["packages"],
+  "extension": [".ts"],
+  "include": ["packages/*/src/**/*.ts"],
+  "excludeAfterRemap": true,
+  "exclude": [
+    "**/*.d.ts",
+    "packages/storage/src/fauxton/**",
+    "packages/storage/src/pouchdb/**",
+    "packages/activeledger/src/post-build.ts",
+
+    "packages/protocol/src/protocol/interfaces/vm.interface.ts",
+    "packages/protocol/src/protocol/interfaces/process.interface.ts",
+    "packages/hybrid/src/types.ts",
+    "packages/hybrid/src/upstream.ts",
+    "packages/definitions/src/definitions/hybrid.ts",
+    "packages/definitions/src/definitions/interface.ts",
+    "packages/restore/src/interfaces/*.ts",
+    "packages/storage/src/driver.ts",
+
+    "packages/protocol/src/index.ts",
+    "packages/protocol/src/protocol/index.ts",
+    "packages/network/src/index.ts",
+    "packages/httpd/src/index.ts",
+    "packages/storage/src/index.ts",
+    "packages/toolkits/src/index.ts",
+    "packages/activesync/src/index.ts",
+    "packages/definitions/src/index.ts",
+    "packages/definitions/src/definitions/index.ts"
+  ],
+  "reporter": ["text-summary", "json-summary", "lcovonly"],
+  "reportsDir": "coverage",
+  "tempDirectory": "coverage/tmp"
+}

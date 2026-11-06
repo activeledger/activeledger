@@ -15,3 +15,6 @@ docs/superpowers/
 
 # Output of the stress tools (tests/stress)
 stress-results/
+
+# Output of npm run coverage
+coverage/
