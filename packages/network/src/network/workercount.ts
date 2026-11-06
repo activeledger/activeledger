@@ -24,3 +24,13 @@ export const workerCount = (
   const count = /^\d+(?:\.\d+)?$/.test(text) ? Math.floor(Number(text)) : 0;
   return count >= 1 ? count : fallback;
 };
+
+/**
+ * Without a `cpus` setting a node runs workers for half of its physical cores
+ * (at least one). The host, storage and restore processes need cores of their
+ * own, and a worker for every core only adds context switching: in four node
+ * tests on one machine, a worker per core or more collapsed under load where
+ * fewer held steady.
+ */
+export const DEFAULT_WORKER_COUNT = (physicalCores: number): number =>
+  workerCount("50%", physicalCores);

@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import "mocha";
-import { workerCount } from "../packages/network/src/network/workercount";
+import { DEFAULT_WORKER_COUNT, workerCount } from "../packages/network/src/network/workercount";
 
 describe("workerCount (the cpus setting)", () => {
   it("takes a plain number as it is, given as a number or as text", () => {
@@ -44,5 +44,14 @@ describe("workerCount (the cpus setting)", () => {
   it("drops a fraction in a plain number but keeps at least one", () => {
     expect(workerCount("2.9", 12)).to.equal(2);
     expect(workerCount("0.5", 12)).to.equal(12); // under one is not a count
+  });
+
+  it("defaults to half the physical cores, and one on a one core machine", () => {
+    expect(DEFAULT_WORKER_COUNT(12)).to.equal(6);
+    expect(DEFAULT_WORKER_COUNT(8)).to.equal(4);
+    expect(DEFAULT_WORKER_COUNT(2)).to.equal(1);
+    expect(DEFAULT_WORKER_COUNT(1)).to.equal(1);
+    expect(workerCount(undefined, 12, DEFAULT_WORKER_COUNT(12))).to.equal(6);
+    expect(workerCount("100%", 12, DEFAULT_WORKER_COUNT(12))).to.equal(12);
   });
 });
