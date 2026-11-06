@@ -1,5 +1,74 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+Memory, worker and cleanup changes, 20 bug fixes, and a new protocol level. Read
+*Before you upgrade* first: two defaults change, and several things are removed.
+
+### Before you upgrade
+- **Build `40250` (new). Two protocol fixes are gated behind it.** A transaction
+  that names a contract `:data` stream together with an ordinary stream used to be
+  rejected with 950 in either order, and an input marked `$sigOnly` used to fail on
+  every node because the check read a state document that `$sigOnly` deliberately
+  skips. Both are fixed, and a stream that is not `$sigOnly` and has no state
+  document is rejected with 950. These turn transactions that were rejected into
+  accepted ones, so a node on the fix and a node without it would vote differently
+  on the same transaction. They therefore only apply when `build` is `40250` or
+  higher, the same way expiry (`40100`) and hybrids (`40300`) are gated. **A new
+  node's generated `config.json` has `"build": 40250`, so a new network has the
+  fixes on by default.** A network started earlier keeps its level, so nothing
+  changes for it: upgrade every node, then raise `build` to `40250` on all of them.
+  A node joining an existing network must be set to that network's level. See
+  *Builds* in the nodes guide. `40250` sits below `40300`, so a network at `40300`
+  already has it.
+- **The default for `cpus` is half the physical cores, not all of them.** The
+  host, storage and restore processes need cores too, and in four node tests on
+  one machine a worker per core or more collapsed under load where fewer held
+  steady. Set `"cpus": "100%"` for the old behaviour, which can suit contracts
+  that use a lot of CPU. `cpus` also accepts a percentage now (`"50%"`, rounded,
+  never fewer than one worker). A negative `cpus` used to start no workers and is
+  now ignored.
+- **A finished transaction is kept for much less time.** The record of one is held
+  for 10 seconds after the hold, not 120 (`releaseTailSeconds`), and only this
+  node's own answer is kept after 5 seconds (`releaseStubSeconds`). A client that
+  resubmits identical bytes more than 5 seconds after a transaction finished gets
+  that answer, not the full entry.
+- **Removed:** the **PDF toolkit** (`toolkits` exports `HTTP` only; contracts that
+  import the PDF toolkit must stop), the default **`fund`** contract, the
+  **winston** file logging option, and the out-of-date `en-gb` and `zh-cn`
+  documents (the READMEs point at the published guide). Unused dependencies are
+  gone.
+
+### Changed
+- **Less memory.** In a four minute test at about 706 tx/s, host memory at the end
+  was 658 MB with the stub, against 1,372 MB with the same 60 second hold and
+  none. New settings: `releaseHoldSeconds` (60), `releaseTailSeconds` (10) and
+  `releaseStubSeconds` (5).
+
+### Fixed
+- **Network:** a malformed P2P frame is dropped, not an unhandled rejection; a
+  held-back unanimous transaction is answered when no repair is needed; the
+  2 second rebase retry rebases on a Recognised node; a stopped hybrid feed
+  session no longer schedules its poll timer; the release timers only act on the
+  record they released.
+- **Storage:** backup and restore requests no longer crash the storage process;
+  `_changes` opens the database; a failed long-poll answers 500, not 200;
+  `/umids` and `/transactions` stop at the end of the umid; `_raw/<id>@<rev>`
+  pads the sequence number; one throwing change listener no longer stops the
+  others.
+- **HTTP:** routes registered as ALL are reached for every method, an invalid JSON
+  body answers 400, and a response with no body is finished.
+- **Protocol:** the verify and read phases honour the contract timeout.
+  (The `:data` and `$sigOnly` fixes are behind build `40250`, see above.)
+- **Restore:** a write the store did not confirm is a failure, and a missing
+  config or identity file stops the restore with its fatal.
+- **Contracts and CLI:** the default onboard commit waits for its volatile
+  writes, and `stop()` waits for the pid file reset.
+
+### Added
+- `cpus` takes a percentage of the physical cores.
+- Test coverage of the code is at 99.5% of statements.
+
 ## [5.1.8]
 
 A throughput release. Nothing in the wire format or the stored document format
