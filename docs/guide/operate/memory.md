@@ -4,7 +4,7 @@ A node is several processes, and most of its memory is in the contract workers. 
 
 ## Where a node's memory goes
 
-One node runs a host process, a storage process, the restore engine and a number of contract workers (`cpus`, one per physical core by default, plus a standby). In a test of four nodes under steady load (500,000 transactions over 25 minutes, about 330 a second), a node settled at about 5 GB. The split was:
+One node runs a host process, a storage process, the restore engine and a number of contract workers (`cpus`, half the physical cores by default, plus a standby). In a test of four nodes under steady load (500,000 transactions over 25 minutes, about 330 a second), a node settled at about 5 GB. The split was:
 
 | Part | Share of the node |
 |---|---|
@@ -26,7 +26,7 @@ Memory reached its plateau after about five minutes and did not grow over a 25 m
 | `releaseStubSeconds` | How long after a transaction finishes the host drops everything about it except this node's own answer (vote, commit, error), for the rest of the hold. A late peer only needs that answer, so this frees most of the memory a finished transaction uses. Not used when it is not shorter than `releaseHoldSeconds`. | `5` |
 | `releaseTailSeconds` | After that, how long the host keeps the record of the destroyed transaction to answer a late peer. Anything that could still use it has timed out by then, so a long tail only costs memory and host CPU (garbage collection): in a four minute test at 600 to 700 transactions a second, 10 seconds against the old 120 gave about 21% more throughput and a third less host memory. | `10` |
 | `worker_semi_space` | `0` (off) | The size of each worker's young generation, in MB. |
-| `cpus` | physical cores | How many workers run contracts: a number, or a percentage of the physical cores such as `"50%"` (rounded, at least one). |
+| `cpus` | half the physical cores, at least one | How many workers run contracts: a number, or a percentage of the physical cores such as `"50%"` (rounded, at least one). |
 | `autostart.restore` | `true` | Whether the restore engine runs beside the node. |
 
 All four are listed with their neighbours in [Configuration](configuration.md).
