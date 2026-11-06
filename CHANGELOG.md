@@ -1,6 +1,6 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.2.0] - 2026-11-06
 
 Memory, worker and cleanup changes, 20 bug fixes, and a new protocol level. Read
 *Before you upgrade* first: two defaults change, and several things are removed.
