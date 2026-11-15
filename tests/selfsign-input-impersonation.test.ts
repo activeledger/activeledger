@@ -73,7 +73,13 @@ async function runSelfSigned(entry: any) {
 
   // Pre-seeded so setupLocation() short-circuits instead of walking a
   // contracts/ directory this test has no reason to create.
-  (Process as any).contractPathCache[entry.$tx.$contract] = contractFile;
+  // Both are process-wide statics other test files rely on, so they are put
+  // back afterwards (a leaked `{}` VM made hybrid-dry-run time out).
+  const cache = (Process as any).contractPathCache;
+  const hadCached = Object.prototype.hasOwnProperty.call(cache, entry.$tx.$contract);
+  const cachedBefore = cache[entry.$tx.$contract];
+  const vmBefore = (Process as any).generalContractVM;
+  cache[entry.$tx.$contract] = contractFile;
   (Process as any).generalContractVM = {};
 
   const permissionCalls: Array<{ streams: string[]; inputs: boolean }> = [];
@@ -124,9 +130,14 @@ async function runSelfSigned(entry: any) {
   proc.emit = () => undefined;
   proc.emitFailed = () => undefined;
 
-  await proc.start(undefined, { _id: "", data: {} });
-
-  fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    await proc.start(undefined, { _id: "", data: {} });
+  } finally {
+    (Process as any).generalContractVM = vmBefore;
+    if (hadCached) cache[entry.$tx.$contract] = cachedBefore;
+    else delete cache[entry.$tx.$contract];
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
   return { proc, handedToContract, permissionCalls, signatureChecks, raised };
 }
 

@@ -52,6 +52,21 @@ describe("ActiveChanges", () => {
     }
   });
 
+  // Counting every SIGTERM listener on the process is not a count of this
+  // instance's: other code may register one in the same window (it did, once,
+  // in a full run: 4 where 1 was expected). So count this instance's own
+  // registrations, and only require that a new listener exists.
+  const sigtermAdded = () => process.listeners("SIGTERM").filter((l) => !sigtermBefore.includes(l));
+  const countKillListeners = (ac: any) => {
+    let calls = 0;
+    const real = ac.listenForKill.bind(ac);
+    ac.listenForKill = () => {
+      calls++;
+      real();
+    };
+    return () => calls;
+  };
+
   const fakeTimers = () => {
     (global as any).setTimeout = (fn: () => void, ms: number) => {
       timers.push({ fn, ms });
@@ -198,21 +213,25 @@ describe("ActiveChanges", () => {
     fs.writeFileSync(".PID", JSON.stringify({ other: 1 }));
     const { db } = makeDb();
     const ac = new ActiveChanges("n", db);
+    const registered = countKillListeners(ac);
     ac.start();
     await new Promise((r) => realST(r, 50));
     expect(JSON.parse(fs.readFileSync(".PID").toString())).to.deep.equal({
       other: 1, activechanges: process.pid,
     });
-    expect(process.listeners("SIGTERM").length).to.equal(sigtermBefore.length + 1);
+    expect(registered(), "this instance registers its SIGTERM listener once").to.equal(1);
+    expect(sigtermAdded().length).to.be.at.least(1);
   });
 
   it("a missing .PID is tolerated and SIGTERM is still registered", async () => {
     const { db } = makeDb();
     const ac = new ActiveChanges("n", db);
+    const registered = countKillListeners(ac);
     ac.start();
     await new Promise((r) => realST(r, 50));
     expect(fs.existsSync(".PID")).to.equal(false);
-    expect(process.listeners("SIGTERM").length).to.equal(sigtermBefore.length + 1);
+    expect(registered(), "this instance registers its SIGTERM listener once").to.equal(1);
+    expect(sigtermAdded().length).to.be.at.least(1);
   });
 
   it("the SIGTERM handler stops the feed then exits", async () => {
