@@ -197,7 +197,7 @@ describe("Restore Provider (cov)", () => {
       expect(cfg.path).to.equal("./.ds");
     });
     it("a normal restore opens the live, error, archive and event databases", async () => {
-      opts.db = { url: "http://h:1", database: "ledger", error: "errs" };
+      opts.db = { url: "http://h:1", database: "ledger", error: "errs", event: "evs" };
       opts.identity = identityFile;
       opts.neighbourhood = [];
       await P.setupDatabase();
@@ -208,11 +208,19 @@ describe("Restore Provider (cov)", () => {
       expect(P.database.location).to.equal("http://h:1/ledger");
       expect(P.errorDatabase.location).to.equal("http://h:1/errs");
       expect(P.errorArchive.location).to.equal("http://h:1/errs_archive");
-      expect(P.eventDatabase.location).to.equal("http://h:1/errs");
+      // The events database, not the error one: index rows and replayed events go here
+      expect(P.eventDatabase.location).to.equal("http://h:1/evs");
       expect(P.isQuickFullRestore).to.equal(false);
     });
-    it("a full restore opens only the live database", async () => {
+    it("falls back to the default events database name when the config names none", async () => {
       opts.db = { url: "http://h:1", database: "ledger", error: "errs" };
+      opts.identity = identityFile;
+      opts.neighbourhood = [];
+      await P.setupDatabase();
+      expect(P.eventDatabase.location).to.equal("http://h:1/activeledgerevents");
+    });
+    it("a full restore opens the live and events databases only", async () => {
+      opts.db = { url: "http://h:1", database: "ledger", error: "errs", event: "evs" };
       opts.full = true;
       opts.identity = identityFile;
       opts.neighbourhood = [];
@@ -222,7 +230,8 @@ describe("Restore Provider (cov)", () => {
       expect(P.isQuickFullRestore).to.equal(true);
       expect(P.database.location).to.equal("http://h:1/ledger");
       expect(P.errorDatabase).to.equal(undefined);
-      expect(P.eventDatabase).to.equal(undefined);
+      // Its history pass writes index rows and replays events, so it needs this one
+      expect(P.eventDatabase.location).to.equal("http://h:1/evs");
     });
     it("a self hosted config is rewritten before the connections are made", async () => {
       opts.db = { selfhost: { port: 7 }, database: "ledger", error: "errs" };

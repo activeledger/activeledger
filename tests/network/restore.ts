@@ -142,6 +142,13 @@ async function main(): Promise<boolean> {
     await new Promise((r) => setTimeout(r, 8000));
     // Held by one node only, so no majority of the lost node's neighbours has it
     for (const n of [nodes[1], nodes[2], lost]) await storageDelete(n.storageUrl, `${deployUmid}:umid`).catch(() => undefined);
+    // Its index row goes too, so a row afterwards can only be one restore wrote
+    const rowsOf = async (n: { storageUrl: string }) =>
+      ((await requestJson(`${n.storageUrl}/activeledgerevents/umids?from=0&limit=100000`, "GET"))?.rows || []) as { umid: string; timestamp: string }[];
+    for (const row of (await rowsOf(lost)).filter((r) => r.umid === deployUmid)) {
+      await storageDelete(lost.storageUrl, `umid:${row.timestamp},${deployUmid}`, "activeledgerevents").catch(() => undefined);
+    }
+    check(!(await rowsOf(lost)).some((r) => r.umid === deployUmid), "the lost node has no index row for it either");
     const hasUmid = (n: { storageUrl: string }) => storageGet(n.storageUrl, `${deployUmid}:umid`).then((d: any) => !!d?._id).catch(() => false);
     check((await hasUmid(origin)) && !(await hasUmid(lost)), "only the first node holds the deploy umid");
     await runRestore(lost.dataDir, "restore-no-history", ["--skip-history"]);
@@ -160,6 +167,13 @@ async function main(): Promise<boolean> {
     const histLog = fs.readFileSync(path.join(lost.dataDir, "restore-history.log"), "utf8");
     check(!/Restored \d+ stream/.test(histLog), "--history-only did not run the state pass");
     check(/History Complete;.*[1-9]\d* umid\(s\) recovered/.test(histLog), "and reported what it recovered");
+
+    // The umid it fetched has an index row in the EVENTS database, where a client catching up reads
+    // it, and restore left nothing of the kind in the error database.
+    check((await rowsOf(lost)).some((r) => r.umid === deployUmid), "the recovered umid is listed in the events database's umid index");
+    const errorDocs = await requestJson(`${lost.storageUrl}/activeledgererrors/_all_docs`, "GET").catch(() => ({ rows: [] }));
+    const strays = (errorDocs?.rows || []).map((r: any) => r.id as string).filter((id: string) => id.startsWith("umid:"));
+    check(strays.length === 0, strays.length ? `index rows were written into the error database: ${strays.slice(0, 3).join(", ")}` : "no index rows were written into the error database");
   } finally {
     await harness.stop();
     harness.cleanup();

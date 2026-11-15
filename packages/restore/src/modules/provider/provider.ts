@@ -209,8 +209,25 @@ export class Provider {
     this.setupErrorDB(dbConfig);
     //this.setupArchiveDB(dbConfig);
 
+    this.setupEventDB(dbConfig);
+  }
+
+  /**
+   * Setup a connection to the events database, where the `umid:<ms>,<umid>`
+   * index rows and the events a restored transaction raised belong.
+   *
+   * This pointed at the error database until 5.2.2, so every row restore
+   * wrote went into the error database, where the Interagent then archived it
+   * as an error document. And a full restore never opened it at all, so the
+   * history pass dropped its rows and events without a word.
+   *
+   * @private
+   * @static
+   * @param {*} dbConfig
+   */
+  private static setupEventDB(dbConfig: any) {
     this.eventDatabase = new ActiveDSConnect(
-      `${dbConfig.url}/${dbConfig.error}`
+      `${dbConfig.url}/${dbConfig.event || "activeledgerevents"}`
     );
   }
 
@@ -288,7 +305,7 @@ export class Provider {
 
       !ActiveOptions.get<boolean>("full", false)
         ? this.setupDB(dbConfig)
-        : (this.isQuickFullRestore = true);
+        : ((this.isQuickFullRestore = true), this.setupEventDB(dbConfig));
 
       resolve();
     });
