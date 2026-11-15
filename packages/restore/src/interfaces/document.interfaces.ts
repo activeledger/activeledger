@@ -38,6 +38,10 @@ export interface IChangeDocument {
   message: string;
   docId: string;
   $activeledger: {};
+  /** Fetches tried so far for a umid nobody could supply yet */
+  attempts?: number;
+  /** Not tried again before this time (ms since the epoch) */
+  nextAttemptAt?: number;
 }
 
 interface IRevisionData {

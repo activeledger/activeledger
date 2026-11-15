@@ -26,6 +26,7 @@ describe("Interagent - restore never writes stream state (Activerestore)", () =>
     hasErrorCode: (doc: any) => doc.code === 950,
     verifyUmidNotFound: async () => true,
     insertUmid: async () => undefined,
+    retryLater: async () => undefined,
     setProcessed: async (_doc: any, archive: boolean) => {
       processed.push({ archived: !!archive });
     },

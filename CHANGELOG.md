@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Changed
+- **Restore keeps trying for a umid the neighbours do not have yet.** When `activerestore` found a
+  `950 SPI#2 UMID not found` record and no neighbour could supply the umid (they can be too new to hold
+  it, or still committing it), it removed the record after one try, so the umid and its index row were
+  never fetched. It now keeps the record and tries again after 5 s, 15 s, 1 min, 5 min, then every 15 min,
+  and after 10 tries archives it as failed so it stays visible. Nothing changes in the node, so there is
+  no protocol change and no build gate. `activerestore --full` is still the manual catch-all.
+
 ## [5.2.2] - 2026-11-15
 
 A fix for `activerestore`. No protocol change and no build gate: upgrade nodes one at a time (engine and

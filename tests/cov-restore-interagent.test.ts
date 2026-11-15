@@ -15,6 +15,7 @@ describe("Restore Interagent (cov)", () => {
   let timers: { fn: Function; ms: number }[];
   let logs: { level: string; msg: any }[];
   let purged: any[];
+  let kept: any[];
   let archived: any[];
   let putArchive: any[];
   let live: Record<string, any>;
@@ -43,6 +44,7 @@ describe("Restore Interagent (cov)", () => {
     timers = [];
     logs = [];
     purged = [];
+    kept = [];
     archived = [];
     putArchive = [];
     live = {};
@@ -78,6 +80,9 @@ describe("Restore Interagent (cov)", () => {
       },
       purge: async (d: any) => {
         purged.push(d);
+      },
+      put: async (d: any) => {
+        kept.push(JSON.parse(JSON.stringify(d)));
       },
     };
     (Provider as any).errorArchive = {
@@ -247,9 +252,10 @@ describe("Restore Interagent (cov)", () => {
       const doc = { _id: "e6", code: ErrorCodes.StreamNotFound, umid: "u6" };
       await ia.processDocument(doc);
       expect(bulk).to.deep.equal([]);
-      // failure to find it: removed but not archived
-      expect(purged).to.deep.equal([doc]);
+      // nobody could supply it: kept for another try, not removed or archived
+      expect(purged).to.deep.equal([]);
       expect(putArchive).to.deep.equal([]);
+      expect(kept).to.have.length(1);
       expect(logs.some((l) => l.level === "error" && /not found #2/.test(String(l.msg)))).to.equal(true);
     });
 
@@ -279,6 +285,77 @@ describe("Restore Interagent (cov)", () => {
       expect(err.message).to.equal("disk");
       expect(purged).to.deep.equal([]);
       expect(logs.some((l) => /Adding UMID failed/.test(String(l.msg)))).to.equal(true);
+    });
+  });
+
+  describe("when nobody can supply the umid yet", () => {
+    const missing = (extra: any = {}) => ({ _id: "r1", code: ErrorCodes.StreamNotFound, umid: "late", ...extra });
+
+    it("keeps the document, counting the attempt and waiting 5s before the next", async () => {
+      const before = Date.now();
+      const doc = missing();
+      await build().processDocument(doc);
+      expect(purged).to.deep.equal([]);
+      expect(kept).to.have.length(1);
+      expect(kept[0].attempts).to.equal(1);
+      expect(kept[0].nextAttemptAt).to.be.within(before + 5000, Date.now() + 5000);
+      expect(kept[0].processed).to.not.equal(true);
+    });
+
+    it("waits longer each time, and no longer than the last wait", async () => {
+      const waits: number[] = [];
+      for (const attempts of [1, 2, 3, 4, 5, 8]) {
+        kept = [];
+        const t = Date.now();
+        await build().processDocument(missing({ attempts }));
+        waits.push(Math.round((kept[0].nextAttemptAt - t) / 1000));
+      }
+      expect(waits).to.deep.equal([15, 60, 300, 900, 900, 900]);
+    });
+
+    it("gives up after ten attempts, archiving the document as failed", async () => {
+      const doc = missing({ attempts: 9 });
+      await build().processDocument(doc);
+      expect(kept).to.deep.equal([]);
+      expect(purged).to.deep.equal([doc]);
+      expect(putArchive).to.deep.equal([doc]);
+      expect(doc.attempts).to.equal(10);
+      expect(logs.some((l) => l.level === "error" && /archived as failed/.test(String(l.msg)))).to.equal(true);
+    });
+
+    it("leaves a document alone until its wait is over", async () => {
+      rows = [{ id: "r1", doc: missing({ attempts: 1, nextAttemptAt: Date.now() + 60000 }) }];
+      rows = rows.map((r) => ({ ...r, ...r.doc }));
+      await build().skippedChecker();
+      expect(knockCalls).to.deep.equal([]);
+      expect(kept).to.deep.equal([]);
+      expect(purged).to.deep.equal([]);
+    });
+
+    it("tries a document again once its wait is over, and the next ones too", async () => {
+      rows = [
+        { id: "r2", ...missing({ _id: "r2", umid: "u2", attempts: 1, nextAttemptAt: Date.now() + 60000 }) },
+        { id: "r1", ...missing({ attempts: 1, nextAttemptAt: Date.now() - 1 }) },
+      ];
+      await build().skippedChecker();
+      // processed from the end of the list: r1 is due, r2 is waiting
+      expect(knockCalls.map((c) => c[0])).to.deep.equal(["umid/late"]);
+      expect(kept[0].attempts).to.equal(2);
+    });
+
+    it("carries on if the attempt cannot be recorded", async () => {
+      (Provider as any).errorDatabase.put = async () => {
+        throw new Error("conflict");
+      };
+      await build().processDocument(missing());
+      expect(logs.some((l) => l.level === "error" && /Could not record retry/.test(String(l.msg)))).to.equal(true);
+    });
+
+    it("still removes the document once the umid arrives", async () => {
+      knockResult = [umidDoc("late")];
+      await build().processDocument(missing({ attempts: 3 }));
+      expect(kept).to.deep.equal([]);
+      expect(putArchive).to.have.length(1);
     });
   });
 

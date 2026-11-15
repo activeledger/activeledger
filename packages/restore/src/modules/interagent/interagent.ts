@@ -34,6 +34,15 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 const REMOVE_CACHE_TIMER = 5 * 60 * 1000;
 
 /**
+ * When no neighbour can supply a umid yet (they may be too new to hold it, or
+ * still committing it) the error document is kept and tried again later. Waits
+ * before each retry, the last one repeating, and how many tries are made
+ * before giving up and archiving the document as failed.
+ */
+export const RETRY_WAIT_MS = [5000, 15000, 60000, 300000, 900000];
+export const RETRY_MAX_ATTEMPTS = 10;
+
+/**
  * Interagent that listens for error events and attempts to fix them
  *
  * @export
@@ -113,6 +122,9 @@ export class Interagent {
         // If doc has been processed just move
         if (doc.processed) {
           await this.archive(doc);
+        } else if (doc.nextAttemptAt > Date.now()) {
+          // Waiting out a back-off after nobody could supply its umid
+          continue;
         } else {
           await this.processDocument(doc);
         }
@@ -215,7 +227,7 @@ export class Interagent {
           }
         } else {
           ActiveLogger.error(`UMID ${changeDoc.umid} not found #2`);
-          return await this.setProcessed(changeDoc, false);
+          return await this.retryLater(changeDoc);
         }
       } else {
         ActiveLogger.info(`UMID ${changeDoc.umid} already exists`);
@@ -290,6 +302,41 @@ export class Interagent {
         resolve();
       }
     });
+  }
+
+  /**
+   * Nobody could supply the umid this time. Keep the error document and try
+   * again after a longer wait each time, so a umid the neighbours only get a
+   * little later is still picked up, without hammering the network. After
+   * RETRY_MAX_ATTEMPTS the document is archived as failed so it stays visible
+   * and stops being tried.
+   *
+   * @private
+   * @param {*} changeDoc
+   * @returns {Promise<void>}
+   */
+  private async retryLater(changeDoc: any): Promise<void> {
+    const attempts = (Number(changeDoc.attempts) || 0) + 1;
+    if (attempts >= RETRY_MAX_ATTEMPTS) {
+      ActiveLogger.error(
+        `UMID ${changeDoc.umid} could not be fetched after ${attempts} attempts, archived as failed`
+      );
+      changeDoc.attempts = attempts;
+      return await this.setProcessed(changeDoc, true);
+    }
+    const wait = RETRY_WAIT_MS[Math.min(attempts - 1, RETRY_WAIT_MS.length - 1)];
+    changeDoc.attempts = attempts;
+    changeDoc.nextAttemptAt = Date.now() + wait;
+    try {
+      await Provider.errorDatabase.put(changeDoc);
+      ActiveLogger.info(
+        `UMID ${changeDoc.umid} not available yet, attempt ${attempts} of ${RETRY_MAX_ATTEMPTS}, next in ${wait / 1000}s`
+      );
+    } catch (error) {
+      // Could not record the attempt: the document is still there, so it is
+      // simply tried again on the next pass
+      ActiveLogger.error(error, `Could not record retry for ${changeDoc._id}`);
+    }
   }
 
   /**
