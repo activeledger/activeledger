@@ -118,6 +118,16 @@ describe("Process.commit - the outcome of a vote (Activeprotocol)", () => {
       expect(raisedSummary(f)).to.deep.equal([[1510, "Failed Network Voting Round - Non Broadcast"]]);
     });
 
+    it("still lets the early commit callback go when consensus was not reached", async () => {
+      const f = make("yny", { vote: true }, { $broadcast: false }, 5);
+      let released = 0;
+
+      await f.proc.commit(vmStub(), () => released++);
+
+      expect(released).to.equal(1);
+      expect(f.raised).to.have.length(0);
+    });
+
     describe("when this node voted no but the network committed without it", () => {
       const lost = () =>
         make("nyyy", { vote: false, error: "contract said no" }, { $broadcast: false });
@@ -172,6 +182,17 @@ describe("Process.commit - the outcome of a vote (Activeprotocol)", () => {
         ]);
         expect(f.events.filter((e) => e.event === "commited")).to.have.length(1);
       });
+    });
+  });
+
+  describe("a broadcast transaction with every vote in and this node's no among them", () => {
+    it("raises this node's own failure only once, however often the commit is retried", async () => {
+      const f = make("nn", { vote: false, error: "contract said no" }, { $broadcast: true }, 2);
+
+      await f.proc.commit(vmStub());
+      await f.proc.commit(vmStub());
+
+      expect(raisedSummary(f)).to.deep.equal([[1505, "contract said no"]]);
     });
   });
 

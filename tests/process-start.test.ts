@@ -322,6 +322,40 @@ describe("Process.start - resolving and refusing a contract (Activeprotocol)", (
       expect(f.entry.$nodes.self.error).to.equal("Output Stream Position Incorrect");
     });
 
+    describe("a self signed output stream error that does not fail the transaction early", () => {
+      const position = { code: 1200, reason: "Output Stream Position Incorrect" };
+      const votesNo = async (extra: any, rejection: any) => {
+        const f = selfSigned({ id: { publicKey: "pk" } }, { id: "sig" }, extra);
+        f.proc.shared.signatureCheck = () => true;
+        f.proc.permissionChecker.process = () => Promise.reject(rejection);
+        await start(f);
+        expect(f.events.filter((e) => e.event === "failed")).to.have.length(0);
+        expect(postVoted).to.have.length(1);
+        return postVoted[0][1];
+      };
+
+      it("votes no when the transaction is not unanimous", async () => {
+        expect(await votesNo({}, position)).to.deep.equal(position);
+      });
+      it("votes no when the transaction is broadcast", async () => {
+        expect(await votesNo({ $unanimous: true, $broadcast: true }, position)).to.deep.equal(position);
+      });
+      it("votes no when the transaction is a retry", async () => {
+        expect(await votesNo({ $unanimous: true, $spiRetry: true }, position)).to.deep.equal(position);
+      });
+      it("votes no when the stream error is about something else", async () => {
+        const other = { code: 1500, reason: "Something else" };
+        expect(await votesNo({ $unanimous: true }, other)).to.deep.equal(other);
+      });
+      it("defaults the code to 1200 when failing early without one", async () => {
+        const f = selfSigned({ id: { publicKey: "pk" } }, { id: "sig" }, { $unanimous: true });
+        f.proc.shared.signatureCheck = () => true;
+        f.proc.permissionChecker.process = () => Promise.reject(new Error("Position Incorrect again"));
+        await start(f);
+        expect(f.events.find((e) => e.event === "failed")?.payload.status).to.equal(1200);
+      });
+    });
+
     it("votes no on any other output stream error", async () => {
       const f = selfSigned({ id: { publicKey: "pk" } }, { id: "sig" });
       f.proc.shared.signatureCheck = () => true;
