@@ -107,4 +107,13 @@ describe("backfillUmid - the umid index row for an adopted umid", () => {
     expect(await backfillUmid(ctx, UMID)).to.equal(true);
     expect(posted.map((d) => d._id), "events still replayed").to.contain(`event:1,${UMID}`);
   });
+
+  it("two adoptions of the same umid at once leave one index row", async () => {
+    // The 500ms-deferred non-origin repair and a history walk can both reach
+    // the same umid before either has written it; each used to see "not held".
+    const { ctx, posted } = context();
+    const [a, b] = await Promise.all([backfillUmid(ctx, UMID), backfillUmid(ctx, UMID)]);
+    expect(a && b).to.equal(true);
+    expect(rows(posted), "one row, not one per caller").to.have.length(1);
+  });
 });

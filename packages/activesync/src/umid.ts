@@ -107,6 +107,25 @@ export async function backfillUmid(
     return false;
   }
 
+  // The deferred non-origin repair and a history walk can reach the same umid
+  // before either has written it, and each would adopt it and index it. One
+  // adoption at a time per umid per store; a second caller shares its answer.
+  // A partially built host has no store to key on; adopt as before
+  if (!ctx.store || typeof ctx.store !== "object") return adoptUmid(ctx, umid);
+  let running = adoptions.get(ctx.store);
+  if (!running) adoptions.set(ctx.store, (running = new Map()));
+  const inFlight = running.get(umid);
+  if (inFlight) return inFlight;
+  const adopting = adoptUmid(ctx, umid).finally(() => running!.delete(umid));
+  running.set(umid, adopting);
+  return adopting;
+}
+
+/** Adoptions running now, by store then umid, so the same umid is never adopted twice at once */
+const adoptions = new WeakMap<SyncStore, Map<string, Promise<boolean>>>();
+
+async function adoptUmid(ctx: SyncContext, umid: string): Promise<boolean> {
+
   // Already have the umid? Still replay its events before returning.
   //
   // Holding the umid does NOT imply holding its events: they are separate
