@@ -49,6 +49,7 @@
     "version:set": "node scripts/set-version.mjs",
     "test:network:hybrid": "tsx tests/network/hybrid.ts",
     "test:network:missed-umids": "tsx tests/network/missed-umids.ts",
+    "test:network:faults": "tsx tests/network/faults.ts",
     "test:behaviour": "tsx tests/network/behaviour-snapshot.ts",
     "test:behaviour:compare": "tsx tests/network/behaviour-compare.ts"
   },

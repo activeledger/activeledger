@@ -47,6 +47,12 @@ The reply to a transaction carries `$summary` with `total`, `vote`, `commit` and
 | `N stream(s) have a chain that could not be completed` after `History Complete` | Some transaction documents are held by too few nodes to adopt. | Harmless for running the node. Run `--history-only` again later. |
 | `--skip-history and --history-only together leave nothing to do` | Both flags were given. It exits 1 straight away. | Use one. |
 
+## After a crash
+
+| What you see | Why | What to do |
+|---|---|---|
+| After the node was killed hard (SIGKILL, power loss), a client catching up from `/activeledgerevents/umids?from=` on that node is not told about the last few transactions it committed. Other nodes list them. | A committed transaction's index row is written just after its answer is sent. A node stopped cleanly finishes writing it first; one killed in that moment does not. The transaction itself, its streams and its umid document are all intact. | Catch up from another node, or ignore the gap: every node agrees on the ledger itself. A node that stops cleanly (`activeledger --stop`) does not have this. |
+
 ## Hybrids
 
 | What you see | Why | What to do |
