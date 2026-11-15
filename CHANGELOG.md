@@ -1,5 +1,19 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Restore wrote its umid index rows and replayed events into the wrong database.** `activerestore`
+  opened its "events" connection on the error database. When it fetched a missing umid (the
+  `950 SPI#2 UMID not found` records SPI leaves for it) it wrote the `umid:<ms>,<umid>` row there, and
+  its own error poller then archived that row as a processed error document. So the umid document
+  was restored and the umid was never listed by `umids` / `transactions`, which is what a client
+  catching up reads. Found on a live 4-node testnet after 5.2.1. It has been this way since June 2024.
+- **A full restore had no events database at all**, so its history pass silently dropped the index
+  row and the events of every umid it recovered. It now opens the events database
+  (`db.event`, default `activeledgerevents`) in both modes.
+  The 5.2.1 note above, which says the restore history pass writes the row, was true of SPI only.
+
 ## [5.2.1] - 2026-11-15
 
 A fix for nodes that repaired themselves with SPI, and a large set of new tests. No protocol change and no
