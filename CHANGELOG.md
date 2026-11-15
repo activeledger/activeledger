@@ -1,6 +1,9 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.2.2] - 2026-11-15
+
+A fix for `activerestore`. No protocol change and no build gate: upgrade nodes one at a time (engine and
+restore) and leave `build` as it is.
 
 ### Fixed
 - **Restore wrote its umid index rows and replayed events into the wrong database.** `activerestore`
