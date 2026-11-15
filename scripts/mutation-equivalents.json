@@ -172,5 +172,77 @@
     "label": "> -> >=",
     "text": "promises: Promise<IStreamInformation>[]",
     "why": "inside a generic type annotation (Promise<...>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/maintain.ts",
+    "label": "> -> >=",
+    "text": "if (x.reference > y.reference) return 1;",
+    "why": "sort only reads the sign of the comparator and refs are unique, so equal never occurs"
+  },
+  {
+    "file": "packages/network/src/network/maintain.ts",
+    "label": "return value -> undefined",
+    "text": "if (x.reference > y.reference) return 1;",
+    "why": "V8's sort only tests whether the comparator is below zero, so 1 and undefined order the same"
+  },
+  {
+    "file": "packages/network/src/network/maintain.ts",
+    "label": "?? -> ||",
+    "text": "const leftRef = isLeft?.reference ?? null;",
+    "why": "references are sha1 hashes, never an empty string, so ?? and || agree"
+  },
+  {
+    "file": "packages/network/src/network/maintain.ts",
+    "label": "?? -> ||",
+    "text": "const rightRef = isRight?.reference ?? null;",
+    "why": "references are sha1 hashes, never an empty string, so ?? and || agree"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": "> -> >=",
+    "text": "if (a > b) return 1;",
+    "why": "sort only reads the sign of the comparator; equal strings sort the same either way"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": "return value -> undefined",
+    "text": "if (a > b) return 1;",
+    "why": "V8's sort only tests whether the comparator is below zero, so 1 and undefined order the same"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": "< -> <=",
+    "text": "if (a < b) return -1;",
+    "why": "equal strings sort the same either way"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": "return value -> undefined",
+    "text": "return 0;",
+    "why": "V8's sort treats an undefined comparator result like 0"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": ">= -> >",
+    "text": "if (sendPos >= 0) {",
+    "why": "at index 0 slice(0)[0] is the same node as tMap[0]"
+  },
+  {
+    "file": "packages/network/src/network/neighbour.ts",
+    "label": "|| -> &&",
+    "text": "process.env.AL_SIMULATED_RTT_MS || 0",
+    "why": "simulatedRttMs is read once at start-up from an environment variable, which is unset in tests; a profiling aid only"
+  },
+  {
+    "file": "packages/network/src/network/neighbour.ts",
+    "label": "> -> >=",
+    "text": "if (this.bundle.length > 0) {",
+    "why": "an empty bundle sent at the end of the window is never queued: the 100-entry flush clears the timer"
+  },
+  {
+    "file": "packages/network/src/network/neighbour.ts",
+    "label": "return value -> undefined",
+    "text": "return Promise.resolve();",
+    "why": "knock() is async, so its return value is wrapped in a promise either way"
   }
 ]
