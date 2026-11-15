@@ -39,7 +39,7 @@ If the node logs `autostart.restore is false - this node will not run activerest
 activerestore
 ```
 
-Every five seconds it reads the node's error records. For a transaction the node could not run because it never received it (error code 950, stream not found), it asks every neighbour for that transaction, takes the version most of them hold, writes it in and replays the events it raised. Each record is then removed, and the ones that changed something are kept in an archive. It logs `Processing Error Document ...`, `UMID Added ...` and `Document Removed ...` as it goes.
+Every five seconds it reads the node's error records. For a transaction the node could not run because it never received it (error code 950, stream not found), it asks every neighbour for that transaction, takes the version most of them hold, writes it in and replays the events it raised. If no neighbour has the transaction yet, the record is kept and tried again after 5 seconds, 15 seconds, 1 minute, 5 minutes and then every 15 minutes; after 10 tries it is archived as failed. Once it is done, each record is removed, and the ones that changed something are kept in an archive. It logs `Processing Error Document ...`, `UMID Added ...` and `Document Removed ...` as it goes.
 
 ## Rebuild a node from the network
 
