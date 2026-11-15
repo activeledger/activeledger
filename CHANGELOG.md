@@ -1,6 +1,9 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.2.1] - 2026-11-15
+
+A fix for nodes that repaired themselves with SPI, and a large set of new tests. No protocol change and no
+build gate: upgrade nodes one at a time and leave `build` as it is.
 
 ### Fixed
 - **A umid a node adopted from the network now has an index row.** When SPI (or
@@ -13,6 +16,12 @@
   no build gate and changes nothing another node sees. A consumer that catches up
   from a cursor now finds the row after the cursor, where a `$datetime` key would
   have landed behind it.
+
+### Tests
+- 125 new tests found by mutation testing (breaking the code on purpose to see whether a test
+  notices) in the SPI and umid code, the stream permission check, the vote threshold, and hybrid
+  verification and processing. None found a bug in the code; each pins behaviour that nothing checked.
+- A test no longer fails when another file's deferred SPI timer fires inside it.
 
 ## [5.2.0] - 2026-11-06
 
