@@ -90,7 +90,12 @@ describe("Non-origin SPI repair paths (cov)", () => {
     E.repairHistoryInBackground = (_h: any, id: string) => repaired.push(id);
     E.backfillUmid = async () => true;
   });
-  afterEach(() => {
+  afterEach(async () => {
+    // The node defers part of the non-origin repair by 500ms ("SPI WAITING").
+    // Left to fire after this test it lands in whichever test runs next,
+    // calling that test's stubbed repairHistoryInBackground with a stream it
+    // never touched. Wait it out so it stays in this file.
+    await new Promise((r) => setTimeout(r, 600));
     Home.reference = realRef;
     ActiveOptions.set("consensus", undefined);
     E.repairHistoryInBackground = realRepair;
