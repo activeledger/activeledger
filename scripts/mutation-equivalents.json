@@ -1,0 +1,110 @@
+[
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "true -> false",
+    "text": "done = true;",
+    "why": "finish() is already guarded by the listeners being removed"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "true -> false",
+    "text": "true",
+    "why": "noWait only changes how long a failure for a non broadcast transaction waits, and a non broadcast one never waits"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "true -> false",
+    "text": "true",
+    "why": "noWait only changes how long a failure for a non broadcast transaction waits, and a non broadcast one never waits"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "false -> true",
+    "text": "this.nodeResponse.early = false;",
+    "why": "early is deleted a few lines later"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "false -> true",
+    "text": "this.nodeResponse.early = false;",
+    "why": "early is deleted a few lines later"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "?? -> ||",
+    "text": "data.$territoriality ?? this.entry.$territoriality;",
+    "why": "?? and || differ only for falsy non-null values that do not occur here"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "?? -> ||",
+    "text": "this.entry.$nodes = data.$nodes ?? this.entry.$nodes;",
+    "why": "?? and || differ only for falsy non-null values that do not occur here"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "false -> true",
+    "text": "return false;",
+    "why": "unreachable: Object.keys never returns a falsy value"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "return value -> undefined",
+    "text": "return false;",
+    "why": "unreachable: Object.keys never returns a falsy value"
+  },
+  {
+    "file": "packages/protocol/src/protocol/process.ts",
+    "label": "=== -> !==",
+    "text": ": this.currentTrueVotes === 0 ? BROADCAST_TIMEOUT_EARLY : BROADCAST_TIMEOUT_VOTE",
+    "why": "the three broadcast timeouts are all 60 seconds"
+  },
+  {
+    "file": "packages/protocol/src/protocol/streamUpdater.ts",
+    "label": "> -> >=",
+    "text": "const existenceChecks: Promise<Boolean>[] = [];",
+    "why": "only changes a log message"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "false -> true",
+    "text": "private shuttingDown = false;",
+    "why": "class field default; the unit fixtures skip the constructor and the live suites cover it"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "false -> true",
+    "text": "private processingBLQ = false;",
+    "why": "class field default; the unit fixtures skip the constructor and the live suites cover it"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "if (streamId.length > 64) {",
+    "why": "slice(-64) of a 64 character id is the same id"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "false -> true",
+    "text": "running: false,",
+    "why": "running is never read"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "|| -> &&",
+    "text": "if (/*v.$origin || */ internal) {",
+    "why": "the mutated text is inside a comment"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "if (QUEUE_RECHECK_MS > 0) {",
+    "why": "0 and a timer of 0 both mean next tick"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "true -> false",
+    "text": "Maintain.healthTimer(true);",
+    "why": "timer argument only"
+  }
+]

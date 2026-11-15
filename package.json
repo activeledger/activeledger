@@ -50,6 +50,7 @@
     "test:network:hybrid": "tsx tests/network/hybrid.ts",
     "test:network:missed-umids": "tsx tests/network/missed-umids.ts",
     "test:network:faults": "tsx tests/network/faults.ts",
+    "mutate": "node scripts/mutate.mjs",
     "test:behaviour": "tsx tests/network/behaviour-snapshot.ts",
     "test:behaviour:compare": "tsx tests/network/behaviour-compare.ts"
   },
