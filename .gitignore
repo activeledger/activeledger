@@ -18,3 +18,6 @@ stress-results/
 
 # Output of npm run coverage
 coverage/
+
+# Output of npm run mutate
+.mutation/
