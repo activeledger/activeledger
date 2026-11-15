@@ -51,7 +51,7 @@ The reply to a transaction carries `$summary` with `total`, `vote`, `commit` and
 
 | What you see | Why | What to do |
 |---|---|---|
-| After the node was killed hard (SIGKILL, power loss), a client catching up from `/activeledgerevents/umids?from=` on that node is not told about the last few transactions it committed. Other nodes list them. | A committed transaction's index row is written just after its answer is sent. A node stopped cleanly finishes writing it first; one killed in that moment does not. The transaction itself, its streams and its umid document are all intact. | Catch up from another node, or ignore the gap: every node agrees on the ledger itself. A node that stops cleanly (`activeledger --stop`) does not have this. |
+| After the node was killed hard (SIGKILL, power loss), a client catching up from `/activeledgerevents/umids?from=` on that node is not told about the last few transactions it committed. Other nodes list them. | A committed transaction's index row is written just after its answer is sent. A node stopped cleanly finishes writing it first; one killed in that moment does not. The transaction itself, its streams and its umid document are intact, and the other nodes committed it and list it. The network normally repairs the rest: a node that missed or lost anything is brought back to the network's state by SPI as transactions arrive. The one thing it does not rebuild is this node's own index row. | Usually nothing. Catch up from another node, or ignore the gap: every node agrees on the ledger itself. A node that stops cleanly (`activeledger --stop`) does not have this. |
 
 ## Hybrids
 
