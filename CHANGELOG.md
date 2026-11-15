@@ -1,5 +1,19 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- **A umid a node adopted from the network now has an index row.** When SPI (or
+  the restore history pass) adopted a transaction's `<umid>:umid` document the
+  node never wrote the matching `umid:<ms>,<umid>` row in its events database, so
+  the umid was held but missing from the `umids` and `transactions` listings, and
+  a later restore skipped it because it was already held. The row is now written
+  when the document is adopted, keyed by write time as restore keys the row it
+  writes. The events database is node-local and outside consensus, so this needs
+  no build gate and changes nothing another node sees. A consumer that catches up
+  from a cursor now finds the row after the cursor, where a `$datetime` key would
+  have landed behind it.
+
 ## [5.2.0] - 2026-11-06
 
 Memory, worker and cleanup changes, 20 bug fixes, and a new protocol level. Read
