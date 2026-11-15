@@ -285,9 +285,15 @@ describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () 
     // Fifty missed transactions, which is the shape of a node that was down
     // for a while rather than one that dropped a single round.
     const chain = [...Array.from({ length: 50 }, (_, i) => `u${49 - i}`), "created"];
-    const { host, adopted, replayed } = fakeHost(chain, ["created"]);
+    const { host, adopted, replayed: posted } = fakeHost(chain, ["created"]);
 
     const result = await Endpoints.walkUmidHistory(host, STREAM, "u49");
+
+    // The events database also gets one `umid:<ms>,<umid>` index row per
+    // umid ADOPTED (not for the held terminus), so the node's umids listing
+    // has what it missed. Counted apart from the events below.
+    const rows = posted.filter((id) => id.startsWith("umid:"));
+    const replayed = posted.filter((id) => !id.startsWith("umid:"));
 
     expect(result.recovered).to.have.length(50);
     expect(adopted).to.have.length(50);
@@ -303,6 +309,12 @@ describe("Endpoints.walkUmidHistory - recovering a stream's missed history", () 
       expect(replayed).to.contain(`event:1,${umid}`);
     }
     expect(replayed, "the terminus replays too").to.contain("event:1,created");
+
+    expect(rows, "one index row per adopted umid, none for the held terminus").to.have.length(50);
+    for (const umid of result.recovered) {
+      expect(rows.some((id) => id.endsWith(`,${umid}`)), `index row for ${umid}`).to.equal(true);
+    }
+    expect(rows.some((id) => id.endsWith(",created"))).to.equal(false);
   });
 
   it("recovers in order, newest first, so a partial walk leaves the newest present", async () => {

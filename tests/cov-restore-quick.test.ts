@@ -333,7 +333,10 @@ describe("QuickRestore (cov)", () => {
       opts.restore = { history: { hopDelayMs: 0 } };
       await history();
       expect(store.has("U2:umid")).to.equal(true);
-      expect(events).to.deep.equal([{ _id: "ev" }]);
+      // The replayed event, and the umid's index row (write time), so the
+      // restored node lists it in its umids as a node that committed it would
+      expect(events.filter((e: any) => !String(e._id).startsWith("umid:"))).to.deep.equal([{ _id: "ev" }]);
+      expect(events.filter((e: any) => /^umid:\d+,U2$/.test(String(e._id)))).to.have.length(1);
       expect(has(/History pass: 1 stream\(s\)/)).to.equal(true);
       expect(has(/1 umid\(s\) recovered/)).to.equal(true);
       expect(has(/could not be completed/)).to.equal(false);

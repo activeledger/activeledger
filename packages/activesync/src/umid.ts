@@ -193,8 +193,36 @@ export async function backfillUmid(
   }
 
   ActiveLogger.warn(`SPI UMID ADDED ${umid}`);
+  await indexAdoptedUmid(ctx, umid);
   await replaySpiEvents(ctx, winner);
   return true;
+}
+
+/**
+ * Add the `umid:<ms>,<umid>` row the `umids` / `transactions` routes list,
+ * for a umid this node has just adopted.
+ *
+ * A node that committed the transaction itself writes that row. One that
+ * adopted the umid never did, so the umid was held but missing from the
+ * listing, and restore skips a umid that is already held. Keyed by WRITE
+ * time, as restore keys the row it writes for a umid it fetches: the events
+ * database is node-local and outside consensus, the umid document carries the
+ * transaction's own `$datetime`, and a write-time key is the one a consumer's
+ * cursor at the last ms cannot have already passed.
+ *
+ * Only called after the umid document landed, and only for a umid that was
+ * not held, so a repeat pass adds no second row. A failure is logged and does
+ * not undo the adoption: a missing row is recoverable, a lost umid is not.
+ *
+ * @private
+ * @static
+ */
+async function indexAdoptedUmid(ctx: SyncContext, umid: string): Promise<void> {
+  try {
+    await ctx.events.post({ _id: `umid:${Date.now()},${umid}` });
+  } catch (error) {
+    ActiveLogger.error(error, `SPI UMID ${umid} - index row not written`);
+  }
 }
 
 /**
