@@ -499,6 +499,62 @@ export class NetworkHarness {
     }
   }
 
+  /** Every process belonging to a node: its ledger, workers, storage and restore. */
+  private nodePids(node: NetworkNode): number[] {
+    const pids = new Set<number>(node.child.pid ? collectDescendantPids(node.child.pid) : []);
+    if (node.child.pid) pids.add(node.child.pid);
+    try {
+      const pidData = JSON.parse(fs.readFileSync(path.join(node.dataDir, ".PID"), "utf8"));
+      for (const key of ["activeledger", "activestorage", "activerestore"]) {
+        const pid = pidData[key];
+        if (pid && pid !== 0) pids.add(pid);
+      }
+    } catch {
+      // No .PID file yet - the descendants are what there is.
+    }
+    return [...pids].filter(isProcessAlive);
+  }
+
+  private signalNode(index: number, signal: NodeJS.Signals): void {
+    const node = this.nodes[index];
+    if (!node) throw new Error(`No node at index ${index}`);
+    for (const pid of this.nodePids(node)) {
+      try {
+        process.kill(pid, signal);
+      } catch {
+        // already gone
+      }
+    }
+  }
+
+  /**
+   * Crashes a node: SIGKILL to everything it runs, with no chance to shut
+   * down cleanly (killNode() is a graceful stop). restartNode() brings it back.
+   */
+  public async crashNode(index: number): Promise<void> {
+    const node = this.nodes[index];
+    if (!node) throw new Error(`No node at index ${index}`);
+    this.signalNode(index, "SIGKILL");
+    await new Promise<void>((resolve) => {
+      if (node.child.exitCode !== null) return resolve();
+      node.child.once("exit", () => resolve());
+      setTimeout(resolve, 5000);
+    });
+  }
+
+  /**
+   * Freezes a node (SIGSTOP): it keeps its port open and its state, but
+   * answers nothing - a hung machine rather than a stopped one. thawNode()
+   * resumes it.
+   */
+  public freezeNode(index: number): void {
+    this.signalNode(index, "SIGSTOP");
+  }
+
+  public thawNode(index: number): void {
+    this.signalNode(index, "SIGCONT");
+  }
+
   /**
    * Respawns a node previously stopped via killNode() at the same port,
    * against the same on-disk data/config (never touched by killNode()),
