@@ -20,6 +20,8 @@ export interface FixtureOptions {
   right?: any;
   db?: any;
   dbe?: any;
+  /** The Process options, e.g. { mode: "hybrid" } */
+  processOptions?: any;
 }
 
 const vmscriptPath = "./packages/protocol/src/protocol/vmscript.js";
@@ -55,6 +57,7 @@ export const buildProcess = (options: FixtureOptions = {}): ProcessFixture => {
       (options.db || {}) as any,
       (options.dbe || {}) as any,
       {} as any,
+      options.processOptions,
     );
   } finally {
     if (fs.existsSync(vmscriptPath)) {
