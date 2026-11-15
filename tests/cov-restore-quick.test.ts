@@ -33,6 +33,7 @@ describe("QuickRestore (cov)", () => {
   let events: any[];
   let neighbours: Record<string, any>;
   let knocks: { path: string; body: any }[];
+  let knockFlags: any[];
   let streamAnswers: (body: any) => any[];
   let umidAnswers: Record<string, any[]>;
   let rebuilt: any[];
@@ -60,6 +61,7 @@ describe("QuickRestore (cov)", () => {
     writes = [];
     events = [];
     knocks = [];
+    knockFlags = [];
     neighbours = {};
     umidAnswers = {};
     rebuilt = [];
@@ -104,8 +106,9 @@ describe("QuickRestore (cov)", () => {
     (Provider as any).network = {
       neighbourhood: {
         get: () => neighbours,
-        knockAll: async (p: string, body: any) => {
+        knockAll: async (p: string, body: any, flag?: any) => {
           knocks.push({ path: p, body });
+          knockFlags.push(flag);
           if (p === "stream") return streamAnswers(body);
           if (p.startsWith("umid/")) return umidAnswers[p.slice(5)] ?? [];
           return [];
@@ -200,6 +203,11 @@ describe("QuickRestore (cov)", () => {
     it("fails when the answer has no rows array", async () => {
       allDocsImpl = async () => ({ rows: "x" });
       expect(await make().runQuickFullRestore()).to.equal(false);
+    });
+    it("fails when the answer is an object with no rows at all", async () => {
+      allDocsImpl = async () => ({});
+      expect(await make().runQuickFullRestore()).to.equal(false);
+      expect(has(/database cannot be reached/, "error")).to.equal(true);
     });
     it("fails when the database throws", async () => {
       allDocsImpl = async () => {
@@ -392,6 +400,37 @@ describe("QuickRestore (cov)", () => {
       expect(has(/0 umid\(s\) recovered/)).to.equal(true);
     });
 
+    it("carries on past a stream with no meta or no umid to the next one", async () => {
+      store.set("n1:stream", { _id: "n1:stream" });
+      store.set("U1:umid", umidDoc("U1"));
+      store.set("ok:stream", { _id: "ok:stream", umid: "U2" });
+      umidAnswers.U2 = [umidDoc("U2", "U1"), umidDoc("U2", "U1")];
+      opts.restore = { history: { hopDelayMs: 0 } };
+      await history([
+        { stream: "n1", revision: "1" },
+        { stream: "gone", revision: "1" },
+        { stream: "ok", revision: "1" },
+      ]);
+      expect(knocks.map((k) => k.path)).to.deep.equal(["umid/U2"]);
+    });
+
+    it("asks the neighbours for a umid over the whole neighbourhood", async () => {
+      store.set("U1:umid", umidDoc("U1"));
+      umidAnswers.U2 = [umidDoc("U2", "U1"), umidDoc("U2", "U1")];
+      opts.restore = { history: { hopDelayMs: 0 } };
+      await history();
+      expect(knockFlags.length).to.be.greaterThan(0);
+      expect(knockFlags.every((f) => f === true)).to.equal(true);
+    });
+
+    it("treats a null history section like none", async () => {
+      store.set("U1:umid", umidDoc("U1"));
+      umidAnswers.U2 = [umidDoc("U2", "U1"), umidDoc("U2", "U1")];
+      opts.restore = { history: null };
+      await history();
+      expect(has(/History pass: 1 stream/)).to.equal(true);
+    });
+
     it("reports a walk that throws, naming the failure, and carries on with the next stream", async () => {
       store.set("U2:umid", {
         _id: "U2:umid",
@@ -430,6 +469,15 @@ describe("QuickRestore (cov)", () => {
       store.set("U1:umid", umidDoc("U1"));
       umidAnswers.U2 = [umidDoc("U2", "U1"), umidDoc("U2", "U1")];
       opts.fast = false;
+      opts.restore = { throttle: { pauseMs: 30, batch: 100, batchPauseMs: 0 }, history: { hopDelayMs: 0 } };
+      const t0 = Date.now();
+      await history();
+      expect(Date.now() - t0).to.be.at.least(25);
+    });
+    it("throttles by default, when --fast is not given", async () => {
+      store.set("U1:umid", umidDoc("U1"));
+      umidAnswers.U2 = [umidDoc("U2", "U1"), umidDoc("U2", "U1")];
+      delete opts.fast;
       opts.restore = { throttle: { pauseMs: 30, batch: 100, batchPauseMs: 0 }, history: { hopDelayMs: 0 } };
       const t0 = Date.now();
       await history();
@@ -490,6 +538,34 @@ describe("QuickRestore (cov)", () => {
       streamAnswers = (b) => [doc(b.$stream, b.$rev)];
       await fetch([{ stream: "p", revision: "5-z" }]);
       expect(knocks).to.deep.equal([{ path: "stream", body: { $stream: "p", $rev: "5-z" } }]);
+    });
+    it("asks every neighbour, not only the quick ones", async () => {
+      streamAnswers = (b) => [doc(b.$stream, b.$rev)];
+      await fetch([{ stream: "p", revision: "5-z" }]);
+      expect(knockFlags).to.deep.equal([true]);
+    });
+    it("goes on to the next stream after one nobody could supply", async () => {
+      streamAnswers = (b) => (b.$stream === "gone" ? [] : [doc(b.$stream, b.$rev)]);
+      fastRetries();
+      // streams are taken from the end of the list
+      await fetch([
+        { stream: "fine", revision: "1-a" },
+        { stream: "gone", revision: "1-a" },
+      ]);
+      (global as any).setTimeout = realSetTimeout;
+      expect(store.has("fine")).to.equal(true);
+      expect(store.has("gone")).to.equal(false);
+    });
+    it("throttles by default, when --fast is not given", async () => {
+      streamAnswers = (b) => [doc(b.$stream, b.$rev)];
+      delete opts.fast;
+      opts.restore = { throttle: { pauseMs: 40, batch: 100, batchPauseMs: 0 } };
+      const t0 = Date.now();
+      await fetch([
+        { stream: "a", revision: "1-a" },
+        { stream: "b", revision: "1-a" },
+      ]);
+      expect(Date.now() - t0).to.be.at.least(70);
     });
     it("asks again when no neighbour answers, then reports it unrestored", async () => {
       const waits: number[] = [];

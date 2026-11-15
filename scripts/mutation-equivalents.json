@@ -106,5 +106,71 @@
     "label": "true -> false",
     "text": "Maintain.healthTimer(true);",
     "why": "timer argument only"
+  },
+  {
+    "file": "packages/restore/src/modules/helper/helper.ts",
+    "label": "false -> true",
+    "text": "public static verbose: boolean = false;",
+    "why": "log verbosity default only; Helper.output is a log call"
+  },
+  {
+    "file": "packages/restore/src/modules/helper/helper.ts",
+    "label": "&& -> ||",
+    "text": "return Number.isFinite(needed) && needed > 0 ? needed : Infinity;",
+    "why": "needed is Math.max(1, ...), so it is NaN, Infinity or at least 1: both forms give Infinity or needed for every one of those"
+  },
+  {
+    "file": "packages/restore/src/modules/helper/helper.ts",
+    "label": "> -> >=",
+    "text": "return Number.isFinite(needed) && needed > 0 ? needed : Infinity;",
+    "why": "needed is never below 1, so > 0 and >= 0 agree"
+  },
+  {
+    "file": "packages/restore/src/modules/helper/throttle.ts",
+    "label": "++ -> --",
+    "text": "this.count++;",
+    "why": "only count % batch === 0 is read, and -n % n is -0, which equals 0 as well"
+  },
+  {
+    "file": "packages/restore/src/modules/interagent/interagent.ts",
+    "label": "false -> true",
+    "text": "return await this.setProcessed(changeDoc, false);",
+    "why": "unreachable: only answers carrying a $umid are grouped, so the winner always has one"
+  },
+  {
+    "file": "packages/restore/src/modules/interagent/interagent.ts",
+    "label": "return value -> undefined",
+    "text": "return await this.setProcessed(changeDoc, false);",
+    "why": "unreachable: only answers carrying a $umid are grouped, so the winner always has one"
+  },
+  {
+    "file": "packages/restore/src/modules/interagent/interagent.ts",
+    "label": "|| -> &&",
+    "text": "error || umidDoc,",
+    "why": "argument to a log line only"
+  },
+  {
+    "file": "packages/restore/src/modules/interagent/interagent.ts",
+    "label": "false -> true",
+    "text": "storeArchive: boolean = false",
+    "why": "every caller passes storeArchive explicitly, so the default is never used"
+  },
+  {
+    "file": "packages/restore/src/modules/quick-restore/quick-restore.ts",
+    "label": "> -> >=",
+    "text": "const promises: Promise<IStreamInformation>[] = nodes",
+    "why": "inside a generic type annotation (Promise<...>), not a comparison"
+  },
+  {
+    "file": "packages/restore/src/modules/quick-restore/quick-restore.ts",
+    "label": "?? -> ||",
+    "text": "(error as Error)?.message ?? JSON.stringify(error)",
+    "why": "text of an error log line only"
+  },
+  {
+    "file": "packages/restore/src/modules/quick-restore/quick-restore.ts",
+    "label": "> -> >=",
+    "text": "promises: Promise<IStreamInformation>[]",
+    "why": "inside a generic type annotation (Promise<...>), not a comparison"
   }
 ]
