@@ -32,6 +32,7 @@ import { supernodeProgram } from "./cli/program";
 import { checkConfigFile, status, waitForExit } from "./cli/health";
 import { hybridCommand } from "./cli/hybrid";
 import { PIDHandler } from "./cli/pid";
+import { ensureAttestKey, withAttestKey } from "./cli/identity";
 
 // Set during build
 const version = "unset";
@@ -78,10 +79,22 @@ if (cli.command !== "status" && cli.command !== "hybrid" && !fs.existsSync("./.i
   // Only affects a newly generated identity; an existing .identity keeps
   // whatever permissions it already has, so tightening one that is already
   // on disk is a separate, deliberate step.
-  fs.writeFileSync("./.identity", JSON.stringify(identity.generate()), {
+  fs.writeFileSync("./.identity", JSON.stringify(withAttestKey(identity.generate())), {
     mode: 0o600,
   });
   ActiveLogger.info("Identity Generated. Continue Boot Cycle");
+}
+
+// An identity from before attestation keys gets one added. It does nothing
+// until the node's neighbourhood entry lists the public key as `attest`.
+if (cli.command !== "status" && cli.command !== "hybrid") {
+  const added = ensureAttestKey("./.identity");
+  if (added?.created) {
+    ActiveLogger.info(
+      "Attestation key added to the identity. To use it, list this public key as \"attest\": { \"type\": \"ed25519\", \"public\": ... } on this node's neighbourhood entry, then assert the network again:\n" +
+        added.public
+    );
+  }
 }
 
 // Quick Testnet builder

@@ -654,6 +654,11 @@ class Processor {
     // here, where the identity is made, because housekeeping only gets a
     // neighbourhood on later messages and a transaction can arrive first.
     ActiveProtocol.Attestation.key = Home.identity;
+    // The optional Ed25519 attestation key kept beside the identity. It signs
+    // only while the neighbourhood lists it (Attestation.signer()).
+    ActiveProtocol.Attestation.useIdentityFile(
+      ActiveOptions.get("identity", "./.identity")
+    );
   }
 
   /**

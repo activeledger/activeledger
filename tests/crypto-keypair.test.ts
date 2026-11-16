@@ -224,7 +224,7 @@ describe("KeyPair - the half of a pair that is missing", () => {
 
   it("refuses to build a key of a type it does not know, and to generate one", () => {
     expect(() => new KeyPair("dsa", "0x" + EC.prvHex)).to.throw();
-    expect(() => new KeyPair("ed25519").generate()).to.throw(/Cannot generate ed25519/);
+    expect(() => new KeyPair("ed448").generate()).to.throw(/Cannot generate ed448/);
   });
 
   it("will not sign or verify with a type it has no algorithm for", () => {

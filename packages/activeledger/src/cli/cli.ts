@@ -925,6 +925,10 @@ export class CLIHandler {
           type: "rsa",
           public: identity.pub.pkcs8pem,
         },
+        // New installs attest with the Ed25519 key kept beside the identity
+        ...(identity.attest?.pub?.pkcs8pem
+          ? { attest: { type: "ed25519", public: identity.attest.pub.pkcs8pem } }
+          : {}),
         host: ActiveOptions.get<string>("host", "127.0.0.1"),
         port: ActiveOptions.get<string>("port", "5260"),
       });

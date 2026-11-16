@@ -43,6 +43,16 @@ A stream is one record on the ledger, with a position that moves on each time it
 
 A new node's generated `config.json` has `40250`, so a new network has the stream fixes on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300`.
 
+### Faster signing at 40300
+
+At `40300` every node signs two things per transaction, and with the RSA identity key that is about half of the build's extra CPU. A node can sign with an Ed25519 key instead, which is about 17 times faster. It is optional and changes nothing until you switch it on:
+
+1. Start the node on this version. Its `.identity` file gets an Ed25519 key beside the RSA one, and the log prints the public key. A new install already has it, and its generated `config.json` already lists it.
+2. In `config.json`, add `"attest": { "type": "ed25519", "public": "<that public key>" }` to the node's own `neighbourhood` entry, next to `identity`.
+3. [Assert the network](../first-network.md) again so the setup stream carries it. Hybrids verify a node's votes and attestations against `attest` when it is listed and `identity` when it is not, so do this on every node you want to switch.
+
+A node signs with Ed25519 only while its neighbourhood lists the key, and with the identity key otherwise. Back up `.identity` as before: it now holds the Ed25519 private key too.
+
 ## Upgrading the network
 
 Two steps, and the second only once the first is finished on every node.

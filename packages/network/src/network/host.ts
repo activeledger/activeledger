@@ -31,6 +31,7 @@ import {
   ActiveGZip,
   ActiveClone,
 } from "@activeledger/activeoptions";
+import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -776,7 +777,15 @@ export class Host extends Home {
       setupStreamId: () =>
         ActiveOptions.get<string>("network", "").split("@")[0],
       banned: () => Host.hybridBans.set(),
+      // Commit attestations are signed when a hybrid asks (the commit only
+      // keeps what they are made from), so this process needs the keys
+      attest: (umid, revs, facts) =>
+        ActiveProtocol.Attestation.attestation(this.reference, umid, revs, facts),
     });
+    ActiveProtocol.Attestation.key = Home.identity;
+    ActiveProtocol.Attestation.useIdentityFile(
+      ActiveOptions.get("identity", "./.identity")
+    );
     this.hybridFeeds = registerHybridRoutes(this.api, hybridApi, {
       maxFeeds: () => Host.hybridMaxFeeds(),
     });

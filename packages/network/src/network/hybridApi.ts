@@ -68,6 +68,17 @@ export interface HybridApiDeps {
   authWindowSeconds?: number;
   /** Seconds after a feed key's time before a missing attestation is final */
   attestGraceSeconds?: number;
+  /**
+   * Signs this node's commit attestation from the facts kept at commit.
+   * Absent where this node cannot sign.
+   */
+  attest?: (
+    umid: string,
+    revs: ActiveDefinitions.LedgerRevs,
+    facts: ActiveDefinitions.IAttestFacts
+  ) => ActiveDefinitions.ICommitAttestation | undefined;
+  /** Seconds a signed attestation is kept in memory for the next ask */
+  attestCacheSeconds?: number;
   now?: () => number;
 }
 
@@ -302,10 +313,63 @@ export class HybridApi {
   /** `GET /h/attest/:umid`: this supernode's commit attestation */
   public async attest(umid: string): Promise<any | undefined> {
     if (!HybridApi.isStreamId(umid)) return undefined;
+    return (await this.attestationFor(umid))?.attestation;
+  }
+
+  /** Signed attestations kept for the hybrids that ask at about the same time */
+  private readonly signed = new Map<
+    string,
+    { at: number; attestation: any; nodes: any }
+  >();
+  private static readonly SIGNED_MAX = 2000;
+
+  /**
+   * This node's attestation for a committed umid, and the votes it was made
+   * with. Commits from before attestations were made lazily have a stored
+   * `attest:` document; every later one is signed here, from the facts the
+   * commit kept in its `umid:` row, the first time it is asked for, and then
+   * kept in memory for a while (the same umid is asked for by every hybrid
+   * within moments). It is deterministic, so nothing is lost if it is made
+   * again after the cache forgets it.
+   */
+  private async attestationFor(
+    umid: string,
+    rowKey?: string
+  ): Promise<{ attestation: any; nodes: any } | undefined> {
+    const now = (this.deps.now ?? Date.now)();
+    const kept = this.signed.get(umid);
+    if (kept && now - kept.at < (this.deps.attestCacheSeconds ?? 120) * 1000) {
+      return kept;
+    }
+
+    let made: { attestation: any; nodes: any } | undefined;
     const doc = await safeGet(this.deps.events, `attest:${umid}`);
-    if (!doc) return undefined;
-    const { _id, _rev, nodes, ...attestation } = doc;
-    return attestation;
+    if (doc) {
+      const { _id, _rev, nodes, ...attestation } = doc;
+      made = { attestation, nodes: nodes ?? {} };
+    } else if (this.deps.attest) {
+      const umidDoc = await safeGet(this.deps.db, `${umid}:umid`);
+      const ms = new Date(umidDoc?.umid?.$datetime).getTime();
+      const row = await safeGet(
+        this.deps.events,
+        rowKey ?? (Number.isFinite(ms) ? `umid:${ms},${umid}` : "")
+      );
+      if (umidDoc && row?.revsOut && row.umidDocHash) {
+        const attestation = this.deps.attest(umid, umidDoc.umid?.$revs, {
+          revsOut: row.revsOut,
+          umidDocHash: row.umidDocHash,
+          nodes: row.nodes ?? {},
+        });
+        if (attestation) made = { attestation, nodes: row.nodes ?? {} };
+      }
+    }
+    if (!made) return undefined;
+
+    if (this.signed.size >= HybridApi.SIGNED_MAX) {
+      this.signed.delete(this.signed.keys().next().value as string);
+    }
+    this.signed.set(umid, { at: now, ...made });
+    return made;
   }
 
   /** `GET /h/peers`: the registered, non-retired hybrids */
@@ -414,23 +478,24 @@ export class HybridApi {
       };
     }
     const umidDoc = await safeGet(this.deps.db, `${umid}:umid`);
-    const attest = await safeGet(this.deps.events, `attest:${umid}`);
+    const attest = await this.attestationFor(umid, key);
     if (!umidDoc || !attest) return undefined;
+    const a = attest.attestation;
     return {
       umid,
       outcome: "committed",
       umidDoc,
       $revs: umidDoc.umid?.$revs,
-      revsOut: attest.revsOut,
+      revsOut: a.revsOut,
       streams: umidDoc.streams,
       nodes: attest.nodes ?? {},
       attestation: {
-        node: attest.node,
+        node: a.node,
         umid,
-        outcome: attest.outcome,
-        revsOut: attest.revsOut,
-        umidDocHash: attest.umidDocHash,
-        sig: attest.sig,
+        outcome: a.outcome,
+        revsOut: a.revsOut,
+        umidDocHash: a.umidDocHash,
+        sig: a.sig,
       },
     };
   }

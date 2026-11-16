@@ -169,6 +169,7 @@ export class KeyPair {
       }
       switch (type) {
         case "rsa":
+        case "ed25519":
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
@@ -493,6 +494,17 @@ export class KeyPair {
         }
 
         return this.handler;
+      case "ed25519": {
+        // Node's native Ed25519, PEM like RSA. Signing is some 17 times
+        // quicker than RSA-2048 and the signature a quarter of the size,
+        // which is why attestations use it. It cannot encrypt.
+        const ed = crypto[this.webpackBypassCheck]("ed25519", {
+          publicKeyEncoding: { type: "spki", format: "pem" },
+          privateKeyEncoding: { type: "pkcs8", format: "pem" },
+        });
+        this.createHandler(ed.privateKey, ed.publicKey);
+        return this.handler;
+      }
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
@@ -684,6 +696,14 @@ export class KeyPair {
           ), "hex"),
           "hex"
         ).toString(encoding);
+      case "ed25519":
+        return crypto
+          .sign(
+            null,
+            Buffer.from(data, "utf8"),
+            this.checkEdKey(this.getSignKeyObject(), data)
+          )
+          .toString(encoding);
       case "bitcoin":
       case "ethereum":
       case "secp256k1":
@@ -709,6 +729,22 @@ export class KeyPair {
       default:
         throw ActiveLogger.fatal(data, `Cannot sign with ${this.type}`);
     }
+  }
+
+  /**
+   * The same guard as checkKeyType() for Ed25519: node verifies with whatever
+   * key it is handed, so a key of another kind must not pass as "ed25519".
+   *
+   * @private
+   */
+  private checkEdKey(key: crypto.KeyObject, data: string): crypto.KeyObject {
+    if (key.asymmetricKeyType !== "ed25519") {
+      throw ActiveLogger.fatal(
+        data,
+        `Cannot use a ${key.asymmetricKeyType} key as ed25519`
+      );
+    }
+    return key;
   }
 
   /**
@@ -822,6 +858,18 @@ export class KeyPair {
             this.checkKeyType(this.getVerifyKeyObject(), data),
             Buffer.from(signature, encoding)
           );
+        case "ed25519":
+          // A bad signature, or a key that is not Ed25519, is just not valid
+          try {
+            return crypto.verify(
+              null,
+              Buffer.from(data, "utf8"),
+              this.checkEdKey(this.getVerifyKeyObject(), data),
+              Buffer.from(signature, encoding)
+            );
+          } catch {
+            return false;
+          }
         case "bitcoin":
         case "ethereum":
         case "secp256k1":
