@@ -580,5 +580,125 @@
     "label": "false -> true",
     "text": "http.listen(parseInt(PORT), false, BIND_HOST);",
     "why": "the log parameter of listen() is not used"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "false -> true",
+    "text": "ok: false;",
+    "why": "type only: a member of an interface, not code"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "const windowMs = (this.deps.authWindowSeconds ?? 60) * 1000;",
+    "why": "a window of exactly 0 only changes how long a replay is remembered, and a request outside the window is refused before that"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": ">= -> >",
+    "text": "if (expiry >= now) break;",
+    "why": "the entry is pruned only once its time has passed; a request that old is refused by the signature check before it reaches the replay check"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "required: cfg.required ?? [],",
+    "why": "an array is never falsy, so ?? and || give the same answer"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "const ids: string[] = (r?.rows ?? []).map((x: any) => x._id ?? x.id);",
+    "why": "a row has the same id in both fields"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "> -> >=",
+    "text": "if (cursorSuffix(tail) > cursorSuffix(last)) last = tail;",
+    "why": "equal cursors assign the same key"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "const rows: any[] = r?.rows ?? [];",
+    "why": "a result with no rows field is an empty page either way"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "const d = row.doc ?? row;",
+    "why": "a row's document is an object, never falsy"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "|| -> &&",
+    "text": "if (row.id === start || d._id === start) continue;",
+    "why": "both fields hold the same id"
+  },
+  {
+    "file": "packages/network/src/network/hybridApi.ts",
+    "label": "?? -> ||",
+    "text": "start = rows[rows.length - 1].id ?? rows[rows.length - 1]._id;",
+    "why": "a row has the same id in both fields"
+  },
+  {
+    "file": "packages/network/src/network/hybridAdmin.ts",
+    "label": "?? -> ||",
+    "text": "? info.section.admission.allowlist?.length ?? 0",
+    "why": "an allowlist of length 0 is 0 either way"
+  },
+  {
+    "file": "packages/activeledger/src/cli/hybrid.ts",
+    "label": "< -> <=",
+    "text": "show(d, `${t}\\nhybrid nodes are now enabled${admission === \"allowlist\" ? \"; allow a hybrid with: activeledger hybrid allow <key>\" : \"\"}`),",
+    "why": "the mutator reads the arrow and template characters of this line as a comparison; no code changes"
+  },
+  {
+    "file": "packages/activeledger/src/cli/hybrid.ts",
+    "label": "?? -> ||",
+    "text": "out.error((r.data as any)?.error ?? `${sub} failed`);",
+    "why": "an error text of '' is treated as no error, so the fallback text is never reached with it"
+  },
+  {
+    "file": "packages/activeledger/src/cli/reload.ts",
+    "label": "return value -> undefined",
+    "text": "return Cli.ExitCode.STATE;",
+    "why": "the request helper never rejects (it resolves {data: null}), so the catch is not reached; the no-answer case is covered above it"
+  },
+  {
+    "file": "packages/network/src/network/home.ts",
+    "label": "true -> false",
+    "text": "ActiveInterfaces.getBindingDetails(\"port\", true)",
+    "why": "the second argument only selects the TypeScript overload; the implementation ignores it"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "true -> false",
+    "text": "resolved = true;",
+    "why": "a promise settles once, so answering again after resolved is lost changes nothing"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "true -> false",
+    "text": "rewrote.set(tx.$umid, true);",
+    "why": "the umid was already put in the cache with 1 just above, and only its presence is tested"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "false -> true",
+    "text": "if (ActiveOptions.get<boolean>(\"p2pStreamServer\", false)) {",
+    "why": "only starts the P2P TCP listener, which needs a live Host and socket; covered by the live network suites, not unit tests"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "true -> false",
+    "text": "socket.setNoDelay(true);",
+    "why": "a socket option with no result a test can read"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": ">= -> >",
+    "text": "while (bufferLength >= 44) {",
+    "why": "a frame of exactly the 44 byte header has no payload, so there is nothing to decode either way"
   }
 ]

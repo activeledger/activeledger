@@ -152,8 +152,15 @@ describe("Restore Interagent (cov)", () => {
         checks++;
         return { rows: [] };
       };
+      // Firing it re-arms it again: keep that timer ours, or a real one would
+      // go on checking every 5 s for the rest of the test run
+      (global as any).setTimeout = (fn: Function, ms: number) => {
+        timers.push({ fn, ms });
+        return 0 as any;
+      };
       timers[0].fn();
       await new Promise((r) => setImmediate(r));
+      (global as any).setTimeout = realSetTimeout;
       expect(checks).to.equal(1);
     });
   });
