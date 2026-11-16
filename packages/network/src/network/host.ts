@@ -1495,6 +1495,9 @@ export class Host extends Home {
 
           // Rebuild Network Territory Map
           this.terriBuildMap();
+
+          // The new neighbours start as not home: find them again
+          Maintain.restart();
         }
 
         // Now to make sure all other processors reload

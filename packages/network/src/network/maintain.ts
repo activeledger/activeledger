@@ -122,6 +122,25 @@ export class Maintain {
   }
 
   /**
+   * Start again from a neighbourhood that was just replaced (a config
+   * reload). The reset builds new Neighbour objects that all start as not
+   * home, while the order held here still points at the old ones, and the
+   * discovery timer has long stopped, so without this nothing would ever
+   * knock the new ones and the node would stay on its own until restarted.
+   *
+   * @public
+   * @static
+   */
+  public static restart(): void {
+    Maintain.createNetworkOrder();
+    // Pair afresh, whatever was paired before
+    Maintain.lastPairedLeft = null;
+    Maintain.lastPairedRight = null;
+    Maintain.healthTimer(true);
+    Maintain.checkNeighbourhood();
+  }
+
+  /**
    * Maintain Network health
    *
    * Poll fast (300ms) until this node is Stable (paired with a
