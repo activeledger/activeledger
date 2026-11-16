@@ -554,6 +554,23 @@ describe("Network worker Processor (process.ts)", () => {
           expect(lastSent("commited")!.data.broadcast).to.equal(undefined);
         });
 
+        it("goes as a message of its own when ipcMergeCommit is off", () => {
+          const held: any = ActiveOptions.fetch(false);
+          const had = "ipcMergeCommit" in held;
+          const old = held.ipcMergeCommit;
+          ActiveOptions.set("ipcMergeCommit", false);
+          try {
+            const p = tx(committing("m5"));
+            p.emit("broadcast");
+            p.emit("commited");
+            expect(types()).to.deep.equal(["broadcast", "commited"]);
+            expect(lastSent("commited")!.data.broadcast).to.equal(undefined);
+          } finally {
+            if (had) held.ipcMergeCommit = old;
+            else delete held.ipcMergeCommit;
+          }
+        });
+
         it("is not carried again by a later commit message", async () => {
           const p = tx(committing("m4"));
           p.emit("broadcast");

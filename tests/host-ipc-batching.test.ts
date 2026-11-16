@@ -85,3 +85,29 @@ describe("Host IPC batching (Activenetwork)", () => {
     expect(sent).to.deep.equal([]);
   });
 });
+
+describe("Host IPC serialization (Activenetwork)", () => {
+  const H: any = Host;
+  const held = () => ActiveOptions.fetch(false) as any;
+  let had = false;
+  let old: any;
+  beforeEach(() => {
+    had = "ipcSerialization" in held();
+    old = held().ipcSerialization;
+    delete held().ipcSerialization;
+  });
+  afterEach(() => {
+    if (had) held().ipcSerialization = old;
+    else delete held().ipcSerialization;
+  });
+
+  it("is JSON unless asked for advanced, and anything else is JSON", () => {
+    expect(H.ipcSerialization()).to.equal("json");
+    ActiveOptions.set("ipcSerialization", "advanced");
+    expect(H.ipcSerialization()).to.equal("advanced");
+    for (const other of ["json", "ADVANCED", "binary", true, 1]) {
+      ActiveOptions.set("ipcSerialization", other);
+      expect(H.ipcSerialization(), String(other)).to.equal("json");
+    }
+  });
+});

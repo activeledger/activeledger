@@ -44,6 +44,7 @@ import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
+import { withJsonFallback } from "./ipc";
 import { PhysicalCores } from "./cpus";
 import { DEFAULT_WORKER_COUNT, workerCount } from "./workercount";
 import { workerExecArgv } from "./workerheap";
@@ -1238,6 +1239,21 @@ export class Host extends Home {
    * @returns {ChildProcess}
    */
   /**
+   * How messages between the host and its workers are encoded. JSON is the
+   * default. "advanced" is cheaper to encode and decode, but it keeps what JSON
+   * drops (a key set to undefined, a Date as a Date) so it is a switch to try,
+   * not yet the default.
+   *
+   * @private
+   * @static
+   */
+  private static ipcSerialization(): "json" | "advanced" {
+    return ActiveOptions.get<string>("ipcSerialization", "json") === "advanced"
+      ? "advanced"
+      : "json";
+  }
+
+  /**
    * Peers' broadcasts reach a worker in runs: several nodes' votes for one
    * transaction arrive in the same event loop turn, and each was its own IPC
    * message (a write, a frame, a parse). Consecutive broadcasts for one worker
@@ -1293,10 +1309,16 @@ export class Host extends Home {
       // V8 flags (worker_semi_space) belong to workers only
       execArgv: workerExecArgv(),
       stdio: "inherit",
+      // "advanced" sends messages by V8's binary structured clone instead of
+      // JSON text (opt-in, see ipcSerialization in the configuration guide)
+      serialization: Host.ipcSerialization(),
     }) as StoppableChildProcess;
 
     // Set useful default
     pFork.stop = false;
+
+    // A message the binary encoding cannot carry goes as JSON would have sent it
+    if (Host.ipcSerialization() === "advanced") withJsonFallback(pFork);
 
     // Runs of peer broadcasts for this worker travel as one message
     this.batchBroadcasts(pFork);
