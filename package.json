@@ -51,6 +51,7 @@
     "test:network:hybrid-enable": "tsx tests/network/hybrid-enable.ts",
     "test:network:missed-umids": "tsx tests/network/missed-umids.ts",
     "test:network:faults": "tsx tests/network/faults.ts",
+    "test:network:restore-delayed": "tsx tests/network/restore-delayed.ts",
     "mutate": "node scripts/mutate.mjs",
     "test:behaviour": "tsx tests/network/behaviour-snapshot.ts",
     "test:behaviour:compare": "tsx tests/network/behaviour-compare.ts"
