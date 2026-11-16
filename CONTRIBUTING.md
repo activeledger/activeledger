@@ -34,7 +34,10 @@ the tests against each change:
 npm run build
 npm run mutate -- packages/protocol/src/protocol/streamUpdater.ts
 npm run mutate -- packages/network/src/network/host.ts --lines 1700-2150
+npm run mutate -- packages/storage/src/selfhost.ts --rebuild storage --tests tests/cov-storage-selfhost-http.test.ts tests/cov-storage-selfhost-process.test.ts
 ```
+
+Code the tests reach only through a package's built lib (storage's `selfhost.ts` runs as its own process) needs `--rebuild <package>`, which compiles each change into the throwaway tree first; without it every change looks uncaught.
 
 It prints the changes the tests did **not** catch. Each one is either a missing
 test (write it, then re-run with `--lines` on just that line) or a change that
