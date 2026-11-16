@@ -11,7 +11,9 @@ import { Maintain } from "../packages/network/src/network/maintain";
  * never do either.
  */
 describe("Maintain start-up (Activenetwork)", () => {
-  it("starts with no check, no rebase and no timer running", () => {
+  it("starts with no check, no rebase and no timer running", function () {
+    // A fresh process loading TypeScript: slow on a busy machine
+    this.timeout(60000);
     const script = `
       const { Maintain } = require("./packages/network/src/network/maintain");
       const M = Maintain;

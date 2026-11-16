@@ -52,18 +52,25 @@ describe("activeledger hybrid and reload commands - edges the tests did not pin 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const saved: any = {};
+  // Put each option back exactly as it was, including not being there at all
+  const KEYS = ["config", "identity", "host", "port"];
+  const saved: { [k: string]: { had: boolean; value: any } } = {};
   beforeEach(() => {
     calls = [];
     answers = {};
-    for (const k of ["config", "identity", "host", "port"]) saved[k] = ActiveOptions.get(k, undefined);
+    const held: any = ActiveOptions.fetch(false);
+    for (const k of KEYS) saved[k] = { had: k in held, value: held[k] };
     ActiveOptions.set("config", path.join(dir, "config.json"));
     ActiveOptions.set("identity", path.join(dir, ".identity"));
     ActiveOptions.set("host", "");
     ActiveOptions.set("port", "");
   });
   afterEach(() => {
-    for (const k of ["config", "identity", "host", "port"]) ActiveOptions.set(k, saved[k]);
+    const held: any = ActiveOptions.fetch(false);
+    for (const k of KEYS) {
+      if (saved[k].had) held[k] = saved[k].value;
+      else delete held[k];
+    }
   });
 
   const run = async (sub: string | undefined, arg?: string, json = false, outFile?: string) => {

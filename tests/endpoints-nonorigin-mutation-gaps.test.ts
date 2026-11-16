@@ -19,7 +19,12 @@ describe("Endpoints - non-origin SPI repair, edges the tests did not pin (Active
   const SPI = "Stream Position Incorrect";
   let n = 0;
 
+  let hadConsensus = false;
+  let heldConsensus: any;
   beforeEach(() => {
+    const held: any = ActiveOptions.fetch(false);
+    hadConsensus = "consensus" in held;
+    heldConsensus = held.consensus;
     Home.reference = "me";
     ActiveOptions.set("consensus", { reached: 66 });
     E.backfillUmid = async () => true;
@@ -27,7 +32,9 @@ describe("Endpoints - non-origin SPI repair, edges the tests did not pin (Active
   });
   afterEach(() => {
     Home.reference = realRef;
-    ActiveOptions.set("consensus", undefined);
+    const held: any = ActiveOptions.fetch(false);
+    if (hadConsensus) held.consensus = heldConsensus;
+    else delete held.consensus;
     E.backfillUmid = realBackfill;
     E.repairHistoryInBackground = realRepair;
   });

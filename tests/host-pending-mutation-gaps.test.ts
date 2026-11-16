@@ -66,6 +66,18 @@ describe("Host.pending - edges the tests did not pin (Activenetwork)", () => {
       expect(r.calls).to.deep.equal(["u1"]);
     });
 
+    it("counts a refusal as an answer, so a later answer lets it go", async () => {
+      const r = released();
+      const host = bare({ release: r.release });
+      const refused = host.pending(tx(), "2.2.2.2:5260", true).then(() => "answered", (e: any) => e.message);
+      host.processPending.u1.reject(new Error("refused"));
+      expect(await refused).to.equal("refused");
+      expect(host.processPending.u1.responded).to.equal(true);
+      expect(r.calls).to.deep.equal([]);
+      host.processPending.u1.resolve({ status: 200, data: {} });
+      expect(r.calls).to.deep.equal(["u1"]);
+    });
+
     it("does not release a transaction that has not been answered yet, or one that is not internal", async () => {
       const first = released();
       const internal = bare({ release: first.release });
