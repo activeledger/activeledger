@@ -520,5 +520,35 @@
     "label": "> -> >=",
     "text": "if (streamId.length > 64 && !streamId.startsWith(\"0x\")) {",
     "why": "cutting an id of exactly 64 characters to its last 64 leaves it as it was"
+  },
+  {
+    "file": "packages/storage/src/datastore.ts",
+    "label": "> -> >=",
+    "text": "...(dbInfo.selfhost.writeBufferMb > 0",
+    "why": "a setting of 0 is passed on as \"0\" and the driver treats anything not above 0 as unset (megabytes() in drivers/leveldb.ts)"
+  },
+  {
+    "file": "packages/storage/src/datastore.ts",
+    "label": "> -> >=",
+    "text": "...(dbInfo.selfhost.cacheMb > 0",
+    "why": "a setting of 0 is passed on as \"0\" and the driver treats anything not above 0 as unset (megabytes() in drivers/leveldb.ts)"
+  },
+  {
+    "file": "packages/storage/src/datastore.ts",
+    "label": "|| -> &&",
+    "text": "dbInfo.selfhost.engine || \"level\"",
+    "why": "only the text of a log line"
+  },
+  {
+    "file": "packages/storage/src/datastore.ts",
+    "label": "|| -> &&",
+    "text": "signal || \"No Signal\"",
+    "why": "only the text of a log line"
+  },
+  {
+    "file": "packages/storage/src/datastore.ts",
+    "label": "> -> >=",
+    "text": "Date.now() >",
+    "why": "differs only when the clock reads exactly 24 hours to the millisecond after the last restart"
   }
 ]
