@@ -661,82 +661,104 @@ export class Host extends Home {
   }
 
   /**
+   * Should this node run the P2P TCP server (`p2pStreamServer`)
+   *
+   * @private
+   * @static
+   */
+  private static p2pServerWanted(): boolean {
+    return ActiveOptions.get<boolean>("p2pStreamServer", false);
+  }
+
+  /**
+   * One P2P connection: frames of [SenderRef (40)][Length (4)][Payload] are
+   * read off the socket as they arrive and each is handed to the endpoints
+   *
+   * @private
+   * @param {net.Socket} socket
+   */
+  private p2pConnection(socket: net.Socket): void {
+    // See P2PClient: without this every framed reply waits on Nagle.
+    socket.setNoDelay(true);
+    ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
+    let chunks: Buffer[] = [];
+    let bufferLength = 0;
+
+    socket.on("data", async (data: Buffer) => {
+      chunks.push(data);
+      bufferLength += data.length;
+
+      // Frame: [SenderRef (40)][Length (4)][Payload]
+      while (bufferLength >= 44) {
+        // Peek just the 44-byte header without concatenating the whole
+        // buffered backlog - almost always already in chunks[0] alone.
+        // A multi-chunk message (e.g. a large contract deploy) used to
+        // pay a full Buffer.concat() of everything received so far on
+        // every single TCP segment while still waiting for the rest of
+        // the frame to arrive - O(n^2) for an n-segment message.
+        const header = peekBytes(chunks, 44);
+        const length = header.readUInt32BE(40);
+
+        if (bufferLength >= 44 + length) {
+          // Frame complete - now it's safe/necessary to do the one
+          // full concat needed to slice out the item.
+          // (a single chunk, the usual case, needs no copy at all)
+          const fullBuffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+          const senderRef = fullBuffer.slice(0, 40).toString().trim();
+          const item = fullBuffer.slice(44, 44 + length);
+
+          // Clean up consumed data
+          const remaining = fullBuffer.slice(44 + length);
+          chunks = remaining.length > 0 ? [remaining] : [];
+          bufferLength = remaining.length;
+
+          // The frame is already consumed above, so a body that cannot
+          // be decoded is dropped here without desyncing the stream or
+          // becoming an unhandled rejection from this async handler.
+          let tx: any;
+          try {
+            tx = await ActiveClone.deserialize(item);
+          } catch (error) {
+            ActiveLogger.warn(
+              error,
+              `P2P dropped malformed frame from ${socket.remoteAddress} (sender ${senderRef})`
+            );
+            continue;
+          }
+          this.processEndpoints(
+            {
+              headers: { "X-Activeledger": senderRef },
+              method: "POST",
+              url: "/a/init",
+              connection: { remoteAddress: socket.remoteAddress || "127.0.0.1" },
+            },
+            null as any,
+            tx,
+            senderRef,
+            true
+          );
+        } else {
+          break;
+        }
+      }
+    });
+    socket.on("error", (err: Error) => {
+      ActiveLogger.error(err, "P2P socket error");
+    });
+
+  }
+
+  /**
    * Creates an instance of Host.
    */
   constructor() {
     super();
 
-    if (ActiveOptions.get<boolean>("p2pStreamServer", false)) {
+    if (Host.p2pServerWanted()) {
       // Start P2P TCP Server
-      this.p2pServer = net.createServer((socket: net.Socket) => {
-        // See P2PClient: without this every framed reply waits on Nagle.
-        socket.setNoDelay(true);
-        ActiveLogger.info(`P2P TCP connection accepted from ${socket.remoteAddress}`);
-        let chunks: Buffer[] = [];
-        let bufferLength = 0;
-
-        socket.on("data", async (data: Buffer) => {
-          chunks.push(data);
-          bufferLength += data.length;
-
-          // Frame: [SenderRef (40)][Length (4)][Payload]
-          while (bufferLength >= 44) {
-            // Peek just the 44-byte header without concatenating the whole
-            // buffered backlog - almost always already in chunks[0] alone.
-            // A multi-chunk message (e.g. a large contract deploy) used to
-            // pay a full Buffer.concat() of everything received so far on
-            // every single TCP segment while still waiting for the rest of
-            // the frame to arrive - O(n^2) for an n-segment message.
-            const header = peekBytes(chunks, 44);
-            const length = header.readUInt32BE(40);
-
-            if (bufferLength >= 44 + length) {
-              // Frame complete - now it's safe/necessary to do the one
-              // full concat needed to slice out the item.
-              // (a single chunk, the usual case, needs no copy at all)
-              const fullBuffer = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
-              const senderRef = fullBuffer.slice(0, 40).toString().trim();
-              const item = fullBuffer.slice(44, 44 + length);
-
-              // Clean up consumed data
-              const remaining = fullBuffer.slice(44 + length);
-              chunks = remaining.length > 0 ? [remaining] : [];
-              bufferLength = remaining.length;
-
-              // The frame is already consumed above, so a body that cannot
-              // be decoded is dropped here without desyncing the stream or
-              // becoming an unhandled rejection from this async handler.
-              let tx: any;
-              try {
-                tx = await ActiveClone.deserialize(item);
-              } catch (error) {
-                ActiveLogger.warn(
-                  error,
-                  `P2P dropped malformed frame from ${socket.remoteAddress} (sender ${senderRef})`
-                );
-                continue;
-              }
-              this.processEndpoints(
-                {
-                  headers: { "X-Activeledger": senderRef },
-                  method: "POST",
-                  url: "/a/init",
-                  connection: { remoteAddress: socket.remoteAddress || "127.0.0.1" },
-                },
-                null as any,
-                tx,
-                senderRef,
-                true
-              );
-            } else {
-              break;
-            }
-          }
-        });
-        socket.on("error", (err: Error) => {
-          ActiveLogger.error(err, "P2P socket error");
-        });
-      });
+      this.p2pServer = net.createServer((socket: net.Socket) =>
+        this.p2pConnection(socket)
+      );
 
       // P2P port is main port + 1
       const p2pPort = parseInt(ActiveInterfaces.getBindingDetails("port")) + 1;

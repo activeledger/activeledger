@@ -685,20 +685,14 @@
   },
   {
     "file": "packages/network/src/network/host.ts",
-    "label": "false -> true",
-    "text": "if (ActiveOptions.get<boolean>(\"p2pStreamServer\", false)) {",
-    "why": "only starts the P2P TCP listener, which needs a live Host and socket; covered by the live network suites, not unit tests"
+    "label": "> -> >=",
+    "text": "let db = ActiveOptions.get<any>(\"db\", {});",
+    "why": "the mutator reads the generic type brackets of get<any> as a comparison; no code changes"
   },
   {
     "file": "packages/network/src/network/host.ts",
-    "label": "true -> false",
-    "text": "socket.setNoDelay(true);",
-    "why": "a socket option with no result a test can read"
-  },
-  {
-    "file": "packages/network/src/network/host.ts",
-    "label": ">= -> >",
-    "text": "while (bufferLength >= 44) {",
-    "why": "a frame of exactly the 44 byte header has no payload, so there is nothing to decode either way"
+    "label": "< -> <=",
+    "text": "let db = ActiveOptions.get<any>(\"db\", {});",
+    "why": "the mutator reads the generic type brackets of get<any> as a comparison; no code changes"
   }
 ]
