@@ -13,8 +13,10 @@
   is treated as enabled, as before. Only commits made after enabling can be followed by a hybrid.
 - **`activeledger reload`** makes a running node re-read `config.json` without a restart, through the
   existing `/a/admin-reload` (which still needs `"remote": true`; the command says so when it is off).
-- **New nodes default to `build` 40300** (was 40250). With the above this adds no signing cost to a
-  network that does not use hybrids.
+- **New nodes default to `build` 50300** (was 40250), so the level matches the release (5.3.0); from now on a
+  level is named after the release that adds it. Nothing new is gated at 50300: every gate in the code is
+  `>=` 40300 or lower, so an existing network at 40300 and a new node at 50300 behave the same. With the
+  above, a network that does not use hybrids pays no signing cost for it.
 - **Optional Ed25519 attestation key.** Signing votes and commit attestations (build 40300) with the
   node's RSA identity key is about half of that build's extra CPU: two RSA signatures per transaction per
   node. A node can now attest with an Ed25519 key instead, which signs about 17 times faster and gives a
