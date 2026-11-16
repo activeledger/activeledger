@@ -480,6 +480,23 @@ describe("Network worker Processor (process.ts)", () => {
       expect(sent).to.deep.equal([]);
     });
 
+    it("unpacks a batch of messages from the host and handles each in the order sent", () => {
+      tx(entryFor("bt1"));
+      broadcasts.length = 0;
+      handler({
+        type: "batch",
+        data: {
+          messages: [
+            { type: "broadcast", data: { umid: "bt1", nodes: { a: 1 } } },
+            { type: "broadcast", data: { umid: "bt1", nodes: { b: 2 } } },
+            { type: "broadcast", data: { umid: "gone", nodes: { c: 3 } } },
+            { type: "broadcast", data: { umid: "bt1", nodes: { d: 4 } } },
+          ],
+        },
+      });
+      expect(broadcasts).to.deep.equal([{ a: 1 }, { b: 2 }, { d: 4 }]);
+    });
+
     describe("commited", () => {
       it("sends the outcome to the host and schedules a delayed clear", () => {
         const e = entryFor("c1", {

@@ -173,8 +173,12 @@ class Processor {
     });
 
     // Listen for IPC (Interprocess Communication)
-    process.on("message", (m: any) => {
+    const onMessage = (m: any): void => {
       switch (m.type) {
+        case "batch":
+          // Messages the host held together for this turn, in the order sent
+          for (const item of m.data.messages) onMessage(item);
+          return;
         case "setup":
           // Set Database (Do we need to?)
           ActiveOptions.set("db", m.data.db);
@@ -348,7 +352,8 @@ class Processor {
         this.maxMemoryReached = true;
         this.send("memory", process.memoryUsage());
       }
-    });
+    };
+    process.on("message", onMessage);
   }
 
   /**
