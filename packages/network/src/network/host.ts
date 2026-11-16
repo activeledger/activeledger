@@ -1237,6 +1237,55 @@ export class Host extends Home {
    * @private
    * @returns {ChildProcess}
    */
+  /**
+   * Peers' broadcasts reach a worker in runs: several nodes' votes for one
+   * transaction arrive in the same event loop turn, and each was its own IPC
+   * message (a write, a frame, a parse). Consecutive broadcasts for one worker
+   * are held to the end of the turn and sent as one `batch` message, which
+   * the worker unpacks in order.
+   *
+   * The order the worker sees is unchanged: any other message to the same
+   * worker sends what is waiting first. `ipcBatching: false` turns it off.
+   *
+   * @private
+   * @param {ChildProcess} child
+   */
+  private batchBroadcasts(child: ChildProcess): void {
+    if (!ActiveOptions.get<boolean>("ipcBatching", true)) return;
+    const rawSend = child.send.bind(child) as (...a: any[]) => boolean;
+    let queued: any[] = [];
+    let scheduled = false;
+
+    const flush = (): boolean => {
+      scheduled = false;
+      if (!queued.length) return true;
+      const out = queued;
+      queued = [];
+      try {
+        return out.length === 1
+          ? rawSend(out[0])
+          : rawSend({ type: "batch", data: { messages: out } });
+      } catch (error) {
+        // A worker that is going away: the same as a send to one that is gone
+        ActiveLogger.warn(error, "Worker message not sent");
+        return false;
+      }
+    };
+
+    (child as any).send = (message: any, ...rest: any[]): boolean => {
+      if (message && message.type === "broadcast" && !rest.length) {
+        queued.push(message);
+        if (!scheduled) {
+          scheduled = true;
+          setImmediate(flush);
+        }
+        return true;
+      }
+      flush();
+      return rawSend(message, ...rest);
+    };
+  }
+
   private createProcessor(cpuTotal?: number): ChildProcess {
     // Create Process
     const pFork = fork(`${__dirname}/process.js`, [], {
@@ -1248,6 +1297,9 @@ export class Host extends Home {
 
     // Set useful default
     pFork.stop = false;
+
+    // Runs of peer broadcasts for this worker travel as one message
+    this.batchBroadcasts(pFork);
 
     // Prevent multiple runs, Could overwrite method instead
     let unloadHandled = false;
