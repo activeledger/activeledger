@@ -400,5 +400,41 @@
     "label": "> -> >=",
     "text": "} : S=${started}, TT=${TT}ms ${TT > 30000 ? \"TTLR\" : \" OK\"",
     "why": "decides only the word in a timing log line"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "return value -> undefined",
+    "text": "return this.openingPromise;",
+    "why": "a second caller that does not wait for an opening in progress still works: the driver queues operations issued while it opens"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "> -> >=",
+    "text": "const docPromises: Promise<any>[] = [];",
+    "why": "the mutator reads the generic type's closing bracket as a comparison; no code changes"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "> -> >=",
+    "text": "const promises: Promise<document>[] = [];",
+    "why": "the mutator reads the generic type's closing bracket as a comparison; no code changes"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "return value -> undefined",
+    "text": "return result;",
+    "why": "the driver's put resolves with nothing, so returning it is the same as returning nothing"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "> -> >=",
+    "text": "if (distinct && docs.length > 1) {",
+    "why": "a batch of one document gives the same result written in parallel or in turn"
+  },
+  {
+    "file": "packages/storage/src/levelme.ts",
+    "label": "return value -> undefined",
+    "text": "return doc as document;",
+    "why": "Promise.all(promises) is awaited only for completion; each row is stored by index in the callback"
   }
 ]
