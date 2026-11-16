@@ -13,18 +13,6 @@
   },
   {
     "file": "packages/protocol/src/protocol/process.ts",
-    "label": "true -> false",
-    "text": "true",
-    "why": "noWait only changes how long a failure for a non broadcast transaction waits, and a non broadcast one never waits"
-  },
-  {
-    "file": "packages/protocol/src/protocol/process.ts",
-    "label": "false -> true",
-    "text": "this.nodeResponse.early = false;",
-    "why": "early is deleted a few lines later"
-  },
-  {
-    "file": "packages/protocol/src/protocol/process.ts",
     "label": "false -> true",
     "text": "this.nodeResponse.early = false;",
     "why": "early is deleted a few lines later"
@@ -550,5 +538,47 @@
     "label": "> -> >=",
     "text": "Date.now() >",
     "why": "differs only when the clock reads exactly 24 hours to the millisecond after the last restart"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "return value -> undefined",
+    "text": "return await db.compact();",
+    "why": "compaction resolves with nothing (the test for it says so), so there is no answer to lose"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "< -> <=",
+    "text": "if (incoming.query.limit < 1) {",
+    "why": "a limit of exactly 1 is set to 1"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "> -> >=",
+    "text": "(max: number, c: any) => (Number(c.seq) > max ? Number(c.seq) : max),",
+    "why": "the same seq either way"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "true -> false",
+    "text": "flushScheduled = true;",
+    "why": "each flush sends everything pending and the ones scheduled after it find nothing, so the output is the same"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "false -> true",
+    "text": "incoming.query.live = incoming.query.continuous = false;",
+    "why": "LevelMe.changesFromSeq does not read live or continuous"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "true -> false",
+    "text": "incoming.query.live = incoming.query.continuous = true;",
+    "why": "LevelMe.changesFromSeq does not read live or continuous"
+  },
+  {
+    "file": "packages/storage/src/selfhost.ts",
+    "label": "false -> true",
+    "text": "http.listen(parseInt(PORT), false, BIND_HOST);",
+    "why": "the log parameter of listen() is not used"
   }
 ]

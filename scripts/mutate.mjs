@@ -29,6 +29,12 @@
  *   --lines 10-40,55   only mutate these lines (re-run just the survivors)
  *   --tests <files>    test files to run (default: every tests/*.test.ts that
  *                      imports the source file's module name)
+ *   --rebuild <pkg>    for code the tests reach only through the package's BUILT
+ *                      lib, such as storage's selfhost.ts, which the tests run as
+ *                      its own process: give the package folder name (storage)
+ *                      and the mutated source is compiled into the throwaway
+ *                      tree's own lib before each mutant. A mutant that does
+ *                      not compile counts as caught. Slower: one tsc per mutant.
  *   --timeout <sec>    per-mutant limit, a timeout counts as caught (default 90)
  *   --list             print the mutants and exit without running tests
  *
@@ -52,12 +58,13 @@ const valueOf = (name) => {
   const i = flag(name);
   return i === -1 || i === undefined ? undefined : args[i + 1];
 };
-const file = args.find((a, i) => !a.startsWith("--") && (i === 0 || !["--lines", "--timeout"].includes(args[i - 1])) && !a.endsWith(".test.ts"));
+const file = args.find((a, i) => !a.startsWith("--") && (i === 0 || !["--lines", "--timeout", "--rebuild"].includes(args[i - 1])) && !a.endsWith(".test.ts"));
 if (!file) {
-  console.error("usage: npm run mutate -- <source file> [--lines 100-180] [--tests a.test.ts ...] [--timeout 90] [--list]");
+  console.error("usage: npm run mutate -- <source file> [--lines 100-180] [--tests a.test.ts ...] [--rebuild <package>] [--timeout 90] [--list]");
   process.exit(2);
 }
 const timeoutMs = Number(valueOf("--timeout") || 90) * 1000;
+const rebuildPkg = valueOf("--rebuild");
 const rel = path.relative(repo, path.resolve(repo, file));
 if (!fs.existsSync(path.join(repo, rel))) {
   console.error(`No such file: ${rel}`);
@@ -173,14 +180,32 @@ const link = (from, to) => {
 link(path.join(repo, "node_modules"), path.join(tree, "node_modules"));
 for (const pkg of fs.readdirSync(path.join(repo, "packages"))) {
   link(path.join(repo, "packages", pkg, "node_modules"), path.join(tree, "packages", pkg, "node_modules"));
-  // built libs, for tests that reach other packages through them
-  link(path.join(repo, "packages", pkg, "lib"), path.join(tree, "packages", pkg, "lib"));
+  // built libs, for tests that reach other packages through them. The one
+  // being rebuilt is a real copy, so each mutant can be compiled into it
+  if (pkg === rebuildPkg) {
+    const built = path.join(repo, "packages", pkg, "lib");
+    if (fs.existsSync(built)) fs.cpSync(built, path.join(tree, "packages", pkg, "lib"), { recursive: true });
+  } else {
+    link(path.join(repo, "packages", pkg, "lib"), path.join(tree, "packages", pkg, "lib"));
+  }
 }
 // Working tree wins over HEAD
 for (const p of [...tests, "tests/helpers", "tests/network"]) {
   const from = path.join(repo, p);
   if (fs.existsSync(from)) fs.cpSync(from, path.join(tree, p), { recursive: true });
 }
+
+if (rebuildPkg && !fs.existsSync(path.join(repo, "packages", rebuildPkg))) {
+  console.error(`No such package for --rebuild: ${rebuildPkg}`);
+  cleanup();
+  process.exit(2);
+}
+// Compile the tree's copy of the package into its own lib. False when it does not compile
+const rebuild = () => {
+  if (!rebuildPkg) return true;
+  const r = spawnSync("npx", ["tsc", "--outDir", "lib", "--module", "commonjs"], { cwd: path.join(tree, "packages", rebuildPkg), encoding: "utf8", timeout: 300000 });
+  return r.status === 0;
+};
 
 const target = path.join(tree, rel);
 fs.writeFileSync(target, original);
@@ -192,6 +217,11 @@ let killed = 0;
 const survivors = [];
 try {
   // The unmutated code must pass, or every mutant would look caught
+  if (!rebuild()) {
+    console.error("The package does not compile on the unmutated code; fix that first.");
+    process.exitCode = 1;
+    throw new Error("unmutated build failed");
+  }
   const base = spawnSync("npx", ["mocha", "--node-option", "import=tsx", ...tests, "--exit", "--bail"], { cwd: tree, encoding: "utf8", timeout: 600000 });
   if (base.status !== 0) {
     console.error("The tests fail on the unmutated code; fix that first.\n" + (base.stdout || "").split("\n").slice(-25).join("\n"));
@@ -201,7 +231,10 @@ try {
       const copy = lines.slice();
       copy[mu.line - 1] = mu.mutatedLine;
       fs.writeFileSync(target, copy.join("\n"));
-      const r = spawnSync("npx", ["mocha", "--node-option", "import=tsx", ...tests, "--exit", "--bail"], { cwd: tree, timeout: timeoutMs, encoding: "utf8" });
+      // A mutant that does not compile is caught: it could never be shipped
+      const r = rebuild()
+        ? spawnSync("npx", ["mocha", "--node-option", "import=tsx", ...tests, "--exit", "--bail"], { cwd: tree, timeout: timeoutMs, encoding: "utf8" })
+        : { status: 1 };
       const caught = r.error || r.status !== 0;
       const known = !caught && isKnown(mu);
       caught ? killed++ : survivors.push({ ...mu, known: !!known });
@@ -213,6 +246,8 @@ try {
     for (const s of open) console.log(`  ${s.line}\t${s.label}\t${s.text.slice(0, 110)}`);
     console.log(`results: ${path.relative(repo, out)}`);
   }
+} catch (e) {
+  if (!String(e?.message).includes("unmutated build failed")) throw e;
 } finally {
   cleanup();
 }
