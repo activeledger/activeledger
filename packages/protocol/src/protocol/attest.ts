@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { readFileSync } from "fs";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -38,8 +39,47 @@ export class Attestation {
    */
   public static readonly BUILD = 40300;
 
-  /** This node's signing key. Set once by the processor at setup. */
+  /** This node's identity key (RSA). Set once by the processor at setup. */
   public static key?: ActiveCrypto.KeyPair;
+
+  /**
+   * An optional Ed25519 key for attestations, and its public PEM. Signing
+   * with it costs a fraction of RSA, and the signature is a quarter of the
+   * size. Set once by the processor at setup, when the node has one.
+   */
+  public static attestKey?: ActiveCrypto.KeyPair;
+  public static attestPublic?: string;
+
+  private static listedFor?: { list: unknown; listed: boolean };
+
+  /**
+   * The key to sign with. The Ed25519 key is used only while the network's
+   * neighbourhood (setup stream, mirrored in the config) lists its public
+   * key for a node: verifiers read what a node signs with from there, so a
+   * key the neighbourhood does not list would produce signatures nobody can
+   * check. Otherwise the identity key signs, exactly as before.
+   */
+  public static signer(): ActiveCrypto.KeyPair | undefined {
+    const ed = Attestation.attestKey;
+    if (!ed || !Attestation.attestPublic) return Attestation.key;
+    const list = ActiveOptions.get<any>("neighbourhood", undefined);
+    let cached = Attestation.listedFor;
+    if (!cached || cached.list !== list) {
+      const mine = Attestation.attestPublic.trim();
+      cached = Attestation.listedFor = {
+        list,
+        listed:
+          Array.isArray(list) &&
+          list.some(
+            (n: any) =>
+              n?.attest?.type === "ed25519" &&
+              typeof n.attest.public === "string" &&
+              n.attest.public.trim() === mine
+          ),
+      };
+    }
+    return cached.listed ? ed : Attestation.key;
+  }
 
   public static enabled(): boolean {
     return (
@@ -60,7 +100,7 @@ export class Attestation {
     if (!Attestation.enabled() || !node) return;
     try {
       node.sig = ActiveCrypto.signDigest(
-        Attestation.key as ActiveCrypto.KeyPair,
+        Attestation.signer() as ActiveCrypto.KeyPair,
         ActiveCrypto.voteDigest(umid, !!node.vote, revs as any)
       );
     } catch (e) {
@@ -70,25 +110,31 @@ export class Attestation {
   }
 
   /**
-   * Sign and keep this node's commit attestation, after its documents are
-   * saved: H(umid | outcome | $revs | revsOut | umidDocHash).
+   * What a commit attestation is made from, read the moment the documents
+   * are saved: H(umid | outcome | $revs | revsOut | umidDocHash) is signed
+   * later, when a hybrid asks (see `attestation`), so a network with no
+   * hybrids never signs a commit.
    *
    * revsOut is read back from the store rather than taken from what was
-   * sent, because LevelMe assigns the revision and the attestation must
-   * describe the document a hybrid will actually fetch. The sha256 is taken
-   * over the canonical JSON of that stored document.
+   * sent, because the store assigns the revision (in its own process) and the
+   * attestation must describe the document a hybrid will actually fetch. The
+   * sha256 is taken over the canonical JSON of that stored document.
+   *
+   * It must be read here and not when asked: a stream moves on with the next
+   * transaction, and an attestation built from a newer document would no
+   * longer describe this commit, nor match what the other supernodes sign.
+   * The signed votes are the snapshot at commit, for the same reason.
    *
    * Never fails the commit: the transaction is already saved, and an
    * attestation that is missing here can be gathered from other supernodes.
+   * Undefined when attestations are off or a read fails.
    */
-  public static async commit(
+  public static async facts(
     db: { get(id: string): Promise<any> },
-    events: { post(doc: any): Promise<any> },
-    reference: string,
     entry: ActiveDefinitions.LedgerEntry,
     docs: { _id?: string }[]
-  ): Promise<void> {
-    if (!Attestation.enabled()) return;
+  ): Promise<ActiveDefinitions.IAttestFacts | undefined> {
+    if (!Attestation.enabled()) return undefined;
     try {
       const sha = (doc: any) =>
         ActiveCrypto.Hash.getHash(ActiveCrypto.canonicalJson(doc));
@@ -106,25 +152,6 @@ export class Attestation {
       }
       const umidDocHash = sha(await db.get(`${entry.$umid}:umid`));
 
-      const digest = ActiveCrypto.commitDigest(
-        entry.$umid,
-        "committed",
-        entry.$revs,
-        revsOut,
-        umidDocHash
-      );
-      const attestation: ActiveDefinitions.ICommitAttestation = {
-        node: reference,
-        umid: entry.$umid,
-        outcome: "committed",
-        revsOut,
-        umidDocHash,
-        sig: ActiveCrypto.signDigest(
-          Attestation.key as ActiveCrypto.KeyPair,
-          digest
-        ),
-      };
-
       // The signed votes, so a hybrid can count the tally from this node alone
       const nodes: { [ref: string]: ActiveDefinitions.IFeedNodeVote } = {};
       for (const ref of Object.keys(entry.$nodes || {})) {
@@ -133,9 +160,58 @@ export class Attestation {
           nodes[ref] = { vote: n.vote, ...(n.sig ? { sig: n.sig } : {}) };
         }
       }
-      await events.post({ _id: `attest:${entry.$umid}`, ...attestation, nodes });
+      return { revsOut, umidDocHash, nodes };
     } catch (e) {
-      ActiveLogger.error(e, `Commit attestation failed for ${entry.$umid}`);
+      ActiveLogger.error(e, `Commit attestation facts failed for ${entry.$umid}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Sign this node's commit attestation from the facts kept at commit.
+   * Deterministic for the same facts, so it can be made again whenever it is
+   * wanted. Undefined when this node cannot sign.
+   */
+  public static attestation(
+    reference: string,
+    umid: string,
+    revs: ActiveDefinitions.LedgerRevs,
+    facts: ActiveDefinitions.IAttestFacts
+  ): ActiveDefinitions.ICommitAttestation | undefined {
+    const signer = Attestation.signer();
+    if (!signer) return undefined;
+    try {
+      return {
+        node: reference,
+        umid,
+        outcome: "committed",
+        revsOut: facts.revsOut,
+        umidDocHash: facts.umidDocHash,
+        sig: ActiveCrypto.signDigest(
+          signer,
+          ActiveCrypto.commitDigest(umid, "committed", revs, facts.revsOut, facts.umidDocHash)
+        ),
+      };
+    } catch (e) {
+      ActiveLogger.error(e, `Commit attestation failed for ${umid}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Load the optional Ed25519 attestation key kept beside the identity.
+   * Without a readable identity file, or one that has none, the identity key
+   * signs.
+   */
+  public static useIdentityFile(file: string): void {
+    try {
+      const id = JSON.parse(readFileSync(file, "utf8"));
+      if (id?.attest?.prv?.pkcs8pem && id.attest.pub?.pkcs8pem) {
+        Attestation.attestKey = new ActiveCrypto.KeyPair("ed25519", id.attest.prv.pkcs8pem);
+        Attestation.attestPublic = id.attest.pub.pkcs8pem;
+      }
+    } catch {
+      // No readable identity file here: sign with the identity key
     }
   }
 }

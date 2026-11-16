@@ -69,6 +69,16 @@ export interface IFeedNodeVote {
 }
 
 /** Signed by a supernode after commit over H(umid | outcome | $revs | revsOut | umidDocHash) */
+/**
+ * What a commit attestation is signed from, kept in the `umid:` event row at
+ * commit. The signature itself is made when a hybrid asks for it.
+ */
+export interface IAttestFacts {
+  revsOut: { [streamId: string]: IRevOut };
+  umidDocHash: string;
+  nodes: { [nodeRef: string]: IFeedNodeVote };
+}
+
 export interface ICommitAttestation {
   /** Node reference (hash of the node's public key) */
   node: string;

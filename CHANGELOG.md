@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- **Optional Ed25519 attestation key.** Signing votes and commit attestations (build 40300) with the
+  node's RSA identity key is about half of that build's extra CPU: two RSA signatures per transaction per
+  node. A node can now attest with an Ed25519 key instead, which signs about 17 times faster and gives a
+  signature a quarter of the size. The key lives in `.identity` beside the RSA key (new identities get one;
+  an existing `.identity` gets one added at the next start and the log prints its public key). It is used
+  only once the node's neighbourhood entry lists it:
+  `"attest": { "type": "ed25519", "public": "<pem>" }`, in `config.json` and in the setup stream (assert
+  the network again to publish it). Until then the node signs with its identity key exactly as before, so
+  upgrading changes nothing by itself. Hybrids read the key to verify against from `attest` when it is
+  listed, otherwise from `identity`. The `ed25519` key type is also available in `KeyPair` (signing only).
+
 ### Changed
 - **Restore keeps trying for a umid the neighbours do not have yet.** When `activerestore` found a
   `950 SPI#2 UMID not found` record and no neighbour could supply the umid (they can be too new to hold

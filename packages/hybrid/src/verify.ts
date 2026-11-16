@@ -27,7 +27,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 type IFeedItem = ActiveDefinitions.IFeedItem;
 type ICommitAttestation = ActiveDefinitions.ICommitAttestation;
 
-/** A supernode's identity key as the setup stream lists it */
+/** The key a supernode attests with, as the setup stream lists it */
 export interface NodeKey {
   type: string;
   public: string;
@@ -53,9 +53,15 @@ export function nodeKeys(setupDoc: any, network: string): NodeKeys {
   for (const n of Array.isArray(setupDoc?.neighbourhood) ? setupDoc.neighbourhood : []) {
     if (!n || n.host === undefined || n.port === undefined) continue;
     if (!n.identity || typeof n.identity.public !== "string") continue;
+    // A node that lists an attestation key signs votes and commits with it
+    // (otherwise with its identity key)
+    const key =
+      n.attest && typeof n.attest.public === "string"
+        ? { type: n.attest.type || "ed25519", public: n.attest.public }
+        : { type: n.identity.type || "rsa", public: n.identity.public };
     let ref = ActiveCrypto.Hash.getHash(n.host + n.port + network, "sha1");
     if (typeof remap[ref] === "string") ref = remap[ref];
-    keys.set(ref, { type: n.identity.type || "rsa", public: n.identity.public });
+    keys.set(ref, key);
   }
   return keys;
 }
