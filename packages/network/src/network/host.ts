@@ -1387,6 +1387,11 @@ export class Host extends Home {
 
           break;
         case "commited":
+          // The worker sends the broadcast of its own commit in this message
+          // when it can, rather than as a message of its own. First, as before.
+          if (m.data.broadcast) {
+            this.broadcast(m.data.umid, false);
+          }
           if (!pending) return; // Fail safe, May happen when process being closed
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
