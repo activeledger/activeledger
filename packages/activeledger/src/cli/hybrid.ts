@@ -160,7 +160,9 @@ export const hybridCommand = async (
           return Cli.ExitCode.FAIL;
         }
         const r = await ActiveRequest.send(`${base()}/a/hybrid/${sub}`, "POST", [], { keyHash: arg });
-        if ((r as any).status && (r as any).status >= 400) {
+        // The node answers a refusal with a 400 and { error }; the request
+        // helper hands back only the body, so the error is what to look for
+        if (!r.data || (r.data as any).error) {
           out.error((r.data as any)?.error ?? `${sub} failed`);
           return Cli.ExitCode.FAIL;
         }
