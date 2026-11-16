@@ -26,6 +26,7 @@ describe("Attesting with an Ed25519 key (Activeprotocol)", () => {
     Attestation.attestKey = ed;
     Attestation.attestPublic = edPub;
     ActiveOptions.set("build", 40300);
+    ActiveOptions.set("hybrid", { admission: "open" });
   });
   afterEach(() => {
     Attestation.key = undefined;
@@ -33,6 +34,7 @@ describe("Attesting with an Ed25519 key (Activeprotocol)", () => {
     Attestation.attestPublic = undefined;
     ActiveOptions.set("neighbourhood", savedNeighbourhood);
     ActiveOptions.set("build", 0);
+    ActiveOptions.set("hybrid", undefined);
   });
 
   const signed = () => {

@@ -75,17 +75,35 @@ touches diverge.
 |---|---|---|
 | 40100 | Contract streams store a `{umid, hash}` reference instead of the source; authority keys can carry an `expire` date | 4.8.0 |
 | 40200 | New contract versions compile to ES2025 (see the 4.10.0 changelog for the one breaking case) | 4.10.0 |
+| 40250 | Two fixes to the stream permission check (a contract `:data` stream with an ordinary stream, and `$sigOnly` inputs) | 5.2.0 |
+| 40300 | Hybrid nodes: signed votes and commit attestations, the `hybrid` section on the ledger, the `/h/*` API, contract update locks. Votes and attestations are only signed once the network turns hybrids on (below) | 5.3.0 |
 
-A new node gets **40200**: its `config.json` is generated from the default the
+A new node gets **40300**: its `config.json` is generated from the default the
 first time it starts. An existing `config.json` is never changed by an upgrade.
 
 **Upgrading an existing network.** Upgrade every node first, leaving `build`
-alone. Once all of them run the new release, set `"build": 40200` in each
+alone. Once all of them run the new release, set `"build": 40300` in each
 node's `config.json` and restart it, or call `/a/admin-reload` on nodes with
 `remote` enabled. Raising it before every node is upgraded splits the network.
 
-**Adding a node to an existing network.** Its generated config says 40200. Set
+**Adding a node to an existing network.** Its generated config says 40300. Set
 `build` to whatever the rest of the network runs before it joins.
+
+### Hybrid nodes
+
+Build 40300 adds [hybrid nodes](docs/guide/hybrid/index.md), light followers of the ledger. It costs a
+network nothing until hybrids are turned on: until then the supernodes sign no votes and keep no
+attestations. Turning them on is one command, run on a node of a network that is already on 40300:
+
+```bash
+activeledger hybrid status          # is it on, what admission, how many registered, what this node signs with
+activeledger hybrid enable          # turn it on; no hybrid can register until you allow its key
+activeledger hybrid allow <key>     # let a hybrid register (or: hybrid enable open)
+```
+
+On a network of more than one node the change needs more than half of the nodes to sign it
+(`--out <file>`, then `hybrid sign <file>` on the others and `hybrid submit <file>`). See
+[Set up and run a hybrid](docs/guide/hybrid/run.md).
 
 ## Installing from GitHub Packages
 

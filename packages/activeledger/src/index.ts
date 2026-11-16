@@ -31,6 +31,7 @@ import { CLIHandler } from "./cli/cli";
 import { supernodeProgram } from "./cli/program";
 import { checkConfigFile, status, waitForExit } from "./cli/health";
 import { hybridCommand } from "./cli/hybrid";
+import { reloadCommand } from "./cli/reload";
 import { PIDHandler } from "./cli/pid";
 import { ensureAttestKey, withAttestKey } from "./cli/identity";
 
@@ -63,6 +64,9 @@ if (cli.command === "hybrid") {
     console,
     cli.flags.out as string | undefined
   ).then((code) => process.exit(code));
+}
+if (cli.command === "reload") {
+  reloadCommand(!!cli.flags.json).then((code) => process.exit(code));
 }
 if (cli.command === "status") {
   status(!!cli.flags.json).then((code) => process.exit(code));
@@ -106,6 +110,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
 } else if (
   cli.command === "status" ||
   cli.command === "check-config" ||
+  cli.command === "reload" ||
   cli.command === "hybrid"
 ) {
   // Handled above

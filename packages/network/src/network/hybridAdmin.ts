@@ -114,3 +114,46 @@ export const feedsStatus = (
     connectedSeconds: Math.round((now - f.connectedAt) / 1000),
   })),
 });
+
+/**
+ * `hybrid status`: is the network ready for hybrids, and what is this node
+ * doing about it. `signing` is the key this node attests with right now.
+ */
+export const hybridStatus = async (
+  registry: HybridRegistry,
+  feeds: Set<FeedClient>,
+  max: number,
+  info: {
+    build: number;
+    requiredBuild: number;
+    section: any;
+    signing: "off" | "rsa" | "ed25519";
+    attestKeyHeld: boolean;
+  }
+) => {
+  const all = await registry.list();
+  const enabled =
+    !!info.section && typeof info.section === "object" && !Array.isArray(info.section);
+  return {
+    enabled,
+    build: info.build,
+    buildOk: info.build >= info.requiredBuild,
+    requiredBuild: info.requiredBuild,
+    admission:
+      enabled && info.section.admission !== undefined
+        ? info.section.admission === "open"
+          ? "open"
+          : "allowlist"
+        : undefined,
+    allowed:
+      enabled && info.section.admission && typeof info.section.admission === "object"
+        ? info.section.admission.allowlist?.length ?? 0
+        : undefined,
+    minVersion: enabled ? info.section.minVersion : undefined,
+    registered: all.filter((h) => !h.retired).length,
+    retired: all.filter((h) => h.retired).length,
+    feeds: { count: feeds.size, max },
+    signing: info.signing,
+    attestKeyHeld: info.attestKeyHeld,
+  };
+};

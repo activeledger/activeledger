@@ -64,7 +64,10 @@ Do not run a hybrid when you need:
   earlier must be deployed again as a new contract; updating it is not
   enough. This is a known limit of the current release; see
   [Set up and run a hybrid](run.md).
-- A `hybrid` section asserted on the ledger. It decides who may register
+- Hybrids turned on for the network: `activeledger hybrid enable` (check with
+  `activeledger hybrid status`). Until then supernodes sign no votes and keep
+  no attestations, so a network that does not use hybrids pays nothing for
+  them. The same command asserts the `hybrid` section on the ledger. It decides who may register
   (`admission`), which streams every hybrid pulls at start
   (`required`), the history window (`window`) and the oldest hybrid release
   allowed to follow (`minVersion`).

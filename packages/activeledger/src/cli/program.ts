@@ -62,7 +62,8 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
   defaultCommand: "start",
   commands: [
     ...Cli.COMMON_COMMANDS,
-    { name: "hybrid", usage: "list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
+    { name: "reload", description: "Make the running node re-read config.json (needs \"remote\": true)" },
+    { name: "hybrid", usage: "status|enable [open|allowlist]|list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
   ],
   flags: [
     ...Cli.COMMON_FLAGS.map((f) =>

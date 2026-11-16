@@ -35,6 +35,8 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
  * it.
  */
 export interface HybridChange {
+  /** Create the section if the network has none (`hybrid enable`) */
+  enable?: boolean;
   admission?: "open" | "allowlist";
   allow?: string[];
   deny?: string[];

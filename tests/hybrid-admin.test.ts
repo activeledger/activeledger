@@ -6,6 +6,7 @@ import * as os from "os";
 import * as path from "path";
 import { HybridBans, feedsStatus, isLoopback, listHybrids } from "../packages/network/src/network/hybridAdmin";
 import { hybridCommand } from "../packages/activeledger/src/cli/hybrid";
+import { reloadCommand } from "../packages/activeledger/src/cli/reload";
 import { ActiveOptions } from "@activeledger/activeoptions";
 
 const hash = (c: string) => c.repeat(64);
@@ -74,9 +75,17 @@ describe("activeledger hybrid command", () => {
   let server: http.Server;
   let calls: { method: string; url: string; body: string }[];
   let port: number;
+  let statusAnswer: any;
+  let reloadAnswer: any;
+  const status = (over: any = {}) => ({
+    enabled: false, build: 40300, buildOk: true, requiredBuild: 40300, registered: 0, retired: 0,
+    feeds: { count: 0, max: 32 }, signing: "off", attestKeyHeld: true, ...over,
+  });
 
   beforeEach(async () => {
     calls = [];
+    statusAnswer = status();
+    reloadAnswer = { status: "success", build: 40300 };
     server = http.createServer((req, res) => {
       let body = "";
       req.on("data", (c) => (body += c));
@@ -85,6 +94,8 @@ describe("activeledger hybrid command", () => {
         res.setHeader("content-type", "application/json");
         if (req.url === "/a/hybrid/list") res.end(JSON.stringify([{ keyHash: hash("a"), label: "l", endpoints: [{ transport: "p2p", host: "h", port: 1 }], feedConnected: true }]));
         else if (req.url === "/a/hybrid/feeds") res.end(JSON.stringify({ count: 1, max: 32, feeds: [{ keyHash: hash("a"), cursor: "", connectedSeconds: 3 }] }));
+        else if (req.url === "/a/admin-reload") res.end(JSON.stringify(reloadAnswer));
+        else if (req.url === "/a/hybrid/status") res.end(JSON.stringify(statusAnswer));
         else res.end(JSON.stringify({ ok: true }));
       });
     });
@@ -128,6 +139,85 @@ describe("activeledger hybrid command", () => {
     expect((await run("ban")).code).to.equal(1);
     expect((await run(undefined)).code).to.equal(1);
     expect((await run("nope")).code).to.equal(1);
+  });
+
+  describe("status and enable", () => {
+    it("says hybrids are not enabled and how to turn them on", async () => {
+      const r = await run("status");
+      expect(r.code).to.equal(0);
+      expect(r.logs[0]).to.contain("not enabled").and.contain("activeledger hybrid enable").and.contain("not signing");
+    });
+
+    it("says to raise the build first when it is too low", async () => {
+      statusAnswer = status({ build: 40250, buildOk: false });
+      const r = await run("status");
+      expect(r.logs[0]).to.contain("needs 40300").and.contain('Raise "build"');
+    });
+
+    it("shows an enabled network: admission, registrations, feeds and the signing key", async () => {
+      statusAnswer = status({ enabled: true, admission: "allowlist", allowed: 2, minVersion: "5.1.0", registered: 3, retired: 1, feeds: { count: 1, max: 32 }, signing: "ed25519" });
+      const r = (await run("status")).logs[0];
+      expect(r).to.contain("enabled on this network").and.contain("allowlist  (2 keys allowed)").and.contain("3  (+1 retired)").and.contain("1 of 32").and.contain("with ed25519");
+    });
+
+    it("points at the attest entry when an Ed25519 key is held but RSA is signing", async () => {
+      statusAnswer = status({ enabled: true, admission: "open", signing: "rsa", attestKeyHeld: true });
+      expect((await run("status")).logs[0]).to.contain('add "attest"');
+    });
+
+    it("gives the raw answer with --json", async () => {
+      expect(JSON.parse((await run("status", undefined, true)).logs[0]).requiredBuild).to.equal(40300);
+    });
+
+    it("enable refuses an admission it does not know, a build that is too low, and a network already enabled", async () => {
+      expect((await run("enable", "wide")).code).to.equal(1);
+      statusAnswer = status({ buildOk: false, build: 40250 });
+      const low = await run("enable");
+      expect(low.code).to.equal(1);
+      expect(low.errors[0]).to.contain("needs build 40300");
+      statusAnswer = status({ enabled: true, admission: "open" });
+      const done = await run("enable");
+      expect(done.code).to.equal(0);
+      expect(done.logs[0]).to.contain("already enabled");
+      expect(calls.filter((c) => c.method === "POST")).to.have.length(0);
+    });
+  });
+
+  describe("reload", () => {
+    const reload = async (json = false) => {
+      const logs: string[] = [];
+      const errors: string[] = [];
+      const code = await reloadCommand(json, { log: (t) => logs.push(t), error: (t) => errors.push(t) });
+      return { code, logs, errors };
+    };
+
+    it("asks the node to re-read its config and reports the build", async () => {
+      const r = await reload();
+      expect(r.code).to.equal(0);
+      expect(r.logs[0]).to.equal("reloaded config.json (build 40300)");
+      expect(calls.map((c) => c.url)).to.deep.equal(["/a/admin-reload"]);
+      expect(JSON.parse((await reload(true)).logs[0]).status).to.equal("success");
+    });
+
+    it("says what to do when the node has remote reload off", async () => {
+      reloadAnswer = { status: "failed", message: "remote disabled" };
+      const r = await reload();
+      expect(r.code).to.equal(1);
+      expect(r.errors[0]).to.contain('"remote": true');
+    });
+
+    it("reports a reload that failed", async () => {
+      reloadAnswer = { status: "failed", message: "bad json" };
+      const r = await reload();
+      expect(r.code).to.equal(1);
+      expect(r.errors[0]).to.equal("reload failed: bad json");
+    });
+
+    it("exits 2 when the node cannot be reached", async () => {
+      server.close();
+      ActiveOptions.set("port", "1");
+      expect((await reload()).code).to.equal(2);
+    });
   });
 
   it("exits 2 when the node cannot be reached", async () => {

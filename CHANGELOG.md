@@ -3,6 +3,18 @@
 ## [Unreleased]
 
 ### Added
+- **Hybrids are turned on per network, and cost nothing until then.** Build 40300 signed every vote and
+  every commit on every network, whether or not a hybrid existed, which roughly doubled CPU. Supernodes
+  now sign votes and keep commit attestations only once the network has a `hybrid` section on its ledger.
+  `activeledger hybrid enable [open|allowlist]` creates it (a setup transaction signed by more than half
+  of the nodes, like the other `hybrid` changes) and `activeledger hybrid status` shows whether it is on,
+  the admission rule, registrations, feeds and what key this node signs with. The default `config.json`
+  no longer carries a `hybrid` section. A network whose `config.json` already has one (asserted or not)
+  is treated as enabled, as before. Only commits made after enabling can be followed by a hybrid.
+- **`activeledger reload`** makes a running node re-read `config.json` without a restart, through the
+  existing `/a/admin-reload` (which still needs `"remote": true`; the command says so when it is off).
+- **New nodes default to `build` 40300** (was 40250). With the above this adds no signing cost to a
+  network that does not use hybrids.
 - **Optional Ed25519 attestation key.** Signing votes and commit attestations (build 40300) with the
   node's RSA identity key is about half of that build's extra CPU: two RSA signatures per transaction per
   node. A node can now attest with an Ed25519 key instead, which signs about 17 times faster and gives a
