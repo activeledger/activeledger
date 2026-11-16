@@ -244,5 +244,35 @@
     "label": "return value -> undefined",
     "text": "return Promise.resolve();",
     "why": "knock() is async, so its return value is wrapped in a promise either way"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "> -> >=",
+    "text": "if (streamId.length > 64) {",
+    "why": "a 64 character id is unchanged by taking its last 64 characters"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "|| -> &&",
+    "text": "if (!Array.isArray(updated) || !updated.length) {",
+    "why": "an empty or non-array list leaves a loop that has nothing to do, so returning early or not looks the same"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "true -> false",
+    "text": "parsedDirect = true;",
+    "why": "falling back to the general route parses the same body to the same object; the direct parse is only faster"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "=== -> !==",
+    "text": "data = typeof body === \"string\" ? Buffer.from(body) : body;",
+    "why": "the general route gives deserialize a string or a Buffer and it handles both the same"
+  },
+  {
+    "file": "packages/network/src/network/endpoints.ts",
+    "label": "&& -> ||",
+    "text": "if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {",
+    "why": "a valid JSON body never starts with 0x1f or has 0x8b second, so the test agrees with the original for every real input"
   }
 ]
