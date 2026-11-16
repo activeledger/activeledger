@@ -27,6 +27,7 @@ import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { Home } from "./home";
 import { Neighbour } from "./neighbour";
 import { ActiveProtocol } from "@activeledger/activeprotocol";
+import { isCloneError, jsonCopy } from "./ipc";
 
 // Maximum memory used in VM processor
 const MAX_MEMORY_MB =
@@ -449,7 +450,12 @@ class Processor {
     // announced in the very next step by the "commited" message, and the host
     // does the same two things for either, so the pair travels as one message.
     // It is held only to the end of the current synchronous step.
-    if (!early && Home.reference && entry.$nodes?.[Home.reference]?.commit === true) {
+    if (
+      !early &&
+      Home.reference &&
+      entry.$nodes?.[Home.reference]?.commit === true &&
+      ActiveOptions.get<boolean>("ipcMergeCommit", true)
+    ) {
       this.flushBroadcast(entry.$umid);
       this.heldBroadcasts.set(entry.$umid, { nodes: entry.$nodes, revs: entry.$revs });
       queueMicrotask(() => this.flushBroadcast(entry.$umid));
@@ -593,15 +599,18 @@ class Processor {
    * @param {unknown} data
    */
   private send(type: string, data: unknown): void {
-    (process as any)?.send(
-      {
-        type,
-        data,
-      },
-      (e: Error | null) => {
-        // Most likely channel has been closed.
-      }
-    );
+    const message = { type, data };
+    const closed = (e: Error | null) => {
+      // Most likely channel has been closed.
+    };
+    try {
+      (process as any)?.send(message, closed);
+    } catch (error) {
+      // The binary encoding (ipcSerialization) refuses what JSON would have
+      // dropped; send it as JSON would have. Nothing else is caught here.
+      if (!isCloneError(error)) throw error;
+      (process as any)?.send(jsonCopy(message), closed);
+    }
   }
 
   /**

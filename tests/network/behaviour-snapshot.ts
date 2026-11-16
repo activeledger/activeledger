@@ -6,7 +6,7 @@
  * a node that stored something different from its neighbours is a consensus
  * bug in whichever build wrote the file.
  *
- *   npm run test:behaviour -- --out /tmp/candidate.json [--startup-wait 20]
+ *   npm run test:behaviour -- --out /tmp/candidate.json [--startup-wait 20] [--node-config '{"ipcBatching":false}']
  *
  * Not part of npm test (it boots a network and takes about a minute).
  */
@@ -83,7 +83,9 @@ async function allDocs(storageUrl: string, db: string): Promise<{ id: string; re
 async function main() {
   const out = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : "behaviour.json";
   const basePort = process.argv.includes("--base-port") ? Number(process.argv[process.argv.indexOf("--base-port") + 1]) : 5610;
-  const harness = new NetworkHarness({ nodeCount: 4, basePort, readyTimeoutMs: 90000 });
+  // Settings for every node, to compare one setting against another on one build
+  const nodeConfig = process.argv.includes("--node-config") ? JSON.parse(process.argv[process.argv.indexOf("--node-config") + 1]) : undefined;
+  const harness = new NetworkHarness({ nodeCount: 4, basePort, readyTimeoutMs: 90000, ...(nodeConfig ? { config: nodeConfig } : {}) });
   const steps: { name: string; result: unknown }[] = [];
   const record = (name: string, result: unknown) => {
     steps.push({ name, result });
