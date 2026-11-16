@@ -484,5 +484,41 @@
     "label": "false -> true",
     "text": "public listen(port: number, log: boolean = false, host?: string) {",
     "why": "the log parameter is not used by listen() (the logger import is commented out)"
+  },
+  {
+    "file": "packages/storage/src/embedded.ts",
+    "label": "return value -> undefined",
+    "text": "return null;",
+    "why": "an empty or unreadable answer is null or undefined to every caller, which only tests for presence"
+  },
+  {
+    "file": "packages/storage/src/embedded.ts",
+    "label": "&& -> ||",
+    "text": "if (typeof value === \"object\" && !Buffer.isBuffer(value)) {",
+    "why": "the store only ever hands back objects; a Buffer or string takes the parse below to the same value"
+  },
+  {
+    "file": "packages/storage/src/embedded.ts",
+    "label": "return value -> undefined",
+    "text": "return JSON.parse(value.toString());",
+    "why": "the store only hands back objects, so this branch (a serialised body) is not reached"
+  },
+  {
+    "file": "packages/storage/src/embedded.ts",
+    "label": "&& -> ||",
+    "text": "if (!Array.isArray(body) && body.docs) {",
+    "why": "the body is always the object {docs, options}, never an array"
+  },
+  {
+    "file": "packages/storage/src/embedded.ts",
+    "label": "|| -> &&",
+    "text": "const engine = options.engine || \"level\";",
+    "why": "the engine name does not change what opens: every engine comes up as the same ClassicLevel database here"
+  },
+  {
+    "file": "packages/storage/src/selfhost-helpers.ts",
+    "label": "> -> >=",
+    "text": "if (streamId.length > 64 && !streamId.startsWith(\"0x\")) {",
+    "why": "cutting an id of exactly 64 characters to its last 64 leaves it as it was"
   }
 ]
