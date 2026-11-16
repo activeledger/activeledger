@@ -469,7 +469,7 @@ export class StreamUpdater {
    * @private
    * @returns {Promise<void>} Rejects once every attempt has failed
    */
-  private async saveDocs(): Promise<void> {
+  private async saveDocs(): Promise<{ [id: string]: string } | undefined> {
     const delays = StreamUpdater.SAVE_RETRY_DELAYS_MS;
 
     for (let attempt = 0; ; attempt++) {
@@ -481,7 +481,8 @@ export class StreamUpdater {
           StreamUpdater.SAVE_TIMEOUT_S
         );
         if ((failure as any)?.ok === true) {
-          return;
+          // The revisions the store assigned
+          return (failure as any).revs;
         }
       } catch (error) {
         failure = error;
@@ -536,17 +537,17 @@ export class StreamUpdater {
   private async append() {
     try {
       ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
-      await this.saveDocs();
+      const revs = await this.saveDocs();
       ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
 
       // The streams are written, which is what the answer depends on. The
       // event row follows on its own, so the response does not wait on
       // another round trip to storage. From build 40300 it also carries what
-      // a commit attestation is signed from, read back now while the streams
-      // are as this transaction left them. The signature is made when a
+      // a commit attestation is signed from, taken now while the streams are as
+      // this transaction left them (from the revisions the write answered with). The signature is made when a
       // hybrid asks for it, so a network without hybrids signs nothing.
       this.recordAfterCommit(
-        await Attestation.facts(this.db, this.entry, this.docs)
+        await Attestation.facts(this.db, this.entry, this.docs, revs)
       );
     } catch (error) {
       ActiveLogger.error(error, "Datastore Failure");

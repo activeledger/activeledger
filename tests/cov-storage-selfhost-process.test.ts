@@ -628,7 +628,8 @@ describe("Storage process /events and longpoll feeds (selfhost)", function () {
         docs.push({ _id: `event:${id}`, n: i });
       }
       const w = await s.req("POST", `/${db}/_bulk_docs`, { docs });
-      expect(w.json).to.deep.equal({ ok: true });
+      expect(w.json.ok).to.equal(true);
+      expect(Object.keys(w.json.revs)).to.have.length(docs.length);
       const st = await openStream(s.port, `/${db}/events`, { "Last-Event-ID": "big00000" });
       try {
         // while the replay is being read and sent

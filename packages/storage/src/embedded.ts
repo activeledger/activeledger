@@ -189,7 +189,8 @@ export class EmbeddedDSConnect implements IDSConnect {
     return this.answer(async () => {
       const body = requestBody({ docs, options });
       if (!Array.isArray(body) && body.docs) {
-        return { ok: await this.level.bulkDocs(body.docs, body.options) };
+        const written = await this.level.bulkDocsRevs(body.docs, body.options);
+        return written.ok ? { ok: true, revs: written.revs } : { ok: false };
       }
     });
   }

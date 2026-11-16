@@ -724,10 +724,24 @@ export class LevelMe {
     docs: document[],
     options: { new_edits: boolean; force_rev?: string }
   ): Promise<boolean> {
+    return (await this.bulkDocsRevs(docs, options)).ok;
+  }
+
+  /**
+   * bulkDocs() that also answers with the revision each document now holds
+   * (the one a read of it returns), so a caller that needs them does not have
+   * to read every document back.
+   */
+  public async bulkDocsRevs(
+    docs: document[],
+    options: { new_edits: boolean; force_rev?: string }
+  ): Promise<{ ok: boolean; revs: { [id: string]: string } }> {
     // Now we could loop post, But then its not a single atomic write.
     let batch = await this.driver.batch();
     const changes: any[] = [];
-    const collect = (writer: { unchanged?: boolean; changes: any }) => {
+    const revs: { [id: string]: string } = {};
+    const collect = (writer: { unchanged?: boolean; rev: string; changes: any }) => {
+      revs[writer.changes.id] = writer.rev;
       // A resend of a write that already landed changed nothing, so it is
       // neither cached nor announced a second time
       if (!writer.unchanged) {
@@ -780,7 +794,7 @@ export class LevelMe {
         { error: e, ids: docs.map((doc) => doc._id) },
         "Bulk write failed"
       );
-      return false;
+      return { ok: false, revs: {} };
     }
 
     // Emit Changed Docs - one event per document, matching post()'s shape
@@ -807,7 +821,7 @@ export class LevelMe {
     for (let i = changes.length; i--;) {
       this.emitChange(changes[i]);
     }
-    return true;
+    return { ok: true, revs };
   }
 
   /**
@@ -945,6 +959,8 @@ export class LevelMe {
       chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
     }
 
+    // Content the store already held writes nothing and keeps its revision
+    newRev = newRev || currentDocRoot?._rev || "";
     return {
       chain,
       rev: newRev,
