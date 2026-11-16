@@ -115,10 +115,11 @@ export class Attestation {
    * later, when a hybrid asks (see `attestation`), so a network with no
    * hybrids never signs a commit.
    *
-   * revsOut is read back from the store rather than taken from what was
-   * sent, because the store assigns the revision (in its own process) and the
-   * attestation must describe the document a hybrid will actually fetch. The
-   * sha256 is taken over the canonical JSON of that stored document.
+   * The store assigns each revision in its own process and answers a write
+   * with them, so `revs` (that answer) is trusted as it is: it is the
+   * revision used everywhere. The sha256 is taken over the canonical JSON of
+   * the document as the store holds it, which is what was sent, as JSON, with
+   * that revision. Without `revs` each document is read back instead.
    *
    * It must be read here and not when asked: a stream moves on with the next
    * transaction, and an attestation built from a newer document would no
@@ -132,7 +133,8 @@ export class Attestation {
   public static async facts(
     db: { get(id: string): Promise<any> },
     entry: ActiveDefinitions.LedgerEntry,
-    docs: { _id?: string }[]
+    docs: { _id?: string }[],
+    revs?: { [id: string]: string }
   ): Promise<ActiveDefinitions.IAttestFacts | undefined> {
     if (!Attestation.enabled()) return undefined;
     try {
@@ -145,12 +147,19 @@ export class Attestation {
         .filter(
           (id) => id && !id.endsWith(":volatile") && !id.endsWith(":umid")
         );
+      // As the store holds it: sent as JSON, with the revision it answered
+      const held = (id: string): Promise<any> | any => {
+        const sent = revs && revs[id] ? docs.find((d) => d._id === id) : undefined;
+        return sent
+          ? { ...JSON.parse(JSON.stringify(sent)), _rev: (revs as any)[id] }
+          : db.get(id);
+      };
       const revsOut: { [id: string]: ActiveDefinitions.IRevOut } = {};
       for (const id of outputIds) {
-        const stored = await db.get(id);
+        const stored = await held(id);
         revsOut[id] = { rev: stored._rev, sha256: sha(stored) };
       }
-      const umidDocHash = sha(await db.get(`${entry.$umid}:umid`));
+      const umidDocHash = sha(await held(`${entry.$umid}:umid`));
 
       // The signed votes, so a hybrid can count the tally from this node alone
       const nodes: { [ref: string]: ActiveDefinitions.IFeedNodeVote } = {};

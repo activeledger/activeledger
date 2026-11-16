@@ -120,8 +120,9 @@ describe("EmbeddedDSConnect (Activestorage)", () => {
 
   describe("bulkDocs", () => {
     it("new_edits true numbers revisions forward", async () => {
-      expect(await db.bulkDocs([{ _id: "s1", v: 1 }], { new_edits: true })).to.deep.equal({ ok: true });
+      const written = await db.bulkDocs([{ _id: "s1", v: 1 }], { new_edits: true });
       const r1 = (await db.get("s1"))._rev;
+      expect(written).to.deep.equal({ ok: true, revs: { s1: r1 } });
       expect(r1.startsWith("1-")).to.equal(true);
 
       await db.bulkDocs([{ _id: "s1", v: 2, _rev: r1 }], { new_edits: true });

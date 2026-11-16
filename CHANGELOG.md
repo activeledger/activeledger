@@ -15,6 +15,10 @@
   listed, otherwise from `identity`. The `ed25519` key type is also available in `KeyPair` (signing only).
 
 ### Changed
+- **The store answers a bulk write with the revisions it assigned.** `POST /<db>/_bulk_docs` now
+  answers `{"ok": true, "revs": {"<id>": "<rev>"}}` (it was `{"ok": true}`), and `LevelMe` has
+  `bulkDocsRevs()` (`bulkDocs()` still returns true or false). A commit uses them to build its
+  attestation facts with no reads. Callers that only check `ok` are unaffected.
 - **Restore keeps trying for a umid the neighbours do not have yet.** When `activerestore` found a
   `950 SPI#2 UMID not found` record and no neighbour could supply the umid (they can be too new to hold
   it, or still committing it), it removed the record after one try, so the umid and its index row were

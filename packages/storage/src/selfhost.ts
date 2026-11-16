@@ -996,9 +996,16 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         // }
 
         // Bulk Insert
-        if (await db.bulkDocs(incoming.body.docs, incoming.body.options)) {
+        const written = await db.bulkDocsRevs(
+          incoming.body.docs,
+          incoming.body.options
+        );
+        if (written.ok) {
+          // The revisions the store assigned, so the caller need not read
+          // them back
           return {
             ok: true,
+            revs: written.revs,
           };
         } else {
           return {

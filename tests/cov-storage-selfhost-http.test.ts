@@ -480,7 +480,8 @@ describe("Storage process HTTP API (selfhost)", function () {
         ],
       });
       expect(r.status).to.equal(200);
-      expect(r.json).to.deep.equal({ ok: true });
+      expect(r.json.ok).to.equal(true);
+      expect(Object.keys(r.json.revs).sort()).to.deep.equal(["b1", "b2", "b3"]);
       for (const [id, v] of [["b1", 1], ["b2", 2], ["b3", 3]] as const) {
         expect((await s.req("GET", `/${db}/${id}`)).json.v).to.equal(v);
       }
@@ -488,7 +489,8 @@ describe("Storage process HTTP API (selfhost)", function () {
 
     it("writes a single document", async () => {
       const r = await s.req("POST", `/${db}/_bulk_docs`, { docs: [{ _id: "solo", v: 1 }] });
-      expect(r.json).to.deep.equal({ ok: true });
+      expect(r.json.ok).to.equal(true);
+      expect(r.json.revs.solo).to.equal((await s.req("GET", `/${db}/solo`)).json._rev);
       expect((await s.req("GET", `/${db}/solo`)).json.v).to.equal(1);
     });
 
@@ -497,7 +499,7 @@ describe("Storage process HTTP API (selfhost)", function () {
         docs: [{ _id: "kept", _rev: "7-abc", v: 1 }],
         options: { new_edits: false },
       });
-      expect(r.json).to.deep.equal({ ok: true });
+      expect(r.json).to.deep.equal({ ok: true, revs: { kept: "7-abc" } });
       expect((await s.req("GET", `/${db}/kept`)).json._rev).to.equal("7-abc");
     });
 
