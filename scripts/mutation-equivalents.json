@@ -436,5 +436,53 @@
     "label": "return value -> undefined",
     "text": "return doc as document;",
     "why": "Promise.all(promises) is awaited only for completion; each row is stored by index in the callback"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "&& -> ||",
+    "text": "(body[0] == 0x1f && body[1] == 0x8b)",
+    "why": "a body that only starts with 0x1f fails to ungzip and carries on with the original data, as the catch below says"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "> -> >=",
+    "text": "if (ab.byteLength > 0) {",
+    "why": "an empty chunk adds no bytes to the body"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "return value -> undefined",
+    "text": "return null;",
+    "why": "the caller only tests whether a handler was found, so null and undefined are the same"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "> -> >=",
+    "text": "if (handlers.length > 1) {",
+    "why": "sorting one handler changes nothing"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "&& -> ||",
+    "text": "if (a.pac == b.pac && a.method != b.method) {",
+    "why": "not reached by any route table: the sort is only ever asked about an ALL route and a method route in the order the table builds them (ALL routes are merged ahead of a method's own), and tests/httpd-mutation-gaps.test.ts tries every registration order of mixed routes without telling the two apart"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "return value -> undefined",
+    "text": "return 1;",
+    "why": "same comparator as above: the arrangement where it matters is not produced by the route table"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "< -> <=",
+    "text": "for (let i = 0; i < path.length; i++) {",
+    "why": "one step past the end reads undefined, which is neither * nor **"
+  },
+  {
+    "file": "packages/httpd/src/httpd.ts",
+    "label": "false -> true",
+    "text": "public listen(port: number, log: boolean = false, host?: string) {",
+    "why": "the log parameter is not used by listen() (the logger import is commented out)"
   }
 ]
