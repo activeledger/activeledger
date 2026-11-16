@@ -892,6 +892,44 @@ describe("Host HTTP listener (Activeledger)", () => {
       expect(repaired).to.deep.equal(["m-commit"]);
     });
 
+    it("broadcasts the commit before it answers, when the worker sent the two as one", () => {
+      const order: string[] = [];
+      const entry = addPending("m-merged");
+      const real = host.broadcast;
+      host.broadcast = (...a: any[]) => order.push(`broadcast ${a.join(",")}`);
+      entry.$revs = undefined;
+      try {
+        message(children[0], {
+          type: "commited",
+          data: {
+            umid: "m-merged",
+            broadcast: true,
+            revs: { $i: { a: 1 } },
+            nodes: { me: { vote: true, commit: true } },
+            entry: { $summary: { commit: 1 } },
+          },
+        });
+        order.push(`answered ${resolved.length}`);
+      } finally {
+        host.broadcast = real;
+      }
+      expect(order).to.deep.equal(["broadcast m-merged,false", "answered 1"]);
+      expect(entry.$revs).to.deep.equal({ $i: { a: 1 }, $o: {} });
+    });
+
+    it("does not broadcast for a commit message that does not ask for it", () => {
+      addPending("m-plain");
+      const calls: any[] = [];
+      const real = host.broadcast;
+      host.broadcast = (...a: any[]) => calls.push(a);
+      try {
+        message(children[0], { type: "commited", data: { umid: "m-plain", nodes: {}, entry: {} } });
+      } finally {
+        host.broadcast = real;
+      }
+      expect(calls).to.deep.equal([]);
+    });
+
     it("keeps an early update's votes out of the entry", () => {
       const entry = addPending("m-early");
       message(children[0], {

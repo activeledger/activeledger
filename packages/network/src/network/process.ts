@@ -66,6 +66,9 @@ interface IContractCaches {
  * @class Processor
  */
 class Processor {
+  /** A broadcast of this node's own commit, waiting for the commit message it travels with */
+  private heldBroadcasts = new Map<string, { nodes: any; revs: any }>();
+
   /**
    *
    *
@@ -371,7 +374,9 @@ class Processor {
       // Implement for labels?
     }
 
-    // Pass back to host to respond.
+    // Pass back to host to respond. The broadcast of this commit, if one is
+    // waiting, goes in the same message (the host sends it first, as it did
+    // when it was a message of its own).
     this.send("commited", {
       umid: entry.$umid,
       nodes: entry.$nodes,
@@ -380,6 +385,7 @@ class Processor {
         $territoriality: entry.$territoriality,
         response: entry.response,
       },
+      ...this.takeHeldBroadcast(entry.$umid),
     });
 
     // Clear Early?
@@ -412,6 +418,9 @@ class Processor {
       }
     }
 
+    // Anything held for the host goes first, as it always did
+    this.flushBroadcast(entry.$umid);
+
     // Pass back to host to respond
     this.send("commited", {
       umid: entry.$umid,
@@ -430,11 +439,54 @@ class Processor {
    * @param {*} entry
    */
   private broadcast(entry: any, early = false): void {
+    // Telling the other nodes about a transaction, or about our vote, is what
+    // lets them commit, so it goes at once. The broadcast of our own commit is
+    // announced in the very next step by the "commited" message, and the host
+    // does the same two things for either, so the pair travels as one message.
+    // It is held only to the end of the current synchronous step.
+    if (!early && Home.reference && entry.$nodes?.[Home.reference]?.commit === true) {
+      this.flushBroadcast(entry.$umid);
+      this.heldBroadcasts.set(entry.$umid, { nodes: entry.$nodes, revs: entry.$revs });
+      queueMicrotask(() => this.flushBroadcast(entry.$umid));
+      return;
+    }
+    this.sendBroadcast(entry.$umid, entry.$nodes, entry.$revs, early);
+  }
+
+  /**
+   * What a commit message adds when a broadcast of the commit was waiting for
+   * it: the flag, and the revisions the broadcast would have carried (the host
+   * takes those from whichever message first has them)
+   *
+   * @private
+   * @param {string} umid
+   */
+  private takeHeldBroadcast(umid: string): { broadcast?: true; revs?: any } {
+    const held = this.heldBroadcasts.get(umid);
+    if (!held) return {};
+    this.heldBroadcasts.delete(umid);
+    return { broadcast: true, revs: held.revs };
+  }
+
+  /**
+   * A broadcast that was held and not taken by a commit message goes now
+   *
+   * @private
+   * @param {string} umid
+   */
+  private flushBroadcast(umid: string): void {
+    const held = this.heldBroadcasts.get(umid);
+    if (!held) return;
+    this.heldBroadcasts.delete(umid);
+    this.sendBroadcast(umid, held.nodes, held.revs, false);
+  }
+
+  private sendBroadcast(umid: string, nodes: any, revs: any, early: boolean): void {
     // Pass back to host to respond
     this.send("broadcast", {
-      umid: entry.$umid,
-      nodes: entry.$nodes,
-      revs: entry.$revs,
+      umid,
+      nodes,
+      revs,
       early,
     });
   }

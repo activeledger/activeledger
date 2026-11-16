@@ -503,6 +503,64 @@ describe("Network worker Processor (process.ts)", () => {
         expect(sent.filter((m) => m.type === "broadcast")).to.have.length(0);
       });
 
+      describe("the broadcast of its own commit", () => {
+        const savedRef = Home.reference;
+        beforeEach(() => (Home.reference = "me"));
+        afterEach(() => (Home.reference = savedRef));
+        const committing = (umid: string) =>
+          entryFor(umid, { $revs: { $i: {}, $o: { s: "1-a" } }, $nodes: { me: { vote: true, commit: true } } });
+        const types = () => sent.map((m) => m.type);
+
+        it("travels in the commit message, which carries the revisions, as one message", () => {
+          const p = tx(committing("m1"));
+          p.emit("broadcast");
+          p.emit("commited");
+          expect(types()).to.deep.equal(["commited"]);
+          expect(lastSent("commited")!.data.broadcast).to.equal(true);
+          expect(lastSent("commited")!.data.revs).to.deep.equal({ $i: {}, $o: { s: "1-a" } });
+        });
+
+        it("goes by itself, after the step it was held to, when no commit message follows", async () => {
+          const p = tx(committing("m2"));
+          p.emit("broadcast");
+          expect(sent).to.deep.equal([]);
+          await Promise.resolve();
+          expect(types()).to.deep.equal(["broadcast"]);
+          expect(lastSent("broadcast")!.data.early).to.equal(false);
+        });
+
+        it("goes first when the transaction fails in the same step", () => {
+          const p = tx(committing("m3"));
+          p.emit("broadcast");
+          p.emit("failed", { error: new Error("no") });
+          expect(types()).to.deep.equal(["broadcast", "commited"]);
+          expect(lastSent("commited")!.data.broadcast).to.equal(undefined);
+        });
+
+        it("is not carried again by a later commit message", async () => {
+          const p = tx(committing("m4"));
+          p.emit("broadcast");
+          await Promise.resolve();
+          p.emit("commited");
+          expect(lastSent("commited")!.data.broadcast).to.equal(undefined);
+        });
+      });
+
+      describe("broadcasts that start or drive a commit", () => {
+        const savedRef = Home.reference;
+        beforeEach(() => (Home.reference = "me"));
+        afterEach(() => (Home.reference = savedRef));
+
+        it("go at once: a vote, and the early broadcast that starts the other nodes", () => {
+          const vote = tx(entryFor("v1", { $nodes: { me: { vote: true, commit: false } } }));
+          vote.emit("broadcast");
+          expect(sent.map((m) => m.type)).to.deep.equal(["broadcast"]);
+          const early = tx(entryFor("v2", { $nodes: { me: { vote: true, commit: true } } }));
+          early.emit("broadcast", true);
+          expect(sent.map((m) => [m.type, m.data.early])).to.deep.equal([["broadcast", false], ["broadcast", true]]);
+        });
+      });
+
       it("tells the host about a contract upgrade so caches refresh", () => {
         const e = entryFor("c2", {
           $tx: {
