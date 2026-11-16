@@ -1,6 +1,10 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.3.0] - 2026-11-16
+
+Hybrid support gets cheap enough to leave at the default, and easy to turn on. Upgrade nodes one at a
+time and leave `build` as it is: nothing here needs a protocol level to be raised, and a network that
+does not use hybrids sees no new signing cost. New nodes start at `build` 50300.
 
 ### Added
 - **Hybrids are turned on per network, and cost nothing until then.** Build 40300 signed every vote and
