@@ -2278,10 +2278,10 @@ export class Endpoints {
    * it started from. The starting umid is present by definition, so a
    * recovery attempt against it finds nothing to do and the hole stays.
    *
-   * Note this is a record, not a retry loop: activerestore's interagent
-   * makes ONE attempt to fetch the umid from peers and purges the document
-   * either way, so a umid no peer can serve right now leaves nothing behind
-   * at all. Making that durable is a separate change on the restore side.
+   * Note this is a record, not a retry loop. The retrying is activerestore's:
+   * its interagent keeps the record and asks the peers again after a growing
+   * wait, archiving it as failed after ten tries, so a umid no peer can serve
+   * yet is still picked up later. A node without a restore agent has no retry.
    *
    * @private
    * @static

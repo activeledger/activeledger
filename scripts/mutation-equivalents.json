@@ -274,5 +274,131 @@
     "label": "&& -> ||",
     "text": "if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {",
     "why": "a valid JSON body never starts with 0x1f or has 0x8b second, so the test agrees with the original for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": ">= -> >",
+    "text": "if (chunks.length > 0 && chunks[0].length >= n) {",
+    "why": "a chunk of exactly n bytes is the same bytes whether returned directly or through a concat of one"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "if (chunks.length > 0 && chunks[0].length >= n) {",
+    "why": "chunks are never empty here: the reader only peeks once 44 bytes are buffered"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "while (end < chunks.length && total < n) {",
+    "why": "only the first n bytes are read, so reading extra chunks changes nothing"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "< -> <=",
+    "text": "while (end < chunks.length && total < n) {",
+    "why": "only the first n bytes are read, so reading one extra chunk changes nothing"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "chunks = remaining.length > 0 ? [remaining] : [];",
+    "why": "an empty leftover chunk and no chunk are both skipped by the next peek"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "const section = ActiveOptions.get<any>(\"hybrid\", {});",
+    "why": "inside a generic type argument (get<any>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "< -> <=",
+    "text": "const section = ActiveOptions.get<any>(\"hybrid\", {});",
+    "why": "inside a generic type argument (get<any>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "ActiveOptions.get<string>(\"network\", \"\").split(\"@\")[0],",
+    "why": "inside a generic type argument (get<string>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "< -> <=",
+    "text": "ActiveOptions.get<string>(\"network\", \"\").split(\"@\")[0],",
+    "why": "inside a generic type argument (get<string>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "this.host + this.port + ActiveOptions.get<string>(\"network\", \"\"),",
+    "why": "inside a generic type argument (get<string>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "< -> <=",
+    "text": "this.host + this.port + ActiveOptions.get<string>(\"network\", \"\"),",
+    "why": "inside a generic type argument (get<string>), not a comparison"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "|| -> &&",
+    "text": "headers[\"content-encoding\"] == \"gzip\" ||",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "(body[0] == 0x1f && body[1] == 0x8b)",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "if (body[0] == 0x1f && body[1] == 0x8b) {",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "if (obj.data[0] == 0x1f && obj.data[1] == 0x8b) {",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "if (obj[0] == 0x1f && obj[1] == 0x8b) {",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": "if (asBufferObj.data[0] == 0x1f && asBufferObj.data[1] == 0x8b) {",
+    "why": "a valid body never starts with the gzip magic bytes unless it is gzip, so the test agrees for every real input"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "?? -> ||",
+    "text": "ActiveOptions.get<any>(\"security\", {})?.maxRequestBytes ?? 16 * 1024 * 1024",
+    "why": "a configured 0 is rejected by the > 0 check below either way"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "&& -> ||",
+    "text": ".reference /*&& !this.processPending[umid].entry.$nodes[node.reference]*/ &&",
+    "why": "the operator is inside a commented-out condition on this line, so the code is unchanged"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "if (TT > 5) {",
+    "why": "decides only whether a timing line is logged"
+  },
+  {
+    "file": "packages/network/src/network/host.ts",
+    "label": "> -> >=",
+    "text": "} : S=${started}, TT=${TT}ms ${TT > 30000 ? \"TTLR\" : \" OK\"",
+    "why": "decides only the word in a timing log line"
   }
 ]
