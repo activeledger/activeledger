@@ -42,6 +42,7 @@ describe("Bulk writes answer with the revisions they assigned (Activestorage)", 
 
   it("lets a commit attest without reading anything back, to what a read would give", async () => {
     ActiveOptions.set("build", 40300);
+    ActiveOptions.set("hybrid", { admission: "open" });
     Attestation.key = new ActiveCrypto.KeyPair("rsa");
     (Attestation.key as any).generate();
     try {
@@ -69,6 +70,7 @@ describe("Bulk writes answer with the revisions they assigned (Activestorage)", 
     } finally {
       Attestation.key = undefined;
       ActiveOptions.set("build", 0);
+    ActiveOptions.set("hybrid", undefined);
     }
   });
 });

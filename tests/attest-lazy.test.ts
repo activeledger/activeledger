@@ -35,10 +35,12 @@ describe("Commit attestations made when asked for (Activeprotocol / Activenetwor
   beforeEach(() => {
     Attestation.key = kp;
     ActiveOptions.set("build", 40300);
+    ActiveOptions.set("hybrid", { admission: "open" });
   });
   afterEach(() => {
     Attestation.key = undefined;
     ActiveOptions.set("build", 0);
+    ActiveOptions.set("hybrid", undefined);
   });
 
   describe("facts, read back at commit", () => {

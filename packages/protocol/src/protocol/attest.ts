@@ -81,10 +81,24 @@ export class Attestation {
     return cached.listed ? ed : Attestation.key;
   }
 
+  /**
+   * Are there hybrids to attest for. A network asserts a `hybrid` section on
+   * its ledger (setup stream, mirrored into every node's options) to turn
+   * hybrid nodes on, so every supernode sees the same answer and switches
+   * together. Until then nobody could use a vote signature or a commit
+   * attestation, and signing them is a cost for nothing (see
+   * docs/guide/hybrid). This is the one place that decides it.
+   */
+  public static hybridsEnabled(): boolean {
+    const section = ActiveOptions.get<any>("hybrid", undefined);
+    return !!section && typeof section === "object" && !Array.isArray(section);
+  }
+
   public static enabled(): boolean {
     return (
       !!Attestation.key &&
-      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD
+      ActiveOptions.get<number>("build", 0) >= Attestation.BUILD &&
+      Attestation.hybridsEnabled()
     );
   }
 

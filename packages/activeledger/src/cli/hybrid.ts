@@ -37,7 +37,7 @@ import {
  * loopback, because the registry, the connected feeds and the ban list live
  * in its memory.
  */
-const base = (): string => {
+export const base = (): string => {
   const flagHost = ActiveOptions.get<string>("host", "");
   const flagPort = ActiveOptions.get<string>("port", "");
   if (flagHost && flagPort) return `http://${flagHost}:${flagPort}`;
@@ -70,6 +70,62 @@ export const hybridCommand = async (
   const show = (data: unknown, text: string) => out.log(json ? JSON.stringify(data) : text);
   try {
     switch (sub) {
+      case "status": {
+        const { data } = await ActiveRequest.send(`${base()}/a/hybrid/status`, "GET");
+        const st = data as any;
+        const lines: string[] = [];
+        lines.push(`hybrid nodes   ${st.enabled ? "enabled on this network" : "not enabled"}`);
+        lines.push(`build          ${st.build}${st.buildOk ? "" : `  (needs ${st.requiredBuild} or later)`}`);
+        if (st.enabled) {
+          lines.push(
+            `admission      ${st.admission}${st.admission === "allowlist" ? `  (${st.allowed} key${st.allowed === 1 ? "" : "s"} allowed)` : ""}`
+          );
+          lines.push(`min version    ${st.minVersion ?? "none"}`);
+          lines.push(`registered     ${st.registered}${st.retired ? `  (+${st.retired} retired)` : ""}`);
+          lines.push(`feeds          ${st.feeds.count} of ${st.feeds.max}`);
+        }
+        lines.push(
+          `this node      ${st.signing === "off" ? "not signing votes or attestations" : `signs votes and attestations with ${st.signing}`}`
+        );
+        if (st.signing === "rsa" && st.attestKeyHeld) {
+          lines.push(`               an Ed25519 key is held but not listed: add "attest" to this node's neighbourhood entry for faster signing`);
+        }
+        if (!st.enabled) {
+          lines.push("", st.buildOk ? "Turn it on with: activeledger hybrid enable" : `Raise "build" to ${st.requiredBuild} on every node first, then: activeledger hybrid enable`);
+        }
+        show(st, lines.join("\n"));
+        return Cli.ExitCode.OK;
+      }
+      case "enable": {
+        // The admission rule the network starts with: closed until keys are allowed, or open
+        const admission = (arg ?? "allowlist") as HybridChange["admission"];
+        if (admission !== "open" && admission !== "allowlist") {
+          out.error("hybrid enable takes open or allowlist (default allowlist: no hybrid can register until you allow its key)");
+          return Cli.ExitCode.FAIL;
+        }
+        const { data } = await ActiveRequest.send(`${base()}/a/hybrid/status`, "GET");
+        const st = data as any;
+        if (st.enabled) {
+          show(st, `hybrid nodes are already enabled on this network (admission ${st.admission}); see 'activeledger hybrid status'`);
+          return Cli.ExitCode.OK;
+        }
+        if (!st.buildOk) {
+          out.error(`hybrid needs build ${st.requiredBuild} or later (this node is on ${st.build}); raise "build" on every node first`);
+          return Cli.ExitCode.FAIL;
+        }
+        const request = buildChange({ enable: true, admission });
+        if (outFile) {
+          fs.writeFileSync(outFile, JSON.stringify(request, null, 2));
+          show({ file: outFile }, `wrote ${outFile}: have the other nodes run 'hybrid sign ${outFile}', then 'hybrid submit ${outFile}'`);
+          return Cli.ExitCode.OK;
+        }
+        return await sendChange(
+          request,
+          (d, t) =>
+            show(d, `${t}\nhybrid nodes are now enabled${admission === "allowlist" ? "; allow a hybrid with: activeledger hybrid allow <key>" : ""}`),
+          out
+        );
+      }
       case "list": {
         const { data } = await ActiveRequest.send(`${base()}/a/hybrid/list`, "GET");
         const rows = data as any[];
@@ -150,7 +206,7 @@ export const hybridCommand = async (
         return await sendChange(JSON.parse(fs.readFileSync(arg, "utf8")), show, out);
       }
       default:
-        out.error(`hybrid needs a subcommand: list, feeds, ban <keyhash>, unban <keyhash>, allow <key>, deny <key>, admission <open|allowlist>, min-version <semver>, sign <file>, submit <file>`);
+        out.error(`hybrid needs a subcommand: status, enable [open|allowlist], list, feeds, ban <keyhash>, unban <keyhash>, allow <key>, deny <key>, admission <open|allowlist>, min-version <semver>, sign <file>, submit <file>`);
         return Cli.ExitCode.FAIL;
     }
   } catch (e: any) {

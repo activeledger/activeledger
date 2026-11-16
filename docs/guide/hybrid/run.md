@@ -16,13 +16,13 @@ disagree. See [config.json](../operate/configuration.md) for how `build`
 works and [Builds and upgrades](../operate/nodes.md).
 
 A hybrid can only run contracts, and serve `/umid/` records, from
-transactions committed after both the assert at build `40300` (step 3) and
-the last change to the hybrid rules (step 4). Anything earlier is out of its
+transactions committed after both turning hybrids on at build `40300` (step
+2) and the last change to the hybrid rules (step 4). Anything earlier is out of its
 reach, and this is a known limit of the current release:
 
-- A contract deployed before the assert never runs on a hybrid, even after an
-  update: a version deployed by `update` before the assert, and an update
-  made after it, are both refused with
+- A contract deployed before hybrids were turned on never runs on a hybrid,
+  even after an update: a version deployed by `update` before then, and an
+  update made after it, are both refused with
   `Init Contract Error - Contract not found`. Deploy it again as a new
   contract (a new stream, no `$entry: "update"`); see
   [Deploy, update, lock and unlock](../contracts/deploy.md).
@@ -31,52 +31,64 @@ reach, and this is a known limit of the current release:
   `Init Contract Error - Namespace not found - ENOENT`, and every earlier
   `/umid/` gives 404 `Umid not found`. A hybrid already running keeps working.
 
-### 2. Check the `hybrid` section
+### 2. Turn hybrids on
 
-A fresh `config.json` already holds this section, with these values. Change
-it if you need to, on the node you will assert from:
+Until you do, the supernodes sign no votes and keep no attestations, so a
+network that does not use hybrids pays nothing for them. Check where you are:
 
-```json
-"hybrid": {
-  "admission": "open",
-  "required": [],
-  "window": { "days": 30 },
-  "minVersion": "5.1.0"
-}
+```bash
+activeledger hybrid status
 ```
+
+```text
+hybrid nodes   not enabled
+build          40300
+this node      not signing votes or attestations
+
+Turn it on with: activeledger hybrid enable
+```
+
+Then turn it on. The network starts closed: no hybrid can register until you
+allow its key (step 4). Use `hybrid enable open` to let any key register.
+
+```bash
+activeledger hybrid enable
+```
+
+This writes a `hybrid` section to the network's setup stream, so every
+supernode enforces the same rule and starts signing at the same time. It is a
+setup transaction that more than half of the supernodes must sign: on a
+network of one node the command signs, sends and prints `applied to the
+ledger`; on a larger one write it with `--out`, sign it on the other nodes and
+submit it (the commands are in step 4). The section holds:
 
 | Key | Meaning |
 |---|---|
 | `admission` | Who may register. `"open"` lets any key register. `{ "allowlist": ["<key hash or public key PEM>", ...] }` lets only those keys register. |
-| `required` | Streams every hybrid pulls at start, as stream ids (64 hex characters) or `{ "id": "<stream id>" }`. Contracts are always pulled; this is for other streams every hybrid should hold from the first moment. `[]` is fine. |
+| `required` | Streams every hybrid pulls at start, as stream ids (64 hex characters) or `{ "id": "<stream id>" }`. Contracts are always pulled; this is for other streams every hybrid should hold from the start. |
 | `window` | How many days of transaction history a hybrid keeps. `days` is a whole number, at least 1. |
 | `minVersion` | The oldest `activehybrid` release allowed to follow this network, such as `"5.1.0"`. A hybrid below it stops applying transactions. Raise it only when a release changes how contracts run. |
 
-All four keys are required and no other key is allowed; a typo is refused
-rather than silently becoming the network's rule.
+A new section starts as `admission` allowlist (empty), `required` `[]`,
+`window` 30 days and `minVersion` `5.1.0`. Change any of it with step 4.
 
-### 3. Assert it on the ledger
+Only commits made after hybrids are turned on carry what a hybrid needs, so a
+hybrid starts following from that point. After a config change you made by
+hand in `config.json`, `activeledger reload` makes a running node re-read it
+(it needs `"remote": true`, otherwise restart the node).
 
-The section lives in the network's setup stream, so every supernode enforces
-the same rule. Assert the config as you did when you built the network (see
-[Run a first node, then a small network](../first-network.md) for a network
-of more than one node):
+### 3. Sign with the faster key (optional)
 
-```bash
-activeledger --assert
-```
+At build 40300 every node signs two things per transaction. A node can sign
+with an Ed25519 key instead of its RSA identity, which is about 17 times
+faster. See [Faster signing once hybrids are on](../operate/nodes.md). A new
+install already lists it; `activeledger hybrid status` tells you when a node
+holds an Ed25519 key it is not using.
 
-From then on the ledger's copy is the one that counts; the `hybrid` section
-in the local file is ignored. Then restart every supernode, so each loads the
-asserted setup. Until you do, a hybrid cannot bootstrap (its log says `no
-setup stream in the bootstrap`) and `activehybrid pin` prints the wrong hash,
-so a pin taken before the restart fails later with
-`setup neighbourhood hash ... does not match the pin`.
+### 4. Allow hybrids and change the rules
 
-### 4. Change it later with `activeledger hybrid`
-
-Once asserted, change the section with the `hybrid` subcommands rather than
-by editing and asserting again:
+Change the section with the `hybrid` subcommands rather than by editing and
+asserting again:
 
 ```bash
 activeledger hybrid admission allowlist

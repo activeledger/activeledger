@@ -39,13 +39,13 @@ A stream is one record on the ledger, with a position that moves on each time it
 | `40100` | Authority expiry is enforced (an authority with an `expire` date stops signing after it). Contract source is stored once, as a reference to the deploying transaction, instead of a copy in the contract stream. |
 | `40200` | New contract versions compile to ES2025 (newer JavaScript) instead of ES2017. |
 | `40250` | Two fixes to the stream permission check, which make it accept transactions an older node rejects: a transaction that names a contract `:data` stream together with an ordinary stream, and an input marked `$sigOnly` (which used to fail on every node). A stream that is not `$sigOnly` and has no state document is rejected with 950. |
-| `40300` | Hybrid nodes: each node signs its vote and its commit, the `hybrid` section is asserted on-ledger, hybrids can register, and the `/h/*` API serves them. A contract `update` can `lock` older versions, and locks are recorded on the contract stream so a restore brings them back. |
+| `40300` | Hybrid nodes: once hybrids are turned on (`activeledger hybrid enable`), each node signs its vote and its commit, the `hybrid` section is asserted on-ledger, hybrids can register, and the `/h/*` API serves them. A contract `update` can `lock` older versions, and locks are recorded on the contract stream so a restore brings them back. |
 
-A new node's generated `config.json` has `40250`, so a new network has the stream fixes on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300`.
+A new node's generated `config.json` has `40300`, so a new network has the stream fixes and the hybrid protocol on. Hybrids themselves cost nothing until you turn them on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300` and `activeledger hybrid enable` (see [Hybrid nodes](../hybrid/run.md)).
 
-### Faster signing at 40300
+### Faster signing once hybrids are on
 
-At `40300` every node signs two things per transaction, and with the RSA identity key that is about half of the build's extra CPU. A node can sign with an Ed25519 key instead, which is about 17 times faster. It is optional and changes nothing until you switch it on:
+Once hybrids are on, every node signs two things per transaction, and with the RSA identity key that is about half of the build's extra CPU. A node can sign with an Ed25519 key instead, which is about 17 times faster. It is optional and changes nothing until you switch it on:
 
 1. Start the node on this version. Its `.identity` file gets an Ed25519 key beside the RSA one, and the log prints the public key. A new install already has it, and its generated `config.json` already lists it.
 2. In `config.json`, add `"attest": { "type": "ed25519", "public": "<that public key>" }` to the node's own `neighbourhood` entry, next to `identity`.

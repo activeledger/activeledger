@@ -63,6 +63,33 @@ describe("Setup hybrid change", () => {
     expect(held.admission.allowlist).to.deep.equal(["k"]);
   });
 
+  describe("enable (turning hybrids on)", () => {
+    it("creates a closed section on a network that has none", () => {
+      const r = apply(undefined, { enable: true, admission: "allowlist" });
+      expect(r.hybrid).to.deep.equal({
+        admission: { allowlist: [] },
+        required: [],
+        window: { days: 30 },
+        minVersion: "5.1.0",
+      });
+    });
+
+    it("can open it in the same change", () => {
+      expect(apply(undefined, { enable: true, admission: "open" }).hybrid.admission).to.equal("open");
+    });
+
+    it("leaves a section that is already there as it is", () => {
+      const held = base({ allowlist: ["k"] });
+      expect(apply(held, { enable: true, admission: "allowlist" }).hybrid.admission.allowlist).to.deep.equal(["k"]);
+    });
+
+    it("is the only change that creates a section, and takes only true", () => {
+      expect(apply(undefined, { admission: "open" }).error).to.match(/no hybrid section/);
+      expect(apply(undefined, { enable: false }).error).to.match(/no hybrid section/);
+      expect(apply(undefined, { enable: true, window: { days: 1 } }).error).to.match(/Unknown/);
+    });
+  });
+
   it("keyArgument accepts a hash or a PEM and refuses anything else", () => {
     const key = pem();
     const hash = ActiveCrypto.keyHash(key);

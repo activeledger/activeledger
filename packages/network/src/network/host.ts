@@ -39,7 +39,7 @@ import { Home } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
 import { startHybridP2P } from "./hybridP2P";
-import { HybridBans, feedsStatus, isLoopback, listHybrids } from "./hybridAdmin";
+import { HybridBans, feedsStatus, hybridStatus, isLoopback, listHybrids } from "./hybridAdmin";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
@@ -2214,10 +2214,31 @@ export class Host extends Home {
           case "/a/status": // Network Status Request
             response = Endpoints.status(this, requester);
             break;
+          case "/a/hybrid/status": // activeledger hybrid status
           case "/a/hybrid/list": // activeledger hybrid list
           case "/a/hybrid/feeds": // activeledger hybrid feeds
             if (!isLoopback(req.connection.remoteAddress)) {
               return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
+            if (req.url === "/a/hybrid/status") {
+              const attest = ActiveProtocol.Attestation;
+              response = hybridStatus(
+                this.hybridRegistry,
+                this.hybridFeeds,
+                Host.hybridMaxFeeds(),
+                {
+                  build: ActiveOptions.get<number>("build", 0),
+                  requiredBuild: attest.BUILD,
+                  section: ActiveOptions.get<any>("hybrid", undefined),
+                  signing: !attest.enabled()
+                    ? "off"
+                    : attest.signer() === attest.attestKey
+                      ? "ed25519"
+                      : "rsa",
+                  attestKeyHeld: !!attest.attestKey,
+                }
+              ).then((content) => ({ statusCode: 200, content }));
+              break;
             }
             response =
               req.url === "/a/hybrid/list"

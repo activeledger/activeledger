@@ -783,18 +783,29 @@ export default class Setup extends PostProcess {
     current: any,
     change: any
   ): { hybrid?: any; error?: string } {
-    if (!HybridConfig.isSection(current)) {
-      return { error: "Network has no hybrid section" };
-    }
     if (
       !change ||
       typeof change !== "object" ||
       Array.isArray(change) ||
       Object.keys(change).some(
-        (k) => ["admission", "allow", "deny", "minVersion"].indexOf(k) === -1
+        (k) =>
+          ["enable", "admission", "allow", "deny", "minVersion"].indexOf(k) === -1
       )
     ) {
       return { error: "Unknown hybrid change" };
+    }
+    if (!HybridConfig.isSection(current)) {
+      // Turning hybrids on creates the section: closed (nobody may register
+      // until a key is allowed) unless the same change opens it
+      if (change.enable !== true) {
+        return { error: "Network has no hybrid section" };
+      }
+      current = {
+        admission: { allowlist: [] },
+        required: [],
+        window: { days: 30 },
+        minVersion: "5.1.0",
+      };
     }
     const hybrid = JSON.parse(JSON.stringify(current));
 
