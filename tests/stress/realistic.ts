@@ -28,7 +28,7 @@ const SPECS: FlagSpec[] = [
   { name: "startup-wait", type: "number", default: 20, description: "seconds to wait after the nodes report ready before the first transaction (a freshly started network can take a moment to settle)" },
   { name: "settle", type: "number", default: 5, description: "seconds of quiet between steps" },
   { name: "users", type: "number", default: 1000, description: "distinct users (each with its own key and stream); a user is not used again while its previous transaction is in flight" },
-  { name: "contract", type: "string", default: "no-write", choices: ["no-write", "returner"], description: "no-write: validates and returns, writes no state; returner: writes a message onto the user's stream" },
+  { name: "contract", type: "string", default: "no-write", choices: ["no-write", "returner", "read-only"], description: "no-write: goes through the stream lock and writes no state; returner: writes a message onto the user's stream; read-only: reads another user's stream through $r with no lock and no write" },
   { name: "join-pct", type: "number", default: 5, description: "percent of arrivals that are a new user joining (onboard); the rest are contract transactions on the user's own stream" },
   { name: "workers", type: "number", default: 6, description: "load-generator threads" },
   { name: "sustain-pct", type: "number", default: 97, description: "a step is sustained if the network committed at least this percent of the offered rate" },
@@ -37,7 +37,7 @@ const SPECS: FlagSpec[] = [
   { name: "stop-after", type: "number", default: 2, description: "stop climbing after this many unsustained steps in a row" },
   { name: "node-config", type: "string", description: "JSON merged into every node's config.json before it starts, e.g. '{\"debug\":false}' (recorded in the results)" },
   { name: "pdf", type: "string", description: "write a one page PDF summary to this path" },
-  { name: "from", type: "string", description: "do not run: build the --pdf from existing results file(s); give a reads file and a writes file separated by a comma for two headlines" },
+  { name: "from", type: "string", description: "do not run: build the --pdf from existing results file(s); give a reads file, a locked-reads file and a writes file separated by commas for up to three headlines" },
   ...COMMON_FLAGS,
 ];
 
@@ -128,7 +128,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
     });
     try {
       await Promise.all(Array.from({ length: f.workers }, (_, index) => new Promise<void>((resolve, reject) => {
-        const init: WorkerInit = { urls: nodes.map((n) => n.baseUrl), namespace: workload.namespace, contractId: workload.contractId, users: perWorker, index: index * perWorker };
+        const init: WorkerInit = { urls: nodes.map((n) => n.baseUrl), namespace: workload.namespace, contractId: workload.contractId, users: perWorker, index: index * perWorker, readOnly: f.contract === "read-only" };
         const w = new Worker(path.join(__dirname, "lib", "realistic-worker.ts"), { workerData: init });
         workers.push(w);
         w.on("error", reject);

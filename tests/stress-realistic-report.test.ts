@@ -103,4 +103,37 @@ describe("stress:realistic report (the one page summary)", () => {
     const bad = file("other.jsonl", [{ kind: "run", tool: "throughput" }]);
     expect(() => buildHtml([bad])).to.throw(/no meta record/);
   });
+
+  describe("with a lock-free read as well (reads, locked reads, writes)", () => {
+    const free = () => file("free.jsonl", [meta("read-only"), run(700, 702, 8, true), run(2000, 1980, 40, true), run(2200, 900, 9000, false)]);
+
+    it("shows three headlines, in the order reads, locked reads, writes", () => {
+      const html = buildHtml([reads(), writes(), free()]);
+      const at = (label: string) => html.indexOf(`<div class="kind"`, html.indexOf(`>${label}</div>`) - 60);
+      const kinds = [...html.matchAll(/<div class="kind"[^>]*>([^<]+)<\/div>/g)].map((m) => m[1]);
+      expect(kinds).to.deep.equal(["Reads", "Locked reads", "Writes"]);
+      expect(at("Reads")).to.be.greaterThan(-1);
+      expect(html).to.match(/1,980 <small>per second/);
+      expect(html).to.match(/1,100 <small>per second/);
+      expect(html).to.match(/798 <small>per second/);
+    });
+
+    it("calls the lock-free read the reads, and the stream-locking one locked reads", () => {
+      const html = buildHtml([writes(), reads(), free()]);
+      expect(html).to.contain("Locked reads");
+      expect(html).to.contain("with no lock and no write");
+      expect(html).to.contain("Reads, locked reads and writes were all tested");
+    });
+
+    it("leaves the two-file page as it was: the stream-locking read is simply the reads", () => {
+      const html = buildHtml([reads(), writes()]);
+      expect(html).to.not.contain("Locked reads");
+      expect(html).to.contain("Reads and writes were both tested");
+    });
+
+    it("still shows only the steps each kind held", () => {
+      const html = buildHtml([reads(), writes(), free()]);
+      expect(html).to.not.match(/2,200/);
+    });
+  });
 });

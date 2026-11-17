@@ -56,7 +56,23 @@ ${series.map((s, i) => `<text x="${L + 10}" y="${T + 11 + i * 12}" font-size="9"
 </svg>`;
 }
 
-function loadSeries(file: string): { series: Series; meta: any; maxLoad: number } {
+/** The three kinds of transaction the peak test measures, in the order the page shows them. */
+const KINDS = ["Reads", "Locked reads", "Writes"];
+const COLOURS: Record<string, string> = { Reads: "#1f6feb", "Locked reads": "#8250df", Writes: "#1a7f37" };
+
+/**
+ * What a results file measured, from the contract it ran. `read-only` reads on
+ * the ledger without locking or writing (the "Reads"); `no-write` goes through
+ * the lock on a stream but writes nothing; `returner` writes. Where no
+ * lock-free read was measured, `no-write` is the page's "Reads", as it always was.
+ */
+export function kindOf(contract: string, hasLockFreeReads: boolean): string {
+  if (contract === "returner") return "Writes";
+  if (contract === "read-only") return "Reads";
+  return hasLockFreeReads ? "Locked reads" : "Reads";
+}
+
+function loadSeries(file: string): { runs: Run[]; peak: Run; contract: string; meta: any; maxLoad: number } {
   const all = readRecords<any>(file);
   const metaIdx = all.map((r) => r.kind).lastIndexOf("meta");
   const meta = all[metaIdx];
@@ -66,18 +82,25 @@ function loadSeries(file: string): { series: Series; meta: any; maxLoad: number 
   // Only the rates the network held; a step it could not hold is not shown
   const held = runs.filter((r) => r.sustained);
   if (!held.length) throw new Error(`${file}: no step was sustained, so there is nothing to show`);
-  const writes = meta.contract === "returner";
   return {
-    series: { label: writes ? "Writes" : "Reads", runs: held, peak: held[held.length - 1], colour: writes ? "#1a7f37" : "#1f6feb" },
+    runs: held,
+    peak: held[held.length - 1],
+    contract: meta.contract,
     meta,
     maxLoad: Math.max(...runs.flatMap((r) => [r.loadBefore.load1, r.loadAfter.load1])),
   };
 }
 
-/** One results file per kind of transaction (reads, writes); a single file gives a single headline. */
+/** One results file per kind of transaction (reads, locked reads, writes); a single file gives a single headline. */
 export function buildHtml(files: string[]): string {
   const loaded = files.map(loadSeries);
-  const series = loaded.map((l) => l.series).sort((a, b) => (a.label === "Reads" ? -1 : b.label === "Reads" ? 1 : 0));
+  const hasLockFree = loaded.some((l) => l.contract === "read-only");
+  const series: Series[] = loaded
+    .map((l) => {
+      const label = kindOf(l.contract, hasLockFree);
+      return { label, runs: l.runs, peak: l.peak, colour: COLOURS[label] };
+    })
+    .sort((a, b) => KINDS.indexOf(a.label) - KINDS.indexOf(b.label));
   const meta = loaded[0].meta;
   const maxLoad = Math.max(...loaded.map((l) => l.maxLoad));
   const date = new Date(meta.ts).toISOString().slice(0, 10);
@@ -108,14 +131,14 @@ h2{font-size:11pt;margin:10px 0 4px}.chart{margin:12px 0 0}ul{margin:4px 0 0 18p
 <h1>Activeledger throughput</h1>
 <div class="sub">${meta.nodes}-node network on one PC &middot; ${esc(date)}</div>
 <div class="heroes">${heroes}</div>
-<p class="lead">Every transaction confirmed (final) by the network. Reads check or look up data; writes update ledger state.</p>
+<p class="lead">Every transaction confirmed (final) by the network. ${hasLockFree ? "Reads run a contract that looks up ledger data, with no lock and no write; locked reads do the same on a stream the network locks while it agrees; writes update ledger state." : "Reads check or look up data; writes update ledger state."}</p>
 <table><tr><th>Sent per sec</th>${head}</tr>${rows}</table>
 <div class="chart">${chart(series)}</div>
 <h2>Please note</h2>
 <ul>
 <li>Measured on a shared, busy PC (${meta.cpus} threads, load average up to ${maxLoad.toFixed(0)}); dedicated servers built for the job will deliver more.</li>
 <li>All ${meta.nodes} nodes of the network ran on this one machine, sharing its CPU and disk.</li>
-<li>Reads and writes were both tested; writes are the most demanding because every write is stored to disk.</li>
+<li>${hasLockFree ? "Reads, locked reads and writes were all tested" : "Reads and writes were both tested"}; writes are the most demanding because every write is stored to disk.</li>
 <li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
 <li>N/A means no result is shown at that rate.</li>
 </ul>
