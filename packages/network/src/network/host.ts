@@ -812,6 +812,7 @@ export class Host extends Home {
     this.dbEventConnection.info();
     // A transaction resent before a restart can still be reposted
     void this.loadResentGuard();
+    void this.loadStoredMarker();
 
     this.api = App();
 
@@ -2134,6 +2135,12 @@ export class Host extends Home {
   /** After a start memory knows nothing of what was committed before it */
   private storedColdUntil = Date.now() + STORED_WINDOW_MS;
   private storedSwept = 0;
+  /** Has the stored marker (below) been read since this node started? Until it has memory cannot say "no" */
+  private storedMarkerLoaded = false;
+  private storedMarkerLoading?: Promise<void>;
+  private storedMarkerTried = 0;
+  /** The latest time a `storedfar:` row already says, so a commit under it writes nothing */
+  private storedMarkerWritten = 0;
 
   /**
    * Called for every transaction this node commits. A committed transaction can
@@ -2153,6 +2160,7 @@ export class Host extends Home {
       // Too far ahead (or too many) to hold: remember only how long it is
       // unsafe to say "no", one number, not one entry
       this.storedUntrackedUntil = Math.max(this.storedUntrackedUntil, until);
+      this.writeStoredMarker(until);
       return;
     }
     if (now - this.storedSwept > 1000) {
@@ -2160,6 +2168,54 @@ export class Host extends Home {
       for (const [id, t] of this.storedLive) if (t <= now) this.storedLive.delete(id);
     }
     this.storedLive.set(umid, until);
+  }
+
+  /**
+   * Keeps "memory cannot say no until" across a restart: a `storedfar:<ms>` row in the
+   * events database, written only when a commit goes past what is already on disk, and
+   * then a window further, so a stream of such commits writes about one row per window.
+   */
+  private writeStoredMarker(until: number): void {
+    if (until <= this.storedMarkerWritten) return;
+    const upTo = until + STORED_WINDOW_MS;
+    this.storedMarkerWritten = upTo;
+    this.dbEventConnection.post({ _id: `storedfar:${upTo}`, until: upTo }).catch((error: unknown) => {
+      this.storedMarkerWritten = 0;
+      ActiveLogger.error({ error }, "Could not record a far-off $expire commit; a restart would forget it");
+    });
+  }
+
+  /**
+   * Reads the marker once at start. If the storage cannot answer, memory simply says
+   * "maybe" to everything (the storage is asked, as before) and tries again later.
+   */
+  public loadStoredMarker(): Promise<void> {
+    if (STORED_WINDOW_MS <= 0 || this.storedMarkerLoaded) return Promise.resolve();
+    if (this.storedMarkerLoading) return this.storedMarkerLoading;
+    if (Date.now() - this.storedMarkerTried < 5000) return Promise.resolve();
+    this.storedMarkerTried = Date.now();
+    this.storedMarkerLoading = (async () => {
+      try {
+        const list = await this.dbEventConnection.allDocs({ startkey: "storedfar:", endkey: "storedfar:x", include_docs: true });
+        if (!list || !Array.isArray(list.rows)) throw new Error("no answer");
+        const now = Date.now();
+        let latest = 0;
+        for (const row of list.rows as any[]) {
+          const doc = row?.doc ?? row;
+          if (!doc?._id) continue;
+          if (Number(doc.until) > now) latest = Math.max(latest, Number(doc.until));
+          else await this.dbEventConnection.purge(doc).catch(() => undefined);
+        }
+        this.storedUntrackedUntil = Math.max(this.storedUntrackedUntil, latest);
+        this.storedMarkerWritten = Math.max(this.storedMarkerWritten, latest);
+        this.storedMarkerLoaded = true;
+      } catch (error) {
+        ActiveLogger.warn(`Could not read the far-off $expire marker, asking the storage meanwhile: ${(error as Error)?.message ?? error}`);
+      } finally {
+        this.storedMarkerLoading = undefined;
+      }
+    })();
+    return this.storedMarkerLoading;
   }
 
   /**
@@ -2177,6 +2233,11 @@ export class Host extends Home {
   public mayBeStored(umid: string, expire: number): boolean {
     if (STORED_WINDOW_MS <= 0) return true;
     const now = Date.now();
+    if (!this.storedMarkerLoaded) {
+      // Not read yet (the storage can come up after the host): ask the storage, and try again
+      void this.loadStoredMarker();
+      return true;
+    }
     if (now < this.storedColdUntil || now < this.storedUntrackedUntil) return true;
     if (!(expire <= now + STORED_WINDOW_MS)) return true;
     return this.storedLive.has(umid);

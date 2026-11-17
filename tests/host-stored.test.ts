@@ -9,12 +9,17 @@ const MIN = 60 * 1000;
  * submit. Memory answers it when it can know, the storage is asked when it can not.
  */
 describe("Host - committed umids held until their $expire (Activenetwork)", () => {
+  const posted: any[] = [];
+  beforeEach(() => (posted.length = 0));
   const make = (over: any = {}) => {
     const host: any = Object.create(Host.prototype);
     Object.assign(host, {
       storedLive: new Map(),
       storedUntrackedUntil: 0,
       storedColdUntil: 0,
+      storedMarkerLoaded: true,
+      storedMarkerWritten: 0,
+      dbEventConnection: { post: async (d: any) => (posted.push(d), {}) },
       storedSwept: 0,
       ...over,
     });
@@ -74,5 +79,37 @@ describe("Host - committed umids held until their $expire (Activenetwork)", () =
     host.noteStored("a".repeat(64), at(MIN));
     expect(host.storedLive.size).to.equal(200000);
     expect(host.mayBeStored("b".repeat(64), Date.now() + MIN)).to.equal(true);
+  });
+
+  it("writes one row for a far-off commit and none for the next one under it", () => {
+    const host = make();
+    host.noteStored("a".repeat(64), at(60 * MIN));
+    host.noteStored("b".repeat(64), at(61 * MIN));
+    expect(posted.length).to.equal(1);
+    expect(posted[0]._id).to.match(/^storedfar:\d+$/);
+  });
+
+  it("says maybe until the marker has been read, then uses it", async () => {
+    const until = Date.now() + 30 * MIN;
+    const host = make({
+      storedMarkerLoaded: false,
+      storedMarkerTried: 0,
+      dbEventConnection: {
+        allDocs: async () => ({ rows: [{ _id: `storedfar:${until}`, until }, { _id: "storedfar:1", until: 1 }] }),
+        purge: async () => ({}),
+      },
+    });
+    expect(host.mayBeStored("a".repeat(64), Date.now() + MIN)).to.equal(true);
+    await host.loadStoredMarker();
+    expect(host.storedMarkerLoaded).to.equal(true);
+    expect(host.storedUntrackedUntil).to.equal(until);
+    expect(host.mayBeStored("a".repeat(64), Date.now() + MIN)).to.equal(true);
+  });
+
+  it("keeps saying maybe when the marker cannot be read", async () => {
+    const host = make({ storedMarkerLoaded: false, storedMarkerTried: 0, dbEventConnection: { allDocs: async () => { throw new Error("down"); } } });
+    await host.loadStoredMarker();
+    expect(host.storedMarkerLoaded).to.equal(false);
+    expect(host.mayBeStored("a".repeat(64), Date.now() + MIN)).to.equal(true);
   });
 });

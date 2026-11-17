@@ -2100,6 +2100,8 @@ export class Endpoints {
       },
       walkLimit: Endpoints.UMID_WALK_LIMIT,
       hopDelayMs: Endpoints.UMID_WALK_HOP_DELAY_MS,
+      // A transaction adopted this way is as committed as any other
+      onAdopted: (_umid, doc) => host.noteStored?.(_umid, doc?.umid?.$tx?.$expire),
     };
   }
 
