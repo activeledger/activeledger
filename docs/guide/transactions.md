@@ -42,7 +42,7 @@ Only the streams in `$i` and `$o` are locked while the transaction runs. Two tra
 !!! warning
     Sending the same signed transaction twice runs it twice. The node stamps each arrival with its own time and that time is part of `$umid`, so a repeat is a new transaction. If you set `$tx.$expire`, the time is left out of `$umid` and a repeat is refused with `Transaction Exists`. Set it on anything you might retry.
 
-    A node that has to repair its own streams while it processes a transaction can resend it under a new umid. That umid is not one you can work out from what you sent, but the node remembers the one you can, until `$expire`, and refuses a repost of the same bytes to that node with `Transaction Exists : <umid> (resent as <new umid>)`. A repost to a different node is not yet refused.
+    A node that has to repair its own streams while it processes a transaction can resend it under a new umid. That umid is not one you can work out from what you sent, but the node remembers the one you can, until `$expire`, and refuses a repost of the same bytes to that node with `Transaction Exists : <umid> (resent as <new umid>)`. Each node keeps its own record, and only consensus links the nodes, so a repost sent to a different node is not recognised by this record. To retry safely, send it to the same node, or look up the umid (and the `resent as` umid) first.
 
 ## Signing
 
