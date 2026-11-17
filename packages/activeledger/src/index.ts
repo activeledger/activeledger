@@ -32,6 +32,7 @@ import { supernodeProgram } from "./cli/program";
 import { checkConfigFile, status, waitForExit } from "./cli/health";
 import { hybridCommand } from "./cli/hybrid";
 import { reloadCommand } from "./cli/reload";
+import { pruneCommand } from "./cli/prune";
 import { PIDHandler } from "./cli/pid";
 import { ensureAttestKey, withAttestKey } from "./cli/identity";
 
@@ -68,12 +69,23 @@ if (cli.command === "hybrid") {
 if (cli.command === "reload") {
   reloadCommand(!!cli.flags.json).then((code) => process.exit(code));
 }
+if (cli.command === "prune") {
+  pruneCommand(cli.positionals[1], {
+    includeEvents: !!cli.flags["include-events"],
+    includeUmids: !!cli.flags["include-umids"],
+    dryRun: !!cli.flags["dry-run"],
+    yes: !!cli.flags.yes,
+    deleteDb: cli.flags["delete-db"],
+    noCompact: !!cli.flags["no-compact"],
+    json: !!cli.flags.json,
+  }).then((code) => process.exit(code));
+}
 if (cli.command === "status") {
   status(!!cli.flags.json).then((code) => process.exit(code));
 }
 
 // Do we have an identity (Will always need, Can be shared)
-if (cli.command !== "status" && cli.command !== "hybrid" && !fs.existsSync("./.identity")) {
+if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune" && !fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
   let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
   // 0600: this file contains the node's RSA PRIVATE key - KeyPair.pem is a
@@ -91,7 +103,7 @@ if (cli.command !== "status" && cli.command !== "hybrid" && !fs.existsSync("./.i
 
 // An identity from before attestation keys gets one added. It does nothing
 // until the node's neighbourhood entry lists the public key as `attest`.
-if (cli.command !== "status" && cli.command !== "hybrid") {
+if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune") {
   const added = ensureAttestKey("./.identity");
   if (added?.created) {
     ActiveLogger.info(
@@ -111,6 +123,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   cli.command === "status" ||
   cli.command === "check-config" ||
   cli.command === "reload" ||
+  cli.command === "prune" ||
   cli.command === "hybrid"
 ) {
   // Handled above

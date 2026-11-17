@@ -63,6 +63,7 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
   commands: [
     ...Cli.COMMON_COMMANDS,
     { name: "reload", description: "Make the running node re-read config.json (needs \"remote\": true)" },
+    { name: "prune", usage: "[days]", description: "Remove old errors (and, if asked, old events and umids) from this node's stores, keeping the last [days] days (default 30). Never touches the ledger" },
     { name: "hybrid", usage: "status|enable [open|allowlist]|list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
   ],
   flags: [
@@ -92,6 +93,11 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     { name: "setup-only", description: "Run setup then exit", group: "Setup" },
     { name: "db-only", description: "Start only the database", group: "Setup" },
     { name: "disable-autostart", description: "Do not start the helper processes", group: "Setup" },
+    { name: "include-umids", type: "boolean", description: "prune: also remove old umid index rows (umid: and fail:) from the events database", group: "Prune" },
+    { name: "include-events", type: "boolean", description: "prune: also remove old contract events from the events database", group: "Prune" },
+    { name: "dry-run", type: "boolean", description: "prune: say what would be removed and remove nothing", group: "Prune" },
+    { name: "delete-db", arg: "<name>", description: "prune: delete this whole database (other than the node's own); repeat for more", group: "Prune" },
+    { name: "no-compact", type: "boolean", description: "prune: do not compact after removing, so the disk space is not given back yet", group: "Prune" },
     { name: "out", arg: "<file>", description: "hybrid allow|deny|admission|min-version: write the signed change to a file instead of sending it", group: "Hybrid" },
     { name: "hybrid-listen", arg: "<port>", description: "Port for the hybrid P2P listener", group: "Hybrid" },
     { name: "hybrid-max-feeds", arg: "<n>", description: "Most hybrid feeds served at once (default 32)", group: "Hybrid" },

@@ -31,3 +31,5 @@ export {
   openEmbeddedStorage,
 } from "./embedded";
 export { EVENT_PREFIX, eventsSince } from "./events";
+export type { PruneKind, PruneRequest, PrunePage } from "./prune";
+export { MIN_AGE_MS } from "./prune";
