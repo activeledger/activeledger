@@ -38,6 +38,8 @@ export interface NetworkHarnessOptions {
   basePort?: number;
   portSpacing?: number;
   readyTimeoutMs?: number;
+  /** How long to wait, after the nodes are Stable, for each to find all its neighbours */
+  discoveryTimeoutMs?: number;
   /**
    * Values merged into every instance's config.json after --merge and
    * before the nodes are spawned.
@@ -68,6 +70,7 @@ const DEFAULTS: Required<NetworkHarnessOptions> = {
   basePort: 5510,
   portSpacing: 10,
   readyTimeoutMs: 20000,
+  discoveryTimeoutMs: 10000,
 };
 
 function runOnce(args: string[], cwd: string): Promise<void> {
@@ -310,7 +313,44 @@ export class NetworkHarness {
     );
 
     await this.waitUntilReady();
+    await this.waitUntilDiscovered();
     return this.nodes;
+  }
+
+  /**
+   * A node reports Stable (status 4) once it has a left and a right neighbour,
+   * which is before it has found everyone. A broadcast only goes to the
+   * neighbours a node already counts as home, so a transaction sent in that
+   * gap never reaches the others. They catch up later through SPI, but until
+   * they do the network test sees "Namespace not found" or a stream missing on
+   * one node, and the failure looks like a bug in whatever ran just before.
+   * Each node says "Neighbourhood fully discovered" in its log when it has found
+   * every neighbour; wait for that on every node.
+   *
+   * Best effort: after the wait is over the network is used anyway, so a node
+   * that never says it (a log line that changes, a one node network) costs
+   * time and not a failed run.
+   */
+  private async waitUntilDiscovered(): Promise<void> {
+    if (this.nodes.length < 2) return;
+    const deadline = Date.now() + this.opts.discoveryTimeoutMs;
+    const pending = new Set(this.nodes.map((n) => n.index));
+    while (pending.size > 0 && Date.now() < deadline) {
+      for (const node of this.nodes) {
+        if (!pending.has(node.index)) continue;
+        try {
+          if (fs.readFileSync(node.logPath, "utf8").includes("Neighbourhood fully discovered")) {
+            pending.delete(node.index);
+          }
+        } catch {
+          // Log not there yet
+        }
+      }
+      if (pending.size > 0) await sleep(100);
+    }
+    if (pending.size > 0) {
+      console.warn(`Nodes did not report their neighbourhood fully discovered in ${this.opts.discoveryTimeoutMs}ms: ${[...pending].join(", ")} - carrying on`);
+    }
   }
 
   private async waitUntilReady(): Promise<void> {
