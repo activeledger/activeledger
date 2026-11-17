@@ -107,7 +107,8 @@ export class LevelDBDriver implements IStorageDriver {
           const entry = await iterator.next();
           if (entry) {
             const val = entry[1];
-            this.push({ key: entry[0], value: Buffer.isBuffer(val) ? val : Buffer.from(val) });
+            // A scan asked for keys only ({ values: false }) has no value to wrap
+            this.push({ key: entry[0], value: val === undefined ? undefined : Buffer.isBuffer(val) ? val : Buffer.from(val) });
           } else {
             this.push(null);
             await iterator.close();
