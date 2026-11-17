@@ -55,6 +55,8 @@ reads and then writes, and prints a one page PDF:
 npm run stress:peak
 ```
 
+`npm run stress:peak:expire` is the same test with `--expire`: every transaction carries an `$expire`, which is how most real ones are sent, and each then also costs the entry node a storage lookup to check it is not a repeat. It leaves `stress-results/peak-load-test-expire.pdf`; the page says the transactions carried an expiry time. Run both to see what that check costs.
+
 It takes about twenty minutes and leaves `stress-results/peak-load-test.pdf`
 (with the raw numbers in `peak-reads.jsonl`, `peak-locked-reads.jsonl` and
 `peak-writes.jsonl`). The three are a contract read with no lock and no write

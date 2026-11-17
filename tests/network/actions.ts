@@ -186,7 +186,9 @@ export async function runContract(
   namespace: string,
   contractStreamId: string,
   outputPayload: Record<string, unknown>,
-  version?: string
+  version?: string,
+  /** An $expire for the transaction (ISO 8601). Most real transactions have one; it also makes the node check for a repeat. */
+  expire?: string
 ): Promise<any> {
   const txBody = {
     $namespace: namespace,
@@ -194,6 +196,7 @@ export async function runContract(
     $contract: version ? `${contractStreamId}@=${version}` : contractStreamId,
     $i: { [identity.streamId]: {} },
     $o: { [identity.streamId]: outputPayload },
+    ...(expire ? { $expire: expire } : {}),
   };
   const tx = {
     $tx: txBody,

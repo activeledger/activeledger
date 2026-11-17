@@ -29,6 +29,7 @@ const SPECS: FlagSpec[] = [
   { name: "settle", type: "number", default: 5, description: "seconds of quiet between steps" },
   { name: "users", type: "number", default: 1000, description: "distinct users (each with its own key and stream); a user is not used again while its previous transaction is in flight" },
   { name: "contract", type: "string", default: "no-write", choices: ["no-write", "returner", "read-only"], description: "no-write: goes through the stream lock and writes no state; returner: writes a message onto the user's stream; read-only: reads another user's stream through $r with no lock and no write" },
+  { name: "expire", type: "boolean", default: false, description: "give every transaction an $expire (an hour ahead), as most real ones have; each then also costs the entry node the replay check (a storage lookup)" },
   { name: "join-pct", type: "number", default: 5, description: "percent of arrivals that are a new user joining (onboard); the rest are contract transactions on the user's own stream" },
   { name: "workers", type: "number", default: 6, description: "load-generator threads" },
   { name: "sustain-pct", type: "number", default: 97, description: "a step is sustained if the network committed at least this percent of the offered rate" },
@@ -86,7 +87,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
   const loadStart = loadNow();
   appendRecord(out, {
     tool: "realistic", kind: "meta", ts: new Date().toISOString(), label: f.label, group: "meta", ...env,
-    nodes: f.nodes, rates, durationSec: f.duration, warmupSec: f.warmup, joinPct: f.joinPct, contract: f.contract, nodeConfig: f.nodeConfig, sustainPct: f.sustainPct, maxFailPct: f.maxFailPct, maxP99Ms: f.maxP99Ms,
+    nodes: f.nodes, rates, durationSec: f.duration, warmupSec: f.warmup, joinPct: f.joinPct, contract: f.contract, expire: !!f.expire, nodeConfig: f.nodeConfig, sustainPct: f.sustainPct, maxFailPct: f.maxFailPct, maxP99Ms: f.maxP99Ms,
     users: maxUsers, workers: f.workers, cpuModel: os.cpus()[0] && os.cpus()[0].model, totalMemGb: +(os.totalmem() / 2 ** 30).toFixed(1),
     gateQuiet: gateResult ? gateResult.quiet : undefined, loadStart,
   });
@@ -128,7 +129,7 @@ runTool("stress:realistic", "Stepped open-loop load from thousands of rate-limit
     });
     try {
       await Promise.all(Array.from({ length: f.workers }, (_, index) => new Promise<void>((resolve, reject) => {
-        const init: WorkerInit = { urls: nodes.map((n) => n.baseUrl), namespace: workload.namespace, contractId: workload.contractId, users: perWorker, index: index * perWorker, readOnly: f.contract === "read-only" };
+        const init: WorkerInit = { urls: nodes.map((n) => n.baseUrl), namespace: workload.namespace, contractId: workload.contractId, users: perWorker, index: index * perWorker, readOnly: f.contract === "read-only", expire: !!f.expire };
         const w = new Worker(path.join(__dirname, "lib", "realistic-worker.ts"), { workerData: init });
         workers.push(w);
         w.on("error", reject);

@@ -136,4 +136,16 @@ describe("stress:realistic report (the one page summary)", () => {
       expect(html).to.not.match(/2,200/);
     });
   });
+
+  describe("when the transactions carried an $expire", () => {
+    const withExpire = () => file("expire.jsonl", [{ ...meta("returner"), expire: true }, run(300, 306.4, 12, true), run(800, 798.4, 388, true)]);
+
+    it("says so, so the figures are read as those of the usual way to send a transaction", () => {
+      expect(buildHtml([withExpire()])).to.contain("sent with an expiry time");
+    });
+
+    it("says nothing about it when they did not", () => {
+      expect(buildHtml([writes()])).to.not.contain("expiry time");
+    });
+  });
 });

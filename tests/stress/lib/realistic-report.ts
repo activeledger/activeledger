@@ -105,6 +105,7 @@ function loadSeries(file: string): { runs: Run[]; peak: Run; contract: string; m
 export function buildHtml(files: string[]): string {
   const loaded = files.map(loadSeries);
   const hasLockFree = loaded.some((l) => l.contract === "read-only");
+  const withExpire = loaded.some((l) => l.meta.expire);
   const series: Series[] = loaded
     .map((l) => {
       const label = kindOf(l.contract, hasLockFree);
@@ -149,7 +150,7 @@ h2{font-size:11pt;margin:8px 0 3px}.chart{margin:10px 0 0}ul{margin:4px 0 0 16px
 <li>Measured on a shared, busy PC (${meta.cpus} threads, load average up to ${maxLoad.toFixed(0)}); dedicated servers built for the job will deliver more.</li>
 <li>All ${meta.nodes} nodes of the network ran on this one machine, sharing its CPU and disk.</li>
 <li>${hasLockFree ? "Reads, locked reads and writes were all tested" : "Reads and writes were both tested"}; writes are the most demanding because every write is stored to disk.</li>
-<li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
+${withExpire ? "<li>Every transaction was sent with an expiry time, the way most real ones are, so each was also checked against being sent twice.</li>\n" : ""}<li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
 <li>N/A means no result is shown at that rate.</li>
 </ul>
 <div class="small">Activeledger ${esc(meta.commit || "")} &middot; stress:realistic</div>
