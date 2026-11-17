@@ -105,6 +105,24 @@ const QUEUE_MAX_WAIT_MS = Number(process.env.AL_QUEUE_MAX_WAIT_MS || 7_000);
 // understanding why.
 const QUEUE_RECHECK_MS = Number(process.env.AL_QUEUE_RECHECK_MS ?? 50);
 
+// The least time between two scans of a non-empty lock queue.
+//
+// A scan calls hold() on every queued entry, and one was started by every
+// pending() call and every release. So the work was (arrivals + releases) per
+// second times the queue length, and the queue is as long as the arrival rate
+// times the wait (up to QUEUE_MAX_WAIT_MS). Past a certain load that feeds
+// itself: the node gets slower, locks are held longer, the queue grows, and
+// each scan costs more. A stress run at 800 tx/s reached about 1,700 queued
+// transactions and 130,000 hold() attempts a second, each writing a log line,
+// and the node stopped answering for 20 s.
+//
+// With a minimum gap, the scans cost at most queue length x (1000 / gap) a
+// second however fast transactions arrive. A new transaction that arrives
+// inside the gap still tries its own streams at once (as it already did while
+// a scan was running); it just does not trigger another scan of the queue.
+// An empty queue is never delayed. 0 turns the limit off.
+const QUEUE_SCAN_MIN_MS = Number(process.env.AL_QUEUE_SCAN_MIN_MS ?? 20);
+
 // The pre-deadline default, kept only so queue_retry keeps meaning what it did
 // for anyone who explicitly configured it.
 const MAX_RETRIES = 35;
@@ -2087,16 +2105,36 @@ export class Host extends Home {
       // out of three.
       // 0 means next tick; anything else waits. Overridable without a
       // redeploy, so a deployment that dislikes either end can move.
-      if (QUEUE_RECHECK_MS > 0) {
-        setTimeout(() => this.processQueue(), QUEUE_RECHECK_MS);
-      } else {
-        setImmediate(() => this.processQueue());
-      }
+      this.scheduleQueueRecheck(QUEUE_RECHECK_MS);
     } else {
       ActiveLogger.warn(umid, "Trying to release unknown umid");
     }
   }
   private processingBLQ = false;
+  private lastQueueScan = 0;
+  private queueRecheckPending = false;
+
+  /**
+   * Looks at the lock queue again after `ms`, unless a look is already
+   * waiting. One waiting scan covers every release that came before it runs,
+   * so a burst of releases costs one scan, not one each.
+   *
+   * @private
+   * @param {number} ms 0 means the next tick
+   */
+  private scheduleQueueRecheck(ms: number) {
+    if (this.queueRecheckPending) return;
+    this.queueRecheckPending = true;
+    const run = () => {
+      this.queueRecheckPending = false;
+      this.processQueue();
+    };
+    if (ms > 0) {
+      setTimeout(run, ms);
+    } else {
+      setImmediate(run);
+    }
+  }
 
   /**
    * Manages the busy lock queue
@@ -2114,6 +2152,20 @@ export class Host extends Home {
 
     // Run through the queue in order to process
     if (!this.processingBLQ) {
+      // See QUEUE_SCAN_MIN_MS. Too soon after the last scan: let a new
+      // transaction try its own streams and leave the queue for a scan
+      // that is due; with nothing new, make sure that scan happens.
+      const queued = this.busyLocksQueue.internal.length + this.busyLocksQueue.external.length;
+      const since = Date.now() - this.lastQueueScan;
+      if (queued && QUEUE_SCAN_MIN_MS > 0 && since < QUEUE_SCAN_MIN_MS) {
+        if (next) {
+          this.hold(next);
+        } else {
+          this.scheduleQueueRecheck(QUEUE_SCAN_MIN_MS - since);
+        }
+        return;
+      }
+      this.lastQueueScan = Date.now();
       this.processingBLQ = true;
 
       // Checked identities. This prevents trying to lock the same stream multiple times in one queue run.

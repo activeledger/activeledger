@@ -103,6 +103,8 @@ describe("Host queue and pending map - mutation gaps (Activeledger)", () => {
       host.busyLocksQueue.internal.push(queued);
 
       host.processQueue();
+      // a second scan is only made once the minimum gap between scans has passed
+      host.lastQueueScan = 0;
       host.processQueue();
 
       expect(queued.retry).to.equal(3);

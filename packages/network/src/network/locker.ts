@@ -142,7 +142,7 @@ export class Locker {
               time,
             });
           } else {
-             ActiveLogger.info(`RR - ${umid} - LD - ${this.cell.get(stream[i])!.umid}`);
+             ActiveLogger.debug(`RR - ${umid} - LD - ${this.cell.get(stream[i])!.umid}`);
             success = false;
             break;
           }
@@ -169,7 +169,7 @@ export class Locker {
         });
         return true;
       }
-      ActiveLogger.info(`Lock busy for ${stream}. Held by ${this.cell.get(stream)!.umid}, requested by ${umid}.`);
+      ActiveLogger.debug(`Lock busy for ${stream}. Held by ${this.cell.get(stream)!.umid}, requested by ${umid}.`);
       return false;
     }
   }

@@ -189,6 +189,7 @@ describe("Endpoints - a rejected replay doesn't release the original (Activenetw
       },
       findProcessor: () => undefined,
       processQueue: () => {},
+      scheduleQueueRecheck: () => {},
       labelOrKey: () => [],
       destroy: () => {},
       processPending: {},
