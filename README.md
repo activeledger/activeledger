@@ -106,6 +106,19 @@ On a network of more than one node the change needs more than half of the nodes 
 (`--out <file>`, then `hybrid sign <file>` on the others and `hybrid submit <file>`). See
 [Set up and run a hybrid](docs/guide/hybrid/run.md).
 
+## Pruning old data
+
+A node's error records and events only grow. `activeledger prune` removes what is older than a number of
+days (it keeps the last 30 unless you say), from the node's own working stores and never from the ledger:
+
+```bash
+activeledger prune --dry-run         # say what would be removed, remove nothing
+activeledger prune 30                # keep 30 days of errors, remove the rest (handled errors and the archive)
+activeledger prune 30 --include-umids --include-events   # also the umid index and contract events
+```
+
+Each choice has a cost, written up in [Pruning old data](docs/guide/operate/prune.md).
+
 ## Installing from GitHub Packages
 
 Releases go to npmjs.com and are mirrored to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages), so the quickstart above installs without any authentication. The one gap is the start of the 4.x line: v4.0.0 through v4.3.2 were published to GitHub Packages only, and every release from v4.3.3 onward is on both.

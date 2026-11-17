@@ -15,6 +15,7 @@ Run it from the directory that holds the node's `config.json` and `.identity`. E
 | `check-config` | Validate the config file. Exit 2 with the reason if it is wrong. |
 | `version` | Print the version. |
 | `help [command]` | Show usage for the program or one command. |
+| `prune [days]` | Remove old errors, and with flags old events and umids, from this node's stores, keeping the last `days` days (default 30). See below. |
 | `hybrid <subcommand>` | Manage the hybrids that follow this node. See below. |
 
 ## Flags
@@ -221,6 +222,17 @@ activeledger hybrid submit change.json
 `sign` prints `signed by host:port, host:port` so you can see how many have signed. The rules need the network to have been asserted first.
 
 [Operating hybrids](../hybrid/operate.md) explains when to use each of these.
+
+## Prune old data
+
+```
+activeledger prune [days] [--include-umids] [--include-events] [--dry-run] [--yes]
+                          [--delete-db <name>]... [--no-compact] [--json]
+```
+
+Removes what is older than `days` (the days to **keep**, default 30) from the node's own working stores: handled errors and the error archive always, the umid index with `--include-umids`, contract events with `--include-events`. It never touches the ledger. `--dry-run` says what would go and removes nothing. Databases it does not recognise are listed and, one at a time and only if you say yes (or name them with `--delete-db`), deleted whole.
+
+[Pruning old data](../operate/prune.md) has what each choice costs and how to run it on a schedule.
 
 ## Back up and restore the embedded database
 
