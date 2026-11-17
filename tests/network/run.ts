@@ -128,6 +128,10 @@ async function main(): Promise<boolean> {
 
       const passed = !result.$summary?.errors && result.$summary?.commit >= 1;
       report.record(isContractRun ? "contract-run" : "onboard", passed, ms);
+      if (!passed) {
+        // Say why: a failure that prints nothing cannot be told from a flake
+        report.warn(`${isContractRun ? "contract-run" : "onboard"} ${i} failed via node ${node.index} (:${node.port}) in ${ms}ms: ${JSON.stringify(result.$summary?.errors ?? result).slice(0, 300)}`);
+      }
       completed++;
       report.progress(completed, TRANSACTION_COUNT, `node ${node.index} (:${node.port})`);
     });

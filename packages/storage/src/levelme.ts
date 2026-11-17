@@ -11,6 +11,7 @@ import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { IStorageDriver } from "./driver";
 import { LevelDBDriver } from "./drivers/leveldb";
+import { DEFAULT_PAGE_LIMIT, PAGE_BUDGET_MS, PrunePage, PruneRequest, idRange, idTime } from "./prune";
 import { LevelUpChain } from "levelup";
 
 /**
@@ -684,6 +685,84 @@ export class LevelMe {
     }
 
     await batch.write();
+  }
+
+  /**
+   * One page of removing rows older than a time (see prune.ts for what is
+   * recognised and how age is read). A page stops at `limit` removals, at
+   * the time budget, or when everything has been looked at, and says where
+   * the next page starts, so a caller pages through a store of any size in
+   * requests that each finish quickly.
+   *
+   * Only the document key is removed: a document written by this class has no
+   * other row (nothing writes by-sequence rows any more; only data from before
+   * that has them, and those are not touched).
+   *
+   * @param {PruneRequest} request
+   * @returns {Promise<PrunePage>}
+   */
+  public async prune(request: PruneRequest): Promise<PrunePage> {
+    await this.open();
+    const { kind, before } = request;
+    const limit = request.limit ?? DEFAULT_PAGE_LIMIT;
+    const dryRun = request.dryRun === true;
+    const requireProcessed = request.requireProcessed !== false;
+    const range = idRange(kind);
+
+    // Errors need the document to see if it is processed; the others are decided by the id alone
+    const options: any = { lt: LevelMe.DOC_PREFIX + range.lt, values: kind === "error" };
+    if (request.after !== undefined) options.gt = LevelMe.DOC_PREFIX + request.after;
+    else options.gte = LevelMe.DOC_PREFIX + range.gte;
+
+    const started = Date.now();
+    const doomed: string[] = [];
+    let scanned = 0;
+    let kept = 0;
+    let last: string | undefined;
+    let done = true;
+
+    const stream = this.driver.createReadStream(options);
+    try {
+      for await (const entry of stream as AsyncIterable<{ key: Buffer | string; value?: Buffer }>) {
+        const id = entry.key.toString().slice(LevelMe.DOC_PREFIX.length);
+        scanned++;
+        last = id;
+        const time = idTime(kind, id);
+        if (time === undefined) {
+          kept++;
+        } else if (time >= before) {
+          kept++;
+          // Rows of a time keyed kind are in time order, so nothing after this is old enough
+          if (range.ordered) break;
+        } else if (kind === "error" && requireProcessed) {
+          const doc: any = await ActiveClone.deserialize(entry.value as Buffer).catch(() => undefined);
+          if (doc && doc.processed === true) doomed.push(id);
+          else kept++;
+        } else {
+          doomed.push(id);
+        }
+        if (doomed.length >= limit || Date.now() - started > PAGE_BUDGET_MS) {
+          done = false;
+          break;
+        }
+      }
+    } finally {
+      stream.destroy?.();
+    }
+
+    if (!dryRun && doomed.length) {
+      const batch = await this.driver.batch();
+      for (const id of doomed) batch.del(LevelMe.DOC_PREFIX + id);
+      await batch.write();
+      if (this.cache) {
+        for (const id of doomed) {
+          this.cache.delete(id);
+          this.cache.delete(`raw:${id}`);
+        }
+      }
+    }
+
+    return { removed: doomed.length, scanned, kept, next: done ? undefined : last, done };
   }
 
   /**
