@@ -800,6 +800,9 @@ export class Host extends Home {
     // Create connection string
     this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
     this.dbEventConnection.info();
+    // A transaction resent before a restart can still be reposted
+    void this.loadResentGuard();
+    this.startResentHousekeeping();
 
     this.api = App();
 
@@ -2108,6 +2111,124 @@ export class Host extends Home {
     }
 
     return robin;
+  }
+
+  /**
+   * Until when a repost of a transaction this node resent must be refused. Zero
+   * (the usual state, always, on a network that never resends) means there is
+   * nothing to look up and the check costs one comparison. See rememberResent().
+   */
+  private resentGuardUntil = 0;
+  /** Rows being written right now, so a repost in the same instant is still caught. Empty within milliseconds. */
+  private resentInFlight = new Map<string, string>();
+  private resentTimer?: NodeJS.Timeout;
+  /** Has the `resent:` list been read since this node started? Until it has, a lookup waits for it. */
+  private resentLoaded = false;
+  private resentLoading?: Promise<void>;
+
+  /**
+   * The entry node resends a transaction under a new umid when it fails on every
+   * node and it then repairs its own streams (SPI). The replaced umid is never
+   * stored, so "Transaction Exists" cannot see it, and the same signed bytes
+   * reposted before their $expire would run a second time under it.
+   *
+   * So the umid being replaced is recorded: a `resent:<umid>` row in the events
+   * database (disk, not memory), and one timestamp here, the latest $expire of
+   * any live row. Nothing is held per transaction: with no resend the guard is
+   * zero and a transaction is never looked up. Only a transaction with an
+   * $expire is recorded, since without one the node stamps the time into the
+   * umid and the same bytes can never produce it again.
+   *
+   * @param {string} replaced The umid being given up
+   * @param {string} replacement The umid the transaction is resent under
+   * @param {unknown} expire The transaction's $expire
+   */
+  public rememberResent(replaced: string, replacement: string, expire: unknown): void {
+    const until = expire ? new Date(expire as string).getTime() : NaN;
+    if (!Number.isFinite(until) || until <= Date.now()) return;
+    this.resentGuardUntil = Math.max(this.resentGuardUntil, until);
+    this.resentInFlight.set(replaced, replacement);
+    this.dbEventConnection
+      .post({ _id: `resent:${replaced}`, to: replacement, until })
+      .then(
+        () => void this.resentInFlight.delete(replaced),
+        (error: unknown) => {
+          // The row did not get written, so memory is all there is: keep it until the transaction expires
+          ActiveLogger.error({ replaced, error }, "Could not record a resent transaction; refusing a repost from memory only");
+          setTimeout(() => this.resentInFlight.delete(replaced), Math.max(0, until - Date.now())).unref();
+        }
+      );
+    this.startResentHousekeeping();
+  }
+
+  /**
+   * The umid a transaction was resent under, if this node resent it and the
+   * transaction has not expired; otherwise undefined.
+   *
+   * @param {string} umid
+   * @returns {Promise<string | undefined>}
+   */
+  public async resentAs(umid: string): Promise<string | undefined> {
+    // Just after a start the list may not be read yet (the storage can come up
+    // after the host), and "nothing was resent" must not be answered before it is
+    if (!this.resentLoaded && this.resentLoading) await this.resentLoading;
+    if (Date.now() >= this.resentGuardUntil) return undefined;
+    const inFlight = this.resentInFlight.get(umid);
+    if (inFlight) return inFlight;
+    const row = await this.dbEventConnection.get(`resent:${umid}`).catch(() => undefined);
+    return row && typeof row.to === "string" && Number(row.until) > Date.now() ? row.to : undefined;
+  }
+
+  /**
+   * Reads the list at start, trying every half second for up to ten seconds for
+   * the storage to answer, so a restart does not forget what was resent.
+   */
+  public loadResentGuard(): Promise<void> {
+    this.resentLoading = (async () => {
+      for (let attempt = 0; attempt < 20 && !this.resentLoaded; attempt++) {
+        if (await this.refreshResentGuard(false)) this.resentLoaded = true;
+        else await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    })();
+    return this.resentLoading;
+  }
+
+  /**
+   * Reads the `resent:` rows: removes the ones whose transaction has expired and
+   * sets the guard to the latest of the rest. Runs at start (loadResentGuard) and
+   * about hourly. A failed read is tried again in 30 s unless the caller does its
+   * own retrying; until it succeeds the guard from before stays. Says whether it
+   * read the list.
+   */
+  public async refreshResentGuard(retryLater = true): Promise<boolean> {
+    let latest = 0;
+    try {
+      const list = await this.dbEventConnection.allDocs({ startkey: "resent:", endkey: "resent:x", include_docs: true });
+      if (!list || !Array.isArray(list.rows)) throw new Error("no answer");
+      const now = Date.now();
+      // With include_docs the storage answers each row as the document itself
+      for (const row of list.rows as any[]) {
+        const doc: { _id: string; _rev?: string; until?: number } | undefined = row?.doc ?? row;
+        if (!doc?._id) continue;
+        if (Number(doc.until) > now) latest = Math.max(latest, Number(doc.until));
+        else await this.dbEventConnection.purge(doc).catch(() => undefined);
+      }
+    } catch (error) {
+      if (retryLater) {
+        ActiveLogger.warn(`Could not read the resent transactions, trying again in 30s: ${(error as Error)?.message ?? error}`);
+        setTimeout(() => void this.refreshResentGuard(), 30_000).unref();
+      }
+      return false;
+    }
+    this.resentGuardUntil = Math.max(latest, this.resentInFlight.size ? this.resentGuardUntil : 0);
+    this.resentLoaded = true;
+    return true;
+  }
+
+  private startResentHousekeeping(): void {
+    if (this.resentTimer) return;
+    this.resentTimer = setInterval(() => void this.refreshResentGuard(), 60 * 60 * 1000);
+    this.resentTimer.unref();
   }
 
   /**

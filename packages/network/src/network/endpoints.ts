@@ -172,6 +172,17 @@ export class Endpoints {
                 // Check and return transaction exists in a consensus friendly way
                 tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
 
+                // The same bytes as a transaction this node resent under a new
+                // umid: its own umid was never stored, so only this knows
+                const resentAs = await host.resentAs(tx.$umid);
+                if (resentAs) {
+                  return resolve(
+                    this.successfulFailure(
+                      `Transaction Exists : ${tx.$umid} (resent as ${resentAs})`
+                    )
+                  );
+                }
+
                 if (await db.exists(`${tx.$umid}:umid`)) {
                   // Can you this as its not an internal error to throw
                   return resolve(
@@ -526,9 +537,7 @@ export class Endpoints {
                                       host.release(initTx.$umid);
                                     }
                                     // Should be seen as a new tx
-                                    initTx.$umid = ActiveCrypto.Hash.getHash(
-                                      JSON.stringify(initTx) + counter
-                                    );
+                                    Endpoints.resendUmid(host, initTx, counter);
                                     ActiveLogger.warn(
                                       initTx,
                                       `SPI (Rewrite) Resending #1 ${counter}`
@@ -614,9 +623,7 @@ export class Endpoints {
                             if (!response.dontRelease) {
                               host.release(initTx.$umid);
                             }
-                            initTx.$umid = ActiveCrypto.Hash.getHash(
-                              JSON.stringify(initTx) + counter
-                            );
+                            Endpoints.resendUmid(host, initTx, counter);
                             ActiveLogger.warn(
                               initTx.$tx,
                               `SPI Resending #2 ${counter} in 5s`
@@ -678,9 +685,7 @@ export class Endpoints {
                       delete (initTx as any).$nodes;
                       delete (initTx as any).$revs;
                       delete (initTx as any).$streams;
-                      initTx.$umid = ActiveCrypto.Hash.getHash(
-                        JSON.stringify(initTx) + counter
-                      );
+                      Endpoints.resendUmid(host, initTx, counter);
                       // As same umid should be safe here lets keep it
                       // Need to resend it in with diff umid, maybe a flag to "delete from memory instead"
                       ActiveLogger.warn(
@@ -2677,6 +2682,27 @@ export class Endpoints {
    * @param {string} error
    * @returns {*}
    */
+  /**
+   * Gives a transaction that is being resent its new umid, and remembers the one
+   * it replaces (see Host.rememberResent). The new umid is made exactly as it
+   * always was: from the transaction as it stands, with the old umid still in it.
+   *
+   * @private
+   * @static
+   * @param {Host} host
+   * @param {ActiveDefinitions.LedgerEntry} initTx
+   * @param {number} counter
+   */
+  private static resendUmid(
+    host: Host,
+    initTx: ActiveDefinitions.LedgerEntry,
+    counter: number
+  ): void {
+    const replaced = initTx.$umid;
+    initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx) + counter);
+    host.rememberResent(replaced, initTx.$umid, initTx.$tx?.$expire);
+  }
+
   private static successfulFailure(error: string, counter: number = 0): any {
     return {
       statusCode: 200,

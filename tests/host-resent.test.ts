@@ -1,0 +1,310 @@
+import { expect } from "chai";
+import "mocha";
+import { createHash } from "crypto";
+import { Host } from "../packages/network/src/network/host";
+import { Endpoints } from "../packages/network/src/network/endpoints";
+
+const E: any = Endpoints;
+const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+const UMID = "a".repeat(64);
+const NEW = "b".repeat(64);
+
+/**
+ * A transaction the entry node resent under a new umid was never stored under
+ * the old one, so the same signed bytes reposted before their $expire ran
+ * again. These pin how the node now remembers the umid it gave up.
+ */
+describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
+  const realSetTimeout = global.setTimeout;
+  const realSetInterval = global.setInterval;
+  let timers: { fn: () => void; ms: number }[];
+
+  beforeEach(() => {
+    timers = [];
+    (global as any).setTimeout = (fn: () => void, ms: number) => (timers.push({ fn, ms }), { unref() {} } as any);
+    (global as any).setInterval = () => ({ unref() {} } as any);
+  });
+  afterEach(() => {
+    global.setTimeout = realSetTimeout;
+    global.setInterval = realSetInterval;
+  });
+
+  /** A host without its constructor, with an events database that records what it is asked */
+  const makeHost = (over: any = {}) => {
+    const posted: any[] = [];
+    const reads: string[] = [];
+    const purged: any[] = [];
+    const rows: Record<string, any> = over.rows ?? {};
+    const host: any = Object.create(Host.prototype);
+    Object.assign(host, {
+      resentGuardUntil: 0,
+      resentInFlight: new Map(),
+      dbEventConnection: {
+        post: async (doc: any) => {
+          if (over.postFails) throw new Error("disk full");
+          posted.push(doc);
+          rows[doc._id] = doc;
+          return { ok: true };
+        },
+        get: async (id: string) => {
+          reads.push(id);
+          if (over.getFails) throw new Error("down");
+          return rows[id] ?? { error: "not_found" };
+        },
+        // as the real storage answers include_docs: each row is the document itself
+        allDocs: async () => (over.listFails ? undefined : { total_rows: Object.keys(rows).length, rows: Object.values(rows) }),
+        purge: async (doc: any) => (purged.push(doc._id), delete rows[doc._id]),
+      },
+    });
+    return { host, posted, reads, purged, rows };
+  };
+  const inAnHour = () => new Date(Date.now() + 3600_000).toISOString();
+  const settle = () => new Promise((r) => setImmediate(r));
+
+  describe("rememberResent", () => {
+    it("records the umid it gave up, with the one it resent under and when the transaction expires", async () => {
+      const { host, posted } = makeHost();
+      const expire = inAnHour();
+      host.rememberResent(UMID, NEW, expire);
+      await settle();
+      expect(posted).to.deep.equal([{ _id: `resent:${UMID}`, to: NEW, until: new Date(expire).getTime() }]);
+    });
+
+    it("records nothing for a transaction with no $expire, whose bytes can never make the same umid again", () => {
+      const { host, posted } = makeHost();
+      host.rememberResent(UMID, NEW, undefined);
+      host.rememberResent(UMID, NEW, "");
+      expect(posted).to.have.length(0);
+      expect(host.resentGuardUntil).to.equal(0);
+    });
+
+    it("records nothing for one that has already expired, or whose $expire is not a date", () => {
+      const { host, posted } = makeHost();
+      host.rememberResent(UMID, NEW, new Date(Date.now() - 1000).toISOString());
+      host.rememberResent(UMID, NEW, "not a date");
+      expect(posted).to.have.length(0);
+      expect(host.resentGuardUntil).to.equal(0);
+    });
+
+    it("keeps the guard at the latest $expire of any transaction resent", () => {
+      const { host } = makeHost();
+      const soon = new Date(Date.now() + 1000).toISOString();
+      const later = new Date(Date.now() + 9000).toISOString();
+      host.rememberResent(UMID, NEW, later);
+      host.rememberResent("c".repeat(64), "d".repeat(64), soon);
+      expect(host.resentGuardUntil).to.equal(new Date(later).getTime());
+    });
+
+    it("holds nothing in memory once the row is written", async () => {
+      const { host } = makeHost();
+      host.rememberResent(UMID, NEW, inAnHour());
+      expect(host.resentInFlight.size).to.equal(1);
+      await settle();
+      expect(host.resentInFlight.size).to.equal(0);
+    });
+
+    it("keeps it in memory, until the transaction expires, if the row could not be written", async () => {
+      const { host } = makeHost({ postFails: true });
+      host.rememberResent(UMID, NEW, new Date(Date.now() + 5000).toISOString());
+      await settle();
+      expect(host.resentInFlight.get(UMID)).to.equal(NEW);
+      const drop = timers[timers.length - 1];
+      expect(drop.ms).to.be.greaterThan(0).and.at.most(5000);
+      drop.fn();
+      expect(host.resentInFlight.size).to.equal(0);
+    });
+  });
+
+  describe("resentAs", () => {
+    it("answers at once, without reading anything, when nothing has been resent", async () => {
+      const { host, reads } = makeHost();
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+      expect(reads).to.have.length(0);
+    });
+
+    it("answers from memory in the instant after a resend, before the row is there", async () => {
+      const { host, reads } = makeHost();
+      host.rememberResent(UMID, NEW, inAnHour());
+      expect(await host.resentAs(UMID)).to.equal(NEW);
+      expect(reads).to.have.length(0);
+    });
+
+    it("reads the row for a transaction while the guard is up, and answers with where it was resent", async () => {
+      const { host, reads } = makeHost({ rows: { [`resent:${UMID}`]: { _id: `resent:${UMID}`, to: NEW, until: Date.now() + 1000 } } });
+      host.resentGuardUntil = Date.now() + 1000;
+      expect(await host.resentAs(UMID)).to.equal(NEW);
+      expect(reads).to.deep.equal([`resent:${UMID}`]);
+    });
+
+    it("says nothing for a transaction that was not resent", async () => {
+      const { host } = makeHost();
+      host.resentGuardUntil = Date.now() + 1000;
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+    });
+
+    it("says nothing for a row whose transaction has expired", async () => {
+      const { host } = makeHost({ rows: { [`resent:${UMID}`]: { to: NEW, until: Date.now() - 1 } } });
+      host.resentGuardUntil = Date.now() + 1000;
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+    });
+
+    it("says nothing, rather than failing, if the events database does not answer", async () => {
+      const { host } = makeHost({ getFails: true });
+      host.resentGuardUntil = Date.now() + 1000;
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+    });
+
+    it("stops looking once the guard has passed", async () => {
+      const { host, reads } = makeHost();
+      host.resentGuardUntil = Date.now() - 1;
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+      expect(reads).to.have.length(0);
+    });
+  });
+
+  describe("refreshResentGuard (at start, and hourly)", () => {
+    it("puts the guard at the latest $expire among the rows, and removes the rows that have expired", async () => {
+      const live = Date.now() + 60_000;
+      const { host, purged } = makeHost({
+        rows: {
+          "resent:1": { _id: "resent:1", to: "x", until: live },
+          "resent:2": { _id: "resent:2", to: "x", until: live - 30_000 },
+          "resent:3": { _id: "resent:3", to: "x", until: Date.now() - 5000 },
+        },
+      });
+      await host.refreshResentGuard();
+      expect(host.resentGuardUntil).to.equal(live);
+      expect(purged).to.deep.equal(["resent:3"]);
+    });
+
+    it("leaves the guard at zero when there is nothing live, so a normal node never looks anything up", async () => {
+      const { host } = makeHost();
+      host.resentGuardUntil = Date.now() - 10;
+      await host.refreshResentGuard();
+      expect(host.resentGuardUntil).to.equal(0);
+    });
+
+    it("tries again in 30 seconds when the events database does not answer, and keeps the guard it had", async () => {
+      const { host } = makeHost({ listFails: true });
+      host.resentGuardUntil = 12345;
+      expect(await host.refreshResentGuard()).to.equal(false);
+      expect(host.resentGuardUntil).to.equal(12345);
+      expect(timers[timers.length - 1].ms).to.equal(30_000);
+    });
+
+    it("leaves the retrying to its caller when asked, and says it read the list when it did", async () => {
+      const failing = makeHost({ listFails: true });
+      expect(await failing.host.refreshResentGuard(false)).to.equal(false);
+      expect(timers).to.have.length(0);
+      const working = makeHost();
+      expect(await working.host.refreshResentGuard(false)).to.equal(true);
+      expect(working.host.resentLoaded).to.equal(true);
+    });
+
+    it("does not lower the guard under a transaction that was only just resent", async () => {
+      const { host } = makeHost();
+      const expire = inAnHour();
+      host.rememberResent(UMID, NEW, expire);
+      await host.refreshResentGuard();
+      expect(host.resentGuardUntil).to.equal(new Date(expire).getTime());
+    });
+  });
+
+  describe("after a start (the storage may come up after the host)", () => {
+    it("keeps trying every half second until the list can be read", async () => {
+      let calls = 0;
+      const { host } = makeHost({ rows: { "resent:1": { _id: "resent:1", to: "x", until: Date.now() + 60_000 } } });
+      const real = host.dbEventConnection.allDocs;
+      host.dbEventConnection.allDocs = async (o: any) => (++calls < 3 ? undefined : real(o));
+      const loading = host.loadResentGuard();
+      for (let i = 0; i < 2; i++) {
+        await settle();
+        expect(timers[timers.length - 1].ms).to.equal(500);
+        timers[timers.length - 1].fn();
+      }
+      await loading;
+      expect(calls).to.equal(3);
+      expect(host.resentLoaded).to.equal(true);
+      expect(host.resentGuardUntil).to.be.greaterThan(Date.now());
+    });
+
+    it("makes a lookup wait for the list rather than answer 'not resent' too soon", async () => {
+      const { host } = makeHost({ rows: { [`resent:${UMID}`]: { _id: `resent:${UMID}`, to: NEW, until: Date.now() + 60_000 } } });
+      let finish!: () => void;
+      host.resentLoading = new Promise<void>((r) => (finish = r));
+      host.resentLoaded = false;
+      let answer: string | undefined = "not yet";
+      const asked = host.resentAs(UMID).then((a: string | undefined) => (answer = a));
+      await settle();
+      expect(answer).to.equal("not yet");
+      host.resentGuardUntil = Date.now() + 60_000;
+      host.resentLoaded = true;
+      finish();
+      await asked;
+      expect(answer).to.equal(NEW);
+    });
+
+    it("does not wait once the list has been read", async () => {
+      const { host } = makeHost();
+      host.resentLoaded = true;
+      host.resentLoading = new Promise<void>(() => undefined);
+      expect(await host.resentAs(UMID)).to.equal(undefined);
+    });
+  });
+
+  describe("the check on a transaction that comes in with an $expire", () => {
+    const body = (expire: string) => ({
+      $tx: { $namespace: "default", $contract: "c".repeat(64), $i: { signer: { publicKey: "k" } }, $expire: expire },
+      $sigs: { signer: "sig" },
+    });
+
+    it("refuses the bytes of a transaction that was resent, and says where it went", async () => {
+      const expire = inAnHour();
+      const asked: string[] = [];
+      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW) };
+      const reply = await Endpoints.ExternalInitalise(host, body(expire), "1.2.3.4", { exists: async () => false } as any);
+      expect(asked).to.have.length(1);
+      expect(reply.content.$summary.errors[0]).to.equal(`Transaction Exists : ${asked[0]} (resent as ${NEW})`);
+      expect(reply.content.$summary.commit).to.equal(0);
+    });
+
+    it("is asked for the umid the body makes, the same one the node assigns", async () => {
+      const expire = inAnHour();
+      const asked: string[] = [];
+      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW) };
+      await Endpoints.ExternalInitalise(host, body(expire), "1.2.3.4", { exists: async () => false } as any);
+      const sent: any = body(expire);
+      expect(asked[0]).to.equal(sha(JSON.stringify(sent)));
+    });
+
+    it("still refuses one that is stored, as before, when it was not resent", async () => {
+      const host: any = { resentAs: async () => undefined };
+      const reply = await Endpoints.ExternalInitalise(host, body(inAnHour()), "1.2.3.4", { exists: async () => true } as any);
+      expect(reply.content.$summary.errors[0]).to.match(/^Transaction Exists : [0-9a-f]{64}$/);
+    });
+  });
+
+  describe("giving a transaction its new umid", () => {
+    it("makes it as it always was, from the transaction with the old umid still in it, and records the old one", () => {
+      const remembered: any[] = [];
+      const host: any = { rememberResent: (...a: any[]) => remembered.push(a) };
+      const expire = inAnHour();
+      const initTx: any = { $umid: UMID, $tx: { $expire: expire }, $sigs: { a: "b" } };
+      const expected = sha(JSON.stringify(initTx) + 3);
+      E.resendUmid(host, initTx, 3);
+      expect(initTx.$umid).to.equal(expected);
+      expect(remembered).to.deep.equal([[UMID, expected, expire]]);
+    });
+
+    it("gives a different umid to each resend", () => {
+      const host: any = { rememberResent: () => undefined };
+      const initTx: any = { $umid: UMID, $tx: {} };
+      const seen = new Set<string>();
+      for (let counter = 0; counter < 4; counter++) {
+        E.resendUmid(host, initTx, counter);
+        seen.add(initTx.$umid);
+      }
+      expect(seen.size).to.equal(4);
+    });
+  });
+});

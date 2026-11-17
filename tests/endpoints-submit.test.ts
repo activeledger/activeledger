@@ -47,7 +47,9 @@ describe("Endpoints transaction submission (Activeledger)", () => {
   const makeHost = (script: Script, over: any = {}) => {
     const pendingCalls: any[] = [];
     const released: any[] = [];
+    const resent: any[] = [];
     const host: any = {
+      resentAs: async () => undefined, rememberResent: (...a: any[]) => resent.push(a),
       reference: "me",
       pending: (entry: any, remote: string, ...rest: any[]) => {
         pendingCalls.push({
@@ -65,7 +67,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       neighbourhood: { get: () => ({}), keys: () => [], count: () => 3 },
       ...over,
     };
-    return { host, pendingCalls, released };
+    return { host, pendingCalls, released, resent };
   };
 
   const voted = (nodes: any, extra: any = {}) => () =>
@@ -269,7 +271,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     });
 
     it("retries under a new umid when every node reports busy locks", async () => {
-      const { host, pendingCalls, released } = makeHost({
+      const { host, pendingCalls, released, resent } = makeHost({
         replies: [
           voted({
             me: { vote: false, commit: false, error: "Busy Locks" },
@@ -284,11 +286,13 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       // The previous round's votes do not leak into the retry
       expect(pendingCalls[1].entry.$nodes).to.equal(undefined);
       expect(released.length).to.be.greaterThan(0);
+      // and the umid given up is remembered
+      expect(resent.map((r) => r.slice(0, 2))).to.deep.equal([[pendingCalls[0].entry.$umid, pendingCalls[1].entry.$umid]]);
       expect(reply.content.$summary.commit).to.equal(1);
     });
 
     it("does not retry busy locks for a $nolock transaction", async () => {
-      const { host, pendingCalls } = makeHost({
+      const { host, pendingCalls, resent } = makeHost({
         replies: [
           voted({
             me: { vote: false, commit: false, error: "Busy Locks" },
@@ -303,6 +307,8 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         db()
       );
       expect(pendingCalls).to.have.length(1);
+      // nothing was resent, so nothing is remembered
+      expect(resent).to.deep.equal([]);
       expect(reply.content.$summary.errors).to.deep.equal([
         "Busy Locks",
         "Busy Locks",
@@ -310,7 +316,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     });
 
     it("retries when the node itself rejected with Busy Locks", async () => {
-      const { host, pendingCalls, released } = makeHost({
+      const { host, pendingCalls, released, resent } = makeHost({
         replies: [
           () => Promise.reject({ status: 100, error: "Busy Locks" }),
           voted({ me: { vote: true, commit: true } }),
@@ -321,6 +327,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       expect(pendingCalls[1].entry.$umid).to.not.equal(pendingCalls[0].entry.$umid);
       // Released with the entry as owner, so another submission is not hit
       expect(released[0][1]).to.equal(pendingCalls[0].live);
+      expect(resent.map((r) => r.slice(0, 2))).to.deep.equal([[pendingCalls[0].entry.$umid, pendingCalls[1].entry.$umid]]);
       expect(reply.content.$summary.commit).to.equal(1);
     });
 
@@ -700,6 +707,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     it("tells a live neighbour 200 and a stranger 403", async () => {
       const hood: any = { live: neighbour("live"), stopping: neighbour("stopping", { graceStop: true }) };
       const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
         neighbourhood: { get: (ref?: string) => (ref ? hood[ref] : hood), keys: () => Object.keys(hood) },
       };
       expect(await Endpoints.status(host, "live")).to.deep.equal({ statusCode: 200 });
@@ -715,6 +723,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       Endpoints.rebaseThrottle = 0;
       ActiveOptions.set("rebaseThrottle", 2);
       const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
         neighbourhood: { get: () => undefined, keys: () => [] },
       };
       try {
@@ -741,6 +750,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         c: neighbour("c", { graceStop: true }),
       };
       const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
         reference: "me",
         getStatus: () => "STATUS",
         neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },

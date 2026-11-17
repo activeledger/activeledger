@@ -42,6 +42,8 @@ Only the streams in `$i` and `$o` are locked while the transaction runs. Two tra
 !!! warning
     Sending the same signed transaction twice runs it twice. The node stamps each arrival with its own time and that time is part of `$umid`, so a repeat is a new transaction. If you set `$tx.$expire`, the time is left out of `$umid` and a repeat is refused with `Transaction Exists`. Set it on anything you might retry.
 
+    A node that has to repair its own streams while it processes a transaction can resend it under a new umid. That umid is not one you can work out from what you sent, but the node remembers the one you can, until `$expire`, and refuses a repost of the same bytes to that node with `Transaction Exists : <umid> (resent as <new umid>)`. A repost to a different node is not yet refused.
+
 ## Signing
 
 The node checks the signature against the public key stored in each input's identity stream. You sign the `$tx` object, as a JSON string, with your private key.
@@ -121,6 +123,7 @@ Each message in `$summary.errors` is the reason. A contract's own refusal is wra
 |---|---|---|
 | `$sigs not found` | The transaction had no `$sigs` field. | Add signatures for every input. |
 | `Transaction Exists : <umid>` | The same transaction (one with `$expire` set) has already been accepted. | Nothing; it is already on the ledger. |
+| `Transaction Exists : <umid> (resent as <umid2>)` | The same transaction (one with `$expire` set) was resent by the node under a new umid while it repaired its own streams. | Nothing; look up `<umid2>`. It is the one on the ledger, or the one that failed. |
 | `Transaction Expired : <date>` | `$tx.$expire` is in the past. | Build and sign a fresh transaction. |
 | `Input Signature Incorrect` | A signature did not match the key on the input stream. | Check you signed `$tx` exactly as sent, with the right key, and that `type` matches the key. |
 | `Input Signature Expired` | The key that signed has passed its expiry date. | Sign with a key that is still valid for that stream. |
