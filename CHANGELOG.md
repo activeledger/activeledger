@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Added
+- **`activeledger prune [days]`** removes what a node no longer needs from its own stores, keeping the last
+  `days` days (default 30) and never touching the ledger. By default it removes handled errors and the error
+  archive; `--include-umids` also removes the umid index (`umid:` and `fail:` rows in the events database) and
+  `--include-events` the contract events. `--dry-run` says what would go. It lists any database it does not
+  recognise and asks, one at a time, before deleting it whole (`--delete-db <name>` names one without asking;
+  the node's own databases are refused). Errors not yet processed are never removed. It runs through the
+  storage's new `POST /<db>/_prune`, one bounded page at a time, and compacts afterwards. See
+  [Pruning old data](docs/guide/operate/prune.md).
+- **`--contract read-only`** for the stress tool, and a peak test that reports reads, locked reads and writes
+  on one page (`npm run stress:peak`).
+
+### Changed
+- **A worker's own commit now travels to the host inside the commit message**, not as a message of its own:
+  about 31% fewer worker to host messages and about 2% less CPU under load. The order of events is unchanged.
+- Two further changes to the worker channel are available and **off by default** (they showed no gain):
+  `ipcBatching: true` sends runs of peer broadcasts to a worker as one message, and
+  `ipcSerialization: "advanced"` sends messages between a node and its workers as V8 structured clones instead
+  of JSON. Both are experimental.
+
+### Fixed
+- **A node could stop answering for about 20 seconds under heavy load.** Every new transaction and every release
+  scanned the whole busy-lock queue, calling `hold()` on each entry and logging a line for each refusal; the
+  queue grows with the load, so past a certain rate the work fed itself (one run logged 6.3 million lines).
+  Scans of a non-empty queue are now at least 20 ms apart (`AL_QUEUE_SCAN_MIN_MS`), releases share one waiting
+  re-check, the per-attempt lock lines are debug level, and a refused multi-stream lock attempt is about 75%
+  cheaper. How long a transaction waits before "Busy Locks" is unchanged (7 s). If `queue_retry` is set it now
+  counts scans, which are further apart, so the same count waits longer.
+- **A node could crash during an SPI repair** when the data engine answered nothing for the read of a winning
+  document (a failed call under memory pressure resolves as null): `Cannot read properties of null (reading
+  '_rev')`. The repair of that document is now skipped with a warning and retried on the next pass.
+
 ### Deprecated
 - **The storage `_changes` route, `ActiveDSConnect.changes()`, `ActiveDSChanges`, `ActiveChanges` and
   `IActiveDSChanges`** are marked legacy. They date from the CouchDB days, are not a supported interface,
