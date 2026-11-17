@@ -13,7 +13,32 @@ export const isCloneError = (error: unknown): boolean =>
   ((error as any).name === "DataCloneError" ||
     /could not be cloned/.test(String((error as any).message)));
 
-/** The message as JSON would have carried it */
+/**
+ * The message as JSON would have carried it: a copy made by writing it as JSON
+ * text and reading it back.
+ *
+ * Where it is used. It is the slow, safe fallback of `ipcSerialization:
+ * "advanced"`, and nothing else calls it. The fast path (V8's structured
+ * clone, the same engine as `ActiveClone.clone`) refuses a message that holds
+ * something it cannot copy, such as a function on an object, and throws a
+ * `DataCloneError`. When that happens the sender (the host in `withJsonFallback`
+ * below, the worker in `Process.send`) makes this copy and sends that instead.
+ * With the default `ipcSerialization: "json"` Node already sends JSON, this is
+ * never reached, and the message arrives exactly as it always has.
+ *
+ * Why it is `JSON.parse(JSON.stringify())` and not `ActiveClone`. The point of
+ * the fallback is to deliver what JSON would have: functions and keys whose
+ * value is `undefined` are left out, a Date becomes its ISO text, NaN becomes
+ * null. `ActiveClone.clone` is V8 serialisation and would throw on the very
+ * message that sent us here; `ActiveClone.serialize` is MessagePack to a
+ * compressed buffer for storage, which is not a message and keeps `undefined`.
+ * Either would change what the receiver sees compared with plain JSON.
+ *
+ * Why speed does not matter. It runs only for a message that could not be
+ * cloned, which should be rare. Anything that makes it common is worth fixing
+ * at its source (the message should not carry a function) rather than by
+ * making this faster.
+ */
 export const jsonCopy = <T>(message: T): T => JSON.parse(JSON.stringify(message));
 
 /**
