@@ -89,9 +89,15 @@ async function main(): Promise<boolean> {
       ["activeledgerevents", `event:${recent}-1,${hex(10)}`, { name: "recent" }],
       ["activeledgerstray", "keep-me", { x: 1 }],
     ];
-    for (const [db, id, doc] of rows) await storagePut(store, id, doc, db);
+    // The storage takes a document's id from its body
+    for (const [db, id, doc] of rows) await storagePut(store, id, { _id: id, ...doc }, db);
+    for (const db of new Set(rows.map((r) => r[0]))) {
+      const there = await ids(store, db);
+      const missing = rows.filter((r) => r[0] === db && !there.includes(r[1]));
+      check(missing.length === 0, `${rows.filter((r) => r[0] === db).length} row(s) landed in ${db}${missing.length ? `, missing: ${missing.map((m) => m[1]).join(", ")}` : ""}`);
+    }
     const ledgerBefore = await ids(store, "activeledger");
-    report.ok(`${rows.length} rows written; the ledger holds ${ledgerBefore.length} documents`);
+    report.ok(`the ledger holds ${ledgerBefore.length} documents`);
 
     report.phase("A dry run changes nothing");
     const eventsBefore = await ids(store, "activeledgerevents");
