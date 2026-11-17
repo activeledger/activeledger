@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-11-17
+
+A cheaper `$expire` check on the entry node, and prune also clears the node's `resent:` records. Upgrade nodes one
+at a time and leave `build` as it is: nothing here needs a protocol level to be raised. `restore` run against a
+live node does not feed the new in-memory check (it normally runs with the node stopped).
+
 ### Changed
 - **`activeledger prune` also removes the node's expired `resent:` records** (the record that it resent a
   transaction under a new umid, kept until that transaction's `$expire`). It goes by when the transaction
