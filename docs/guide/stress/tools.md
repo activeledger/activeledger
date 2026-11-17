@@ -122,6 +122,7 @@ unsustained steps in a row.
 | `--users` | 1000 | distinct users; use more if a step reports dropped arrivals |
 | `--contract` | `no-write` | `no-write` (locked reads), `read-only` (reads with no lock) or `returner` (writes) |
 | `--join-pct` | 5 | percent of arrivals that are a new user joining |
+| `--expire` | off | give every transaction an `$expire` (an hour ahead), as most real ones have |
 | `--workers` | 6 | load-generator threads |
 | `--sustain-pct` | 97 | sustained: at least this percent of the offered rate confirmed |
 | `--max-fail-pct` | 0.5 | ... and no more than this percent failed |
