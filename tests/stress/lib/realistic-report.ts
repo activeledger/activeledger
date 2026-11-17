@@ -124,24 +124,24 @@ h1{font-size:18pt;margin:0}.sub{color:#57606a;font-size:9.5pt;margin-top:2px}
 .big{font-size:32pt;font-weight:700;line-height:1.05}.big small{font-size:12pt;font-weight:400;color:#444}
 .hero p{margin:3px 0 0;font-size:10.5pt}
 .lead{margin:0 0 12px;font-size:10.5pt;color:#444}
-.cols{display:flex;gap:18px;align-items:flex-start}.cols>div{flex:1}.cols>div:first-child{flex:1.9}
-table{border-collapse:collapse;width:100%;font-size:9.5pt}th,td{padding:4px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid #e5e8eb}th{background:#f6f8fa;font-weight:600}td:first-child,th:first-child{text-align:left}
-h2{font-size:11pt;margin:10px 0 4px}.chart{margin:12px 0 0}ul{margin:4px 0 0 18px;padding:0}li{margin-bottom:4px}.small{color:#57606a;font-size:8.5pt;margin-top:14px}
+.cols{display:flex;gap:18px;align-items:flex-start;margin-top:12px}.cols>div{flex:1}.cols>div:first-child{flex:1.7}
+table{border-collapse:collapse;width:100%;font-size:9.5pt}th,td{padding:3px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid #e5e8eb}th{background:#f6f8fa;font-weight:600}td:first-child,th:first-child{text-align:left}
+h2{font-size:11pt;margin:0 0 4px}.chart{margin:0}ul{margin:4px 0 0 16px;padding:0;font-size:9pt}li{margin-bottom:3px}.small{color:#57606a;font-size:8.5pt;margin-top:14px}
 </style></head><body>
 <h1>Activeledger throughput</h1>
 <div class="sub">${meta.nodes}-node network on one PC &middot; ${esc(date)}</div>
 <div class="heroes">${heroes}</div>
 <p class="lead">Every transaction confirmed (final) by the network. ${hasLockFree ? "Reads run a contract that looks up ledger data, with no lock and no write; locked reads do the same on a stream the network locks while it agrees; writes update ledger state." : "Reads check or look up data; writes update ledger state."}</p>
 <table><tr><th>Sent per sec</th>${head}</tr>${rows}</table>
-<div class="chart">${chart(series)}</div>
-<h2>Please note</h2>
+<div class="cols"><div class="chart">${chart(series)}</div>
+<div><h2>Please note</h2>
 <ul>
 <li>Measured on a shared, busy PC (${meta.cpus} threads, load average up to ${maxLoad.toFixed(0)}); dedicated servers built for the job will deliver more.</li>
 <li>All ${meta.nodes} nodes of the network ran on this one machine, sharing its CPU and disk.</li>
 <li>${hasLockFree ? "Reads, locked reads and writes were all tested" : "Reads and writes were both tested"}; writes are the most demanding because every write is stored to disk.</li>
 <li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
 <li>N/A means no result is shown at that rate.</li>
-</ul>
+</ul></div></div>
 <div class="small">Activeledger ${esc(meta.commit || "")} &middot; stress:realistic</div>
 </body></html>`;
 }
