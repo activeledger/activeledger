@@ -200,6 +200,55 @@ for (const cacheOn of [false, true]) describe(`LevelMe.prune (Activestorage), re
     });
   });
 
+  describe("resent records (decided by when the transaction they guard expires)", () => {
+    const rid = (n: number) => `resent:${hash(n)}`;
+
+    it("removes a record whose transaction expired before the cutoff, and keeps one still doing its job", async () => {
+      await put(rid(1), { to: "x", until: T0 + 1 });
+      await put(rid(2), { to: "x", until: CUT - 1 });
+      await put(rid(3), { to: "x", until: CUT });
+      await put(rid(4), { to: "x", until: CUT + 5_000_000 });
+      const page = await db.prune({ kind: "resent", before: CUT });
+      expect(page).to.deep.include({ removed: 2, done: true });
+      expect(await ids()).to.deep.equal([rid(3), rid(4)].sort());
+    });
+
+    it("keeps a record it cannot read an expiry from, and anything that is not a resent record", async () => {
+      await put(rid(5), { to: "x" });
+      await put(rid(6), { to: "x", until: "soon" });
+      await put("resent:short", { until: T0 });
+      await (db as any).driver.put(DOC + rid(7), Buffer.from([1, 2, 3]));
+      await put(`umid:${T0},a`);
+      const page = await db.prune({ kind: "resent", before: CUT });
+      expect(page.removed).to.equal(0);
+      // the four rows in the resent: range, none of which it can take; the umid row is out of range
+      expect(page.kept).to.equal(4);
+    });
+
+    it("does not touch the other kinds, and a dry run changes nothing", async () => {
+      await put(rid(8), { until: T0 });
+      await put(`umid:${T0},a`);
+      expect((await db.prune({ kind: "umid", before: CUT })).removed).to.equal(1);
+      expect(await ids()).to.deep.equal([rid(8)]);
+      expect((await db.prune({ kind: "resent", before: CUT, dryRun: true })).removed).to.equal(1);
+      expect(await ids()).to.deep.equal([rid(8)]);
+    });
+
+    it("pages, counting a page's limit in removals", async () => {
+      for (let i = 0; i < 7; i++) await put(rid(20 + i), { until: T0 + i });
+      let after: string | undefined;
+      let total = 0;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await db.prune({ kind: "resent", before: CUT, limit: 3, after });
+        total += page.removed;
+        if (page.done) break;
+        after = page.next;
+      }
+      expect(total).to.equal(7);
+      expect(await ids()).to.deep.equal([]);
+    });
+  });
+
   it("forgets a removed row it had cached", async () => {
     await put(`umid:${T0 + 1},cached`, { v: 1 });
     await db.get(`umid:${T0 + 1},cached`);

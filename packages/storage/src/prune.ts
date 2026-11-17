@@ -11,14 +11,16 @@
  *   fail:<ms>,<umid>          failure index row
  *   event:<ms>-<n>,<umid>     contract event
  *   <umid>:<ms>               error document (64 hex characters, then the time it was logged)
+ *   resent:<umid>             a transaction the node resent under a new umid; no time in the id, the
+ *                             document says until when it matters (`until`, its transaction's $expire)
  * `<ms>` is the time in milliseconds, 13 digits for any date from 2001 to
  * 2286, which is what makes a plain key order the same as time order for the
  * first three. An id that does not look like one of these is never removed.
  */
 
-export type PruneKind = "umid" | "fail" | "event" | "error";
+export type PruneKind = "umid" | "fail" | "event" | "error" | "resent";
 
-export const PRUNE_KINDS: PruneKind[] = ["umid", "fail", "event", "error"];
+export const PRUNE_KINDS: PruneKind[] = ["umid", "fail", "event", "error", "resent"];
 
 /** One page of a prune, as the storage server is asked for it */
 export interface PruneRequest {
@@ -58,6 +60,8 @@ export const MIN_AGE_MS = 60 * 60 * 1000;
 const TIME_KEYED = /^(umid|fail):(\d{13}),/;
 const EVENT = /^event:(\d{13})[-,]/;
 const ERROR = /^[0-9a-f]{64}:(\d{13})$/;
+/** A resent: row's id; what it is for is in the document, so this only says whether the id is one */
+export const RESENT_ID = /^resent:[0-9a-f]{64}$/;
 
 /**
  * When a row was written, from its id. `undefined` for an id that is not of
@@ -91,6 +95,8 @@ export function idRange(kind: PruneKind): { gte: string; lt: string; ordered: bo
       return { gte: "fail:", lt: "fail;", ordered: true };
     case "event":
       return { gte: "event:", lt: "event;", ordered: true };
+    case "resent":
+      return { gte: "resent:", lt: "resent;", ordered: false };
     default:
       return { gte: "0", lt: "g", ordered: false };
   }

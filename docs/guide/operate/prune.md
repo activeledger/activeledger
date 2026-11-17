@@ -28,6 +28,7 @@ Would remove 45,124 rows in total.
 | `activeledger` (the ledger) | streams, their histories, contract data | **never** | It is the ledger. |
 | `activeledgererrors` | one document per error the node logged, including repair requests | `prune` (only documents already **processed**) | An unprocessed document is a job the restore engine has not done yet, such as "ask the network for this umid". It is never removed, however old. |
 | `activeledgererrors_archive` | errors the restore engine has finished with | `prune` | Nothing reads them back. |
+| `activeledgerevents`: `resent:` records | the node's own record that it resent a transaction under a new umid, kept until that transaction's `$expire` | `prune`, always, once the transaction expired more than an hour ago (not by `days`) | A record is only needed until its transaction expires; the node removes them itself, and this clears any left behind. One still doing its job is never removed. |
 | `activeledgerevents`: umid index | one `umid:` row per committed transaction (and `fail:` rows for failures), which since 5.3.0 also carry what a commit attestation is signed from | `--include-umids` | See below. |
 | `activeledgerevents`: contract events | what contracts emitted with `this.event.emit` | `--include-events` | See below. |
 

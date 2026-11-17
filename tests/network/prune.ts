@@ -87,6 +87,10 @@ async function main(): Promise<boolean> {
       ["activeledgerevents", `event:${old}-1,${hex(8)}`, { name: "old" }],
       ["activeledgerevents", `umid:${recent},${hex(9)}`, { x: 1 }],
       ["activeledgerevents", `event:${recent}-1,${hex(10)}`, { name: "recent" }],
+      // a node's own record of a transaction it resent: expired long ago, expired just now, and still live
+      ["activeledgerevents", `resent:${hex(11)}`, { to: hex(12), until: now - 3 * 3600e3 }],
+      ["activeledgerevents", `resent:${hex(13)}`, { to: hex(14), until: now - 600e3 }],
+      ["activeledgerevents", `resent:${hex(15)}`, { to: hex(16), until: now + 3600e3 }],
       ["activeledgerstray", "keep-me", { x: 1 }],
     ];
     // The storage takes a document's id from its body
@@ -117,7 +121,10 @@ async function main(): Promise<boolean> {
     check(errors.includes(`${hex(3)}:${recent}`), "a recent error was kept");
     const archive = await ids(store, "activeledgererrors_archive");
     check(!archive.includes(`${hex(4)}:${old}`) && archive.includes(`${hex(5)}:${recent}`), "the archive lost the old row and kept the recent one");
-    check(JSON.stringify(await ids(store, "activeledgerevents")) === JSON.stringify(eventsBefore), "the events database was not touched without a flag");
+    const eventsNow = await ids(store, "activeledgerevents");
+    check(!eventsNow.includes(`resent:${hex(11)}`), "a resent record whose transaction expired long ago was removed, without a flag");
+    check(eventsNow.includes(`resent:${hex(13)}`) && eventsNow.includes(`resent:${hex(15)}`), "one that expired minutes ago, and one still live, were kept");
+    check(JSON.stringify(eventsNow.filter((id) => !id.startsWith("resent:"))) === JSON.stringify(eventsBefore.filter((id) => !id.startsWith("resent:"))), "nothing else in the events database was touched without a flag");
     check(/left alone: activeledgerstray/.test(plain.out) && (await dbs(store)).includes("activeledgerstray"), "the stray database was listed and left alone");
 
     report.phase("--include-umids and --include-events");
