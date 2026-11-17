@@ -29,6 +29,9 @@ import { ActiveDSConnect, ActiveDSChanges } from "./dsconnect";
 /**
  * Watches for changes to the datastore and emits
  *
+ * @deprecated Legacy CouchDB-era feed, not for new code. Follow the events
+ * database instead (`/activeledgerevents/events`, `/activeledgerevents/umids`).
+ *
  * @export
  * @class ActiveChanges
  * @extends {events.EventEmitter}

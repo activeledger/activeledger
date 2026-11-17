@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Deprecated
+- **The storage `_changes` route, `ActiveDSConnect.changes()`, `ActiveDSChanges`, `ActiveChanges` and
+  `IActiveDSChanges`** are marked legacy. They date from the CouchDB days, are not a supported interface,
+  and `feed=continuous` has never been implemented. Nothing in a running node uses them; the only caller is
+  `@activeledger/nano-gateway`, which is now marked experimental and unsupported. To follow what a node
+  has written, use the events database: `/activeledgerevents/events` (server-sent events, resumable with
+  `Last-Event-ID`) and `/activeledgerevents/umids?from=`. Nothing is removed in this release.
+
 ## [5.3.0] - 2026-11-16
 
 Hybrid support gets cheap enough to leave at the default, and easy to turn on. Upgrade nodes one at a

@@ -702,7 +702,15 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
   );
 
-  // Listen for changes on the database
+  // Listen for changes on the database.
+  //
+  // Legacy: kept from the CouchDB days, when it fed the old SSE path, and now
+  // used only by nano-gateway (through ActiveDSConnect.changes()). It is not a
+  // supported interface and `feed=continuous` is not implemented. To follow
+  // what a node has written, use the events database: `/activeledgerevents/events`
+  // (server-sent events, resumable with Last-Event-ID) and
+  // `/activeledgerevents/umids?from=`. Writes inside a process are announced by
+  // LevelMe.changes(), which is not this route and is not legacy.
   http.use(
     "*/_changes",
     "GET",

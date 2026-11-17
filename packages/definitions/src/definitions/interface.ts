@@ -96,6 +96,10 @@ export interface IActiveDSConnect {
   }): Promise<any> | IActiveDSChanges;
 }
 
+/**
+ * @deprecated Legacy CouchDB-era changes feed (storage `_changes`), used only
+ * by nano-gateway. Not for new code.
+ */
 export interface IActiveDSChanges extends EventEmitter {
   cancel(): void;
 }
