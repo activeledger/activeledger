@@ -73,10 +73,13 @@ export const defaultDeps = (out: PruneDeps["out"] = console): PruneDeps => ({
 
 interface Target {
   db: string;
-  kind: "error" | "umid" | "fail" | "event";
+  kind: "error" | "umid" | "fail" | "event" | "resent";
   label: string;
   requireProcessed?: boolean;
 }
+
+/** A resent record is removed once its transaction expired this long ago (the storage will not take less than an hour) */
+const RESENT_GRACE_MS = 60 * 60 * 1000;
 
 interface Tally {
   label: string;
@@ -153,6 +156,8 @@ export const pruneCommand = async (
   const targets: Target[] = [
     { db: errors, kind: "error", label: "errors", requireProcessed: true },
     { db: archive, kind: "error", label: "archived errors", requireProcessed: false },
+    // Not by age: the node's own records of transactions it resent, once those have expired
+    { db: events, kind: "resent", label: "expired resent records" },
   ];
   if (flags.includeUmids) {
     targets.push({ db: events, kind: "umid", label: "umid index" }, { db: events, kind: "fail", label: "failure index" });
@@ -191,7 +196,7 @@ export const pruneCommand = async (
     for (;;) {
       const page = await deps.request(`${base}/${target.db}/_prune`, "POST", {
         kind: target.kind,
-        before,
+        before: target.kind === "resent" ? deps.now() - RESENT_GRACE_MS : before,
         after,
         limit: PAGE_LIMIT,
         dryRun: !!flags.dryRun,

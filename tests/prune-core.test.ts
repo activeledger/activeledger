@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import "mocha";
-import { MAX_PAGE_LIMIT, MIN_AGE_MS, checkPruneRequest, idRange, idTime } from "../packages/storage/src/prune";
+import { MAX_PAGE_LIMIT, MIN_AGE_MS, RESENT_ID, checkPruneRequest, idRange, idTime } from "../packages/storage/src/prune";
 
 const T = 1_700_000_000_000;
 const hash = "a".repeat(64);
@@ -45,6 +45,19 @@ describe("prune: which ids a scan covers (Activestorage)", () => {
     }
   });
 
+  it("covers the resent: rows only, and they are not in time order", () => {
+    const r = idRange("resent");
+    expect(r).to.deep.equal({ gte: "resent:", lt: "resent;", ordered: false });
+    expect(`resent:${hash}` >= r.gte && `resent:${hash}` < r.lt).to.equal(true);
+    expect(`umid:${T},x` >= r.gte && `umid:${T},x` < r.lt).to.equal(false);
+  });
+
+  it("knows a resent: id by its shape, and has no time to read from it", () => {
+    expect(RESENT_ID.test(`resent:${hash}`)).to.equal(true);
+    for (const id of [`resent:${hash}x`, "resent:abc", `resent:${hash}:${T}`, `umid:${T},x`, hash]) expect(RESENT_ID.test(id), id).to.equal(false);
+    expect(idTime("umid", `resent:${hash}`)).to.equal(undefined);
+  });
+
   it("covers hex ids for errors and is not time ordered", () => {
     const r = idRange("error");
     expect(r.ordered).to.equal(false);
@@ -57,6 +70,10 @@ describe("prune: which ids a scan covers (Activestorage)", () => {
 describe("prune: checking a request before acting on it (Activestorage)", () => {
   const now = T + 10 * 86400e3;
   const good = { kind: "umid", before: T };
+
+  it("accepts the resent kind", () => {
+    expect((checkPruneRequest({ kind: "resent", before: T }, now) as any).ok).to.equal(true);
+  });
 
   it("accepts a request and fills in the defaults", () => {
     const r: any = checkPruneRequest(good, now);

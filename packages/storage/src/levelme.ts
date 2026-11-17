@@ -11,7 +11,7 @@ import { ActiveCacheManager, ActiveCache } from "@activeledger/activeoptions";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { IStorageDriver } from "./driver";
 import { LevelDBDriver } from "./drivers/leveldb";
-import { DEFAULT_PAGE_LIMIT, PAGE_BUDGET_MS, PrunePage, PruneRequest, idRange, idTime } from "./prune";
+import { DEFAULT_PAGE_LIMIT, PAGE_BUDGET_MS, PrunePage, PruneRequest, RESENT_ID, idRange, idTime } from "./prune";
 import { LevelUpChain } from "levelup";
 
 /**
@@ -709,8 +709,9 @@ export class LevelMe {
     const requireProcessed = request.requireProcessed !== false;
     const range = idRange(kind);
 
-    // Errors need the document to see if it is processed; the others are decided by the id alone
-    const options: any = { lt: LevelMe.DOC_PREFIX + range.lt, values: kind === "error" };
+    // Errors need the document to see if it is processed, and a resent record to see when its
+    // transaction expires; the others are decided by the id alone
+    const options: any = { lt: LevelMe.DOC_PREFIX + range.lt, values: kind === "error" || kind === "resent" };
     if (request.after !== undefined) options.gt = LevelMe.DOC_PREFIX + request.after;
     else options.gte = LevelMe.DOC_PREFIX + range.gte;
 
@@ -727,6 +728,18 @@ export class LevelMe {
         const id = entry.key.toString().slice(LevelMe.DOC_PREFIX.length);
         scanned++;
         last = id;
+        if (kind === "resent") {
+          // Removed once the transaction it guards has expired: `before` is a time its $expire must
+          // have passed, so a record still doing its job is never taken
+          const doc: any = RESENT_ID.test(id) ? await ActiveClone.deserialize(entry.value as Buffer).catch(() => undefined) : undefined;
+          if (doc && Number.isFinite(Number(doc.until)) && Number(doc.until) < before) doomed.push(id);
+          else kept++;
+          if (doomed.length >= limit || Date.now() - started > PAGE_BUDGET_MS) {
+            done = false;
+            break;
+          }
+          continue;
+        }
         const time = idTime(kind, id);
         if (time === undefined) {
           kept++;

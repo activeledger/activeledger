@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Changed
+- **`activeledger prune` also removes the node's expired `resent:` records** (the record that it resent a
+  transaction under a new umid, kept until that transaction's `$expire`). It goes by when the transaction
+  expired, not by `days`, and only removes one that expired more than an hour ago; a record still doing its job
+  is never taken.
+
 ## [5.4.0] - 2026-11-17
 
 Pruning, a fix for a stall under load, a fix for a replay hole, and a cheaper commit path. Upgrade nodes one

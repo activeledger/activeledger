@@ -69,12 +69,20 @@ describe("activeledger prune (CLI)", () => {
   });
 
   describe("what it prunes", () => {
-    it("by default, handled errors and the error archive, and nothing in the events database or the ledger", async () => {
+    it("by default, handled errors, the error archive and the node's expired resent records, and nothing else in the events database or the ledger", async () => {
       const r = await run("30", {});
       expect(r.prunes().map((c) => [c.url, c.body.kind, c.body.requireProcessed])).to.deep.equal([
         ["http://127.0.0.1:5259/activeledgererrors/_prune", "error", true],
         ["http://127.0.0.1:5259/activeledgererrors_archive/_prune", "error", false],
+        ["http://127.0.0.1:5259/activeledgerevents/_prune", "resent", undefined],
       ]);
+    });
+
+    it("removes a resent record by when its transaction expired, not by the days to keep", async () => {
+      const r = await run("7", {});
+      const resent = r.prunes().find((c) => c.body.kind === "resent")!;
+      expect(resent.body.before).to.equal(NOW - 60 * 60 * 1000);
+      expect(r.prunes().find((c) => c.body.kind === "error")!.body.before).to.equal(NOW - 7 * DAY);
     });
 
     it("adds the umid index (umid and fail rows) only with --include-umids", async () => {
@@ -82,6 +90,7 @@ describe("activeledger prune (CLI)", () => {
       expect(r.prunes().map((c) => [c.url.split("/")[3], c.body.kind])).to.deep.equal([
         ["activeledgererrors", "error"],
         ["activeledgererrors_archive", "error"],
+        ["activeledgerevents", "resent"],
         ["activeledgerevents", "umid"],
         ["activeledgerevents", "fail"],
       ]);
@@ -89,7 +98,7 @@ describe("activeledger prune (CLI)", () => {
 
     it("adds the contract events only with --include-events", async () => {
       const r = await run("30", { includeEvents: true });
-      expect(r.prunes().map((c) => c.body.kind)).to.deep.equal(["error", "error", "event"]);
+      expect(r.prunes().map((c) => c.body.kind)).to.deep.equal(["error", "error", "resent", "event"]);
     });
 
     it("never asks about the ledger database", async () => {
@@ -107,7 +116,7 @@ describe("activeledger prune (CLI)", () => {
       const f = fake({ dbs: ["led", "evt", "err", "err_archive"] });
       f.deps.loadDb = () => ({ selfhost: { host: "127.0.0.1", port: "5259" }, database: "led", event: "evt", error: "err" });
       const r = await run("30", { includeEvents: true }, f);
-      expect(r.prunes().map((c) => c.url.split("/")[3])).to.deep.equal(["err", "err_archive", "evt"]);
+      expect(r.prunes().map((c) => c.url.split("/")[3])).to.deep.equal(["err", "err_archive", "evt", "evt"]);
       expect(r.calls.filter((c) => c.url.includes("/led/"))).to.have.length(0);
     });
 
