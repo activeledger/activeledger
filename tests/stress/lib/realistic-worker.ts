@@ -27,6 +27,8 @@ export interface WorkerInit {
   index: number;
   /** read-only contract: a transaction that reads another user's stream through `$r`, locks nothing and writes nothing */
   readOnly?: boolean;
+  /** give every transaction an $expire, as most real ones have: each then also costs the entry node the replay check */
+  expire?: boolean;
 }
 
 export interface PrepareCommand {
@@ -94,6 +96,10 @@ let seq = 0;
 
 const joinsReady: unknown[] = [];
 
+/** How long an $expire is good for: far longer than a step, so none expires while the test runs */
+const EXPIRE_MS = 60 * 60 * 1000;
+const expireField = (): { $expire?: string } => (init.expire ? { $expire: new Date(Date.now() + EXPIRE_MS).toISOString() } : {});
+
 const hotTx = (u: User) => {
   if (init.readOnly) {
     // The signer is named by a signature-only input (never locked); the stream
@@ -106,6 +112,7 @@ const hotTx = (u: User) => {
       $i: { [u.streamId]: { $sigOnly: true } },
       $r: { [other.streamId]: {} },
       $o: {},
+      ...expireField(),
     };
     return { $tx: read, $sigs: { [u.streamId]: u.keyPair.sign(read) } };
   }
@@ -114,6 +121,7 @@ const hotTx = (u: User) => {
     $contract: init.contractId,
     $i: { [u.streamId]: {} },
     $o: { [u.streamId]: { message: `w${init.index}s${seq++}` } },
+    ...expireField(),
   };
   return { $tx: body, $sigs: { [u.streamId]: u.keyPair.sign(body) } };
 };
@@ -140,7 +148,7 @@ function prepare(cmd: PrepareCommand): void {
 const pick = <T>(xs: T[], i: number): T => xs[i % xs.length];
 
 function onboardBody(pub: string) {
-  return { $namespace: "default", $contract: "onboard", $i: { identity: { type: "secp256k1", publicKey: pub } }, $o: {} };
+  return { $namespace: "default", $contract: "onboard", $i: { identity: { type: "secp256k1", publicKey: pub } }, $o: {}, ...expireField() };
 }
 
 function newIdentity(): { keyPair: any; tx: unknown } {

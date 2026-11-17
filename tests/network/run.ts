@@ -103,6 +103,10 @@ async function main(): Promise<boolean> {
       // (see spi.md), not representative load, and belongs in the
       // dedicated SPI phase below where it's controlled and expected.
       const isContractRun = i % 5 === 0;
+      // Half of each kind carry an $expire (as most real transactions do), half do not, so
+      // both ways through the entry node are exercised in the same run
+      const expire = new Date(Date.now() + 10 * 60_000).toISOString();
+      const withExpire = isContractRun ? i % 10 === 0 : i % 2 === 1;
       const { result, ms } = await timed(async () => {
         const kp = new ActiveCrypto.KeyPair("rsa");
         const keys = kp.generate();
@@ -111,6 +115,7 @@ async function main(): Promise<boolean> {
           $contract: "onboard",
           $i: { identity: { type: "rsa", publicKey: keys.pub.pkcs8pem } },
           $o: {},
+          ...(withExpire && !isContractRun ? { $expire: expire } : {}),
         };
         const onboardResult = await submit(node.baseUrl, {
           $tx: txBody,
@@ -121,9 +126,15 @@ async function main(): Promise<boolean> {
 
         const freshStreamId = onboardResult.$streams?.new?.[0]?.id;
         if (!freshStreamId) return onboardResult; // onboarding itself failed - report that as the result
-        return runContract(node.baseUrl, { streamId: freshStreamId, keyPair: kp }, NAMESPACE, returnerId, {
-          message: `load-${i}`,
-        });
+        return runContract(
+          node.baseUrl,
+          { streamId: freshStreamId, keyPair: kp },
+          NAMESPACE,
+          returnerId,
+          { message: `load-${i}` },
+          undefined,
+          withExpire ? expire : undefined
+        );
       });
 
       const passed = !result.$summary?.errors && result.$summary?.commit >= 1;
