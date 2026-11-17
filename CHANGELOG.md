@@ -1,6 +1,9 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.4.0] - 2026-11-17
+
+Pruning, a fix for a stall under load, a fix for a replay hole, and a cheaper commit path. Upgrade nodes one
+at a time and leave `build` as it is: nothing here needs a protocol level to be raised.
 
 ### Added
 - **`activeledger prune [days]`** removes what a node no longer needs from its own stores, keeping the last
@@ -12,7 +15,10 @@
   storage's new `POST /<db>/_prune`, one bounded page at a time, and compacts afterwards. See
   [Pruning old data](docs/guide/operate/prune.md).
 - **`--contract read-only`** for the stress tool, and a peak test that reports reads, locked reads and writes
-  on one page (`npm run stress:peak`).
+  on one page (`npm run stress:peak`). **`--expire`** gives every stress transaction an `$expire`, as most real
+  ones have, and `npm run stress:peak:expire` runs the peak test with it. The live network suite sends half
+  its load-phase transactions with an `$expire`, and waits for every node to find its neighbours before the
+  first transaction (the start-up race that made it fail intermittently).
 
 ### Changed
 - **A worker's own commit now travels to the host inside the commit message**, not as a message of its own:
@@ -23,6 +29,17 @@
   of JSON. Both are experimental.
 
 ### Fixed
+- **A transaction resent under a new umid could run a second time when its signed bytes were reposted.** When
+  the entry node repairs its own streams (SPI) and resends a transaction, it gives it a new umid; the umid it
+  gave up is never stored, so once the node had forgotten the first attempt (about a minute) a repost of the
+  same bytes before their `$expire` ran again under the original umid (seen as a double gas move). The node now
+  records the umid it gave up as a `resent:<umid>` row in its events database and refuses a repost with
+  `Transaction Exists : <umid> (resent as <new umid>)` until the transaction's `$expire`. Nothing is held in
+  memory per transaction: the guard is one timestamp, zero on a node that has never resent, and the rows are
+  read at start. It fails closed: until the rows are read, or if a lookup gets no answer while a resend is live,
+  a transaction with an `$expire` is told to try again shortly. The record is the node's own, so a repost sent
+  to a different node is not recognised by it: to retry safely, send it to the same node, or look up the umid
+  first.
 - **A node could stop answering for about 20 seconds under heavy load.** Every new transaction and every release
   scanned the whole busy-lock queue, calling `hold()` on each entry and logging a line for each refusal; the
   queue grows with the load, so past a certain rate the work fed itself (one run logged 6.3 million lines).
@@ -33,6 +50,12 @@
 - **A node could crash during an SPI repair** when the data engine answered nothing for the read of a winning
   document (a failed call under memory pressure resolves as null): `Cannot read properties of null (reading
   '_rev')`. The repair of that document is now skipped with a warning and retried on the next pass.
+
+### Notes
+- **A transaction with an `$expire` costs the entry node one storage lookup** (to see whether it is a repeat).
+  On one machine with four nodes, sending every transaction with an `$expire` instead of none lowered what the
+  network held by about 22% for reads (1,661 to 1,289 tx/s), 23% for locked reads (1,676 to 1,291) and 9% for
+  writes (874 to 799). The check this release adds for resent transactions costs nothing on top of that.
 
 ### Deprecated
 - **The storage `_changes` route, `ActiveDSConnect.changes()`, `ActiveDSChanges`, `ActiveChanges` and
