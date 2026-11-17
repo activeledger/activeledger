@@ -39,7 +39,7 @@ const ms = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)} s` : `${Math.ro
 interface Series { label: string; runs: Run[]; peak: Run; colour: string }
 
 function chart(series: Series[]): string {
-  const W = 460, H = 190, L = 40, B = 28, T = 10, R = 10;
+  const W = 460, H = 150, L = 40, B = 28, T = 10, R = 10;
   const all = series.flatMap((s) => s.runs);
   const maxX = Math.max(...all.map((r) => r.offeredTps)) * 1.05;
   const x = (v: number) => L + (v / maxX) * (W - L - R);
@@ -47,10 +47,13 @@ function chart(series: Series[]): string {
   // the bottom of the page; where it starts is written on the chart.
   const confirmedAll = all.map((r) => confirmed(r));
   const lo = Math.min(...confirmedAll), hi = Math.max(...confirmedAll);
-  const yMin = Math.max(0, Math.floor((lo * 0.85) / 100) * 100);
-  const yMax = Math.max(yMin + 100, Math.ceil((hi * 1.05) / 100) * 100);
+  // Evenly spaced gridlines, a round step that gives about five of them.
+  const step = [50, 100, 200, 250, 500, 1000].find((t) => (hi * 1.05 - lo * 0.85) / t <= 5) ?? 1000;
+  const yMin = Math.max(0, Math.floor((lo * 0.85) / step) * step);
+  const yMax = Math.max(yMin + step, Math.ceil((hi * 1.05) / step) * step);
   const y = (v: number) => T + (1 - (v - yMin) / (yMax - yMin)) * (H - T - B);
-  const grid = [...new Set([0.25, 0.5, 0.75, 1].map((f) => Math.round((yMin + (yMax - yMin) * f) / 100) * 100))].filter((g) => g > yMin && g <= yMax);
+  const grid: number[] = [];
+  for (let g = yMin + step; g <= yMax; g += step) grid.push(g);
   const rates = [...new Set(all.map((r) => r.offeredTps))].sort((a, b) => a - b);
   return `<svg viewBox="0 0 ${W} ${H}" width="100%">
 ${grid.map((g) => `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#eceff2"/><text x="${L - 4}" y="${y(g) + 3}" font-size="8" text-anchor="end" fill="#666">${fmt(g)}</text>`).join("")}
@@ -133,22 +136,22 @@ h1{font-size:18pt;margin:0}.sub{color:#57606a;font-size:9.5pt;margin-top:2px}
 .lead{margin:0 0 12px;font-size:10.5pt;color:#444}
 .cols{display:flex;gap:18px;align-items:flex-start;margin-top:12px}.cols>div{flex:1}.cols>div:first-child{flex:1.7}
 table{border-collapse:collapse;width:100%;font-size:9.5pt}th,td{padding:3px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid #e5e8eb}th{background:#f6f8fa;font-weight:600}td:first-child,th:first-child{text-align:left}
-h2{font-size:11pt;margin:0 0 4px}.chart{margin:0}ul{margin:4px 0 0 16px;padding:0;font-size:9pt}li{margin-bottom:3px}.small{color:#57606a;font-size:8.5pt;margin-top:14px}
+h2{font-size:11pt;margin:8px 0 3px}.chart{margin:10px 0 0}ul{margin:4px 0 0 16px;padding:0;font-size:9pt}li{margin-bottom:3px}.small{color:#57606a;font-size:8.5pt;margin-top:14px}
 </style></head><body>
 <h1>Activeledger throughput</h1>
 <div class="sub">${meta.nodes}-node network on one PC &middot; ${esc(date)}</div>
 <div class="heroes">${heroes}</div>
 <p class="lead">Every transaction confirmed (final) by the network. ${hasLockFree ? "Reads run a contract that looks up ledger data, with no lock and no write; locked reads do the same on a stream the network locks while it agrees; writes update ledger state." : "Reads check or look up data; writes update ledger state."}</p>
 <table><tr><th>Sent per sec</th>${head}</tr>${rows}</table>
-<div class="cols"><div class="chart">${chart(series)}</div>
-<div><h2>Please note</h2>
+<div class="chart">${chart(series)}</div>
+<h2>Please note</h2>
 <ul>
 <li>Measured on a shared, busy PC (${meta.cpus} threads, load average up to ${maxLoad.toFixed(0)}); dedicated servers built for the job will deliver more.</li>
 <li>All ${meta.nodes} nodes of the network ran on this one machine, sharing its CPU and disk.</li>
 <li>${hasLockFree ? "Reads, locked reads and writes were all tested" : "Reads and writes were both tested"}; writes are the most demanding because every write is stored to disk.</li>
 <li>This peak load test steps the rate up for a few minutes to find the highest rate the network holds.</li>
 <li>N/A means no result is shown at that rate.</li>
-</ul></div></div>
+</ul>
 <div class="small">Activeledger ${esc(meta.commit || "")} &middot; stress:realistic</div>
 </body></html>`;
 }
