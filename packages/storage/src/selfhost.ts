@@ -29,6 +29,7 @@ import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
 import { EVENT_PREFIX, eventsSince } from "./events";
+import { checkPruneRequest } from "./prune";
 import {
   checkDoc,
   filterPrefix,
@@ -388,6 +389,29 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   http.use("*/_compact", "GET", async (incoming: IActiveHttpIncoming) => {
     const db = getDB(incoming.url[0]);
     return await db.compact();
+  });
+
+  // Remove rows older than a time from a node's own stores (the events
+  // database, the errors database and its archive): one page, which the
+  // `activeledger prune` command asks for until it is done. A page is bounded
+  // so the request ends well inside the server's idle timeout. Like every
+  // route here it is reachable from this host only. It never creates a
+  // database, and a cutoff newer than an hour ago is refused.
+  http.use("*/_prune", "POST", async (incoming: IActiveHttpIncoming) => {
+    const name = incoming.url[0];
+    if (!/^[A-Za-z0-9_.-]+$/.test(name) || name.includes("..")) {
+      throw { status: 400, error: "Invalid database name" };
+    }
+    const checked = checkPruneRequest(incoming.body);
+    if (!checked.ok) {
+      throw { status: 400, error: checked.error };
+    }
+    try {
+      await fsPromises.access(DIR_PREFIX + name);
+    } catch {
+      throw { status: 404, error: "No such database" };
+    }
+    return await getDB(name).prune(checked.request);
   });
 
   // Direct sequence get
