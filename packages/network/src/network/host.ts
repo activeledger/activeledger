@@ -2134,6 +2134,10 @@ export class Host extends Home {
    * stored, so "Transaction Exists" cannot see it, and the same signed bytes
    * reposted before their $expire would run a second time under it.
    *
+   * It is this node's own record, as everything outside consensus is: the
+   * other nodes are not told, and a repost entering one of them is not caught
+   * by it.
+   *
    * So the umid being replaced is recorded: a `resent:<umid>` row in the events
    * database (disk, not memory), and one timestamp here, the latest $expire of
    * any live row. Nothing is held per transaction: with no resend the guard is
