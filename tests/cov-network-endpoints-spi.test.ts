@@ -40,6 +40,7 @@ describe("Origin SPI repair: a stream already rewritten (cov)", () => {
     ];
     const winner = { _id: streamId, _rev: "2-winner" };
     const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
       reference: "me",
       pending: (entry: any) => (pendingCalls.push(JSON.parse(JSON.stringify(entry))), replies.shift()!()),
       release: (...a: any[]) => released.push(a),
@@ -145,6 +146,7 @@ describe("Non-origin SPI repair paths (cov)", () => {
       () => Promise.resolve({ status: 200, data: { $umid: entry.$umid, $nodes: { me: { vote: true, commit: true } } } }),
     ];
     const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
       reference: "me",
       pending: (e: any, ...rest: any[]) => (pendingCalls.push({ e, rest }), replies.shift()!()),
       release: (...a: any[]) => released.push(a),

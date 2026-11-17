@@ -30,7 +30,7 @@ describe("Relayed transactions ($relay)", () => {
       return docs[id];
     },
   };
-  const host: any = { reference: "entry-node" };
+  const host: any = { reference: "entry-node", resentAs: async () => undefined, rememberResent: () => undefined };
 
   const register = (state: any = {}, contract = "hybrid") => {
     docs[registryId] = {

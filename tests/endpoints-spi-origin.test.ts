@@ -64,7 +64,9 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
           },
         }),
     ];
+    const resent: any[] = [];
     const host: any = {
+      resentAs: async () => undefined, rememberResent: (...a: any[]) => resent.push(a),
       reference: "me",
       pending: (entry: any) => {
         pendingCalls.push(JSON.parse(JSON.stringify(entry)));
@@ -79,7 +81,7 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
         ),
       },
     };
-    return { host, streamId, written, released, pendingCalls };
+    return { host, streamId, written, released, pendingCalls, resent };
   };
 
   const submit = (host: any) =>
@@ -121,6 +123,10 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     expect(f.pendingCalls[1].$nodes).to.equal(undefined);
     // The first round's locks were released before the retry
     expect(f.released[0][0]).to.equal(f.pendingCalls[0].$umid);
+    // The umid it gave up is remembered, so the same bytes are not run again under it
+    expect(f.resent).to.have.length(1);
+    expect(f.resent[0][0]).to.equal(f.pendingCalls[0].$umid);
+    expect(f.resent[0][1]).to.equal(f.pendingCalls[1].$umid);
     // And the client gets the retried outcome
     expect(reply.content.$umid).to.equal("second");
     expect(reply.content.$summary.commit).to.equal(1);
@@ -464,6 +470,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
         }),
     ];
     const host: any = {
+      resentAs: async () => undefined, rememberResent: () => undefined,
       reference: "me",
       pending: () => replies.shift()!(),
       release: (...a: any[]) => released.push(a),

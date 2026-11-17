@@ -17,7 +17,7 @@ describe("ExternalInitalise refuses a preset $datetime", () => {
       throw new Error("not found");
     },
   };
-  const host: any = { reference: "entry-node" };
+  const host: any = { reference: "entry-node", resentAs: async () => undefined, rememberResent: () => undefined };
 
   beforeEach(() => {
     captured = undefined;
