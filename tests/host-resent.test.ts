@@ -233,21 +233,11 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
   });
 
   describe("after a start (the storage may come up after the host)", () => {
-    it("keeps trying every half second until the list can be read", async () => {
-      let calls = 0;
-      const { host } = makeHost({ rows: { "resent:1": { _id: "resent:1", to: "x", until: Date.now() + 60_000 } } });
-      const real = host.dbEventConnection.allDocs;
-      host.dbEventConnection.allDocs = async (o: any) => (++calls < 3 ? undefined : real(o));
-      const loading = host.loadResentGuard();
-      for (let i = 0; i < 2; i++) {
-        await settle();
-        expect(timers[timers.length - 1].ms).to.equal(500);
-        timers[timers.length - 1].fn();
-      }
-      await loading;
-      expect(calls).to.equal(3);
-      expect(host.resentLoaded).to.equal(true);
-      expect(host.resentGuardUntil).to.be.greaterThan(Date.now());
+    it("reads the list once, and starts no timer and no loop when the storage does not answer", async () => {
+      const { host } = makeHost({ listFails: true });
+      await host.loadResentGuard();
+      expect(timers).to.have.length(0);
+      expect(!!host.resentLoaded).to.equal(false);
     });
 
     it("makes a lookup wait for the list rather than answer 'not resent' too soon", async () => {
@@ -266,52 +256,49 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(answer).to.equal(NEW);
     });
 
-    it("waits no longer than five seconds, then refuses to answer, if the list still has not been read", async () => {
-      const { host } = makeHost();
-      host.resentLoading = new Promise<void>(() => undefined);
-      host.resentLoaded = false;
+    it("tries again every half second while a transaction waits, and goes on once the storage answers", async () => {
+      const { host } = makeHost({ rows: { [`resent:${UMID}`]: { _id: `resent:${UMID}`, to: NEW, until: Date.now() + 60_000 } } });
+      const real = host.dbEventConnection.allDocs;
+      let calls = 0;
+      host.dbEventConnection.allDocs = async (o: any) => (++calls < 3 ? undefined : real(o));
+      await host.loadResentGuard();
+      let answer: string | undefined;
+      const asked = host.resentAs(UMID).then((a: string | undefined) => (answer = a));
+      for (let i = 0; i < 2; i++) {
+        await settle();
+        expect(timers[timers.length - 1].ms).to.equal(500);
+        timers[timers.length - 1].fn();
+      }
+      await asked;
+      expect(answer).to.equal(NEW);
+      expect(calls).to.equal(3);
+    });
+
+    it("gives up after five seconds of trying and refuses to answer", async () => {
+      const { host } = makeHost({ listFails: true });
+      await host.loadResentGuard();
       let refused = false;
       const asked = host.resentAs(UMID).catch(() => (refused = true));
-      await settle();
-      const wait = timers[timers.length - 1];
-      expect(wait.ms).to.equal(5000);
-      wait.fn();
+      for (let i = 0; i < 10; i++) {
+        await settle();
+        timers[timers.length - 1].fn();
+      }
       await asked;
       expect(refused).to.equal(true);
+      expect(timers.filter((t) => t.ms === 500)).to.have.length(10);
     });
 
-    it("starts no hourly timer on a node that has never resent anything", async () => {
-      let intervals = 0;
-      (global as any).setInterval = () => (intervals++, { unref() {} } as any);
-      const { host } = makeHost();
-      await host.refreshResentGuard();
-      expect(intervals).to.equal(0);
-    });
-
-    it("starts the hourly housekeeping when it finds a live row, and when something is resent", async () => {
-      let intervals = 0;
-      (global as any).setInterval = () => (intervals++, { unref() {} } as any);
-      const found = makeHost({ rows: { "resent:1": { _id: "resent:1", to: "x", until: Date.now() + 60_000 } } });
-      await found.host.refreshResentGuard();
-      expect(intervals).to.equal(1);
-      const resent = makeHost();
-      resent.host.rememberResent(UMID, NEW, inAnHour());
-      expect(intervals).to.equal(2);
-    });
-
-    it("keeps trying to read the list, every five seconds once the first ten have passed, until it can", async () => {
+    it("shares the waiting between requests that arrive together", async () => {
       const { host } = makeHost({ listFails: true });
-      host.loadResentGuard();
-      const intervals: number[] = [];
-      for (let i = 0; i < 24; i++) {
+      await host.loadResentGuard();
+      const asks = [1, 2, 3].map(() => host.resentAs(UMID).catch(() => "refused"));
+      await settle();
+      expect(timers.filter((t) => t.ms === 500)).to.have.length(1);
+      for (let i = 0; i < 10; i++) {
         await settle();
-        const next = timers[timers.length - 1];
-        intervals.push(next.ms);
-        next.fn();
+        timers[timers.length - 1].fn();
       }
-      expect(intervals.slice(0, 20).every((ms) => ms === 500)).to.equal(true);
-      expect(intervals.slice(20).every((ms) => ms === 5000)).to.equal(true);
-      expect(!!host.resentLoaded).to.equal(false);
+      expect(await Promise.all(asks)).to.deep.equal(["refused", "refused", "refused"]);
     });
 
     it("does not wait once the list has been read", async () => {
