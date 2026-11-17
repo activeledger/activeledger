@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activetoolkits",
-  "version": "5.4.0",
+  "version": "5.5.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -48,6 +48,6 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activeutilities": "5.4.0"
+    "@activeledger/activeutilities": "5.5.0"
   }
 }
