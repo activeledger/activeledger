@@ -441,6 +441,15 @@ export class Endpoints {
 
                                     rewrote.set(winningDoc._id, winningDoc._rev);
                                     const dblCheck = await host.dbConnection.get(winningDoc._id);
+                                    if (!dblCheck) {
+                                      // The data engine answered nothing (the request helper resolves null on
+                                      // a failed call, e.g. under memory pressure). That is not a missing
+                                      // document: leave this one for the next pass rather than crash or
+                                      // overwrite on a guess.
+                                      ActiveLogger.warn(`SPI #1 could not read ${winningDoc._id}, will retry : ${tx.$umid}`);
+                                      rewrote.delete(winningDoc._id);
+                                      continue;
+                                    }
                                     if (dblCheck._rev !== winningDoc._rev) {
                                       ActiveLogger.error(
                                         `SPI REWRITING #1 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`
@@ -1344,6 +1353,15 @@ export class Endpoints {
                           rewrote.set(tx.$umid, true);
                           rewrote.set(winningDoc._id, winningDoc._rev);
                           const dblCheck = await host.dbConnection.get(winningDoc._id);
+                          if (!dblCheck) {
+                            // The data engine answered nothing (the request helper resolves null on
+                            // a failed call, e.g. under memory pressure). That is not a missing
+                            // document: leave this one for the next pass rather than crash or
+                            // overwrite on a guess.
+                            ActiveLogger.warn(`SPI #2 could not read ${winningDoc._id}, will retry : ${tx.$umid}`);
+                            rewrote.delete(winningDoc._id);
+                            continue;
+                          }
                           if (dblCheck._rev !== winningDoc._rev) {
                             ActiveLogger.error(
                               `SPI REWRITING #2 ${winningDoc._id} @ ${winningDoc._rev} NOT ${dblCheck._rev} : ${tx.$umid} CACHE : ${rewrote.get(winningDoc._id)}`

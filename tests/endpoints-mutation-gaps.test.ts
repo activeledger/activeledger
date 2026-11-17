@@ -264,7 +264,7 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
       E.repairHistoryInBackground = realRepair;
     });
 
-    const run = async (nodes: any, answers: (id: string) => any[]) => {
+    const run = async (nodes: any, answers: (id: string) => any[], read?: (id: string) => any) => {
       const streamId = `${++n}`.padStart(64, "d");
       const written: any[] = [];
       let asked = 0;
@@ -287,7 +287,7 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
         release: () => undefined,
         neighbourhood: { count: () => 4, knockAll: async () => (asked++, answers(streamId)) },
         dbConnection: {
-          get: async () => ({ _id: streamId, _rev: "1-stale" }),
+          get: async () => (read ? read(streamId) : { _id: streamId, _rev: "1-stale" }),
           bulkDocs: async (docs: any[], opts: any) => (written.push({ docs, opts }), { ok: true }),
         },
       };
@@ -311,6 +311,11 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
         return [[w], [w]];
       });
       expect(r.written).to.have.length(1);
+    });
+
+    it("leaves the document alone, and does not crash, when the data engine answered nothing", async () => {
+      const r = await run({ me: bad, b: bad, c: bad }, (id) => [[{ _id: id, _rev: "2-w" }], [{ _id: id, _rev: "2-w" }]], () => null);
+      expect(r.written).to.have.length(0);
     });
 
     it("does not look for a repair once any node has committed", async () => {
