@@ -117,3 +117,23 @@ describe("backfillUmid - the umid index row for an adopted umid", () => {
     expect(rows(posted), "one row, not one per caller").to.have.length(1);
   });
 });
+
+describe("Adopting a umid tells the host (Activesync)", () => {
+  it("calls onAdopted with the umid and document once it is written, and not when the write fails", async () => {
+    const calls: string[] = [];
+    const ok = context();
+    ok.ctx.onAdopted = (umid) => calls.push(umid);
+    await backfillUmid(ok.ctx, UMID);
+    expect(calls).to.deep.equal([UMID]);
+    const bad = context({ writeFails: true });
+    bad.ctx.onAdopted = (umid) => calls.push("bad" + umid);
+    await backfillUmid(bad.ctx, UMID);
+    expect(calls).to.deep.equal([UMID]);
+  });
+
+  it("is not undone by the host failing to take it", async () => {
+    const c = context();
+    c.ctx.onAdopted = () => { throw new Error("boom"); };
+    expect(await backfillUmid(c.ctx, UMID)).to.equal(true);
+  });
+});

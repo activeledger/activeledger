@@ -75,6 +75,15 @@ const TIMER_QUEUE_INTERVAL = 2 * 1000;
 // How long a transaction with an $expire is held, just after a start, for the list of resent
 // transactions to be read before it is told to try again (normally a few milliseconds).
 const RESENT_LOAD_WAIT_MS = 5 * 1000;
+/**
+ * How far ahead of now a transaction's $expire may be for this node to answer
+ * "was it already committed?" from memory (see Host.mayBeStored). 0 turns that off.
+ */
+const STORED_WINDOW_MS = Number(process.env.AL_STORED_WINDOW_MS ?? 5 * 60 * 1000);
+/** Most umids held for it at once; past this the node asks its storage instead */
+const STORED_MAX = Number(process.env.AL_STORED_MAX ?? 200000);
+/** Most far-off $expire minutes noted at once (numbers, not umids); past it memory says "maybe" to everything until they pass */
+const STORED_UNKNOWN_MAX = Number(process.env.AL_STORED_UNKNOWN_MAX ?? 10000);
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 // How long a transaction may wait for its streams before it is told the locks
@@ -805,6 +814,7 @@ export class Host extends Home {
     this.dbEventConnection.info();
     // A transaction resent before a restart can still be reposted
     void this.loadResentGuard();
+    void this.loadStoredMarker();
 
     this.api = App();
 
@@ -1490,6 +1500,7 @@ export class Host extends Home {
             this.broadcast(m.data.umid, false);
           }
           if (!pending) return; // Fail safe, May happen when process being closed
+          this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
@@ -2113,6 +2124,160 @@ export class Host extends Home {
     }
 
     return robin;
+  }
+
+  /**
+   * Committed umids whose $expire has not passed, kept as one set per minute of
+   * $expire, so "was this transaction already committed?" (asked for every
+   * transaction with an $expire) can be answered without a call to the storage.
+   * A whole minute is dropped at once when it has passed. See mayBeStored().
+   */
+  private storedByMinute = new Map<number, Set<string>>();
+  private storedCount = 0;
+  /**
+   * Minutes of $expire for which memory cannot say "no": a commit whose $expire was
+   * too far ahead to hold, or that did not fit. Only a transaction with an $expire
+   * in one of these minutes is looked up (the same bytes are the same $expire).
+   * Numbers only, never umids.
+   */
+  private storedUnknown = new Set<number>();
+  /** Past STORED_UNKNOWN_MAX minutes: until this time memory cannot say "no" to anything */
+  private storedUnknownAllUntil = 0;
+  /** After a start memory knows nothing of what was committed before it */
+  private storedColdUntil = Date.now() + STORED_WINDOW_MS;
+  private storedSwept = 0;
+  /** Has the `storedfar:` list been read since this node started? Until it has memory cannot say "no" */
+  private storedMarkerLoaded = false;
+  private storedMarkerLoading?: Promise<void>;
+  private storedMarkerTried = 0;
+  /** Minutes already on disk as a `storedfar:` row, so a second commit in one writes nothing */
+  private storedMarkerWritten = new Set<number>();
+
+  private static minuteOf(ms: number): number {
+    return Math.floor(ms / 60000);
+  }
+
+  /**
+   * Called for every transaction this node commits (and every umid it adopts). A
+   * committed transaction can only be reposted until its $expire (after that it is
+   * refused as expired), so the umid is held until then and no longer: memory holds
+   * only the live ones, not the history. One too far ahead, or past the cap, is
+   * not held; only its minute of $expire is noted, and a `storedfar:` row keeps
+   * that over a restart.
+   *
+   * @param {string} umid
+   * @param {unknown} expire The transaction's $expire
+   */
+  public noteStored(umid: string, expire: unknown): void {
+    if (STORED_WINDOW_MS <= 0 || !expire) return;
+    const until = new Date(expire as string).getTime();
+    const now = Date.now();
+    if (!Number.isFinite(until) || until <= now) return;
+    const minute = Host.minuteOf(until);
+    if (until > now + STORED_WINDOW_MS || this.storedCount >= STORED_MAX) {
+      this.markUnknown(minute, until);
+      return;
+    }
+    if (now - this.storedSwept > 1000) {
+      this.storedSwept = now;
+      const current = Host.minuteOf(now);
+      for (const [m, set] of this.storedByMinute) {
+        if (m < current) {
+          this.storedCount -= set.size;
+          this.storedByMinute.delete(m);
+        }
+      }
+      for (const m of this.storedUnknown) if (m < current) this.storedUnknown.delete(m);
+    }
+    let set = this.storedByMinute.get(minute);
+    if (!set) this.storedByMinute.set(minute, (set = new Set()));
+    if (!set.has(umid)) {
+      set.add(umid);
+      this.storedCount++;
+    }
+  }
+
+  private markUnknown(minute: number, until: number): void {
+    // The row first, whether or not memory has room: it is what a restart reads,
+    // and a minute that did not fit must not be forgotten by one
+    this.writeStoredMarker(minute);
+    if (this.storedUnknown.size >= STORED_UNKNOWN_MAX && !this.storedUnknown.has(minute)) {
+      this.storedUnknownAllUntil = Math.max(this.storedUnknownAllUntil, until);
+      return;
+    }
+    this.storedUnknown.add(minute);
+  }
+
+  /** One `storedfar:<minute>` row per such minute, so a restart does not forget it */
+  private writeStoredMarker(minute: number): void {
+    if (this.storedMarkerWritten.has(minute)) return;
+    this.storedMarkerWritten.add(minute);
+    this.dbEventConnection
+      .post({ _id: `storedfar:${minute}`, minute, until: (minute + 1) * 60000 })
+      .catch((error: unknown) => {
+        this.storedMarkerWritten.delete(minute);
+        ActiveLogger.error({ error }, "Could not record a far-off $expire commit; a restart would forget it");
+      });
+  }
+
+  /**
+   * Reads the rows once at start. If the storage cannot answer, memory simply says
+   * "maybe" to everything (the storage is asked, as before) and tries again later.
+   */
+  public loadStoredMarker(): Promise<void> {
+    if (STORED_WINDOW_MS <= 0 || this.storedMarkerLoaded) return Promise.resolve();
+    if (this.storedMarkerLoading) return this.storedMarkerLoading;
+    if (Date.now() - this.storedMarkerTried < 5000) return Promise.resolve();
+    this.storedMarkerTried = Date.now();
+    this.storedMarkerLoading = (async () => {
+      try {
+        const list = await this.dbEventConnection.allDocs({ startkey: "storedfar:", endkey: "storedfar:x", include_docs: true });
+        if (!list || !Array.isArray(list.rows)) throw new Error("no answer");
+        const now = Date.now();
+        for (const row of list.rows as any[]) {
+          const doc = row?.doc ?? row;
+          if (!doc?._id) continue;
+          if (Number(doc.until) > now) {
+            this.storedMarkerWritten.add(Number(doc.minute));
+            if (this.storedUnknown.size < STORED_UNKNOWN_MAX) this.storedUnknown.add(Number(doc.minute));
+            else this.storedUnknownAllUntil = Math.max(this.storedUnknownAllUntil, Number(doc.until));
+          } else await this.dbEventConnection.purge(doc).catch(() => undefined);
+        }
+        this.storedMarkerLoaded = true;
+      } catch (error) {
+        ActiveLogger.warn(`Could not read the far-off $expire rows, asking the storage meanwhile: ${(error as Error)?.message ?? error}`);
+      } finally {
+        this.storedMarkerLoading = undefined;
+      }
+    })();
+    return this.storedMarkerLoading;
+  }
+
+  /**
+   * Might this transaction already be committed on this node, so that the
+   * storage has to be asked? false is a definite "no" and is only given when
+   * memory can know: not just after a start, not before the far-off rows have
+   * been read, not for an $expire in a minute memory could not hold a commit
+   * for, and only for an $expire inside the window (a later one may have been
+   * committed before this process started, or so long ago it is no longer held).
+   *
+   * @param {string} umid
+   * @param {number} expire The transaction's $expire in ms
+   * @returns {boolean}
+   */
+  public mayBeStored(umid: string, expire: number): boolean {
+    if (STORED_WINDOW_MS <= 0) return true;
+    if (!this.storedMarkerLoaded) {
+      // Not read yet (the storage can come up after the host): ask the storage, and try again
+      void this.loadStoredMarker();
+      return true;
+    }
+    const now = Date.now();
+    if (now < this.storedColdUntil || now < this.storedUnknownAllUntil) return true;
+    if (!(expire <= now + STORED_WINDOW_MS)) return true;
+    const minute = Host.minuteOf(expire);
+    if (this.storedUnknown.has(minute)) return true;
+    return this.storedByMinute.get(minute)?.has(umid) === true;
   }
 
   /**

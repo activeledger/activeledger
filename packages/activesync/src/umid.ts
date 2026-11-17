@@ -63,6 +63,8 @@ export interface SyncContext {
    * can ask for more than one.
    */
   minAgree?: number;
+  /** Called with each umid document this node has just written, so the host can remember it */
+  onAdopted?: (umid: string, doc: any) => void;
 }
 
 export const UMID_WALK_LIMIT = 100;
@@ -212,6 +214,11 @@ async function adoptUmid(ctx: SyncContext, umid: string): Promise<boolean> {
   }
 
   ActiveLogger.warn(`SPI UMID ADDED ${umid}`);
+  try {
+    ctx.onAdopted?.(umid, winner);
+  } catch {
+    // Telling the host must never undo an adoption
+  }
   await indexAdoptedUmid(ctx, umid);
   await replaySpiEvents(ctx, winner);
   return true;

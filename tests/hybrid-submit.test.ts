@@ -401,7 +401,7 @@ describe("Hybrid POST /: $umid equals the entry supernode's", () => {
   });
 
   const entry = async (body: any) => {
-    Endpoints.ExternalInitalise({ reference: "entry", resentAs: async () => undefined, rememberResent: () => undefined } as any, body, "1.2.3.4", db);
+    Endpoints.ExternalInitalise({ reference: "entry", resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined } as any, body, "1.2.3.4", db);
     for (let i = 0; i < 50 && !captured; i++) await new Promise((r) => setImmediate(r));
     expect(captured, "reached consensus").to.not.equal(undefined);
     return captured;

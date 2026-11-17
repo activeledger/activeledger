@@ -194,7 +194,12 @@ export class Endpoints {
                   );
                 }
 
-                if (await db.exists(`${tx.$umid}:umid`)) {
+                // Asked of the storage only when this node's memory cannot rule
+                // it out (Host.mayBeStored)
+                if (
+                  host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire).getTime()) &&
+                  (await db.exists(`${tx.$umid}:umid`))
+                ) {
                   // Can you this as its not an internal error to throw
                   return resolve(
                     this.successfulFailure(`Transaction Exists : ${tx.$umid}`)
@@ -2095,6 +2100,8 @@ export class Endpoints {
       },
       walkLimit: Endpoints.UMID_WALK_LIMIT,
       hopDelayMs: Endpoints.UMID_WALK_HOP_DELAY_MS,
+      // A transaction adopted this way is as committed as any other
+      onAdopted: (_umid, doc) => host.noteStored?.(_umid, doc?.umid?.$tx?.$expire),
     };
   }
 
