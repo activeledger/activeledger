@@ -66,7 +66,7 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     ];
     const resent: any[] = [];
     const host: any = {
-      resentAs: async () => undefined, rememberResent: (...a: any[]) => resent.push(a),
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: (...a: any[]) => resent.push(a),
       reference: "me",
       pending: (entry: any) => {
         pendingCalls.push(JSON.parse(JSON.stringify(entry)));
@@ -470,7 +470,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
         }),
     ];
     const host: any = {
-      resentAs: async () => undefined, rememberResent: () => undefined,
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
       reference: "me",
       pending: () => replies.shift()!(),
       release: (...a: any[]) => released.push(a),

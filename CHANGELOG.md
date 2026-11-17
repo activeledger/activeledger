@@ -7,6 +7,11 @@
   transaction under a new umid, kept until that transaction's `$expire`). It goes by when the transaction
   expired, not by `days`, and only removes one that expired more than an hour ago; a record still doing its job
   is never taken.
+- **A transaction with an `$expire` no longer costs a storage lookup on the entry node** in the usual case. The
+  node holds the umids it committed until their own `$expire` and answers "already committed?" from memory.
+  It still asks the storage for the first 5 minutes after a start, for an `$expire` more than 5 minutes ahead
+  (`AL_STORED_WINDOW_MS`), and past 200,000 held (`AL_STORED_MAX`). Read throughput with `--expire` on one
+  4-node machine: 1,289 to 1,490 tx/s sustained.
 
 ## [5.4.0] - 2026-11-17
 

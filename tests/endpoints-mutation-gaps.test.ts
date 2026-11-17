@@ -77,7 +77,7 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
     it("asks every neighbour, and reports whether this node now holds the umid", async () => {
       const asked: any[] = [];
       const host: any = {
-        resentAs: async () => undefined, rememberResent: () => undefined,
+        resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         dbConnection: { get: async (id: string) => ({ _id: id }) },
         dbEventConnection: { post: async () => undefined, get: async () => ({}) },
         neighbourhood: { knockAll: async (...a: any[]) => (asked.push(a), []) },
@@ -231,7 +231,7 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
     it("is decrypted even when it looks like plain JSON", async () => {
       let decrypted = 0;
       const host: any = {
-        resentAs: async () => undefined, rememberResent: () => undefined,
+        resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         reference: "me",
         decrypt: (b: string) => (decrypted++, Buffer.from(JSON.stringify({ a: 1 })).toString("base64")),
         neighbourhood: { get: () => ({}) },
@@ -272,7 +272,7 @@ describe("Endpoints - edges the tests did not pin (Activeprotocol)", () => {
       let asked = 0;
       let calls = 0;
       const host: any = {
-        resentAs: async () => undefined, rememberResent: () => undefined,
+        resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         reference: "me",
         pending: () =>
           Promise.resolve(

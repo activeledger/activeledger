@@ -194,7 +194,12 @@ export class Endpoints {
                   );
                 }
 
-                if (await db.exists(`${tx.$umid}:umid`)) {
+                // Asked of the storage only when this node's memory cannot rule
+                // it out (Host.mayBeStored)
+                if (
+                  host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire).getTime()) &&
+                  (await db.exists(`${tx.$umid}:umid`))
+                ) {
                   // Can you this as its not an internal error to throw
                   return resolve(
                     this.successfulFailure(`Transaction Exists : ${tx.$umid}`)

@@ -318,7 +318,7 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
     it("refuses the bytes of a transaction that was resent, and says where it went", async () => {
       const expire = inAnHour();
       const asked: string[] = [];
-      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW) };
+      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW), mayBeStored: () => true };
       const reply = await Endpoints.ExternalInitalise(host, body(expire), "1.2.3.4", { exists: async () => false } as any);
       expect(asked).to.have.length(1);
       expect(reply.content.$summary.errors[0]).to.equal(`Transaction Exists : ${asked[0]} (resent as ${NEW})`);
@@ -328,7 +328,7 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
     it("is asked for the umid the body makes, the same one the node assigns", async () => {
       const expire = inAnHour();
       const asked: string[] = [];
-      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW) };
+      const host: any = { resentAs: async (u: string) => (asked.push(u), NEW), mayBeStored: () => true };
       await Endpoints.ExternalInitalise(host, body(expire), "1.2.3.4", { exists: async () => false } as any);
       const sent: any = body(expire);
       expect(asked[0]).to.equal(sha(JSON.stringify(sent)));
@@ -347,8 +347,19 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(existsCalls).to.equal(0);
     });
 
+    it("does not ask the storage when this node's memory knows it was not committed", async () => {
+      let existsCalls = 0;
+      const host: any = { resentAs: async () => undefined, mayBeStored: () => false, reference: "n" };
+      // It goes on to process the transaction, which this stub host cannot: only the lookup matters
+      await Promise.race([
+        Endpoints.ExternalInitalise(host, body(inAnHour()), "1.2.3.4", { exists: async () => (existsCalls++, true) } as any).catch(() => undefined),
+        new Promise((r) => realSetTimeout(r, 200)),
+      ]);
+      expect(existsCalls).to.equal(0);
+    });
+
     it("still refuses one that is stored, as before, when it was not resent", async () => {
-      const host: any = { resentAs: async () => undefined };
+      const host: any = { resentAs: async () => undefined, mayBeStored: () => true };
       const reply = await Endpoints.ExternalInitalise(host, body(inAnHour()), "1.2.3.4", { exists: async () => true } as any);
       expect(reply.content.$summary.errors[0]).to.match(/^Transaction Exists : [0-9a-f]{64}$/);
     });

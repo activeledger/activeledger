@@ -75,6 +75,13 @@ const TIMER_QUEUE_INTERVAL = 2 * 1000;
 // How long a transaction with an $expire is held, just after a start, for the list of resent
 // transactions to be read before it is told to try again (normally a few milliseconds).
 const RESENT_LOAD_WAIT_MS = 5 * 1000;
+/**
+ * How far ahead of now a transaction's $expire may be for this node to answer
+ * "was it already committed?" from memory (see Host.mayBeStored). 0 turns that off.
+ */
+const STORED_WINDOW_MS = Number(process.env.AL_STORED_WINDOW_MS ?? 5 * 60 * 1000);
+/** Most umids held for it at once; past this the node asks its storage instead */
+const STORED_MAX = Number(process.env.AL_STORED_MAX ?? 200000);
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 // How long a transaction may wait for its streams before it is told the locks
@@ -1490,6 +1497,7 @@ export class Host extends Home {
             this.broadcast(m.data.umid, false);
           }
           if (!pending) return; // Fail safe, May happen when process being closed
+          this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
@@ -2113,6 +2121,65 @@ export class Host extends Home {
     }
 
     return robin;
+  }
+
+  /**
+   * Committed umids whose $expire has not passed, so "was this transaction
+   * already committed?" (asked for every transaction that has an $expire) can be
+   * answered without a call to the storage. See mayBeStored().
+   */
+  private storedLive = new Map<string, number>();
+  /** A commit this node could not hold above: until this time memory cannot say "no" */
+  private storedUntrackedUntil = 0;
+  /** After a start memory knows nothing of what was committed before it */
+  private storedColdUntil = Date.now() + STORED_WINDOW_MS;
+  private storedSwept = 0;
+
+  /**
+   * Called for every transaction this node commits. A committed transaction can
+   * only be reposted until its $expire (after that it is refused as expired), so
+   * the umid is held until then and no longer: memory holds only the live ones,
+   * not the history.
+   *
+   * @param {string} umid
+   * @param {unknown} expire The transaction's $expire
+   */
+  public noteStored(umid: string, expire: unknown): void {
+    if (STORED_WINDOW_MS <= 0 || !expire) return;
+    const until = new Date(expire as string).getTime();
+    const now = Date.now();
+    if (!Number.isFinite(until) || until <= now) return;
+    if (until > now + STORED_WINDOW_MS || this.storedLive.size >= STORED_MAX) {
+      // Too far ahead (or too many) to hold: remember only how long it is
+      // unsafe to say "no", one number, not one entry
+      this.storedUntrackedUntil = Math.max(this.storedUntrackedUntil, until);
+      return;
+    }
+    if (now - this.storedSwept > 1000) {
+      this.storedSwept = now;
+      for (const [id, t] of this.storedLive) if (t <= now) this.storedLive.delete(id);
+    }
+    this.storedLive.set(umid, until);
+  }
+
+  /**
+   * Might this transaction already be committed on this node, so that the
+   * storage has to be asked? false is a definite "no" and is only given when
+   * memory can know: not just after a start, not while a commit it could not
+   * hold is live, and only for an $expire inside the window (a transaction
+   * with a later one may have been committed before this process started, or
+   * so long ago that it is no longer held).
+   *
+   * @param {string} umid
+   * @param {number} expire The transaction's $expire in ms
+   * @returns {boolean}
+   */
+  public mayBeStored(umid: string, expire: number): boolean {
+    if (STORED_WINDOW_MS <= 0) return true;
+    const now = Date.now();
+    if (now < this.storedColdUntil || now < this.storedUntrackedUntil) return true;
+    if (!(expire <= now + STORED_WINDOW_MS)) return true;
+    return this.storedLive.has(umid);
   }
 
   /**

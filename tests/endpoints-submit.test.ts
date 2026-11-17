@@ -49,7 +49,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     const released: any[] = [];
     const resent: any[] = [];
     const host: any = {
-      resentAs: async () => undefined, rememberResent: (...a: any[]) => resent.push(a),
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: (...a: any[]) => resent.push(a),
       reference: "me",
       pending: (entry: any, remote: string, ...rest: any[]) => {
         pendingCalls.push({
@@ -707,7 +707,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     it("tells a live neighbour 200 and a stranger 403", async () => {
       const hood: any = { live: neighbour("live"), stopping: neighbour("stopping", { graceStop: true }) };
       const host: any = {
-      resentAs: async () => undefined, rememberResent: () => undefined,
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         neighbourhood: { get: (ref?: string) => (ref ? hood[ref] : hood), keys: () => Object.keys(hood) },
       };
       expect(await Endpoints.status(host, "live")).to.deep.equal({ statusCode: 200 });
@@ -723,7 +723,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       Endpoints.rebaseThrottle = 0;
       ActiveOptions.set("rebaseThrottle", 2);
       const host: any = {
-      resentAs: async () => undefined, rememberResent: () => undefined,
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         neighbourhood: { get: () => undefined, keys: () => [] },
       };
       try {
@@ -750,7 +750,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         c: neighbour("c", { graceStop: true }),
       };
       const host: any = {
-      resentAs: async () => undefined, rememberResent: () => undefined,
+      resentAs: async () => undefined, mayBeStored: () => true, rememberResent: () => undefined,
         reference: "me",
         getStatus: () => "STATUS",
         neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },
