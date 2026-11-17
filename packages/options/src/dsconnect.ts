@@ -485,6 +485,10 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
   /**
    * Fetch latest changes
    *
+   * @deprecated Legacy CouchDB-era feed (the storage `_changes` route), used
+   * only by nano-gateway. Not a supported interface for new code: follow the
+   * events database instead (`/activeledgerevents/events`, `/activeledgerevents/umids`).
+   *
    * @param {{}} opts
    * @returns {Promise<ActiveDSChanges | any>}
    */

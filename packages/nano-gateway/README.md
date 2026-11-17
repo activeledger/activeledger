@@ -2,6 +2,8 @@
 
 # @activeledger/nano-gateway
 
+> **Experimental and not currently supported.** This package has not been used in production and did not work well when last tried. It depends on the storage `_changes` route, which is itself a legacy CouchDB-era interface and not a supported one. It is kept for possible future use. Do not build on it without testing it against your own node first.
+
 A lightweight, permissioned SSE + read gateway for [nano](https://github.com/activeledger/nano) light-node clients.
 
 ## Why this exists
