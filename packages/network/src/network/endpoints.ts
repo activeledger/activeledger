@@ -174,7 +174,18 @@ export class Endpoints {
 
                 // The same bytes as a transaction this node resent under a new
                 // umid: its own umid was never stored, so only this knows
-                const resentAs = await host.resentAs(tx.$umid);
+                let resentAs: string | undefined;
+                try {
+                  resentAs = await host.resentAs(tx.$umid);
+                } catch (error) {
+                  // Not knowing is not the same as "no": have the client ask again
+                  ActiveLogger.warn(`Could not check whether ${tx.$umid} was resent: ${(error as Error)?.message}`);
+                  return resolve(
+                    this.successfulFailure(
+                      `Could not check whether ${tx.$umid} was already accepted, try again shortly`
+                    )
+                  );
+                }
                 if (resentAs) {
                   return resolve(
                     this.successfulFailure(

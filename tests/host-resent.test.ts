@@ -148,9 +148,31 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(await host.resentAs(UMID)).to.equal(undefined);
     });
 
-    it("says nothing, rather than failing, if the events database does not answer", async () => {
+    it("treats an answer that is not a row as a definite 'not resent'", async () => {
+      for (const answer of [{}, { error: "not_found" }]) {
+        const { host } = makeHost();
+        host.dbEventConnection.get = async () => answer;
+        host.resentGuardUntil = Date.now() + 1000;
+        expect(await host.resentAs(UMID), JSON.stringify(answer)).to.equal(undefined);
+      }
+    });
+
+    it("refuses to answer, instead of saying 'not resent', when the events database gives no answer while a resend is live", async () => {
+      for (const failure of ["throws", "null", "undefined"]) {
+        const { host } = makeHost();
+        host.dbEventConnection.get = async () => {
+          if (failure === "throws") throw new Error("down");
+          return failure === "null" ? null : undefined;
+        };
+        host.resentGuardUntil = Date.now() + 1000;
+        let refused = false;
+        await host.resentAs(UMID).catch(() => (refused = true));
+        expect(refused, failure).to.equal(true);
+      }
+    });
+
+    it("does not need the events database, and so cannot fail on it, when nothing has been resent", async () => {
       const { host } = makeHost({ getFails: true });
-      host.resentGuardUntil = Date.now() + 1000;
       expect(await host.resentAs(UMID)).to.equal(undefined);
     });
 
@@ -244,6 +266,54 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(answer).to.equal(NEW);
     });
 
+    it("waits no longer than five seconds, then refuses to answer, if the list still has not been read", async () => {
+      const { host } = makeHost();
+      host.resentLoading = new Promise<void>(() => undefined);
+      host.resentLoaded = false;
+      let refused = false;
+      const asked = host.resentAs(UMID).catch(() => (refused = true));
+      await settle();
+      const wait = timers[timers.length - 1];
+      expect(wait.ms).to.equal(5000);
+      wait.fn();
+      await asked;
+      expect(refused).to.equal(true);
+    });
+
+    it("starts no hourly timer on a node that has never resent anything", async () => {
+      let intervals = 0;
+      (global as any).setInterval = () => (intervals++, { unref() {} } as any);
+      const { host } = makeHost();
+      await host.refreshResentGuard();
+      expect(intervals).to.equal(0);
+    });
+
+    it("starts the hourly housekeeping when it finds a live row, and when something is resent", async () => {
+      let intervals = 0;
+      (global as any).setInterval = () => (intervals++, { unref() {} } as any);
+      const found = makeHost({ rows: { "resent:1": { _id: "resent:1", to: "x", until: Date.now() + 60_000 } } });
+      await found.host.refreshResentGuard();
+      expect(intervals).to.equal(1);
+      const resent = makeHost();
+      resent.host.rememberResent(UMID, NEW, inAnHour());
+      expect(intervals).to.equal(2);
+    });
+
+    it("keeps trying to read the list, every five seconds once the first ten have passed, until it can", async () => {
+      const { host } = makeHost({ listFails: true });
+      host.loadResentGuard();
+      const intervals: number[] = [];
+      for (let i = 0; i < 24; i++) {
+        await settle();
+        const next = timers[timers.length - 1];
+        intervals.push(next.ms);
+        next.fn();
+      }
+      expect(intervals.slice(0, 20).every((ms) => ms === 500)).to.equal(true);
+      expect(intervals.slice(20).every((ms) => ms === 5000)).to.equal(true);
+      expect(!!host.resentLoaded).to.equal(false);
+    });
+
     it("does not wait once the list has been read", async () => {
       const { host } = makeHost();
       host.resentLoaded = true;
@@ -275,6 +345,19 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       await Endpoints.ExternalInitalise(host, body(expire), "1.2.3.4", { exists: async () => false } as any);
       const sent: any = body(expire);
       expect(asked[0]).to.equal(sha(JSON.stringify(sent)));
+    });
+
+    it("tells the client to try again, and goes no further, when it cannot be checked whether it was resent", async () => {
+      let existsCalls = 0;
+      const host: any = {
+        resentAs: async () => {
+          throw new Error("could not check");
+        },
+      };
+      const reply = await Endpoints.ExternalInitalise(host, body(inAnHour()), "1.2.3.4", { exists: async () => (existsCalls++, false) } as any);
+      expect(reply.content.$summary.errors[0]).to.match(/^Could not check whether [0-9a-f]{64} was already accepted, try again shortly$/);
+      expect(reply.content.$summary.commit).to.equal(0);
+      expect(existsCalls).to.equal(0);
     });
 
     it("still refuses one that is stored, as before, when it was not resent", async () => {
