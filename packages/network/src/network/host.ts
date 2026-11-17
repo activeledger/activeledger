@@ -2156,8 +2156,14 @@ export class Host extends Home {
       // transaction try its own streams and leave the queue for a scan
       // that is due; with nothing new, make sure that scan happens.
       const queued = this.busyLocksQueue.internal.length + this.busyLocksQueue.external.length;
+      // Nothing waiting, which is nearly always (this runs for every new
+      // transaction): there is nothing to scan, so no scan state to set up.
+      if (!queued) {
+        if (next) this.hold(next);
+        return;
+      }
       const since = Date.now() - this.lastQueueScan;
-      if (queued && QUEUE_SCAN_MIN_MS > 0 && since < QUEUE_SCAN_MIN_MS) {
+      if (QUEUE_SCAN_MIN_MS > 0 && since < QUEUE_SCAN_MIN_MS) {
         if (next) {
           this.hold(next);
         } else {

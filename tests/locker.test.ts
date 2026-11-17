@@ -99,4 +99,67 @@ describe("Locker (Activenetwork) - next-perf regression", () => {
     expect(Locker.has(s)).to.equal(true);
     Locker.release(s, "umid-a");
   });
+
+  describe("a refused hold of several streams", () => {
+    it("takes nothing, and reads no clock, when the first stream looked at is the held one", () => {
+      const s1 = streamId();
+      const s2 = streamId();
+      Locker.hold(s2, "someone-else");
+      const realNow = Date.now;
+      let reads = 0;
+      Date.now = () => (reads++, realNow());
+      try {
+        // streams are looked at from the last to the first
+        expect(Locker.hold([s1, s2], "umid-a")).to.equal(false);
+      } finally {
+        Date.now = realNow;
+      }
+      expect(Locker.has(s1)).to.equal(false);
+      expect(reads).to.equal(0);
+    });
+
+    it("gives back what it took, and leaves another umid's locks alone", () => {
+      const [free1, held, free2, other] = [streamId(), streamId(), streamId(), streamId()];
+      Locker.hold(held, "someone-else");
+      Locker.hold(other, "bystander");
+      // looked at last to first: free2 is taken, then held refuses
+      expect(Locker.hold([free1, held, free2], "umid-a")).to.equal(false);
+      expect(Locker.has(free1)).to.equal(false);
+      expect(Locker.has(free2)).to.equal(false);
+      expect(Locker.is(held, "someone-else")).to.equal(true);
+      expect(Locker.is(other, "bystander")).to.equal(true);
+    });
+
+    it("refuses a stream named twice in one request, and takes neither", () => {
+      const s = streamId();
+      const t = streamId();
+      expect(Locker.hold([s, t, s], "umid-a")).to.equal(false);
+      expect(Locker.has(s)).to.equal(false);
+      expect(Locker.has(t)).to.equal(false);
+    });
+
+    it("can be taken afterwards by the umid that was waiting", () => {
+      const s1 = streamId();
+      const s2 = streamId();
+      Locker.hold(s2, "someone-else");
+      expect(Locker.hold([s1, s2], "umid-a")).to.equal(false);
+      Locker.release(s2, "someone-else");
+      expect(Locker.hold([s1, s2], "umid-a")).to.equal(true);
+      expect(Locker.is(s1, "umid-a") && Locker.is(s2, "umid-a")).to.equal(true);
+    });
+  });
+
+  it("a hold of several streams gives them one shared time, so the stuck-lock check sees them together", () => {
+    const streams = [streamId(), streamId(), streamId()];
+    Locker.hold(streams, "umid-shared");
+    const locks = Locker.getLocks();
+    expect(new Set(streams.map((s) => locks[s].time)).size).to.equal(1);
+    Locker.release(streams, "umid-shared");
+  });
+
+  it("ignores streams of 60 characters or fewer, which are labels", () => {
+    expect(Locker.hold(["label", "another"], "umid-a")).to.equal(true);
+    expect(Locker.has("label")).to.equal(false);
+    expect(Locker.hold(["label"], "umid-b")).to.equal(true);
+  });
 });

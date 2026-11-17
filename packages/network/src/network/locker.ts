@@ -122,38 +122,38 @@ export class Locker {
   public static hold(stream: string[], umid: string): boolean;
   public static hold(stream: string | string[], umid: string): boolean {
     if (Array.isArray(stream)) {
-      // Are all the streams available
-      let i = stream.length;
-      let success = true;
-      const time = Date.now();
+      // All or nothing. Streams are taken from the last to the first and
+      // the first one already held stops it, so a refused attempt - by far
+      // the commonest under contention, and repeated for as long as the
+      // transaction waits - costs one lookup per stream up to that point.
+      //
+      // The clock is read, and the one lock record that every stream of this
+      // call shares is made, only once a stream has been taken: a refusal
+      // that comes at the first stream allocates nothing. Streams under 60
+      // characters are labels or self-signed streams and need no lock.
+      let lock: { umid: string; time: number } | undefined;
+      const count = stream.length;
+      let i = count;
       while (i--) {
-        // Don't think this will be affected as much as release
-        // if (!Locker.hold(stream[i], umid)) {
-        //   // Update flag and quit early
-        //   success = false;
-        //   break;
-        // }
-        // selfsign check
-        // what about if it is locked on itself? Maybe we can just "update"
-        if (stream[i].length > 60) {
-          if (!this.cell.has(stream[i])) {
-            this.cell.set(stream[i], {
-              umid,
-              time,
-            });
-          } else {
-             ActiveLogger.debug(`RR - ${umid} - LD - ${this.cell.get(stream[i])!.umid}`);
-            success = false;
-            break;
+        const s = stream[i];
+        if (s.length > 60) {
+          if (this.cell.has(s)) {
+            if (ActiveLogger.enableDebug) {
+              ActiveLogger.debug(`RR - ${umid} - LD - ${this.cell.get(s)!.umid}`);
+            }
+            // Give back only what this call took (those after i, which are
+            // exactly the streams whose record is ours).
+            if (lock) {
+              for (let j = i + 1; j < count; j++) {
+                if (this.cell.get(stream[j]) === lock) this.cell.delete(stream[j]);
+              }
+            }
+            return false;
           }
+          this.cell.set(s, (lock ??= { umid, time: Date.now() }));
         }
       }
-      if (!success) {
-        // Lets unlock the ones we manage to lock!
-        Locker.release(stream, umid);
-      }
-      // Let process know
-      return success;
+      return true;
     } else {
       // Single stream lock.
       // Heuristic: ignore short strings which are likely labels or self-signed streams not needing a lock.
@@ -169,7 +169,9 @@ export class Locker {
         });
         return true;
       }
-      ActiveLogger.debug(`Lock busy for ${stream}. Held by ${this.cell.get(stream)!.umid}, requested by ${umid}.`);
+      if (ActiveLogger.enableDebug) {
+        ActiveLogger.debug(`Lock busy for ${stream}. Held by ${this.cell.get(stream)!.umid}, requested by ${umid}.`);
+      }
       return false;
     }
   }
