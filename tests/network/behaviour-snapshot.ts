@@ -6,7 +6,7 @@
  * a node that stored something different from its neighbours is a consensus
  * bug in whichever build wrote the file.
  *
- *   npm run test:behaviour -- --out /tmp/candidate.json [--startup-wait 20] [--node-config '{"ipcBatching":false}']
+ *   npm run test:behaviour -- --out /tmp/candidate.json [--startup-wait 20] [--node-config '{"ipcBatching":true}']
  *
  * Not part of npm test (it boots a network and takes about a minute).
  */

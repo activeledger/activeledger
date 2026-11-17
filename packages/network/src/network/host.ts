@@ -1279,13 +1279,13 @@ export class Host extends Home {
    * the worker unpacks in order.
    *
    * The order the worker sees is unchanged: any other message to the same
-   * worker sends what is waiting first. `ipcBatching: false` turns it off.
+   * worker sends what is waiting first. Experimental: off unless `ipcBatching: true` is set.
    *
    * @private
    * @param {ChildProcess} child
    */
   private batchBroadcasts(child: ChildProcess): void {
-    if (!ActiveOptions.get<boolean>("ipcBatching", true)) return;
+    if (ActiveOptions.get<boolean>("ipcBatching", false) !== true) return;
     const rawSend = child.send.bind(child) as (...a: any[]) => boolean;
     let queued: any[] = [];
     let scheduled = false;
