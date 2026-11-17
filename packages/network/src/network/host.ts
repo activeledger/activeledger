@@ -72,6 +72,9 @@ const GZIP_MIN_RESPONSE_BYTES = 16384;
 const gunzipAsync = promisify(gunzip);
 
 const TIMER_QUEUE_INTERVAL = 2 * 1000;
+// How long a transaction with an $expire is held, just after a start, for the list of resent
+// transactions to be read before it is told to try again (normally a few milliseconds).
+const RESENT_LOAD_WAIT_MS = 5 * 1000;
 const GRACEFUL_PROC_SHUTDOWN = 7 * 60 * 1000;
 const KILL_PROC_SHUTDOWN = 2.5 * 1000;
 // How long a transaction may wait for its streams before it is told the locks
@@ -802,7 +805,6 @@ export class Host extends Home {
     this.dbEventConnection.info();
     // A transaction resent before a restart can still be reposted
     void this.loadResentGuard();
-    this.startResentHousekeeping();
 
     this.api = App();
 
@@ -2170,24 +2172,34 @@ export class Host extends Home {
    */
   public async resentAs(umid: string): Promise<string | undefined> {
     // Just after a start the list may not be read yet (the storage can come up
-    // after the host), and "nothing was resent" must not be answered before it is
-    if (!this.resentLoaded && this.resentLoading) await this.resentLoading;
+    // after the host), and "nothing was resent" must not be answered before it is.
+    // Holds the request for up to five seconds for it, then refuses to answer: the
+    // caller tells the client to try again
+    if (this.resentLoading && !this.resentLoaded) {
+      await Promise.race([this.resentLoading, new Promise<void>((resolve) => setTimeout(resolve, RESENT_LOAD_WAIT_MS).unref())]);
+      if (!this.resentLoaded) throw new Error("the list of resent transactions has not been read yet");
+    }
     if (Date.now() >= this.resentGuardUntil) return undefined;
     const inFlight = this.resentInFlight.get(umid);
     if (inFlight) return inFlight;
-    const row = await this.dbEventConnection.get(`resent:${umid}`).catch(() => undefined);
-    return row && typeof row.to === "string" && Number(row.until) > Date.now() ? row.to : undefined;
+    const row = await this.dbEventConnection.get(`resent:${umid}`).catch(() => null);
+    // An answer that is not a row is a definite "not resent". No answer at all (the
+    // call failed) is not: while a resend is live it must not be taken as one
+    if (row === null || row === undefined) throw new Error("could not check whether the transaction was resent");
+    return typeof row.to === "string" && Number(row.until) > Date.now() ? row.to : undefined;
   }
 
   /**
-   * Reads the list at start, trying every half second for up to ten seconds for
-   * the storage to answer, so a restart does not forget what was resent.
+   * Reads the list at start, until it has been read: every half second for the
+   * first ten seconds, then every five, so a restart does not forget what was
+   * resent. Until it has, a transaction with an $expire is told to try again
+   * (see resentAs) and not let through.
    */
   public loadResentGuard(): Promise<void> {
     this.resentLoading = (async () => {
-      for (let attempt = 0; attempt < 20 && !this.resentLoaded; attempt++) {
-        if (await this.refreshResentGuard(false)) this.resentLoaded = true;
-        else await new Promise((resolve) => setTimeout(resolve, 500));
+      for (let attempt = 0; !this.resentLoaded; attempt++) {
+        if (await this.refreshResentGuard(false)) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, attempt < 20 ? 500 : 5000).unref());
       }
     })();
     return this.resentLoading;
@@ -2222,6 +2234,8 @@ export class Host extends Home {
     }
     this.resentGuardUntil = Math.max(latest, this.resentInFlight.size ? this.resentGuardUntil : 0);
     this.resentLoaded = true;
+    // Housekeeping only exists where there is something to look after
+    if (latest > 0) this.startResentHousekeeping();
     return true;
   }
 
