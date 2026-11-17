@@ -2179,10 +2179,7 @@ export class Host extends Home {
     // after the host), and "nothing was resent" must not be answered before it is.
     // Holds the request for up to five seconds for it, then refuses to answer: the
     // caller tells the client to try again
-    if (this.resentLoading && !this.resentLoaded) {
-      await Promise.race([this.resentLoading, new Promise<void>((resolve) => setTimeout(resolve, RESENT_LOAD_WAIT_MS).unref())]);
-      if (!this.resentLoaded) throw new Error("the list of resent transactions has not been read yet");
-    }
+    if (this.resentLoading && !this.resentLoaded) await this.waitForResentList();
     if (Date.now() >= this.resentGuardUntil) return undefined;
     const inFlight = this.resentInFlight.get(umid);
     if (inFlight) return inFlight;
@@ -2194,19 +2191,37 @@ export class Host extends Home {
   }
 
   /**
-   * Reads the list at start, until it has been read: every half second for the
-   * first ten seconds, then every five, so a restart does not forget what was
-   * resent. Until it has, a transaction with an $expire is told to try again
-   * (see resentAs) and not let through.
+   * Reads the list once at start, so a restart does not forget what was resent.
+   * There is no loop in the background: if the storage is not up yet, a
+   * transaction with an $expire that arrives before the list has been read does the
+   * retrying itself (waitForResentList), and is told to try again if it cannot.
    */
   public loadResentGuard(): Promise<void> {
-    this.resentLoading = (async () => {
-      for (let attempt = 0; !this.resentLoaded; attempt++) {
-        if (await this.refreshResentGuard(false)) return;
-        await new Promise<void>((resolve) => setTimeout(resolve, attempt < 20 ? 500 : 5000).unref());
-      }
-    })();
+    this.resentLoading = this.refreshResentGuard(false).then(() => undefined);
     return this.resentLoading;
+  }
+
+  private resentWaiting?: Promise<void>;
+
+  /**
+   * Holds a request while the list is read, trying every half second for up to
+   * RESENT_LOAD_WAIT_MS, shared by every request waiting at once. Throws if it
+   * cannot be read, because "nothing was resent" cannot be said without it.
+   */
+  private waitForResentList(): Promise<void> {
+    this.resentWaiting ??= (async () => {
+      try {
+        await this.resentLoading;
+        for (let attempt = 0; !this.resentLoaded && attempt < RESENT_LOAD_WAIT_MS / 500; attempt++) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 500).unref());
+          await this.refreshResentGuard(false);
+        }
+      } finally {
+        this.resentWaiting = undefined;
+      }
+      if (!this.resentLoaded) throw new Error("the list of resent transactions has not been read yet");
+    })();
+    return this.resentWaiting;
   }
 
   /**
