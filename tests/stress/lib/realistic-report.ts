@@ -43,15 +43,22 @@ function chart(series: Series[]): string {
   const all = series.flatMap((s) => s.runs);
   const maxX = Math.max(...all.map((r) => r.offeredTps)) * 1.05;
   const x = (v: number) => L + (v / maxX) * (W - L - R);
-  const y = (v: number) => T + (1 - v / maxX) * (H - T - B);
-  const grid = [0.25, 0.5, 0.75, 1].map((f) => Math.round((maxX * f) / 100) * 100);
+  // The vertical axis is zoomed to what was confirmed, so the lines are not squashed against
+  // the bottom of the page; where it starts is written on the chart.
+  const confirmedAll = all.map((r) => confirmed(r));
+  const lo = Math.min(...confirmedAll), hi = Math.max(...confirmedAll);
+  const yMin = Math.max(0, Math.floor((lo * 0.85) / 100) * 100);
+  const yMax = Math.max(yMin + 100, Math.ceil((hi * 1.05) / 100) * 100);
+  const y = (v: number) => T + (1 - (v - yMin) / (yMax - yMin)) * (H - T - B);
+  const grid = [...new Set([0.25, 0.5, 0.75, 1].map((f) => Math.round((yMin + (yMax - yMin) * f) / 100) * 100))].filter((g) => g > yMin && g <= yMax);
   const rates = [...new Set(all.map((r) => r.offeredTps))].sort((a, b) => a - b);
   return `<svg viewBox="0 0 ${W} ${H}" width="100%">
 ${grid.map((g) => `<line x1="${L}" y1="${y(g)}" x2="${W - R}" y2="${y(g)}" stroke="#eceff2"/><text x="${L - 4}" y="${y(g) + 3}" font-size="8" text-anchor="end" fill="#666">${fmt(g)}</text>`).join("")}
-<line x1="${L}" y1="${y(0)}" x2="${W - R}" y2="${y(0)}" stroke="#999"/>
+<line x1="${L}" y1="${y(yMin)}" x2="${W - R}" y2="${y(yMin)}" stroke="#999"/><text x="${L - 4}" y="${y(yMin) + 3}" font-size="8" text-anchor="end" fill="#666">${fmt(yMin)}</text>
 ${series.map((s) => `<polyline fill="none" stroke="${s.colour}" stroke-width="2.2" points="${s.runs.map((r) => `${x(r.offeredTps)},${y(confirmed(r))}`).join(" ")}"/>${s.runs.map((r) => `<circle cx="${x(r.offeredTps)}" cy="${y(confirmed(r))}" r="3" fill="${s.colour}"/>`).join("")}`).join("")}
 ${rates.map((r) => `<text x="${x(r)}" y="${H - 14}" font-size="7.5" text-anchor="middle" fill="#666">${fmt(r)}</text>`).join("")}
 <text x="${(L + W - R) / 2}" y="${H - 3}" font-size="8" text-anchor="middle" fill="#666">transactions per second sent</text>
+${yMin > 0 ? `<text x="${W - R}" y="${H - 3}" font-size="7" text-anchor="end" fill="#888">vertical axis starts at ${fmt(yMin)}</text>` : ""}
 ${series.map((s, i) => `<text x="${L + 10}" y="${T + 11 + i * 12}" font-size="9" font-weight="600" fill="${s.colour}">${s.label} confirmed per second</text>`).join("")}
 </svg>`;
 }
