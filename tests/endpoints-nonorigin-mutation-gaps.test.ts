@@ -46,7 +46,8 @@ describe("Endpoints - non-origin SPI repair, edges the tests did not pin (Active
    */
   const run = async (
     answers: (ids: { state: string; meta: string }) => any[],
-    before?: (ids: { state: string; meta: string }) => void
+    before?: (ids: { state: string; meta: string }) => void,
+    read?: (id: string) => any
   ) => {
     const state = `${++n}`.padStart(64, "e");
     const ids = { state, meta: `${state}:stream` };
@@ -69,7 +70,7 @@ describe("Endpoints - non-origin SPI repair, edges the tests did not pin (Active
       release: () => undefined,
       neighbourhood: { count: () => 4, knockAll: async () => answers(ids) },
       dbConnection: {
-        get: async (id: string) => ({ _id: id, _rev: "1-stale" }),
+        get: async (id: string) => (read ? read(id) : { _id: id, _rev: "1-stale" }),
         put: async () => ({ ok: true }),
         bulkDocs: async (docs: any[]) => (written.push(...docs), { ok: true }),
       },
@@ -111,5 +112,13 @@ describe("Endpoints - non-origin SPI repair, edges the tests did not pin (Active
     expect(r.posted[0].umid).to.equal(r.umid);
     expect(r.posted[0].processed).to.equal(false);
     expect(r.posted[0].transaction.$broadcast).to.equal(true);
+  });
+
+  it("leaves a winning document alone, and carries on, when the data engine answered nothing", async () => {
+    // the request helper resolves null when a call fails; that is not a missing document
+    const r = await run(({ state }) => [[win(state)], [win(state)]], undefined, () => null);
+    expect(r.written).to.deep.equal([]);
+    // the umid is still asked for again, so the repair is retried
+    expect(r.posted.map((d) => d.code)).to.deep.equal([950]);
   });
 });
