@@ -16,6 +16,7 @@ import { GateResult, readLoad, waitForQuiet } from "./loadgate";
 export const CONTRACT_FILES: Record<string, string> = {
   returner: "returner-contract.ts",
   "no-write": "no-write-contract.ts",
+  "read-only": "read-only-contract.ts",
   "cpu-work": "cpu-work-contract.ts",
 };
 

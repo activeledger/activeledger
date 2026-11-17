@@ -25,6 +25,8 @@ export interface WorkerInit {
   contractId: string;
   users: number;
   index: number;
+  /** read-only contract: a transaction that reads another user's stream through `$r`, locks nothing and writes nothing */
+  readOnly?: boolean;
 }
 
 export interface PrepareCommand {
@@ -93,6 +95,20 @@ let seq = 0;
 const joinsReady: unknown[] = [];
 
 const hotTx = (u: User) => {
+  if (init.readOnly) {
+    // The signer is named by a signature-only input (never locked); the stream
+    // read goes in `$r`, which is loaded for the contract and is not locked or
+    // written either. A different user's stream, so nothing here is "our own".
+    const other = users[(users.indexOf(u) + 1) % users.length];
+    const read = {
+      $namespace: init.namespace,
+      $contract: init.contractId,
+      $i: { [u.streamId]: { $sigOnly: true } },
+      $r: { [other.streamId]: {} },
+      $o: {},
+    };
+    return { $tx: read, $sigs: { [u.streamId]: u.keyPair.sign(read) } };
+  }
   const body = {
     $namespace: init.namespace,
     $contract: init.contractId,

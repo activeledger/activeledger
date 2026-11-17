@@ -48,21 +48,26 @@ first, outside the timed section.
 
 ## Realistic users (peak throughput)
 
-This is the **peak load test**. One command runs the whole thing, reads and then
-writes, and prints a one page PDF:
+This is the **peak load test**. One command runs the whole thing, reads, locked
+reads and then writes, and prints a one page PDF:
 
 ```
 npm run stress:peak
 ```
 
-It takes about twelve minutes and leaves `stress-results/peak-load-test.pdf`
-(with the raw numbers in `peak-reads.jsonl` and `peak-writes.jsonl`). Run it on a
+It takes about twenty minutes and leaves `stress-results/peak-load-test.pdf`
+(with the raw numbers in `peak-reads.jsonl`, `peak-locked-reads.jsonl` and
+`peak-writes.jsonl`). The three are a contract read with no lock and no write
+(`--contract read-only`, which reads another user's stream through `$r`), a read
+on a stream the network locks while it agrees (`--contract no-write`), and a write
+(`--contract returner`). Run it on a
 quiet machine from a checkout after `npm ci` and a build. To choose the rates
 yourself, or to run one kind only, use the tool directly:
 
 ```
 npm run stress:realistic -- --pdf tps.pdf
-npm run stress:realistic -- --contract no-write --rates 300,500,700,900,1100,1300 --out stress-results/reads.jsonl
+npm run stress:realistic -- --contract read-only --rates 700,1000,1300,1500,1700,2000 --out stress-results/reads.jsonl
+npm run stress:realistic -- --contract no-write --rates 700,1000,1300,1500,1700,2000 --out stress-results/locked-reads.jsonl
 npm run stress:realistic -- --contract returner --rates 300,500,600,700,800,900 --out stress-results/writes.jsonl
 npm run stress:realistic -- --from stress-results/reads.jsonl,stress-results/writes.jsonl --pdf tps.pdf
 ```
@@ -91,9 +96,12 @@ How it loads the network:
   new connection per request runs the machine out of local ports (`EADDRNOTAVAIL`)
   at a few hundred requests a second and measures the tool, not the network
 
-`--contract no-write` is a contract that validates and returns without writing
-state (checks and lookups: the **reads** figure); `--contract returner` writes
-a message onto the user's own stream (the **writes** figure). `--join-pct`
+`--contract read-only` reads another user's stream through `$r` with a
+signature-only input, so nothing is locked or written (the **reads** figure);
+`--contract no-write` validates and returns without writing state but still
+locks the user's stream while the network agrees (the **locked reads** figure);
+`--contract returner` writes a message onto the user's own stream (the **writes**
+figure). `--join-pct`
 mixes in new users joining (onboards).
 
 A step is **sustained** if the network confirmed at least `--sustain-pct` of the
@@ -110,7 +118,7 @@ unsustained steps in a row.
 | `--startup-wait` | 20 | seconds to wait after the nodes report ready before the first transaction; one retry follows if it still does not get through |
 | `--settle` | 5 | seconds of quiet between steps |
 | `--users` | 1000 | distinct users; use more if a step reports dropped arrivals |
-| `--contract` | `no-write` | `no-write` (reads) or `returner` (writes) |
+| `--contract` | `no-write` | `no-write` (locked reads), `read-only` (reads with no lock) or `returner` (writes) |
 | `--join-pct` | 5 | percent of arrivals that are a new user joining |
 | `--workers` | 6 | load-generator threads |
 | `--sustain-pct` | 97 | sustained: at least this percent of the offered rate confirmed |
