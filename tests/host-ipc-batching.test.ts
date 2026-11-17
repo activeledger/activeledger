@@ -25,7 +25,7 @@ describe("Host IPC batching (Activenetwork)", () => {
     const held: any = ActiveOptions.fetch(false);
     had = "ipcBatching" in held;
     old = held.ipcBatching;
-    delete held.ipcBatching;
+    ActiveOptions.set("ipcBatching", true);
   });
   afterEach(() => {
     const held: any = ActiveOptions.fetch(false);
@@ -70,8 +70,8 @@ describe("Host IPC batching (Activenetwork)", () => {
     expect(sent).to.deep.equal([[{ type: "tx" }, "handle"]]);
   });
 
-  it("does nothing to a child when turned off", () => {
-    ActiveOptions.set("ipcBatching", false);
+  it("does nothing to a child unless switched on", () => {
+    delete (ActiveOptions.fetch(false) as any).ipcBatching;
     const own = (...a: any[]) => (sent.push(a[0]), true);
     const c: any = { send: own };
     H.batchBroadcasts.call({}, c);

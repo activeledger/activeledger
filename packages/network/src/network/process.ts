@@ -453,8 +453,7 @@ class Processor {
     if (
       !early &&
       Home.reference &&
-      entry.$nodes?.[Home.reference]?.commit === true &&
-      ActiveOptions.get<boolean>("ipcMergeCommit", true)
+      entry.$nodes?.[Home.reference]?.commit === true
     ) {
       this.flushBroadcast(entry.$umid);
       this.heldBroadcasts.set(entry.$umid, { nodes: entry.$nodes, revs: entry.$revs });
