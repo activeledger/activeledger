@@ -584,7 +584,7 @@ export class Host extends Home {
             }
             if (
               !entry.$$noreply &&
-              !this.quietReply(entry.$umid, replyRecipients, entry)
+              !(Host.quietReplies() && (Host.prototype as any).quietReply.call(this, entry.$umid, replyRecipients, entry))
             ) {
               // Only the node that asked can use our answer, so send it to
               // that node alone when we can tell who it is, else to everyone.

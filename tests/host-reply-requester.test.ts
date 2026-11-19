@@ -27,6 +27,12 @@ describe("Host answers a consensus request only to the node that asked", () => {
     saved.pairNow = Maintain.pairNow;
     saved.p2pStream = ActiveOptions.get("p2pStream", undefined);
     saved.security = ActiveOptions.get("security", undefined);
+    // These tests are about who is answered and what the answer holds, so
+    // they run with replies on; the quiet behaviour has its own suite
+    saved.quiet = ActiveOptions.get("p2pQuietReplies", undefined);
+    ActiveOptions.set("p2pQuietReplies", false);
+    saved.slim = ActiveOptions.get("p2pSlimReplies", undefined);
+    ActiveOptions.set("p2pSlimReplies", false);
     Home.reference = SELF;
     Home.identity = key;
     Maintain.pairNow = () => undefined;
@@ -34,6 +40,8 @@ describe("Host answers a consensus request only to the node that asked", () => {
   });
 
   after(() => {
+    ActiveOptions.set("p2pQuietReplies", saved.quiet);
+    ActiveOptions.set("p2pSlimReplies", saved.slim);
     Home.reference = saved.reference;
     Home.identity = saved.identity;
     Maintain.pairNow = saved.pairNow;

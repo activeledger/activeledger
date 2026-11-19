@@ -772,6 +772,13 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
   });
 
   describe("broadcast", () => {
+    // Replies stay on here: the quiet resend timer would show up as a rebroadcast
+    let savedQuiet: any;
+    before(() => {
+      savedQuiet = ActiveOptions.get("p2pQuietReplies", undefined);
+      ActiveOptions.set("p2pQuietReplies", false);
+    });
+    after(() => ActiveOptions.set("p2pQuietReplies", savedQuiet));
     const neighbour = (reference: string, isHome = true) => {
       const knocks: any[] = [];
       return {

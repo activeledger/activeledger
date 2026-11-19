@@ -17,6 +17,13 @@ import { P2PClient } from "../packages/network/src/network/p2pClient";
  * up: send() says so, knock() rejects, broadcast() schedules the rebroadcast.
  */
 describe("P2P send failure is reported", () => {
+  // Replies stay on here: the quiet resend timer would show up as a rebroadcast
+  let savedQuiet: any;
+  before(() => {
+    savedQuiet = ActiveOptions.get("p2pQuietReplies", undefined);
+    ActiveOptions.set("p2pQuietReplies", false);
+  });
+  after(() => ActiveOptions.set("p2pQuietReplies", savedQuiet));
   const realSetTimeout = setTimeout;
   const wait = (ms: number) =>
     new Promise<void>((resolve) => realSetTimeout(resolve, ms));
