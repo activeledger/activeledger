@@ -10,6 +10,24 @@
   readable as before. The lock is fixed at creation: a transaction that adds, removes or changes it (or the
   contract and namespace locks) is refused with 1238. It is an engine check and not isolation (see the security
   guide).
+- **Contracts are refused the node's own storage port.** A contract's `HTTP` toolkit is the node's own storage client,
+  and the storage has no login, so a contract could read or write any document (another namespace's volatile data
+  included) with `HTTP.send("http://127.0.0.1:5259/...")`. While a contract runs, a call to the storage port, by any
+  host name, is now refused; the `http`, `net` and `fetch` modules are held to the same rule for a namespace that is
+  allowed them, and any unix socket is refused. A namespace whose contracts use the storage on purpose is allowed
+  the databases it needs in `security.contractEgress.allow` (`"<namespace>": ["127.0.0.1:5259/<database>"]`, or
+  `<namespace>/<contract>`); `security.contractEgress.storage: "allow"` turns the guard off. Add the list **before**
+  upgrading a node whose contracts reach the storage. The `default` namespace is never restricted. Whatever a list
+  says, a path that names a `:volatile` document, and anything in the node's own databases (ledger, events, errors and
+  the error archive), is refused, and so is a bare socket to the storage port. It is a local check on each node, applied
+  from build `50600`; `security.contractEgress.protect` adds more ports to keep contracts off.
+- **`setVolatile()` now writes a volatile document that is not there.** On a stream that already existed, with no
+  `<id>:volatile` document on the node, it silently wrote nothing (the volatile had no id, and a volatile without one
+  is never saved). It now creates the document, and a `setVolatile` without a `getVolatile` first is merged into the
+  stored one instead of being refused as a revision conflict. `getVolatile()` on a missing document now rejects with
+  "Volatile Data - Not Found" rather than handing the contract the store's `{ notFound: true }` body.
+- **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and
+  meta to name the same stream, and refuses an existing stream the transaction did not load.
 
 ## [5.6.0] - 2026-11-19
 

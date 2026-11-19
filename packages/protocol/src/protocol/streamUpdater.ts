@@ -260,9 +260,33 @@ export class StreamUpdater {
             );
           }
         } else {
-          const id = stream.state?._id || String(meta._id).replace(":stream", "");
-          // Nothing to compare with for a stream this execution did not load
-          const before = loaded?.(id);
+          // Both ids are the contract's to change, so neither alone says which
+          // stream this is. The meta's id is where it is written and the
+          // state's is how the snapshot was keyed; they must name the same
+          // stream, and either one finding a snapshot is enough to compare.
+          const metaId = String(meta._id ?? "").replace(/:stream$/, "");
+          const stateId = stream.state?._id;
+          if (
+            stateId !== undefined &&
+            this.shared.filterPrefix(String(stateId)) !==
+              this.shared.filterPrefix(metaId)
+          ) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error("A stream's state and meta must name the same stream")
+            );
+          }
+          const id = metaId || String(stateId);
+          const before = loaded?.(metaId) ?? (stateId !== undefined ? loaded?.(String(stateId)) : undefined);
+          // An existing stream is only written if the transaction loaded it
+          // ($i / $o). One that is not in the snapshot has had its ids
+          // rewritten to point somewhere the permission checks never looked.
+          if (loaded && !before) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error(`Stream ${id} was not loaded by this transaction`)
+            );
+          }
           const changed = before ? ReadLock.changed(before, meta) : [];
           if (changed.length) {
             return this.shared.raiseLedgerError(
@@ -571,9 +595,42 @@ export class StreamUpdater {
     ]);
   }
 
+  /**
+   * A volatile document written without a revision (the contract did not load
+   * it first, or there was none on this node) is reconciled with what this
+   * node holds: merged into the stored one, which it would otherwise be
+   * refused against, or created when there is none. A stream made in this
+   * transaction has nothing to reconcile with. Volatile data is this node's
+   * own and never attested, so this changes nothing the network agrees on.
+   */
+  private async reconcileVolatile(): Promise<void> {
+    const created = new Set(
+      (this.refStreams?.new || []).map((stream) => this.shared.filterPrefix(String(stream.id)))
+    );
+    for (let i = (this.docs || []).length; i--; ) {
+      const doc = this.docs[i];
+      const id = String(doc?._id ?? "");
+      if (!id.endsWith(":volatile") || doc._rev) continue;
+      if (created.has(this.shared.filterPrefix(id.slice(0, -":volatile".length)))) continue;
+      let stored: any;
+      try {
+        stored = await this.db.get(id);
+      } catch {
+        // Not readable: write it as it is
+        continue;
+      }
+      if (stored && stored._id && stored._rev) {
+        const { _id, _rev, ...rest } = stored;
+        const { _id: ignoredId, _rev: ignoredRev, ...incoming } = doc;
+        this.docs[i] = { ...rest, ...incoming, _id, _rev };
+      }
+    }
+  }
+
   private async append() {
     try {
       ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
+      await this.reconcileVolatile();
       const revs = await this.saveDocs();
       ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
 

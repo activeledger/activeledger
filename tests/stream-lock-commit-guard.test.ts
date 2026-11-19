@@ -90,19 +90,45 @@ describe("Commit guard: stream locks are fixed at creation (Activeprotocol)", ()
     expect(await run({ ns: "varnir" }, { namespace: "default" })).to.deep.equal([]);
   });
 
-  it("skips a stream the execution did not load", async () => {
+  // What a contract can rewrite: the ids on the state and meta it was handed.
+  const runIds = async (stateId: string, metaId: string, meta: any) => {
     const raised: any[] = [];
     const updater: any = Object.create(StreamUpdater.prototype);
     updater.entry = { $umid: "u".repeat(64), $datetime: "2026-06-01T12:00:00.000Z", $tx: { $namespace: "foreign" } };
-    updater.streams = [{ state: { _id: "other" }, meta: { _id: "other:stream", _rev: "1-a", contractlock: ["c"] }, volatile: { _id: "other:volatile" } }];
+    updater.streams = [{ state: { _id: stateId }, meta: { _id: metaId, ...meta }, volatile: { _id: stateId + ":volatile" } }];
     updater.docs = [];
     updater.refStreams = { new: [], updated: [] };
-    updater.shared = { raiseLedgerError: (c: number) => raised.push(c), filterPrefix: (i: string) => i, assumedVirtualPrefix: "" };
-    updater.virtualMachine = { getEvents: () => [], getLoadedLocks: () => () => undefined };
+    updater.shared = { raiseLedgerError: (c: number, e: Error) => raised.push({ code: c, message: e.message }), filterPrefix: (i: string) => i, assumedVirtualPrefix: "" };
+    updater.virtualMachine = { getEvents: () => [], getLoadedLocks: () => ReadLock.snapshot([{ state: { _id: "s" }, meta: LOADED }] as any) };
     updater.detectCollisions = async () => undefined;
     const before = ActiveOptions.get<number>("build", 0);
     ActiveOptions.set("build", ReadLock.BUILD);
     try { await updater.processStreams(); } catch { /* thin fixture */ } finally { ActiveOptions.set("build", before); }
-    expect(raised).to.deep.equal([]);
+    return raised;
+  };
+
+  it("refuses an existing stream the transaction did not load", async () => {
+    const raised = await runIds("other", "other:stream", { _rev: "1-a", contractlock: ["c"] });
+    expect(raised).to.have.length(1);
+    expect(raised[0].code).to.equal(1238);
+    expect(raised[0].message).to.contain("was not loaded");
+  });
+
+  it("is not fooled by a state id rewritten to something that was never loaded", async () => {
+    // The meta still writes to s:stream, with its lock removed
+    const raised = await runIds("not-loaded", "s:stream", { _rev: "1-a", ...LOADED, readLock: undefined });
+    expect(raised).to.have.length(1);
+    expect(raised[0].code).to.equal(1238);
+    expect(raised[0].message).to.contain("same stream");
+  });
+
+  it("is not fooled by a meta id rewritten to something that was never loaded", async () => {
+    const raised = await runIds("s", "elsewhere:stream", { _rev: "1-a", ...LOADED });
+    expect(raised).to.have.length(1);
+    expect(raised[0].code).to.equal(1238);
+  });
+
+  it("finds the snapshot by either id when they agree", async () => {
+    expect(await runIds("s", "s:stream", { _rev: "1-a", ...LOADED })).to.deep.equal([]);
   });
 });

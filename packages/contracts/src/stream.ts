@@ -1484,6 +1484,18 @@ export class Activity {
     if (fVolatile._id) delete fVolatile._id;
     if (fVolatile._rev) delete fVolatile._rev;
 
+    // A stream that already exists has no volatile document of its own here
+    // until one is loaded (getVolatile), and a volatile without an id is never
+    // written, so on a node with no volatile document for it this was a silent
+    // no-op. Name it, and the commit writes it: merged into the stored one if
+    // there is one, created if there is not.
+    if (!(this.volatile as ActiveDefinitions.IFullState)?._id && this.state?._id) {
+      this.volatile = {
+        ...this.volatile,
+        _id: this.state._id + ":volatile",
+      } as ActiveDefinitions.IFullState;
+    }
+
     // Merge Objects
     this.volatile = {
       ...this.volatile,

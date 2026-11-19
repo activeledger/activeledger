@@ -27,6 +27,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ContractScope } from "@activeledger/activeutilities";
 import { setTimeout } from "timers";
 import * as fs from "fs";
 import { EventEmitter } from "events";
@@ -264,11 +265,69 @@ export class VirtualMachine
    */
   private sandboxed<T>(umid: string, fn: () => T): T {
     const execution = this.executions[umid];
-    if (!execution || execution.supernode) return fn();
+    if (!execution || execution.supernode) {
+      const tx = this.contractReferences?.[umid]?.tx;
+      // The node's own (default namespace) contracts are trusted, as the
+      // security scan treats them
+      if (tx?.$namespace === "default") return fn();
+      const policy = ActiveOptions.get<any>("security", {})?.contractEgress || {};
+      // From build 50600, like the namespace binding it goes with, so a network
+      // that has not raised its build behaves as before.
+      // security.contractEgress.storage: "allow" switches the guard off.
+      if (!ReadLock.enabled() || policy.storage === "allow") return fn();
+      this.protectStorage();
+      // What this contract's namespace (or namespace/contract) may reach in spite of the guard
+      const lists = policy.allow || {};
+      const contract = String(tx?.$contract ?? "").split("@")[0];
+      const entries: string[] = [
+        ...(Array.isArray(lists[tx?.$namespace]) ? lists[tx.$namespace] : []),
+        ...(contract && Array.isArray(lists[`${tx?.$namespace}/${contract}`]) ? lists[`${tx?.$namespace}/${contract}`] : []),
+      ].filter((e) => typeof e === "string");
+      return runSandboxed(
+        {
+          mode: "storage",
+          allow: entries.length ? (destination) => ContractScope.listed(entries, destination) : undefined,
+          onBlocked: (what) =>
+            ActiveLogger.warn(`Contract refused access to ${what} (${umid})`),
+        },
+        fn
+      );
+    }
     return runSandboxed(
       { onBlocked: (what) => this.markHostDependent(umid, `blocked:${what}`) },
       fn
     );
+  }
+
+  /**
+   * Tell the shared guard which ports are this node's storage. Read from the
+   * config each time (it is a few property reads) and passed on only when it
+   * has changed.
+   *
+   * @private
+   */
+  private protectedStorage = "";
+  private protectStorage(): void {
+    const db = ActiveOptions.get<any>("db", {}) || {};
+    const ports: Array<number | string | undefined> = [db.selfhost?.port];
+    try {
+      if (db.url) ports.push(new URL(db.url).port || undefined);
+    } catch {
+      // not a URL
+    }
+    // Further ports to keep contracts off (security.contractEgress.protect)
+    const extra = ActiveOptions.get<any>("security", {})?.contractEgress?.protect;
+    if (Array.isArray(extra)) ports.push(...extra);
+    const key = ports.join(",");
+    if (key === this.protectedStorage) return;
+    this.protectedStorage = key;
+    ContractScope.protectPorts(ports);
+    // The node's own databases are out of bounds to every contract, listed or not
+    ContractScope.neverDatabases([
+      db.database, db.event, db.error, db.error && `${db.error}_archive`,
+      "activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror",
+      "activeledgererrors_archive", "activeledgererror_archive",
+    ]);
   }
 
   /**
@@ -1074,6 +1133,12 @@ export class VirtualMachine
             umid,
             `${streamId}:volatile`
           );
+          // The store answers a missing document with its error body, not an
+          // error. That is not volatile data (a contract that wrote it back
+          // would store the error), it is a volatile that is not there.
+          if (!volatile || (volatile as any).notFound === true) {
+            throw new Error("Volatile Data - Not Found");
+          }
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
         } catch (error) {
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);

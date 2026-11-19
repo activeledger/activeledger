@@ -22,6 +22,7 @@
  */
 
 import { AsyncLocalStorage } from "async_hooks";
+import { ContractScope, StorageAccessError, IContractDestination } from "@activeledger/activeutilities";
 
 /**
  * Egress block for contracts running on a hybrid.
@@ -37,13 +38,33 @@ import { AsyncLocalStorage } from "async_hooks";
  * own promises and timers, and a library the contract calls that opens a
  * socket later is still caught at net.Socket.prototype.connect.
  *
- * Nothing is wrapped until the first hybrid execution, so a supernode never
- * runs through this code.
+ * A supernode's contracts run in a narrower mode (`storage`): everything stays
+ * open except the node's own storage, which a contract must not reach. The
+ * storage has no login, so a contract that connected to its port could read or
+ * write any document, including another namespace's volatile data. That mode
+ * blocks a connection to a port registered with ContractScope.protectPorts()
+ * (whatever host name is used) and any unix socket, and leaves other network
+ * use alone. ActiveRequest, which is the contract's HTTP toolkit and the
+ * engine's own storage client, makes the same check itself.
+ *
+ * Nothing is wrapped until the first contract execution.
  */
 
 export interface ISandboxContext {
-  /** Called with what was blocked, before SupernodeOnly is thrown */
+  /** Called with what was blocked, before it is refused */
   onBlocked(what: string): void;
+  /** "all" (default): block every network entry point. "storage": block only the node's storage */
+  mode?: "all" | "storage";
+  /** In "storage" mode: whether this contract's namespace may reach a destination the storage guard would refuse */
+  allow?(destination: IContractDestination): boolean;
+}
+
+/** Where an outgoing connection is headed: a host and port (and the path of an HTTP request), or a unix socket */
+interface IDestination {
+  host?: string;
+  port?: number | string;
+  path?: string;
+  socket?: string;
 }
 
 export class SupernodeOnlyError extends Error {
@@ -53,20 +74,91 @@ export class SupernodeOnlyError extends Error {
   }
 }
 
-const context = new AsyncLocalStorage<ISandboxContext>();
+// One store for the process, shared (by symbol) with ActiveRequest
+const SCOPE = Symbol.for("activeledger.contractScope");
+const context: AsyncLocalStorage<ISandboxContext> = ((globalThis as any)[SCOPE] ||=
+  new AsyncLocalStorage<ISandboxContext>());
 let installed = false;
 
+/** Host, port and path of a URL-like thing, with the scheme's default port */
+const urlDestination = (value: unknown, fallback: number): IDestination => {
+  try {
+    const url = value instanceof URL ? value : new URL(String((value as any)?.url ?? value));
+    return { host: url.hostname, port: url.port || (url.protocol === "https:" ? 443 : fallback), path: url.pathname };
+  } catch {
+    return {};
+  }
+};
+
+/** http.request(url | options, options?, cb?) and http.get */
+const requestDestination = (defaultPort: number) => (args: unknown[]): IDestination => {
+  const dest: IDestination = {};
+  for (const arg of args) {
+    if (typeof arg === "string" || arg instanceof URL) Object.assign(dest, urlDestination(arg, defaultPort));
+    else if (arg && typeof arg === "object") {
+      const options: any = arg;
+      if (options.socketPath) dest.socket = String(options.socketPath);
+      if (options.hostname || options.host) dest.host = String(options.hostname || options.host);
+      if (options.port !== undefined) dest.port = options.port;
+      else if (options.defaultPort !== undefined && dest.port === undefined) dest.port = options.defaultPort;
+      if (typeof options.path === "string") dest.path = options.path;
+    }
+  }
+  if (dest.port === undefined && !dest.socket) dest.port = defaultPort;
+  return dest;
+};
+
+/** net.connect / tls.connect / Socket.prototype.connect: (options) | (port, host) | (path) */
+const connectDestination = (args: unknown[]): IDestination => {
+  const first = args[0];
+  if (first && typeof first === "object") {
+    const options: any = first;
+    return { host: options.host, port: options.port, socket: options.path };
+  }
+  if (typeof first === "number" || (typeof first === "string" && /^\d+$/.test(first)))
+    return { port: first as any, host: typeof args[1] === "string" ? (args[1] as string) : undefined };
+  if (typeof first === "string") return { socket: first };
+  return {};
+};
+
+/** fetch(url | Request) */
+const fetchDestination = (args: unknown[]): IDestination => urlDestination(args[0], 80);
+
 /**
- * Replace target[method] with a version that throws inside a hybrid execution
+ * Replace target[method] with a version that throws inside a contract
+ * execution: always in "all" mode, and in "storage" mode only for a
+ * destination that is the node's storage.
  */
-const guard = (target: any, method: string, what: string): void => {
+const guard = (
+  target: any,
+  method: string,
+  what: string,
+  destination?: (args: unknown[]) => IDestination
+): void => {
   const original = target?.[method];
   if (typeof original !== "function") return;
   const guarded = function (this: unknown, ...args: unknown[]) {
     const ctx = context.getStore();
     if (ctx) {
-      ctx.onBlocked(what);
-      throw new SupernodeOnlyError(what);
+      if (ctx.mode === "storage") {
+        const dest = destination ? destination(args) : undefined;
+        if (dest) {
+          // A unix socket is never a contract's business
+          if (dest.socket) {
+            ctx.onBlocked(`storage:${what}`);
+            throw new StorageAccessError(`${what} to a unix socket`);
+          }
+          // A port is refused only if it is the storage's and this namespace is not allowed it
+          if (dest.port !== undefined) {
+            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path });
+            // An approved request carries that approval to the connection it opens
+            if (approve) return approve(() => original.apply(this, args));
+          }
+        }
+      } else {
+        ctx.onBlocked(what);
+        throw new SupernodeOnlyError(what);
+      }
     }
     return original.apply(this, args);
   };
@@ -88,20 +180,20 @@ export const installSandbox = (): void => {
   const tls = require("tls");
   const dgram = require("dgram");
 
-  guard(http, "request", "http");
-  guard(http, "get", "http");
-  guard(https, "request", "https");
-  guard(https, "get", "https");
-  guard(net, "connect", "net");
-  guard(net, "createConnection", "net");
+  guard(http, "request", "http", requestDestination(80));
+  guard(http, "get", "http", requestDestination(80));
+  guard(https, "request", "https", requestDestination(443));
+  guard(https, "get", "https", requestDestination(443));
+  guard(net, "connect", "net", connectDestination);
+  guard(net, "createConnection", "net", connectDestination);
   // Catch-all for any client socket, whoever created it
-  guard(net.Socket.prototype, "connect", "net");
-  guard(tls, "connect", "tls");
+  guard(net.Socket.prototype, "connect", "net", connectDestination);
+  guard(tls, "connect", "tls", connectDestination);
   guard(dgram, "createSocket", "dgram");
   guard(dgram.Socket.prototype, "bind", "dgram");
   guard(dgram.Socket.prototype, "send", "dgram");
   guard(dgram.Socket.prototype, "connect", "dgram");
-  guard(globalThis, "fetch", "fetch");
+  guard(globalThis, "fetch", "fetch", fetchDestination);
 };
 
 /**

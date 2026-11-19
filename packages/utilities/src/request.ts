@@ -22,6 +22,7 @@
  */
 import { ActiveGZip } from "./gzip";
 import { StorageSocket } from "./storagesocket";
+import { ContractScope } from "./contractscope";
 import { Dispatcher, setGlobalDispatcher, getGlobalDispatcher, Agent } from "undici";
 
 /**
@@ -147,6 +148,12 @@ export class ActiveRequest {
     enableGZip: boolean = false,
     timeout: number = 300 // undici default
   ): Promise<IHTTPResponse> {
+    // A contract's HTTP is this class. It may call out, but not to the storage
+    // (unless its namespace has been allowed that database).
+    const approve = ContractScope.check(reqUrl);
+    if (approve) {
+      return approve(() => ActiveRequest.send(reqUrl, type, header, data, enableGZip, timeout));
+    }
     //enableGZip = false
     timeout = timeout * 1000;
     const headers: Record<string, string> = {};
