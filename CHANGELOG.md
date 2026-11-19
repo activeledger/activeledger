@@ -2,6 +2,81 @@
 
 ## [Unreleased]
 
+## [5.6.0] - 2026-11-19
+
+Faster traffic between nodes and to the node's own storage, a database explorer, a fix for a contract running under
+the wrong namespace, and a clean-up of the storage server's old CouchDB-era routes. Upgrade nodes one at a time. The
+new network and storage options are on by default and each has a `false` switch (below); nothing needs to be set
+on upgrade. A new install starts at `build` `50600`. An existing network leaves `build` as it is until every node
+is on this release, then raises it to `50600` to switch on the namespace fix.
+
+### Added
+- **A database explorer at `/_explorer`** on the storage port (`http://localhost:<storage port>/_explorer`). One
+  page, no install, reads the storage API only. A stream is shown as one object (state, meta and volatile
+  together, with its locks, authorities and revisions). It has a *History* tab that follows a stream back through
+  the transactions that changed it, a readable view of a transaction (contract, signers, inputs and outputs, the
+  streams it touched) with its identities and streams as links, a *Contract* tab on a contract stream (versions,
+  source hash, deploying transaction, source), a live feed of the events database, a go-to box (`Ctrl+K`) that
+  takes any transaction, stream or document id, and a *Node status* page (sizes, compact, backup, restore, and
+  prune with a count first). Export a page as JSON or CSV, or a whole database as a file; the volatile document
+  of a stream is never exported. Custom databases and `:volatile` documents are editable freely. Everything else
+  is read only until *Danger mode* is turned on, which asks you to type a word, and an edit to an existing document
+  is shown as a side by side difference before it is saved. Multi-select delete follows the same rule. `/_utils`, and anything under
+  it, now answers a redirect to `/_explorer`.
+- **`db.selfhost.socket`** (on by default). A node's own processes talk to its storage process over a local unix
+  socket instead of HTTP. The same routes answer, so nothing else changes: a request that cannot use it (custom
+  headers, compression, the event feeds) or a socket that is not there falls back to HTTP, and a request lost with
+  the connection fails and is not repeated, as with a dropped HTTP connection. The socket is in a folder only the
+  node's user can write to (`$XDG_RUNTIME_DIR` or the temp folder, `activeledger-<uid>/`, mode 0700); the storage
+  process will not bind if that folder is not the user's own, and a client will not connect to a socket or folder
+  that is not. `db.selfhost.socket: false` uses HTTP only.
+- **`p2pSlimReplies`** (on by default). A node answering a neighbour's message over `p2pStream` sends the vote
+  alone, not the whole transaction again: about half the bytes between nodes. A node on the previous release
+  already reads such a message correctly, so a mixed network is fine. `false` sends the whole entry as before.
+- **`p2pQuietReplies`** and **`p2pResendMs`** (on by default, 250 ms). A node no longer answers a neighbour with
+  its own vote when that vote was already handed to it, which removes about a third of the messages between nodes
+  on a busy network. A neighbour that stays silent is sent the vote again after `p2pResendMs`, doubling the wait
+  each try (up to 5), so a dropped message costs a delay and not a vote; under 5% simulated message loss a 4-node
+  network kept its rate and failure rate. Transactions that use inter-node comms keep answering as before. A mixed
+  network is fine. `p2pQuietReplies: false` brings the replies back.
+- `ActiveHttpd.invoke()`, which runs a route without a connection (what the socket uses).
+
+### Changed
+- **A batch's stored documents are read in one call before the batch is written**, not one at a time: about 22%
+  more creates and 16% more updates per second in the storage layer, 1 to 3% end to end.
+- **`GET /<db>` reports `data_size` as the data on disk** (table files, write-ahead log and manifest) and no longer
+  counts the text logs, which only grow. The placeholder `doc_count: "----"` and `update_seq: 0` are gone from
+  that reply (they were there so the old admin page would not error).
+- On one 24-thread PC running four nodes, with the options above on: writes (a transaction that updates a stream)
+  held **1,300 tx/s** in the final run (1,100 in both runs; the 5.5.0 build held about 900 to 1,000 on the same
+  machine), 99% confirmed within 244 ms; reads (a contract that only looks up ledger data) held **2,400 tx/s**
+  offered, 2,344 confirmed, 99% within 180 ms. Short runs on a shared machine, so a guide and not a promise.
+
+### Fixed
+- **A contract could run under a namespace it does not live in.** The path cache for a loaded contract was keyed
+  by contract name alone, so once a contract had run under its own namespace, the same name sent with another
+  `$namespace` was served from the cache and passed anything that reads `$tx.$namespace` (such as a stream's
+  `namespaceLock`). A cold worker refused the same transaction, so the result also depended on which worker
+  got it. From build `50600` the cache is keyed by namespace and contract. Below that build nothing changes, so
+  an existing network behaves as before until its `build` is raised.
+
+### Security
+- The storage socket above is in a private per-user folder and is checked before use; it is not a predictable
+  path in the shared temp folder, where another local user could have created it first.
+
+### Removed
+- **Storage routes with no consumer:** `GET /_session`, `GET /_uuids`, `POST /<db>/_find`, `POST /<db>/_explain`,
+  `GET` and `DELETE /<db>/_seq/<id>` and `GET /<db>/_changes`. `GET /<db>/umids` and its alias
+  `/<db>/transactions`, `/<db>/events`, `_all_docs`, `_bulk_docs`, documents, `_raw`, `_compact`, `_prune`,
+  `_backup` and `_restore` are unchanged.
+- **From `@activeledger/activeoptions`:** `ActiveDSConnect.find()`, `.seqGet()`, `.seqDelete()` and `.changes()`
+  (with the `ActiveDSChanges` feed) and the deprecated `ActiveChanges` class. `LevelMe.changesFromSeq()` and
+  `delSeq()` went with them.
+- **The experimental `@activeledger/nano-gateway` package** and its `nanoGateway` config key. It was not supported
+  and was the only reader of `_changes`.
+- The bundled CouchDB admin page (the old `/_utils` assets). It is replaced by the explorer.
+
+
 ## [5.5.0] - 2026-11-17
 
 A cheaper `$expire` check on the entry node, and prune also clears the node's `resent:` records. Upgrade nodes one
