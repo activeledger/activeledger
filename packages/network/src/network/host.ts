@@ -813,6 +813,9 @@ export class Host extends Home {
     // A neighbour lost a frame it had accepted: what we sent it is not delivered
     Neighbour.onDropped = (reference) => this.peerDropped(reference);
 
+    // A neighbour just became home: send it the transactions still in flight
+    Neighbour.onHome = (reference) => this.peerHome(reference);
+
     if (Host.p2pServerWanted()) {
       // Start P2P TCP Server
       this.p2pServer = net.createServer((socket: net.Socket) =>
@@ -1963,6 +1966,49 @@ export class Host extends Home {
       this.armResend(umid, attempt + 1);
     }, Host.resendMs() * 2 ** attempt);
     timer.unref?.();
+  }
+
+  /**
+   * A neighbour has just become home (first found, or back after being down).
+   * A broadcast only goes to neighbours already counted as home, so a
+   * transaction that was voted on while this one was up but not yet noticed
+   * never reached it, and nothing else would send it (the resend timer only
+   * chases neighbours that were home and went quiet). Send it every
+   * transaction still in flight.
+   *
+   * Finished transactions are not sent: that neighbour catches up on them the
+   * way a node that was down does (SPI, restore).
+   */
+  private peerHome(reference: string): void {
+    if (reference === this.reference) return;
+    for (const umid of Object.keys(this.processPending)) {
+      const held = this.processPending[umid];
+      if (!held || held.finished) continue;
+      // Whatever we thought it had, it has not got it
+      if (held.sentVote) delete held.sentVote[reference];
+      this.replayTo(umid, reference, 0);
+    }
+  }
+
+  /**
+   * Sends one in-flight transaction to one neighbour. A full broadcast that is
+   * still going out skipped this neighbour (it was not home when that one
+   * began), so wait for it to finish rather than be dropped by its flag.
+   */
+  private replayTo(umid: string, reference: string, attempt: number): void {
+    const held = this.processPending[umid];
+    if (!held || held.finished) return;
+    if (held.broadcasting) {
+      if (attempt < 20) {
+        const timer = setTimeout(() => this.replayTo(umid, reference, attempt + 1), 50);
+        timer.unref?.();
+      }
+      return;
+    }
+    // Only a neighbour that is still home; broadcast() sends nothing before
+    // this node has voted, and sends to everyone once it has
+    if (!this.neighbourhood.get(reference)?.isHome) return;
+    this.broadcast(umid, false, false, [reference]);
   }
 
   /** A neighbour accepted frames it could not write: nothing sent to it recently counts as delivered */
