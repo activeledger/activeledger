@@ -1,6 +1,13 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.7.0] - 2026-11-19
+
+Contracts can no longer reach the node's own storage or this machine, read locks arrive, and every node now says which
+chain it belongs to. **Before starting this release, add `"chain": { "id": 1 }` to every node's `config.json`**, the
+same value on every node of a network (see the first entry below); a node without it will not start. Nodes can still be
+upgraded one at a time: a neighbour from before this release sends no chain id and is still paired. The contract
+storage guard, the localhost block and the new deploy-scan rules apply from `build` `50600`, so a network below that
+level is unchanged until its `build` is raised, after every node is on this release.
 
 ### Breaking: every node needs `chain.id` in `config.json`
 A node now refuses to start without a chain id: add `"chain": { "id": 1 }` to `config.json`. The id is a whole
@@ -11,6 +18,84 @@ id in a `.chain` file beside `.identity`, and a node whose configured id later d
 start, so a chain is never changed by editing the config. This is the first step towards one node taking part in
 more than one network. A stream's meta may carry `chain`; a meta without it belongs to the node's own chain, so
 existing data needs no change.
+
+### Added
+- **Read locks on streams** (build `50600`). A contract that creates a stream can call `setReadLock({ state, stream,
+  volatile })` to say which namespaces may read each part of it from another contract (`$r`,
+  `getAnyStreamReadOnly`, `getVolatile`): `"*"` or a list. The creating namespace and `default` can always read;
+  `state` and `stream` default to open and `volatile` to the creating namespace only. A stream without a lock is
+  readable as before. The lock is fixed at creation: a transaction that adds, removes or changes it (or the
+  contract and namespace locks) is refused with 1238. It is an engine check and not isolation (see the security
+  guide).
+- **Contracts are refused the node's own storage port.** A contract's `HTTP` toolkit is the node's own storage client,
+  and the storage has no login, so a contract could read or write any document (another namespace's volatile data
+  included) with `HTTP.send("http://127.0.0.1:5259/...")`. While a contract runs, a call to the storage port, by any
+  host name, is now refused; the `http`, `net` and `fetch` modules are held to the same rule for a namespace that is
+  allowed them, and any unix socket is refused. The port is closed by default: a namespace
+  reaches only what `security.contractEgress.allow` names (`"<namespace>": ["127.0.0.1:5259/<database>"]`).
+  `security.contractEgress.storage: "open"` lets every contract use custom databases (a name starting `activeledger`
+  with more after it) with no list, and they are then shared by all namespaces; `"allow"` turns the guard off. The `default` namespace is never restricted. Whatever a list
+  says, any request that mentions `volatile` (path, query or body, any case, however escaped) and anything in the
+  node's own databases (ledger, events, errors and the error archive; taken from `db.database`, `db.event` and
+  `db.error`, with the defaults always included) is refused. A contract may only GET and POST, and only on the
+  document routes (`<db>/<id>`, `<db>/_all_docs`, `<db>/_bulk_docs`, `<db>`); a request with a body is allowed only where the body can
+  be read (`ActiveRequest`, a `fetch` with a string body), and so is a bare socket to the storage port. It is a local check on each node, applied
+  from build `50600`; `security.contractEgress.protect` adds more ports to keep contracts off.
+- **`setVolatile()` now writes a volatile document that is not there.** On a stream that already existed, with no
+  `<id>:volatile` document on the node, it silently wrote nothing (the volatile had no id, and a volatile without one
+  is never saved). It now creates the document, and a `setVolatile` without a `getVolatile` first is merged into the
+  stored one instead of being refused as a revision conflict. `getVolatile()` on a missing document now rejects with
+  "Volatile Data - Not Found" rather than handing the contract the store's `{ notFound: true }` body.
+- **A contract call's network requests are limited**: 5 seconds each, 2 MB of response in total, and cancelled when the call
+  ends (`security.contractEgress.timeoutSeconds`, `.maxResponseBytes`). Options passed to the `http` and `fetch` modules are
+  copied into plain objects once and anything outside a short list of plain keys (an `agent`, `createConnection`, `lookup`, a
+  `dispatcher`, a Proxy, a getter) is refused.
+- **This machine is closed to contracts, and the deploy scan checks the source** (build `50600`). While a contract
+  runs, a connection to localhost, `127.x.x.x`, `::1` or `0.0.0.0` on any port other than the storage's (a wallet
+  service, a signer, an admin page) is refused, in every spelling of the address (`127.1`, `2130706433`, `[::1]`,
+  `::ffff:127.0.0.1`, `foo.localhost`) and through `http`, `net`, `tls`, `fetch` and the `HTTP` toolkit. A namespace
+  that needs a local service sets `allowLocalhost: true` in `security.namespace.<namespace>.policy`, or lists the
+  destination in `security.contractEgress.allow`. It is opt-in and not needed for custom databases on the storage port,
+  and it does not open the storage port itself: the always-refused list (volatile, the node's own databases, other
+  verbs and routes) still applies. The check is on the address as written: a host name that resolves to this machine, or one of the machine's own non-loopback addresses, is not recognised (enforcing on the resolved address is a follow-up).
+  `allowLocalhost` also allows a URL to this machine in the contract's source. The deploy scan (which is part of the
+  deploy vote) now also refuses, for a non-default namespace: a string that is a path or URL naming volatile data
+  (`.../abc:volatile`, any case, percent- or `\u`-escaped); a URL to this machine unless `allowLocalhost`; and the
+  options `agent`, `createConnection`, `dispatcher`, `lookup`, `socketPath` and `setHost` in the object passed to
+  `request`, `get`, `post`, `put`, `send`, `connect`, `createConnection` or `fetch`. These rules read only the source and
+  the namespace's own policy, so every node with the same config gives the same vote; they do not run below build
+  `50600`. A destination built at run time cannot be seen by the scan: the run-time guard is what stops that.
+- **`allowDatabases`, a namespace flag for custom databases** (build `50600`). Rather than a list per database, a
+  namespace whose policy (`security.namespace.<namespace>.policy`) has `allowDatabases: true` (every custom database) or
+  `allowDatabases: ["activeledger_wallets", ...]` (exactly those; `["*"]` is every custom database, as `true`) may use custom databases on the storage (GET and POST on the document routes), like the flags that allow libraries. The deploy
+  scan checks against it: source that names a custom database path (`.../activeledger_wallets/...`) is refused
+  unless the flag is set, and a path in one of the node's own databases is refused whatever the flag. Volatile and the
+  node's own databases stay refused at run time too. The node-wide `security.contractEgress.storage: "open"` still opens
+  custom databases for every namespace, and `security.contractEgress.allow` still lists exact destinations.
+- **Per-namespace request limits**: `requestTimeoutSeconds` and `maxResponseBytes` in `security.namespace.<namespace>.policy` replace the node-wide 5 s / 2 MB for that namespace. The limits apply to every request a contract makes, whatever timeout it passes; a request past a limit returns `data: null` to the contract.
+- **Contract code can no longer run outside its sandbox through the VM.** The event emitter a contract is given is now a
+  facade whose listeners stay in the contract's context (an answer to `getVolatile` / `getStreamData` was emitted from
+  host work and ran the listener unsandboxed); the VM reaches the contract through a facade that runs every property read
+  and method call (`shutdown`, `getTimeout`, the export methods and the rest, not only `vote` / `commit`) inside the
+  sandbox; a thenable returned by a contract is resolved, and an object it returns or throws is copied to plain data,
+  inside the sandbox. A contract that triggered the node's storage socket connection no longer leaves the node's own
+  storage client failed. The unix-socket client refuses a request once its approval is spent. A path with a fragment, a
+  backslash, or an escaped slash, backslash or percent is not matched against a path-limited allow entry and a raw request path
+  with a fragment or backslash is refused. Loopback addresses are canonicalised (any IPv6 spelling, zone ids, fullwidth and
+  ideographic dots, the machine's own name). The deploy scan folds `"a:" + "volatile"` and template literals, ignores quotes in
+  a volatile path, reads URLs the way a URL parser does, and sees options passed to `new X(...)`, element-access calls and
+  parenthesised or `as` objects.
+- **Review pass 3 fixes.** A raw `net.connect` (which hands the socket its arguments as one array) is now checked, so a
+  bare socket to the storage or to a closed local port no longer opens unchecked, and its approval is spent once. A
+  rejected promise or thenable rejection from a contract is made plain inside the sandbox like a resolved value. The
+  copy to plain data applies inside any contract sandbox (not the default namespace),
+  falls back to the original value for data JSON cannot hold (cycles, BigInt), and a method that returns the contract
+  returns the facade. The sandbox wraps the network modules once per process. The deploy scan no longer refuses prose
+  (`"Error: volatile data missing"`), string types, or database-looking paths on public hosts (a repository or docs link).
+- **Encoded responses are not read by contracts** and `net`/`tls` connections refuse the options `lookup`, `agent`,
+  `createConnection`, `socket` (hidden or symbol-keyed too).
+- **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and
+  meta to name the same stream, and refuses an existing stream the transaction did not load.
 
 ### Fixed
 - **The storage process removes its socket file when it exits.** It used to leave `ds-<port>.sock` behind in the

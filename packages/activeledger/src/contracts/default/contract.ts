@@ -38,6 +38,38 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 // indexOf() - so they're safe to build once at module load instead of
 // on every single contract deploy/update.
 
+// Build level from which the deploy scan also refuses storage and local-service access written in
+// the source (the run-time guard, ReadLock.BUILD, starts at the same build)
+const SOURCE_GUARDS_BUILD = 50600;
+// Request options that change how a connection is made, and the calls they are passed to
+const CONNECTION_OPTIONS = new Set(["agent", "createConnection", "dispatcher", "lookup", "socketPath", "setHost"]);
+const REQUEST_CALLS = new Set(["request", "get", "post", "put", "send", "connect", "createConnection", "fetch", "ClientRequest", "Client", "Pool", "Agent", "dispatch", "pipeline", "open", "got", "axios", "needle", "superagent", "undici"]);
+
+/** This machine by address or name, written any way a resolver reads it. Static: no node setting or machine name is used */
+const isLocalHost = (host: string): boolean => {
+  let h = String(host).normalize("NFKC").replace(/[\u3002\uff0e\uff61]/g, ".").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (h === "") return false;
+  if (/^[0-9a-fx.]+$/.test(h)) {
+    try {
+      h = new URL("http://" + h).hostname;
+    } catch {
+      return false;
+    }
+  }
+  if (h === "localhost" || h.endsWith(".localhost") || h === "localhost.localdomain" || h === "ip6-localhost" || h === "ip6-loopback") return true;
+  if (h.includes(":")) {
+    try {
+      h = new URL("http://[" + h.replace(/%.*$/, "") + "]").hostname.replace(/^\[|\]$/g, "");
+    } catch {
+      return true;
+    }
+    if (h === "::1" || h === "::") return true;
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+    return !!mapped && (parseInt(mapped[1], 16) >> 8 === 127 || (parseInt(mapped[1], 16) === 0 && parseInt(mapped[2], 16) === 0));
+  }
+  return /^127\.\d+\.\d+\.\d+$/.test(h) || h === "0.0.0.0";
+};
+
 // Definitive denylist for identifiers (Globals and sensitive objects)
 const BANNED_IDENTIFIERS = [
   "process",
@@ -716,7 +748,11 @@ export default class Contract extends Standard {
         allowEval: false,
         allowComputedProperties: false,
         allowProcessNextTick: false,
-        allowLocalLibs: false
+        allowLocalLibs: false,
+        // Contract code may name this machine (localhost, 127.x) in a URL
+        allowLocalhost: false,
+        // Contract code may use custom databases on the node's storage
+        allowDatabases: false
     };
 
     // Fetch dynamic security configuration
@@ -733,6 +769,9 @@ export default class Contract extends Standard {
     if (privilegedNamespaces.indexOf(namespace) !== -1) {
       return;
     }
+
+    // The source rules about storage and local services are on from the build that guards them
+    const guardsFromSource = ActiveOptions.get<number>("build", 0) >= SOURCE_GUARDS_BUILD;
 
     const sourceFile = ts.createSourceFile(
       "contract.ts",
@@ -1082,6 +1121,128 @@ export default class Contract extends Standard {
       }
       if (ts.isPrivateIdentifier(node)) {
         report(node, `Private identifiers are forbidden`);
+      }
+
+      // 7. Storage and local-service access written out in the source (from build 50600).
+      // Static and the same on every node: only literals and option names are read, never
+      // the node's config (the deploy scan is part of the vote). A destination built at
+      // run time cannot be seen here; the run-time guard is what stops that.
+      if (guardsFromSource) {
+        // Literals, and the text of "a" + "b" / `a${x}b` folded together (an unknown part
+        // counts as empty), so a word split across pieces is still seen
+        const fold = (n: ts.Node): string | undefined => {
+          if (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isNonNullExpression(n) || ts.isTypeAssertionExpression(n)) return fold(n.expression);
+          if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+          if (ts.isTemplateExpression(n)) {
+            return n.head.text + n.templateSpans.map((span) => (fold(span.expression) ?? "") + span.literal.text).join("");
+          }
+          if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+            const left = fold(n.left), right = fold(n.right);
+            return left === undefined && right === undefined ? undefined : (left ?? "") + (right ?? "");
+          }
+          return undefined;
+        };
+        const text = fold(node);
+        if (text !== undefined) {
+          // Private data: a path or id that names a volatile part, however it is escaped or
+          // broken up (quotes and spaces are ignored by the storage)
+          let seen = text;
+          for (let round = 0; round < 4; round++) {
+            let next = seen;
+            try {
+              next = decodeURIComponent(seen);
+            } catch {
+              // not valid escapes; look at it as it is
+            }
+            next = next.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+            if (next === seen) break;
+            seen = next;
+          }
+          const squashed = seen.replace(/["'`\s\u200b-\u200f\u2060\ufeff\u0000-\u001f]/g, "");
+          // Only text shaped like a path or id (no spaces, or a leading slash, or a scheme) and
+          // not a string type: prose such as "Error: volatile data missing" is not a path
+          const pathish = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(seen) || /^\s*\//.test(seen) || !/\s/.test(seen.trim());
+          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed)) {
+            report(node, `A path to volatile data is forbidden`);
+          }
+          // This machine, as a URL or a host:port, read the way a URL parser reads it
+          if (policy.allowLocalhost !== true) {
+            const candidate = seen.replace(/[\t\r\n\u0000]/g, "").trim();
+            const hosts: string[] = [];
+            for (const form of [candidate, "http://" + candidate, "http:" + candidate.replace(/^[\\/]+/, "//")]) {
+              try {
+                const parsed = new URL(form);
+                if (parsed.hostname) hosts.push(parsed.hostname);
+              } catch {
+                // not a URL in this form
+              }
+            }
+            // A bare word is not a destination: it needs a scheme, slashes or a port to be one
+            const looksLikeDestination = /[\\/]{2}|^[^\s\/]+:\d+(?:[\/?#]|$)/.test(candidate);
+            if (looksLikeDestination && hosts.some((h) => isLocalHost(h))) {
+              report(node, `A URL to this machine needs allowLocalhost for the namespace`);
+            }
+          }
+        }
+        // A storage database named in the source: the node's own are never a contract's; a custom
+        // one (activeledger plus more) needs allowDatabases for the namespace
+        if (text !== undefined) {
+          const candidate = text.replace(/[\t\r\n\u0000]/g, "").trim();
+          const urlMatch = /^(?:[a-z][a-z0-9+.-]*:)?\/\/([^\/?#]*)(\/[^?#]*)/i.exec(candidate);
+          // A database path on a public host (a repository link, a docs page) is not a storage database
+          const hostName = urlMatch ? urlMatch[1].replace(/^[^@]*@/, "").replace(/:\d+$/, "") : "";
+          const publicHost = !!urlMatch && hostName !== "" && !isLocalHost(hostName);
+          const pathOf = publicHost ? "" : urlMatch?.[2] ?? (/^\/[^\/]/.test(candidate) ? candidate.split(/[?#]/)[0] : "");
+          let database = "";
+          try {
+            database = decodeURIComponent(pathOf).split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+          } catch {
+            // not valid escapes
+          }
+          if (database === "activeledger" || database === "activeledgerevents" || database === "activeledgererrors" || database.startsWith("_")) {
+            if (pathOf.split("/").filter(Boolean).length >= 2) {
+              report(node, `The node's own database '${database}' is forbidden`);
+            }
+          } else if (
+            /^activeledger[a-z0-9_-]+$/.test(database) &&
+            policy.allowDatabases !== true &&
+            !(Array.isArray(policy.allowDatabases) && policy.allowDatabases.some((d: unknown) => typeof d === "string" && (d === "*" || d.toLowerCase() === database)))
+          ) {
+            report(node, `A custom database needs allowDatabases for the namespace`);
+          }
+        }
+        // Options that change how a request connects, passed to a request call
+        if (ts.isObjectLiteralExpression(node)) {
+          let outer: ts.Node = node;
+          while (outer.parent && (ts.isParenthesizedExpression(outer.parent) || ts.isAsExpression(outer.parent) || ts.isNonNullExpression(outer.parent) || ts.isTypeAssertionExpression(outer.parent))) outer = outer.parent;
+          const call = outer.parent;
+          if ((ts.isCallExpression(call) || ts.isNewExpression(call)) && call.arguments?.indexOf(outer as ts.Expression) !== -1) {
+            let callee: ts.Node = call.expression;
+            while (ts.isParenthesizedExpression(callee) || ts.isAsExpression(callee) || ts.isNonNullExpression(callee)) callee = callee.expression;
+            const calleeName = ts.isIdentifier(callee)
+              ? callee.text
+              : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : ts.isElementAccessExpression(callee) && fold(callee.argumentExpression) !== undefined
+              ? fold(callee.argumentExpression)
+              : "";
+            if (REQUEST_CALLS.has(calleeName as string)) {
+              for (const prop of node.properties) {
+                const name = prop.name;
+                const key = !name
+                  ? undefined
+                  : ts.isComputedPropertyName(name)
+                  ? fold(name.expression)
+                  : ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
+                  ? name.text
+                  : undefined;
+                if (key !== undefined && CONNECTION_OPTIONS.has(key)) {
+                  report(prop, `The request option '${key}' is forbidden`);
+                }
+              }
+            }
+          }
+        }
       }
 
       // 6. Block Module Loading

@@ -22,6 +22,7 @@
  */
 
 import { Attestation } from "./attest";
+import { ReadLock } from "./readlock";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -233,6 +234,66 @@ export class StreamUpdater {
             1237,
             new Error(`Stream names under "activeledger.default." are reserved for the default namespace`)
           );
+        }
+      }
+    }
+
+    // The lock fields of a stream (contract, namespace and read locks, and the
+    // namespace that created it) are set when it is created and never change.
+    // The setters in stream.ts only work on a new stream, but a contract holds
+    // the meta object itself, so this checks what is about to be written
+    // against what the stream was loaded with. A new stream may only claim
+    // its own namespace as creator.
+    if (
+      ReadLock.enabled() &&
+      this.entry.$tx?.$namespace !== "default"
+    ) {
+      const loaded = this.virtualMachine.getLoadedLocks?.(this.entry.$umid);
+      for (const stream of this.streams) {
+        const meta = stream.meta;
+        if (!meta) continue;
+        if (!meta._rev) {
+          if (meta.ns !== undefined && meta.ns !== this.entry.$tx?.$namespace) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error("A stream can only be created for the namespace of its contract")
+            );
+          }
+        } else {
+          // Both ids are the contract's to change, so neither alone says which
+          // stream this is. The meta's id is where it is written and the
+          // state's is how the snapshot was keyed; they must name the same
+          // stream, and either one finding a snapshot is enough to compare.
+          const metaId = String(meta._id ?? "").replace(/:stream$/, "");
+          const stateId = stream.state?._id;
+          if (
+            stateId !== undefined &&
+            this.shared.filterPrefix(String(stateId)) !==
+              this.shared.filterPrefix(metaId)
+          ) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error("A stream's state and meta must name the same stream")
+            );
+          }
+          const id = metaId || String(stateId);
+          const before = loaded?.(metaId) ?? (stateId !== undefined ? loaded?.(String(stateId)) : undefined);
+          // An existing stream is only written if the transaction loaded it
+          // ($i / $o). One that is not in the snapshot has had its ids
+          // rewritten to point somewhere the permission checks never looked.
+          if (loaded && !before) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error(`Stream ${id} was not loaded by this transaction`)
+            );
+          }
+          const changed = before ? ReadLock.changed(before, meta) : [];
+          if (changed.length) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error(`Stream ${id} lock cannot be changed (${changed.join(", ")})`)
+            );
+          }
         }
       }
     }
@@ -534,9 +595,68 @@ export class StreamUpdater {
     ]);
   }
 
+  /**
+   * A volatile document written without a revision (the contract did not load
+   * it first, or there was none on this node) is reconciled with what this
+   * node holds: merged into the stored one, which it would otherwise be
+   * refused against, or created when there is none. A stream made in this
+   * transaction has nothing to reconcile with. Volatile data is this node's
+   * own and never attested, so this changes nothing the network agrees on.
+   */
+  private async reconcileVolatile(): Promise<void> {
+    const created = new Set(
+      (this.refStreams?.new || []).map((stream) => this.shared.filterPrefix(String(stream.id)))
+    );
+    // The volatile of a stream this transaction is writing, and no other. The
+    // contract holds the volatile object and can set its id, so the id it
+    // carries is not what says whose volatile this is: only the streams that
+    // passed the checks above (state and meta naming the same stream) own one.
+    const owned = new Set<string>();
+    const loaded = ReadLock.enabled() ? this.virtualMachine?.getLoadedLocks?.(this.entry.$umid) : undefined;
+    for (const stream of this.streams || []) {
+      const state = stream.state?._id;
+      if (state === undefined) continue;
+      const id = this.shared.filterPrefix(String(state));
+      // A change that only touches volatile data is exported without its meta;
+      // when there is one, it must name the same stream
+      if (stream.meta?._id) {
+        const meta = String(stream.meta._id).replace(/:stream$/, "");
+        if (this.shared.filterPrefix(meta) !== id) continue;
+      }
+      // And the stream is one this transaction loaded or made
+      if (loaded && loaded(String(state)) === undefined && !created.has(id)) continue;
+      owned.add(id);
+    }
+    for (let i = (this.docs || []).length; i--; ) {
+      const doc = this.docs[i];
+      const id = String(doc?._id ?? "");
+      if (!id.endsWith(":volatile")) continue;
+      if (!owned.has(this.shared.filterPrefix(id.slice(0, -":volatile".length)))) {
+        // Not the volatile of any stream in this transaction: never written
+        this.docs.splice(i, 1);
+        continue;
+      }
+      if (doc._rev) continue;
+      if (created.has(this.shared.filterPrefix(id.slice(0, -":volatile".length)))) continue;
+      let stored: any;
+      try {
+        stored = await this.db.get(id);
+      } catch {
+        // Not readable: write it as it is
+        continue;
+      }
+      if (stored && stored._id && stored._rev) {
+        const { _id, _rev, ...rest } = stored;
+        const { _id: ignoredId, _rev: ignoredRev, ...incoming } = doc;
+        this.docs[i] = { ...rest, ...incoming, _id, _rev };
+      }
+    }
+  }
+
   private async append() {
     try {
       ActiveTiming.mark(this.entry.$umid, "db.writeBegin");
+      await this.reconcileVolatile();
       const revs = await this.saveDocs();
       ActiveTiming.mark(this.entry.$umid, "db.writeEnd");
 

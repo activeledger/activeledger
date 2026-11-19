@@ -27,6 +27,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { Activity, PostProcessEvent } from "@activeledger/activecontracts";
 import { EventEngine } from "@activeledger/activequery";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { ContractScope } from "@activeledger/activeutilities";
 import { setTimeout } from "timers";
 import * as fs from "fs";
 import { EventEmitter } from "events";
@@ -38,7 +39,8 @@ import {
   IVMExecution,
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
-import { runSandboxed, runUnsandboxed } from "./sandbox";
+import { runSandboxed, runUnsandboxed, bindToContext, normalise } from "./sandbox";
+import { ReadLock } from "./readlock";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
 import { serialize as v8Serialize, deserialize as v8Deserialize } from "v8";
@@ -263,11 +265,90 @@ export class VirtualMachine
    */
   private sandboxed<T>(umid: string, fn: () => T): T {
     const execution = this.executions[umid];
-    if (!execution || execution.supernode) return fn();
+    if (!execution || execution.supernode) {
+      const tx = this.contractReferences?.[umid]?.tx;
+      // The node's own (default namespace) contracts are trusted, as the
+      // security scan treats them
+      if (tx?.$namespace === "default") return fn();
+      const policy = ActiveOptions.get<any>("security", {})?.contractEgress || {};
+      // From build 50600, like the namespace binding it goes with, so a network
+      // that has not raised its build behaves as before.
+      // security.contractEgress.storage: "allow" switches the guard off; "deny" closes the port
+      // to everything the allow list does not name (by default custom databases are open).
+      if (!ReadLock.enabled() || policy.storage === "allow") return fn();
+      this.protectStorage();
+      // What this contract's namespace (or namespace/contract) may reach in spite of the guard
+      const lists = policy.allow || {};
+      const contract = String(tx?.$contract ?? "").split("@")[0];
+      const entries: string[] = [
+        ...(Array.isArray(lists[tx?.$namespace]) ? lists[tx.$namespace] : []),
+        ...(contract && Array.isArray(lists[`${tx?.$namespace}/${contract}`]) ? lists[`${tx?.$namespace}/${contract}`] : []),
+      ].filter((e) => typeof e === "string");
+      // This machine's other ports are closed to a contract unless its namespace has
+      // allowLocalhost in security.namespace.<namespace>.policy
+      const nsPolicy = ActiveOptions.get<any>("security", {})?.namespace?.[String(tx?.$namespace ?? "").toLowerCase()]?.policy;
+      return runSandboxed(
+        {
+          mode: "storage",
+          denyLocalhost: nsPolicy?.allowLocalhost !== true,
+          // Custom databases are shut like the rest of the port unless the node opts in with storage: "open" or this namespace has allowDatabases in its policy
+          customDatabases: policy.storage === "open" || nsPolicy?.allowDatabases === true || (Array.isArray(nsPolicy?.allowDatabases) && nsPolicy.allowDatabases.includes("*")),
+          // allowDatabases can instead be a list of database names
+          databases: Array.isArray(nsPolicy?.allowDatabases) ? nsPolicy.allowDatabases.filter((d: unknown) => typeof d === "string") : undefined,
+          // What one contract call may use: how long a request may take and how much it may read.
+          // security.contractEgress.timeoutSeconds (5) and .maxResponseBytes (2 MB)
+          limits: {
+            // A namespace can have its own (security.namespace.<ns>.policy.requestTimeoutSeconds / .maxResponseBytes)
+            timeoutSeconds: Number(nsPolicy?.requestTimeoutSeconds) > 0 ? Number(nsPolicy.requestTimeoutSeconds) : Number(policy.timeoutSeconds) > 0 ? Number(policy.timeoutSeconds) : 5,
+            maxResponseBytes: Number(nsPolicy?.maxResponseBytes) > 0 ? Number(nsPolicy.maxResponseBytes) : Number(policy.maxResponseBytes) > 0 ? Number(policy.maxResponseBytes) : 2 * 1024 * 1024,
+          },
+          spent: { bytes: 0 },
+          inflight: new Set<() => void>(),
+          ended: { value: false },
+          allow: entries.length ? (destination) => ContractScope.listed(entries, destination) : undefined,
+          onBlocked: (what) =>
+            ActiveLogger.warn(`Contract refused access to ${what} (${umid})`),
+        },
+        fn
+      );
+    }
     return runSandboxed(
       { onBlocked: (what) => this.markHostDependent(umid, `blocked:${what}`) },
       fn
     );
+  }
+
+  /**
+   * Tell the shared guard which ports are this node's storage. Read from the
+   * config each time (it is a few property reads) and passed on only when it
+   * has changed.
+   *
+   * @private
+   */
+  private protectedStorage = "";
+  private protectStorage(): void {
+    const db = ActiveOptions.get<any>("db", {}) || {};
+    const ports: Array<number | string | undefined> = [db.selfhost?.port];
+    try {
+      if (db.url) ports.push(new URL(db.url).port || undefined);
+    } catch {
+      // not a URL
+    }
+    // Further ports to keep contracts off (security.contractEgress.protect)
+    const extra = ActiveOptions.get<any>("security", {})?.contractEgress?.protect;
+    if (Array.isArray(extra)) ports.push(...extra);
+    const names = [
+      db.database, db.event, db.error, db.error && `${db.error}_archive`,
+      "activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror",
+      "activeledgererrors_archive", "activeledgererror_archive",
+    ];
+    // The ports and the node's own database names, so a change to either is picked up
+    const key = ports.join(",") + "|" + names.join(",");
+    if (key === this.protectedStorage) return;
+    this.protectedStorage = key;
+    ContractScope.protectPorts(ports);
+    // The node's own databases are out of bounds to every contract, listed or not
+    ContractScope.neverDatabases(names);
   }
 
   /**
@@ -510,6 +591,18 @@ export class VirtualMachine
   }
 
   /**
+   * The lock fields of the streams this execution was loaded with, as they
+   * were before the contract ran (a private copy, see ReadLock.snapshot)
+   *
+   * @param {string} umid
+   */
+  public getLoadedLocks(
+    umid: string
+  ): ((stream: string) => ActiveDefinitions.IMeta | undefined) | undefined {
+    return this.contractReferences?.[umid]?.lockOf;
+  }
+
+  /**
    * The consensus time for event ids, from build 40300. The events travel in
    * the `:umid` document, which supernodes must write identically so a hybrid
    * can check it against a signed hash; a local clock in the ids made every
@@ -540,6 +633,8 @@ export class VirtualMachine
       contractName,
       contractLocation: payload.contractLocation,
       inputs: payload.inputs,
+      // Copied now, before the contract can touch the streams it is handed
+      lockOf: ReadLock.snapshot(payload.inputs, payload.outputs),
       tx: payload.transaction,
       key: payload.key,
     };
@@ -587,7 +682,7 @@ export class VirtualMachine
           contractData,
           payload.signatures,
           payload.key,
-          this.emitter,
+          this.contractEmitter(),
           this.selfHost,
         ];
 
@@ -659,6 +754,13 @@ export class VirtualMachine
             );
           }
         }
+
+        // From here the host only reaches the contract through a facade that runs every call
+        // inside the contract's sandbox (see scopedContract)
+        this.smartContracts[payload.umid] = this.scopedContract(
+          payload.umid,
+          this.smartContracts[payload.umid]
+        );
 
         // Set the maximum timeout for this contract execution
         this.maxTimeout = new Date();
@@ -1031,24 +1133,138 @@ export class VirtualMachine
   // ? Not sure if this is needed??
   // public getVolatile() {}
 
+  /**
+   * A contract reads a document: refused when the stream's read lock does
+   * not allow the namespace of the transaction that is running. The
+   * namespace comes from the engine's own record of the execution, never
+   * from anything the contract passes.
+   *
+   * @private
+   */
+  private contractRead(db: any, umid: string, id: string): Promise<any> {
+    const reference = this.contractReferences?.[umid];
+    return ReadLock.read(db, id, reference?.tx?.$namespace, reference?.lockOf);
+  }
+
+  /**
+   * The event emitter a contract is given. The real one carries the host's own listeners, and
+   * the answers to getVolatile / getStreamData are emitted from host work outside the
+   * sandbox, so a listener the contract adds would run there. Each listener is bound to the
+   * contract context it was added in, and the contract gets only these few methods.
+   *
+   * @private
+   */
+  private contractEmitter(): EventEmitter {
+    const emitter = this.emitter;
+    const bound = new WeakMap<Function, Function[]>();
+    const add = (method: "on" | "once") => (event: string, listener: (...args: any[]) => void) => {
+      const wrapped = bindToContext(listener);
+      const list = bound.get(listener) || [];
+      list.push(wrapped);
+      bound.set(listener, list);
+      emitter[method](event, wrapped);
+      return facade;
+    };
+    const remove = (event: string, listener: (...args: any[]) => void) => {
+      // One registration, the latest, as an EventEmitter does
+      const wrapped = (bound.get(listener) || []).pop();
+      if (wrapped) emitter.removeListener(event, wrapped as any);
+      return facade;
+    };
+    const facade: any = Object.freeze({
+      on: add("on"),
+      addListener: add("on"),
+      once: add("once"),
+      off: remove,
+      removeListener: remove,
+      emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),
+    });
+    return facade;
+  }
+
+  /**
+   * The contract as the rest of the VM sees it. Every property read and method call goes
+   * through the sandbox, not only the main ones (vote, commit...) that already did: the VM
+   * also calls getTimeout, shutdown, the export methods and others, and a contract can
+   * replace any of them with code that would otherwise run outside its sandbox. Objects it
+   * returns are copied to plain data inside the sandbox, so a toJSON or getter is not the
+   * host's to run later.
+   *
+   * @private
+   */
+  private scopedContract(umid: string, instance: any): any {
+    if (!instance || typeof instance !== "object") return instance;
+    const plain = (value: any): any => {
+      // Inside any contract sandbox, the storage guard's or a hybrid's network block: what the
+      // host serialises later is plain data. Outside one (the default namespace) it is as returned
+      if (!ContractScope.current()) return value;
+      if (value && typeof value === "object") {
+        try {
+          return JSON.parse(JSON.stringify(value));
+        } catch {
+          // Not plain data (a cycle, a BigInt): left as it was, as it is without the guard
+          return value;
+        }
+      }
+      return value;
+    };
+    const wrappers = new Map<PropertyKey, Function>();
+    const proxy: any = new Proxy(instance, {
+      get: (target, prop) => {
+        const value = this.sandboxed(umid, () => Reflect.get(target, prop, target));
+        if (typeof value !== "function") return value;
+        let wrapper = wrappers.get(prop);
+        if (!wrapper || (wrapper as any).__target !== value) {
+          wrapper = (...args: unknown[]) =>
+            this.sandboxed(umid, () => {
+              const result = value.apply(target, args);
+              // A method that returns the contract itself returns the facade
+              if (result === target) return proxy;
+              // then is read once (normalise), and a thenable is awaited inside the sandbox
+              const settled = normalise(result);
+              return settled !== result ? settled.then(plain) : plain(result);
+            });
+          (wrapper as any).__target = value;
+          wrappers.set(prop, wrapper);
+        }
+        return wrapper;
+      },
+    });
+    return proxy;
+  }
+
   private listenForVolatile(): void {
-    this.emitter.on("getVolatile", (umid: string, streamId: string) =>
+    this.emitter.on("getVolatile", (umidIn: string, streamIdIn: string) => {
+      // These came from the contract. Made plain strings here, while still inside
+      // its sandbox, so that what the host work below touches is data and not an
+      // object whose toString or indexOf is the contract's own code, which would
+      // run outside the sandbox.
+      const umid = String(umidIn), streamId = String(streamIdIn);
       // Host work: never inside the contract's egress sandbox
-      runUnsandboxed(async () => {
+      return runUnsandboxed(async () => {
         // Volatile is per node. A hybrid reads its own copy, as every node
         // does; what a contract does with a value that may differ is up to
         // the contract.
         const execution = this.executions[umid];
         try {
-          const volatile: ActiveDefinitions.IVolatile = await (
-            execution?.db || this.db
-          ).get(`${streamId}:volatile`);
+          const db = execution?.db || this.db;
+          const volatile: ActiveDefinitions.IVolatile = await this.contractRead(
+            db,
+            umid,
+            `${streamId}:volatile`
+          );
+          // The store answers a missing document with its error body, not an
+          // error. That is not volatile data (a contract that wrote it back
+          // would store the error), it is a volatile that is not there.
+          if (!volatile || (volatile as any).notFound === true) {
+            throw new Error("Volatile Data - Not Found");
+          }
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
         } catch (error) {
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
         }
-      })
-    );
+      });
+    });
   }
 
   /**
@@ -1057,13 +1273,18 @@ export class VirtualMachine
    * @private
    */
   private listenForFetch(): void {
-    this.emitter.on("getStreamData", (umid: string, streamId: string) =>
+    this.emitter.on("getStreamData", (umidIn: string, streamIdIn: string) => {
+      // As getVolatile: plain strings, made inside the contract's sandbox
+      const umid = String(umidIn), streamId = String(streamIdIn);
       // Host work: never inside the contract's egress sandbox
-      runUnsandboxed(async () => {
+      return runUnsandboxed(async () => {
         try {
-          const data: ActiveDefinitions.IStream = await (
-            this.executions[umid]?.db || this.db
-          ).get(streamId);
+          const db = this.executions[umid]?.db || this.db;
+          const data: ActiveDefinitions.IStream = await this.contractRead(
+            db,
+            umid,
+            streamId
+          );
           this.emitter.emit(
             `getStreamDataFetched-${umid}${streamId}`,
             null,
@@ -1072,8 +1293,8 @@ export class VirtualMachine
         } catch (error) {
           this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
         }
-      })
-    );
+      });
+    });
   }
 
   /**

@@ -1,6 +1,7 @@
 import { VirtualMachine } from "../packages/protocol/src/protocol/vm";
 import { installSandbox } from "../packages/protocol/src/protocol/sandbox";
 import { ActiveOptions } from "@activeledger/activeoptions";
+import * as http from "http";
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
@@ -727,17 +728,130 @@ exports.default = FakeContract;
       expect(vm.getExecutionReport(umid).dependence).to.deep.equal(["blocked:http"]);
     });
 
-    it("does not sandbox a supernode execution", async () => {
+    it("does not block a supernode execution's network use, except to the node's storage", async () => {
       const { umid, contract } = await start("", "ns", {
         __execution: { supernode: true },
       });
       contract.verify = () => {
-        const req = require("http").get("http://127.0.0.1:1/");
+        // Any other destination is left alone
+        const req = require("http").get("http://127.0.0.1:2/");
         req.on("error", () => undefined);
         return true;
       };
       expect(await vm.verify(false, umid)).to.equal(true);
       expect(vm.getExecutionReport(umid).supernodeDependent).to.equal(false);
+    });
+
+    // A real server standing in for the node's storage, configured as such
+    const withStorage = async (policy: any, run: (port: number, hits: () => number) => Promise<void>) => {
+      let n = 0;
+      const server = http.createServer((_q, s) => { n++; s.end("{}"); });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.address() as any).port;
+      const db = ActiveOptions.get<any>("db", undefined), security = ActiveOptions.get<any>("security", undefined), build = ActiveOptions.get<any>("build", undefined);
+      ActiveOptions.set("db", { selfhost: { port } });
+      ActiveOptions.set("security", policy(port));
+      ActiveOptions.set("build", 50600);
+      try { await run(port, () => n); } finally {
+        ActiveOptions.set("db", db); ActiveOptions.set("security", security); ActiveOptions.set("build", build); server.close();
+      }
+    };
+    const callFrom = async (path: string, port: number) => {
+      const { umid, contract } = await start("", "ns", { __execution: { supernode: true } });
+      contract.verify = () => { require("http").get(`http://127.0.0.1:${port}${path}`).on("error", () => undefined); return true; };
+      try { await vm.verify(false, umid); return "ran"; } catch { return "refused"; }
+    };
+
+    it("refuses a supernode execution the node's storage port", async () => {
+      await withStorage(() => ({}), async (port, hits) => {
+        expect(await callFrom("/activeledger/x:volatile", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(0);
+      });
+    });
+
+    it("lets a namespace the node's config allows reach a listed storage database, and not its others", async () => {
+      await withStorage((port: number) => ({ contractEgress: { storage: "deny", allow: { ns: [`127.0.0.1:${port}/activeledger_wallets`] } } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a:volatile", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
+    it("is closed by default: a custom database needs a list entry", async () => {
+      await withStorage(() => ({}), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(0);
+      });
+    });
+
+    it("allowDatabases opens custom databases for that namespace only, never the node's own or volatile", async () => {
+      await withStorage(() => ({ namespace: { ns: { policy: { allowDatabases: true } } } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/a:volatile", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+      await withStorage(() => ({ namespace: { other: { policy: { allowDatabases: true } } } }), async (port) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("refused");
+      });
+    });
+
+    it("allowDatabases as a list opens only the databases named, exactly", async () => {
+      await withStorage(() => ({ namespace: { ns: { policy: { allowDatabases: ["activeledger_wallets"] } } } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger_wallets2/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_deposits/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/a:volatile", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
+    it("allowDatabases [\"*\"] opens every custom database, and still not the node's own", async () => {
+      await withStorage(() => ({ namespace: { ns: { policy: { allowDatabases: ["*"] } } } }), async (port) => {
+        expect(await callFrom("/activeledger_anything/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+      });
+    });
+
+    it("with storage open, opens a custom database with no list at all, and still refuses the node's own and volatile", async () => {
+      await withStorage(() => ({ contractEgress: { storage: "open" } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/a:volatile", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/_backup", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
+    it("does not extend one namespace's list to another", async () => {
+      await withStorage((port: number) => ({ contractEgress: { storage: "deny", allow: { other: [`127.0.0.1:${port}`] } } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("refused");
+        expect(hits()).to.equal(0);
+      });
+    });
+
+    it("is not applied below build 50600, so a network that has not raised its build behaves as before", async () => {
+      await withStorage(() => ({}), async (port, hits) => {
+        ActiveOptions.set("build", 50300);
+        expect(await callFrom("/activeledger/x", port)).to.equal("ran");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
+    it("lets security.contractEgress.storage = allow switch the guard off", async () => {
+      await withStorage(() => ({ contractEgress: { storage: "allow" } }), async (port, hits) => {
+        expect(await callFrom("/anything", port)).to.equal("ran");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
     });
   });
 
@@ -758,6 +872,35 @@ exports.default = FakeContract;
       const reply = once(emitter, "volatileFetched-u1s1");
       emitter.emit("getVolatile", "u1", "s1");
       expect(await reply).to.deep.equal([null, { v: 1 }]);
+    });
+
+    it("answers getVolatile with an error, not the store's error body, when the store says not found", async () => {
+      // The store answers a missing document with { notFound: true, ... } and no error
+      const machine = new VirtualMachine("h", { get: async () => ({ notFound: true, code: "LEVEL_NOT_FOUND" }) } as any, {} as any);
+      const emitter = (machine as any).emitter;
+      const reply = once(emitter, "volatileFetched-u1s3");
+      emitter.emit("getVolatile", "u1", "s3");
+      const [err, data] = await reply;
+      expect(err).to.be.instanceOf(Error);
+      expect(err.message).to.contain("Volatile Data - Not Found");
+      expect(data).to.equal(undefined);
+    });
+
+    it("turns a contract's stream id into a plain string while still in its sandbox (its own toString must not run outside it)", async () => {
+      const { ContractScope } = require("@activeledger/activeutilities");
+      const { runSandboxed } = require("../packages/protocol/src/protocol/sandbox");
+      for (const event of ["getStreamData", "getVolatile"]) {
+        const machine = new VirtualMachine("h", fakeDb({}) as any, {} as any);
+        const emitter = (machine as any).emitter;
+        const where: boolean[] = [];
+        const evil: any = { toString: () => { where.push(!!ContractScope.current()); return "s9"; }, indexOf: () => { where.push(!!ContractScope.current()); return -1; } };
+        const reply = once(emitter, event === "getVolatile" ? "volatileFetched-u1s9" : "getStreamDataFetched-u1s9");
+        runSandboxed({ mode: "storage", onBlocked: () => undefined }, () => emitter.emit(event, "u1", evil));
+        await reply;
+        // Whatever of the contract's code ran, it ran inside its sandbox, and the host used plain strings
+        expect(where.length, event).to.be.greaterThan(0);
+        expect(where.every(Boolean), event).to.equal(true);
+      }
     });
 
     it("answers getVolatile with the error when the stream has none", async () => {
