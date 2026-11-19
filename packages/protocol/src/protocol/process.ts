@@ -551,12 +551,34 @@ export class Process extends EventEmitter {
   } = {};
 
   /**
+   * Build level from which a contract is only ever run for the namespace it
+   * lives in. Before it, the path cache was keyed by `$contract` alone, so a
+   * contract resolved once under one namespace ran for any `$namespace` that
+   * named the same id (and only on a warm worker: a cold one looked in the
+   * namespace directory and refused).
+   */
+  public static readonly NAMESPACE_BINDING_BUILD = 50600;
+
+  /**
+   * The contract path cache key for a transaction.
+   *
+   * @param {string} namespace
+   * @param {string} contract The transaction's `$contract`
+   */
+  public static contractCacheKey(namespace: string, contract: string): string {
+    return ActiveOptions.get<number>("build", 0) >=
+      Process.NAMESPACE_BINDING_BUILD
+      ? `${namespace}\u0000${contract}`
+      : contract;
+  }
+
+  /**
    * Clears the contract path cache
    */
   public static clearContractPathCache(contractId?: string) {
     if (contractId) {
       for (const key of Object.keys(Process.contractPathCache)) {
-        if (key === contractId || Process.contractPathCache[key].includes(contractId)) {
+        if (key === contractId || key.endsWith(`\u0000${contractId}`) || Process.contractPathCache[key].includes(contractId)) {
           delete Process.contractPathCache[key];
         }
       }
@@ -626,12 +648,18 @@ export class Process extends EventEmitter {
     const setupLocation = async () => {
       let contract = this.entry.$tx.$contract;
       this.contractId = contract.split("@")[0];
+      // Cached per namespace, so a path found for one namespace is never
+      // served for a transaction that names another
+      const cacheKey = Process.contractCacheKey(
+        this.entry.$tx.$namespace,
+        this.entry.$tx.$contract
+      );
 
       try {
         // This Cache won't always fetch latest version need to "defeat it"
         if (
-          !Process.contractPathCache[this.entry.$tx.$contract] ||
-          (contractVersion && !Process.contractPathCache[this.entry.$tx.$contract].endsWith(`${contractVersion}.js`))
+          !Process.contractPathCache[cacheKey] ||
+          (contractVersion && !Process.contractPathCache[cacheKey].endsWith(`${contractVersion}.js`))
         ) {
           let namespacePath = "";
 
@@ -706,12 +734,11 @@ export class Process extends EventEmitter {
           // used in the transaction
           // This needs to be here rather than where trueConrtractPath is as
           // we need the contract ID at that point to look up the latest version
-          Process.contractPathCache[this.entry.$tx.$contract] = await fs.realpath(
+          Process.contractPathCache[cacheKey] = await fs.realpath(
             `${namespacePath}/${contract}.js`
           );
         }
-        this.contractLocation =
-          Process.contractPathCache[this.entry.$tx.$contract];
+        this.contractLocation = Process.contractPathCache[cacheKey];
 
         // Locks are checked on every resolution, never only on a cache miss:
         // a lock written after a version was cached (or after an update cleared
