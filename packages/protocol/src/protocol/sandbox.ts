@@ -59,6 +59,8 @@ export interface ISandboxContext {
   allow?(destination: IContractDestination): boolean;
   /** In "storage" mode: custom databases are open without a list */
   customDatabases?: boolean;
+  /** In "storage" mode: custom databases this namespace may use by name */
+  databases?: string[];
   /** In "storage" mode: this machine's other ports are closed unless `allow` lists them */
   denyLocalhost?: boolean;
   limits?: { timeoutSeconds: number; maxResponseBytes: number };

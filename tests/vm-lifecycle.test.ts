@@ -800,6 +800,18 @@ exports.default = FakeContract;
       });
     });
 
+    it("allowDatabases as a list opens only the databases named, exactly", async () => {
+      await withStorage(() => ({ namespace: { ns: { policy: { allowDatabases: ["activeledger_wallets"] } } } }), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger_wallets2/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_deposits/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/a:volatile", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
     it("with storage open, opens a custom database with no list at all, and still refuses the node's own and volatile", async () => {
       await withStorage(() => ({ contractEgress: { storage: "open" } }), async (port, hits) => {
         expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");

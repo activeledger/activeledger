@@ -69,6 +69,8 @@ export interface IContractScope {
    * Set unless the contract's namespace has `allowLocalhost` in its security policy.
    */
   denyLocalhost?: boolean;
+  /** Custom databases this contract's namespace may use, by exact name (allowDatabases as a list) */
+  databases?: string[];
   /** Custom databases (a name starting activeledger with more after it) are open to contracts without a list */
   customDatabases?: boolean;
   /** What one contract call may use: the longest a request may take, and the most response it may read */
@@ -298,7 +300,7 @@ export class ContractScope {
         return undefined;
       }
     } else if (!destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body, destination.method)) {
-      if (scope.allow?.(destination) || (scope.customDatabases && ContractScope.isCustomDatabase(destination.path))) {
+      if (scope.allow?.(destination) || (scope.customDatabases && ContractScope.isCustomDatabase(destination.path)) || ContractScope.isNamedDatabase(destination.path, scope.databases)) {
         return ContractScope.approval(scope, destination);
       }
     }
@@ -366,6 +368,18 @@ export class ContractScope {
     }
     const first = decoded.split("/").filter(Boolean)[0] ?? "";
     return /^activeledger[A-Za-z0-9_-]{1,64}$/.test(first);
+  }
+
+  /** Whether the path's database is one of these names (compared exactly, and still a custom database name) */
+  public static isNamedDatabase(path: string, names: string[] | undefined): boolean {
+    if (!names || names.length === 0 || !ContractScope.isCustomDatabase(path)) return false;
+    let first = "";
+    try {
+      first = decodeURIComponent(ContractScope.normalPath(path)).split("/").filter(Boolean)[0] ?? "";
+    } catch {
+      return false;
+    }
+    return names.indexOf(first) !== -1;
   }
 
   /** localhost, 127.0.0.1 and ::1 are one host */

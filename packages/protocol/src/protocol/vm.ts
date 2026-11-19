@@ -293,6 +293,8 @@ export class VirtualMachine
           denyLocalhost: nsPolicy?.allowLocalhost !== true,
           // Custom databases are shut like the rest of the port unless the node opts in with storage: "open" or this namespace has allowDatabases in its policy
           customDatabases: policy.storage === "open" || nsPolicy?.allowDatabases === true,
+          // allowDatabases can instead be a list of database names
+          databases: Array.isArray(nsPolicy?.allowDatabases) ? nsPolicy.allowDatabases.filter((d: unknown) => typeof d === "string") : undefined,
           // What one contract call may use: how long a request may take and how much it may read.
           // security.contractEgress.timeoutSeconds (5) and .maxResponseBytes (2 MB)
           limits: {

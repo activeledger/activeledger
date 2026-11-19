@@ -1196,7 +1196,11 @@ export default class Contract extends Standard {
             if (pathOf.split("/").filter(Boolean).length >= 2) {
               report(node, `The node's own database '${database}' is forbidden`);
             }
-          } else if (/^activeledger[a-z0-9_-]+$/.test(database) && policy.allowDatabases !== true) {
+          } else if (
+            /^activeledger[a-z0-9_-]+$/.test(database) &&
+            policy.allowDatabases !== true &&
+            !(Array.isArray(policy.allowDatabases) && policy.allowDatabases.some((d: unknown) => typeof d === "string" && d.toLowerCase() === database))
+          ) {
             report(node, `A custom database needs allowDatabases for the namespace`);
           }
         }
