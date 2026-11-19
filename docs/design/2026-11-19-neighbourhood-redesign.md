@@ -76,7 +76,17 @@ Read from `packages/network/src/network/` on master (5.7.1).
    header on the status knock. Build, version and which optional features
    a peer supports (`p2pStream`, slim and quiet replies) are learned other
    ways or assumed.
-6. **The pairing logic is only tested live.** It is a set of static fields
+6. **Discovery polls everyone, forever, while any neighbour is missing.**
+   `healthTimer` re-arms every 300 ms until all neighbours are home, and
+   each tick `checkNeighbourhood` knocks *every* neighbour, including the
+   ones already home. With one node down for a long time, every other node
+   sends a status knock to every neighbour four times a second for as long as
+   it stays down. Read from the code, not measured; the first measurement to
+   take is status knocks per minute on a four-node network with one node
+   stopped. The same code also never uses what the P2P layer already knows:
+   `P2PClient` has connect and close events and reconnects every 2 s on its
+   own.
+7. **The pairing logic is only tested live.** It is a set of static fields
    on `Maintain`, timers and HTTP calls, so a start-up ordering bug needs a
    multi-node run to see (the soak of 443 staggered starts found the
    first-transaction timeout at about 5% and persistent lag at 1-2%).
@@ -131,25 +141,64 @@ reads it changes. The reason is logged once per change and shown in the
 node status (`/a/status` already lists neighbours and `isHome`), so an
 operator sees why a node never becomes ready.
 
-### 3. Discovery both ways
+### 3. Liveness from connections and traffic, not polling
 
-- A valid inbound hello or status knock from a configured neighbour means
-  that neighbour is up. Respond, then knock it back immediately instead of
-  waiting for the next poll.
-- Keep a poll as the fallback, with backoff and jitter rather than a fixed
-  300 ms.
+Stop asking "are you there?" on a timer. A neighbour is known to be up from
+things this node already sees:
+
+- **The P2P connection.** `P2PClient` emits connect and close. A connect to a
+  configured neighbour starts one hello (section 1); a close marks it
+  `unreachable` and the client's own 2 s reconnect brings it back. Inbound P2P
+  connections count the same way.
+- **Any answer or message from a neighbour.** A vote, a reply or a frame from
+  a configured neighbour means it is up. `Host.heardFrom` already tracks this
+  per transaction; the same fact updates the neighbour's last-heard time.
+- **A failed send.** Already how a neighbour is marked down
+  (`markUnavailable`); it stays.
+- **An inbound hello or status knock** from a configured neighbour: it is up,
+  so hello it back at once.
+
+No periodic status knock in steady state (already true after discovery) and
+none during discovery either. Two cases still need a timer, both with backoff
+and jitter, not a fixed 300 ms: a neighbour on HTTP only (`p2pStream` off),
+and a neighbour with no P2P connection yet (the client gives up retrying a
+never-connected peer after ten minutes, so something must still find it
+later). An idle network has no traffic to learn from; the P2P connection state
+covers it, and a TCP keepalive on that socket is the heartbeat if one is
+needed.
+
+Expected effect: no knock storm while a node is down, a faster start (a
+neighbour is found when its socket connects, not on the next poll), and less
+load on the host process during start-up. To be measured, not assumed.
 
 ### 4. No gap between "up" and "noticed"
 
-When a neighbour becomes `home`, every transaction still pending on this
-node (`processPending`, not finished) is sent to it once, the way
-`armResend` already sends to silent nodes. This closes problem 1 for
-transactions that arrive during start-up. `armResend`'s candidate list
-widens from "was home, now silent" to "configured, not yet home".
+When a neighbour becomes `home`, every transaction still pending on this node
+(`processPending`, not finished) is sent to it once, the way `armResend`
+already sends to silent nodes. `armResend`'s candidate list widens from "was
+home, now silent" to "configured, not yet home".
 
-Smaller alternative if the full replay is too much: only widen `armResend`.
-That bounds the gap by the resend delay (250 ms doubling, five tries)
-instead of closing it.
+Chosen over only widening the resend because the resend is bounded (five
+tries from 250 ms, doubling, about 8 s in all), so a neighbour that comes up
+30 s late is missed, while replay on becoming home has no timeout.
+
+What replay does not cover: a transaction already committed before the
+neighbour was noticed is no longer pending. SPI and restore repair that today
+(the neighbour answers "Stream(s) not found" until they do). Whether to add a
+catch-up when a neighbour becomes home, for example asking restore to check
+recent umids, is open and should be decided from the soak numbers.
+
+### Ready means quorum, complete means everyone
+
+`Stable` today means left and right are found. Replace the readiness test
+with: this node plus its home neighbours reaches what `consensus.reached`
+needs, since below that the node cannot commit anything. Keep a second
+signal, `complete`, for every configured neighbour found. The "Neighbourhood
+fully discovered" log and the test harness's wait use `complete`; the start-up
+display's "ready" and acceptance of transactions use quorum. Waiting for
+everyone would mean one permanently down node keeps the network from ever
+reporting ready. To check before building: whether the consensus percentage
+is taken over the configured neighbourhood or over the nodes currently up.
 
 ### 5. The state machine as its own module
 
@@ -188,7 +237,8 @@ start so that is a second instance, not a rewrite.
 2. The deterministic state machine and its tests (no behaviour change).
 3. Pending transactions sent when a neighbour becomes home (problem 1).
 4. `hello`, signed, with the fallback.
-5. Discovery both ways and backoff.
+5. Liveness from connections and traffic, polling removed, with backoff for
+   the cases that still need a timer.
 6. Per-chain neighbourhoods, when multi-chain needs them.
 
 Phases 1-3 fix the known failure and add the tests, and can ship before any
@@ -210,16 +260,30 @@ protocol change.
 
 ## Open questions
 
-- Replay all pending transactions on becoming home (phase 3), or only widen
-  the resend candidates. The first closes the gap; the second is smaller.
-- Whether `Stable` should mean "every configured neighbour found" instead of
-  "left and right found". It would remove a class of start-up races but
-  changes when a node reports ready, which the CLI start-up display and the
-  test harness both use.
+- Whether a catch-up (restore checking recent umids) should run when a
+  neighbour becomes home, beyond replaying pending transactions. Decide from
+  the soak.
+- How the consensus percentage is counted (configured neighbourhood or nodes
+  currently up), which decides what "quorum ready" means. Check in
+  `Process` before building.
+- What authenticates the sender of a P2P frame. The frame header carries a
+  40-character sender reference, which is a claim; treating inbound traffic
+  as proof of life must use only checks that already hold (the firewall
+  check by address, applied when the frame is processed). Verify.
+- The ten-minute limit on P2P reconnection for a never-connected peer: keep,
+  lengthen, or replace with the backoff timer above.
 - Whether the ring (left/right) is still worth keeping. It is used to
   forward non-broadcast `init`; removing it is a separate change and is not
   proposed here.
-- Whether `hello` should be reachable by non-neighbours (a limited form for
-  a load balancer or monitor) or only by configured neighbours.
+- Whether `hello` should be reachable by non-neighbours (a limited form for a
+  load balancer or monitor) or only by configured neighbours.
 - How a node learns a neighbour's required build, so `outdated` is more than
   a local comparison.
+
+## Measurements to take first
+
+On a four-node network on one machine: status knocks per minute with all
+nodes up, and with one stopped; time from process start to ready (quorum) and
+to complete, for staggered starts; and the soak (first-transaction timeouts
+about 5%, persistent lag 1-2% before). The same numbers after each phase show
+whether it helped.
