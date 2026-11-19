@@ -1,6 +1,8 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.7.2] - 2026-11-19
+
+A fix to the deploy scan only. Nothing needs changing on upgrade from 5.7.1.
 
 ### Fixed
 - **The deploy scan no longer refuses a stream id passed straight to `getAnyStreamReadOnly`.** From build `50600` the
