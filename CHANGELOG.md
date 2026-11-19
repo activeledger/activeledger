@@ -12,10 +12,15 @@
   by the failed send or request that finds it.
 
 ### Added
-- **A neighbour says why it is not home.** `GET /a/status` lists each neighbour with a `state` (`home`,
-  `unknown`, `unreachable` or `mismatch`), the `reason` when there is one (for example `chain 2`), and `since`, the
-  time the state last changed, next to the existing `isHome`. `neighbourhood.knocks` reports how many status requests
-  this node has sent and received since it started.
+- **A neighbour says why it is not home, and the node says more about itself.** `GET /a/status` lists each neighbour
+  with its `state` (`home`, `unknown`, `unreachable` or `mismatch`) next to the existing `isHome`. A caller on this
+  machine (loopback) also gets, per neighbour, the `reason` when there is one (for example `chain 2`), `since` (when
+  the state last changed) and `p2p` (`connected`, `disconnected`, or `off` when `p2pStream` is off); `node` (`chain`,
+  `build`, `version`, `uptimeSeconds`); `quorum` (`configured` nodes, how many are `home` counting this node, the
+  votes `needed` for consensus, and whether it is `reached`; the percentage is taken over the configured
+  neighbourhood, as the commit phase does); `pending` (transactions this node is holding in flight); and
+  `neighbourhood.knocks`, how many status requests it has sent and received since it started. Anyone else gets only
+  `isHome` and `state`.
 
 ## [5.7.1] - 2026-11-19
 

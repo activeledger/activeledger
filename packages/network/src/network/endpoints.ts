@@ -28,6 +28,8 @@ import {
   ActiveCacheManager,
   ActiveChain,
 } from "@activeledger/activeoptions";
+import * as fs from "fs";
+import * as path from "path";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -1706,6 +1708,10 @@ export class Endpoints {
               // route answers anyone who can reach the port
               ...(local && neighbour.reason ? { reason: neighbour.reason } : {}),
               ...(local ? { since: neighbour.since } : {}),
+              // The P2P connection to it: up, down, or not used (p2pStream off)
+              ...(local
+                ? { p2p: neighbour.p2pClient ? (neighbour.p2pClient.ready ? "connected" : "disconnected") : "off" }
+                : {}),
             };
           }
         }
@@ -1732,10 +1738,59 @@ export class Endpoints {
                 : {}),
             },
             pem: Home.publicPem,
+            ...(local ? Endpoints.localStatus(host, neighbourhood, keys) : {}),
           },
         });
       }
     });
+  }
+
+  /** The package version, read once */
+  private static packageVersion?: string;
+
+  /**
+   * The votes consensus needs, worked out the way the commit phase does it:
+   * the percentage is taken over the configured neighbourhood, not over the
+   * nodes that happen to be up.
+   */
+  public static votesNeeded(configured: number, percent: number): number {
+    for (let votes = 0; votes <= configured; votes++) {
+      if ((votes / configured) * 100 >= percent) return votes;
+    }
+    return configured;
+  }
+
+  /**
+   * Detail for a caller on this machine: what this node is, how many it can
+   * reach against how many consensus needs, and what it is holding.
+   */
+  private static localStatus(host: Host, neighbourhood: any, keys: string[]): object {
+    if (Endpoints.packageVersion === undefined) {
+      try {
+        Endpoints.packageVersion = JSON.parse(
+          fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8")
+        ).version;
+      } catch {
+        Endpoints.packageVersion = "";
+      }
+    }
+    const configured = keys.filter((key) => !neighbourhood[key].graceStop).length;
+    const home = keys.filter((key) => !neighbourhood[key].graceStop && neighbourhood[key].isHome).length;
+    const needed = Endpoints.votesNeeded(
+      configured,
+      ActiveOptions.get<any>("consensus", {}).reached
+    );
+    return {
+      node: {
+        chain: ActiveChain.idOf(ActiveOptions.get<any>("chain", null)) ?? null,
+        build: ActiveOptions.get<number>("build", 0),
+        version: Endpoints.packageVersion || null,
+        uptimeSeconds: Math.floor(process.uptime()),
+      },
+      // This node counts itself, as consensus does
+      quorum: { configured, home, needed, reached: home >= needed },
+      pending: typeof (host as any).pendingCount === "function" ? (host as any).pendingCount() : 0,
+    };
   }
 
   /**

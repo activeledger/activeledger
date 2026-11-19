@@ -48,6 +48,8 @@ const counts = async (n: any) => (await get(`${n.baseUrl}/a/status`)).neighbourh
     await window("ONE NEVER STARTED", [0, 1, 2]);
     const st = await get(`${nodes()[0].baseUrl}/a/status`);
     console.log("node 1 sees:", JSON.stringify(Object.values(st.neighbourhood.neighbours).map((n: any) => `${n.state}${n.reason ? " (" + n.reason + ")" : ""}`)));
+    console.log("node 1 p2p:", JSON.stringify(Object.values(st.neighbourhood.neighbours).map((n: any) => n.p2p)));
+    console.log("node 1 node:", JSON.stringify(st.node), "quorum:", JSON.stringify(st.quorum), "pending:", st.pending);
   } finally {
     await harness.stop();
   }

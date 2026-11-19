@@ -758,11 +758,15 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       // A caller from this machine gets the detail: counts, and since
       const reply = await Endpoints.status(host, "NA", undefined, "127.0.0.1");
       expect(reply.statusCode).to.equal(200);
-      const { knocks, ...rest } = reply.content.neighbourhood;
+      const { node, quorum, pending, ...content } = reply.content;
+      expect(node).to.have.all.keys("chain", "build", "version", "uptimeSeconds");
+      expect(quorum).to.have.all.keys("configured", "home", "needed", "reached");
+      expect(pending).to.equal(0);
+      const { knocks, ...rest } = content.neighbourhood;
       expect(knocks).to.have.all.keys("sent", "received");
       expect(knocks.sent).to.be.a("number");
       expect(knocks.received).to.be.a("number");
-      expect({ ...reply.content, neighbourhood: rest }).to.deep.equal({
+      expect({ ...content, neighbourhood: rest }).to.deep.equal({
         status: "STATUS",
         reference: "me",
         left: "L",
@@ -770,8 +774,8 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         neighbourhood: {
           // A neighbour that carries no state yet reads as home or unknown
           neighbours: {
-            a: { isHome: true, state: "home", since: undefined },
-            b: { isHome: false, state: "unknown", since: undefined },
+            a: { isHome: true, state: "home", since: undefined, p2p: "off" },
+            b: { isHome: false, state: "unknown", since: undefined, p2p: "off" },
           },
         },
         pem: "PEM",
