@@ -156,6 +156,8 @@ export class ActiveRequest {
       // the second time it was asked cannot change what was approved.
       reqUrl = String(reqUrl);
       type = String(type ?? "GET").toUpperCase();
+      // No compression from a contract: nothing to decompress and nothing to scan
+      enableGZip = false;
       if (header !== undefined) {
         if (!Array.isArray(header)) throw new StorageAccessError("Headers that are not a list");
         header = header.map((h) => String(h));
