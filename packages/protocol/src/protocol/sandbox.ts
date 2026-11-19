@@ -59,6 +59,8 @@ export interface ISandboxContext {
   allow?(destination: IContractDestination): boolean;
   /** In "storage" mode: custom databases are open without a list */
   customDatabases?: boolean;
+  /** In "storage" mode: this machine's other ports are closed unless `allow` lists them */
+  denyLocalhost?: boolean;
   limits?: { timeoutSeconds: number; maxResponseBytes: number };
   spent?: { bytes: number };
   inflight?: Set<() => void>;
@@ -201,10 +203,10 @@ const lightCheck = (args: unknown[]): void => {
     if (Array.isArray(value)) { value.forEach((v) => visit(v, depth + 1)); return; }
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) throw new StorageAccessError("An argument that is not plain data");
-    for (const d of Object.values(Object.getOwnPropertyDescriptors(value)) as any[]) {
-      if (d.get || d.set) throw new StorageAccessError("An option that is not plain data");
-    }
-    for (const key of Object.keys(value)) {
+    // Every own property, hidden ones and symbols too: net and tls read options by name
+    for (const key of Reflect.ownKeys(value)) {
+      const d: any = Object.getOwnPropertyDescriptor(value, key);
+      if (typeof key === "symbol" || !d.enumerable || d.get || d.set) throw new StorageAccessError("An option that is not plain data");
       if (REFUSED_OPTIONS.has(key)) throw new StorageAccessError(`The option '${key}'`);
     }
   };

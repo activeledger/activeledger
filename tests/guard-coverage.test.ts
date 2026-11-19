@@ -89,6 +89,11 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
         expect(await refused(() => inContract(() => net.connect({ port: p, host: "127.0.0.1", ...extra } as any))), Object.keys(extra)[0]).to.be.instanceOf(StorageAccessError);
         expect(await refused(() => inContract(() => tls.connect({ port: p, host: "127.0.0.1", ...extra } as any))), `tls ${Object.keys(extra)[0]}`).to.be.instanceOf(StorageAccessError);
       }
+      // The same options hidden: not enumerable, or behind a symbol
+      const hidden: any = { port: p, host: "127.0.0.1" };
+      Object.defineProperty(hidden, "lookup", { value: () => undefined, enumerable: false });
+      expect(await refused(() => inContract(() => net.connect(hidden))), "non-enumerable lookup").to.be.instanceOf(StorageAccessError);
+      expect(await refused(() => inContract(() => net.connect({ port: p, [Symbol("x")]: 1 } as any))), "symbol key").to.be.instanceOf(StorageAccessError);
       other.close();
     });
 
@@ -189,6 +194,46 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
         expect(r.data, `${method} ${path}`).to.deep.equal({ ok: true });
       }
       expect(seen).to.have.length(4);
+    });
+  });
+
+  describe("this machine's other ports (allowLocalhost)", () => {
+    let svc: http.Server, svcPort = 0;
+    before(async () => {
+      svc = http.createServer((q, r) => { seen.push(`svc ${q.method} ${q.url}`); r.setHeader("content-type", "application/json"); r.end('{"svc":true}'); });
+      await new Promise<void>((r) => svc.listen(0, "127.0.0.1", r));
+      svcPort = (svc.address() as net.AddressInfo).port;
+    });
+    after(() => svc.close());
+    const closed = <T>(fn: () => T, allow?: (d: any) => boolean) => runSandboxed({ mode: "storage", denyLocalhost: true, allow, customDatabases: true, onBlocked: () => undefined }, fn);
+
+    it("refuses every spelling of this machine on a port that is not the storage's", async () => {
+      for (const host of ["127.0.0.1", "localhost", "LOCALHOST.", "127.1", "2130706433", "0x7f.0.0.1", "127.9.9.9", "::1", "[::1]", "::ffff:127.0.0.1", "0.0.0.0", "foo.localhost", undefined]) {
+        expect(await refused(() => closed(() => http.request({ host, port: svcPort, path: "/x", method: "GET" }).on("error", () => undefined).end())), String(host)).to.be.instanceOf(StorageAccessError);
+        expect(await refused(() => closed(() => net.connect({ host, port: svcPort }).on("error", () => undefined))), `net ${host}`).to.be.instanceOf(StorageAccessError);
+      }
+      expect(await refused(() => closed(() => ActiveRequest.send(`http://127.0.0.1:${svcPort}/x`, "GET"))), "ActiveRequest").to.be.instanceOf(StorageAccessError);
+      expect(await refused(() => closed(() => fetch(`http://localhost:${svcPort}/x`))), "fetch").to.be.instanceOf(StorageAccessError);
+      expect(seen).to.deep.equal([]);
+    });
+
+    it("leaves other hosts alone, and everything when the namespace has allowLocalhost", async () => {
+      expect(ContractScope.isLoopbackHost("example.com")).to.equal(false);
+      expect(ContractScope.isLoopbackHost("10.0.0.5")).to.equal(false);
+      expect(ContractScope.isLoopbackHost("128.0.0.1")).to.equal(false);
+      const r: any = await runSandboxed({ mode: "storage", onBlocked: () => undefined }, () => ActiveRequest.send(`http://127.0.0.1:${svcPort}/x`, "GET"));
+      expect(r.data).to.deep.equal({ svc: true });
+    });
+
+    it("lets a listed destination through, and its connection, but not the next port", async () => {
+      const allow = (d: any) => Number(d.port) === svcPort;
+      const r: any = await closed(() => ActiveRequest.send(`http://127.0.0.1:${svcPort}/x`, "GET"), allow);
+      expect(r.data).to.deep.equal({ svc: true });
+      expect(await refused(() => closed(() => ActiveRequest.send(`http://127.0.0.1:${svcPort + 1}/x`, "GET"), allow))).to.be.instanceOf(StorageAccessError);
+    });
+
+    it("keeps the storage rules on the storage port whatever the flag", async () => {
+      expect(await refused(() => runSandboxed({ mode: "storage", customDatabases: true, onBlocked: () => undefined }, () => ActiveRequest.send(`http://127.0.0.1:${port}/activeledger/x`, "GET")))).to.be.instanceOf(StorageAccessError);
     });
   });
 

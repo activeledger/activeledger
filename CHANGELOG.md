@@ -33,6 +33,23 @@
   ends (`security.contractEgress.timeoutSeconds`, `.maxResponseBytes`). Options passed to the `http` and `fetch` modules are
   copied into plain objects once and anything outside a short list of plain keys (an `agent`, `createConnection`, `lookup`, a
   `dispatcher`, a Proxy, a getter) is refused.
+- **This machine is closed to contracts, and the deploy scan checks the source** (build `50600`). While a contract
+  runs, a connection to localhost, `127.x.x.x`, `::1` or `0.0.0.0` on any port other than the storage's (a wallet
+  service, a signer, an admin page) is refused, in every spelling of the address (`127.1`, `2130706433`, `[::1]`,
+  `::ffff:127.0.0.1`, `foo.localhost`) and through `http`, `net`, `tls`, `fetch` and the `HTTP` toolkit. A namespace
+  that needs a local service sets `allowLocalhost: true` in `security.namespace.<namespace>.policy`, or lists the
+  destination in `security.contractEgress.allow`. It is opt-in and not needed for custom databases on the storage port,
+  and it does not open the storage port itself: the always-refused list (volatile, the node's own databases, other
+  verbs and routes) still applies. A host name that only resolves to this machine is not recognised.
+  `allowLocalhost` also allows a URL to this machine in the contract's source. The deploy scan (which is part of the
+  deploy vote) now also refuses, for a non-default namespace: a string that is a path or URL naming volatile data
+  (`.../abc:volatile`, any case, percent- or `\u`-escaped); a URL to this machine unless `allowLocalhost`; and the
+  options `agent`, `createConnection`, `dispatcher`, `lookup`, `socketPath` and `setHost` in the object passed to
+  `request`, `get`, `post`, `put`, `send`, `connect`, `createConnection` or `fetch`. These rules read only the source and
+  the namespace's own policy, so every node with the same config gives the same vote; they do not run below build
+  `50600`. A destination built at run time cannot be seen by the scan: the run-time guard is what stops that.
+- **Encoded responses are not read by contracts** and `net`/`tls` connections refuse the options `lookup`, `agent`,
+  `createConnection`, `socket` (hidden or symbol-keyed too).
 - **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and
   meta to name the same stream, and refuses an existing stream the transaction did not load.
 

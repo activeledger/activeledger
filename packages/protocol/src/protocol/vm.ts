@@ -284,9 +284,13 @@ export class VirtualMachine
         ...(Array.isArray(lists[tx?.$namespace]) ? lists[tx.$namespace] : []),
         ...(contract && Array.isArray(lists[`${tx?.$namespace}/${contract}`]) ? lists[`${tx?.$namespace}/${contract}`] : []),
       ].filter((e) => typeof e === "string");
+      // This machine's other ports are closed to a contract unless its namespace has
+      // allowLocalhost in security.namespace.<namespace>.policy
+      const nsPolicy = ActiveOptions.get<any>("security", {})?.namespace?.[String(tx?.$namespace ?? "").toLowerCase()]?.policy;
       return runSandboxed(
         {
           mode: "storage",
+          denyLocalhost: nsPolicy?.allowLocalhost !== true,
           // Custom databases are open unless the node is set to deny the storage port outright
           customDatabases: policy.storage !== "deny",
           // What one contract call may use: how long a request may take and how much it may read.

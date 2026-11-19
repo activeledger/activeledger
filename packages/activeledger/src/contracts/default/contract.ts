@@ -38,6 +38,13 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 // indexOf() - so they're safe to build once at module load instead of
 // on every single contract deploy/update.
 
+// Build level from which the deploy scan also refuses storage and local-service access written in
+// the source (the run-time guard, ReadLock.BUILD, starts at the same build)
+const SOURCE_GUARDS_BUILD = 50600;
+// Request options that change how a connection is made, and the calls they are passed to
+const CONNECTION_OPTIONS = new Set(["agent", "createConnection", "dispatcher", "lookup", "socketPath", "setHost"]);
+const REQUEST_CALLS = new Set(["request", "get", "post", "put", "send", "connect", "createConnection", "fetch"]);
+
 // Definitive denylist for identifiers (Globals and sensitive objects)
 const BANNED_IDENTIFIERS = [
   "process",
@@ -716,7 +723,9 @@ export default class Contract extends Standard {
         allowEval: false,
         allowComputedProperties: false,
         allowProcessNextTick: false,
-        allowLocalLibs: false
+        allowLocalLibs: false,
+        // Contract code may name this machine (localhost, 127.x) in a URL
+        allowLocalhost: false
     };
 
     // Fetch dynamic security configuration
@@ -733,6 +742,9 @@ export default class Contract extends Standard {
     if (privilegedNamespaces.indexOf(namespace) !== -1) {
       return;
     }
+
+    // The source rules about storage and local services are on from the build that guards them
+    const guardsFromSource = ActiveOptions.get<number>("build", 0) >= SOURCE_GUARDS_BUILD;
 
     const sourceFile = ts.createSourceFile(
       "contract.ts",
@@ -1082,6 +1094,63 @@ export default class Contract extends Standard {
       }
       if (ts.isPrivateIdentifier(node)) {
         report(node, `Private identifiers are forbidden`);
+      }
+
+      // 7. Storage and local-service access written out in the source (from build 50600).
+      // Static and the same on every node: only literals and option names are read, never
+      // the node's config (the deploy scan is part of the vote). A destination built at
+      // run time cannot be seen here; the run-time guard is what stops that.
+      if (guardsFromSource) {
+        let text: string | undefined;
+        if (
+          ts.isStringLiteral(node) ||
+          ts.isNoSubstitutionTemplateLiteral(node) ||
+          ts.isTemplateHead(node) ||
+          ts.isTemplateMiddle(node) ||
+          ts.isTemplateTail(node)
+        ) {
+          text = node.text;
+        }
+        if (text !== undefined) {
+          // Private data: a path or id that names a volatile part, however it is escaped
+          let seen = text;
+          for (let round = 0; round < 4; round++) {
+            let next = seen;
+            try {
+              next = decodeURIComponent(seen);
+            } catch {
+              // not valid escapes; look at it as it is
+            }
+            next = next.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+            if (next === seen) break;
+            seen = next;
+          }
+          if (/[:\/]\s*volatile/i.test(seen) || (/(^|[^a-z])(https?:)?\/\//i.test(seen) && /volatile/i.test(seen))) {
+            report(node, `A path to volatile data is forbidden`);
+          }
+          // This machine, as a URL or a host:port
+          if (
+            policy.allowLocalhost !== true &&
+            /^\s*(?:[a-z][a-z0-9+.-]*:)?(?:\/\/)?(?:[^\/@\s]*@)?(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?|0\.0\.0\.0|\[?::ffff:[0-9a-f.:]+\]?)(?::\d+)?(?:[\/?#]|$)/i.test(seen) &&
+            /(\/\/|:\d)/.test(seen)
+          ) {
+            report(node, `A URL to this machine needs allowLocalhost for the namespace`);
+          }
+        }
+        // Options that change how a request connects, passed to a request call
+        if (ts.isObjectLiteralExpression(node) && ts.isCallExpression(node.parent) && node.parent.arguments.indexOf(node) !== -1) {
+          const callee = node.parent.expression;
+          const calleeName = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
+          if (REQUEST_CALLS.has(calleeName)) {
+            for (const prop of node.properties) {
+              const name = prop.name;
+              const key = name && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) ? name.text : undefined;
+              if (key !== undefined && CONNECTION_OPTIONS.has(key)) {
+                report(prop, `The request option '${key}' is forbidden`);
+              }
+            }
+          }
+        }
       }
 
       // 6. Block Module Loading

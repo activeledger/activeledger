@@ -64,6 +64,11 @@ export interface IContractScope {
   onBlocked?(what: string): void;
   /** Whether this contract's namespace has been allowed to reach the destination */
   allow?(destination: IContractDestination): boolean;
+  /**
+   * This machine (localhost, 127.x, ::1) is closed to the contract except for what `allow` lists.
+   * Set unless the contract's namespace has `allowLocalhost` in its security policy.
+   */
+  denyLocalhost?: boolean;
   /** Custom databases (a name starting activeledger with more after it) are open to contracts without a list */
   customDatabases?: boolean;
   /** What one contract call may use: the longest a request may take, and the most response it may read */
@@ -252,7 +257,27 @@ export class ContractScope {
     scope: IContractScope,
     destination: IContractDestination
   ): (<T>(run: () => T) => T) | undefined {
-    if (!ContractScope.isProtected(destination.port)) return undefined;
+    if (!ContractScope.isProtected(destination.port)) {
+      // Not the storage. This machine's other ports (a wallet service, a signer, an admin
+      // page) are closed to a contract unless its namespace was given allowLocalhost
+      if (!scope.denyLocalhost || !ContractScope.isLoopbackHost(destination.host)) return undefined;
+      if (destination.path === undefined) {
+        const approved = scope.approved;
+        if (
+          approved && !approved.used && Date.now() < approved.expires &&
+          approved.port === destination.port &&
+          ContractScope.hostKey(approved.host) === ContractScope.hostKey(destination.host)
+        ) {
+          approved.used = true;
+          return undefined;
+        }
+        if (scope.allow?.(destination)) return undefined;
+      } else if (scope.allow?.(destination)) {
+        return ContractScope.approval(scope, destination);
+      }
+      scope.onBlocked?.("localhost");
+      throw new StorageAccessError("A connection to this machine");
+    }
     // A bare socket to the storage could say anything, so only the connection of
     // an HTTP request that was just approved (with its path) gets through, once,
     // and only for a moment. Everything with a path is checked in full every
@@ -269,32 +294,41 @@ export class ContractScope {
       }
     } else if (!destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body, destination.method)) {
       if (scope.allow?.(destination) || (scope.customDatabases && ContractScope.isCustomDatabase(destination.path))) {
-        const als = (globalThis as any)[SCOPE];
-        const approval = { host: destination.host, port: destination.port, expires: Date.now() + 5000, used: false };
-        return <T>(run: () => T): T => {
-          // The approval lasts while the request is being made (the call, or the
-          // promise it returns) and is spent the moment that ends, so a callback or
-          // a later step of the contract cannot use what is left of it
-          let result: any;
-          try {
-            result = als.run(Object.freeze({ ...scope, approved: approval }), run);
-          } catch (error) {
-            approval.used = true;
-            throw error;
-          }
-          if (result && typeof result.then === "function") {
-            return result.then(
-              (value: unknown) => { approval.used = true; return value; },
-              (error: unknown) => { approval.used = true; throw error; }
-            ) as T;
-          }
-          approval.used = true;
-          return result;
-        };
+        return ContractScope.approval(scope, destination);
       }
     }
     scope.onBlocked?.("storage");
     throw new StorageAccessError("The node's storage");
+  }
+
+
+  /** Runs one request with a short, single-use approval for the connection it opens */
+  private static approval(
+    scope: IContractScope,
+    destination: IContractDestination
+  ): <T>(run: () => T) => T {
+    const als = (globalThis as any)[SCOPE];
+    const approval = { host: destination.host, port: destination.port, expires: Date.now() + 5000, used: false };
+    return <T>(run: () => T): T => {
+      // The approval lasts while the request is being made (the call, or the
+      // promise it returns) and is spent the moment that ends, so a callback or
+      // a later step of the contract cannot use what is left of it
+      let result: any;
+      try {
+        result = als.run(Object.freeze({ ...scope, approved: approval }), run);
+      } catch (error) {
+        approval.used = true;
+        throw error;
+      }
+      if (result && typeof result.then === "function") {
+        return result.then(
+          (value: unknown) => { approval.used = true; return value; },
+          (error: unknown) => { approval.used = true; throw error; }
+        ) as T;
+      }
+      approval.used = true;
+      return result;
+    };
   }
 
   /**
@@ -331,6 +365,34 @@ export class ContractScope {
 
   /** localhost, 127.0.0.1 and ::1 are one host */
   private static readonly LOOPBACK = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+  /**
+   * Whether a host is this machine: localhost (and any name under it), 127.0.0.0/8
+   * (including the short and numeric spellings a resolver accepts), ::1, ::,
+   * 0.0.0.0 and the IPv4-mapped forms. No host means localhost. A name that only
+   * resolves to this machine is not seen here.
+   */
+  public static isLoopbackHost(host: string | undefined): boolean {
+    if (host === undefined || host === null || host === "") return true;
+    let h = String(host).trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    if (/^[0-9a-fx.]+$/.test(h)) {
+      // 127.1, 0x7f.1, 2130706433: the resolver reads these as IPv4
+      try {
+        h = new URL("http://" + h).hostname;
+      } catch {
+        return false;
+      }
+    }
+    if (h === "localhost" || h.endsWith(".localhost")) return true;
+    if (h === "::1" || h === "::" || h === "0:0:0:0:0:0:0:1" || h === "0:0:0:0:0:0:0:0") return true;
+    const mapped = /^::ffff:(.+)$/.exec(h);
+    if (mapped) {
+      const v = mapped[1];
+      if (/^7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(v) || v === "0:0") return true;
+      return ContractScope.isLoopbackHost(v);
+    }
+    return /^127\.\d+\.\d+\.\d+$/.test(h) || h === "0.0.0.0";
+  }
 
   private static hostKey(host: string | undefined): string {
     const h = (host || "localhost").toLowerCase();
