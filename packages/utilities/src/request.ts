@@ -150,7 +150,7 @@ export class ActiveRequest {
   ): Promise<IHTTPResponse> {
     // A contract's HTTP is this class. It may call out, but not to the storage
     // (unless its namespace has been allowed that database).
-    const approve = ContractScope.check(reqUrl);
+    const approve = ContractScope.check(reqUrl, data);
     if (approve) {
       return approve(() => ActiveRequest.send(reqUrl, type, header, data, enableGZip, timeout));
     }

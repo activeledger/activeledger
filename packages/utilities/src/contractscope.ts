@@ -49,8 +49,10 @@ const NEVER = Symbol.for("activeledger.neverDatabases");
 export interface IContractDestination {
   host?: string;
   port: number;
-  /** The request path, for an HTTP request. Absent for a bare socket */
+  /** The request path and query, for an HTTP request. Absent for a bare socket */
   path?: string;
+  /** The request body, when the sender has it (ActiveRequest) */
+  body?: unknown;
 }
 
 export interface IContractScope {
@@ -103,7 +105,8 @@ export class ContractScope {
    * @param {string | URL} target A URL, or a port number
    */
   public static check(
-    target: string | URL | number | undefined
+    target: string | URL | number | undefined,
+    body?: unknown
   ): (<T>(run: () => T) => T) | undefined {
     const scope = ContractScope.current();
     if (!scope) return undefined;
@@ -115,7 +118,8 @@ export class ContractScope {
         destination = {
           host: url.hostname,
           port: Number(url.port || (url.protocol === "https:" ? 443 : 80)),
-          path: url.pathname,
+          path: url.pathname + url.search,
+          body,
         };
       } catch {
         return undefined;
@@ -136,18 +140,50 @@ export class ContractScope {
   }
 
   /**
-   * Whether a request path is out of bounds for any contract: it names a
-   * `:volatile` document (the node's private data, in any database), or it is
-   * in one of the node's own databases.
+   * Whether some text says "volatile", however it is written: any case, and
+   * percent-escaped or \u-escaped (once, twice, or more). A request that
+   * mentions it is aimed at the node's private data and is never allowed.
    */
-  public static forbidden(path: string): boolean {
+  public static mentionsVolatile(text: string): boolean {
+    let current = String(text);
+    for (let round = 0; round < 8; round++) {
+      if (/volatile/i.test(current)) return true;
+      let next: string;
+      try {
+        next = decodeURIComponent(current);
+      } catch {
+        next = current.replace(/%([0-9a-fA-F]{2})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+      }
+      next = next.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+      if (next === current) break;
+      current = next;
+    }
+    return /volatile/i.test(current);
+  }
+
+  /**
+   * Whether a request is out of bounds for any contract: it mentions volatile
+   * anywhere in its path, query or body (the node's private data, in any
+   * database), or it is in one of the node's own databases (ledger, events,
+   * errors and the error archive).
+   */
+  public static forbidden(path: string, body?: unknown): boolean {
+    if (ContractScope.mentionsVolatile(path)) return true;
+    if (body !== undefined && body !== null) {
+      let text: string;
+      try {
+        text = typeof body === "string" ? body : Buffer.isBuffer(body) ? body.toString("utf8") : JSON.stringify(body);
+      } catch {
+        return true;
+      }
+      if (ContractScope.mentionsVolatile(text ?? "")) return true;
+    }
     let decoded: string;
     try {
       decoded = decodeURIComponent(ContractScope.normalPath(path));
     } catch {
       return true;
     }
-    if (decoded.toLowerCase().includes(":volatile")) return true;
     const first = decoded.split("/").filter(Boolean)[0]?.toLowerCase();
     const never: Set<string> | undefined = (globalThis as any)[NEVER];
     return !!first && !!never && never.has(first);
@@ -170,7 +206,7 @@ export class ContractScope {
     }
     // A bare socket to the storage could say anything, so it is never approved
     // here; and no list overrides the node's own databases or any :volatile
-    if (destination.path !== undefined && !ContractScope.forbidden(destination.path)) {
+    if (destination.path !== undefined && !ContractScope.forbidden(destination.path, destination.body)) {
       if (scope.allow?.(destination)) {
         const als = (globalThis as any)[SCOPE];
         return <T>(run: () => T): T =>

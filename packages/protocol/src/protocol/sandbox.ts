@@ -84,7 +84,7 @@ let installed = false;
 const urlDestination = (value: unknown, fallback: number): IDestination => {
   try {
     const url = value instanceof URL ? value : new URL(String((value as any)?.url ?? value));
-    return { host: url.hostname, port: url.port || (url.protocol === "https:" ? 443 : fallback), path: url.pathname };
+    return { host: url.hostname, port: url.port || (url.protocol === "https:" ? 443 : fallback), path: url.pathname + url.search };
   } catch {
     return {};
   }

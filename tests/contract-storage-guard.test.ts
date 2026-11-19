@@ -134,7 +134,7 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
     });
 
     it("never lets anything through that names :volatile, in any database, or touches the node's own databases", async () => {
-      ContractScope.neverDatabases(["activeledger", "activeledgerevents", "activeledgererrors"]);
+      ContractScope.neverDatabases(["activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror", "activeledgererrors_archive"]);
       const whole = [`127.0.0.1:${storagePort}`];
       for (const p of [
         "/activeledger_wallets/x:volatile", "/activeledger_wallets/x%3Avolatile", "/activeledger_wallets/x%3AVOLATILE",
@@ -144,6 +144,24 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
         expect(e, p).to.be.instanceOf(StorageAccessError);
       }
       expect(hits.storage).to.equal(0);
+      // The word itself, however it is written, in the path or the query
+      for (const p of [
+        "/activeledger_wallets/volatile", "/activeledger_wallets/VoLaTiLe", "/activeledger_wallets/%76olatile",
+        "/activeledger_wallets/%2576olatile", "/activeledger_wallets/%25252576olatile", "/activeledger_wallets/x?key=%22volatile%22",
+        "/activeledger_wallets/x?%76%6f%6c%61%74%69%6c%65=1", "/activeledger_wallets/x%5Cu0076olatile",
+      ]) {
+        expect(await refused(() => inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}${p}`, "GET"))), p).to.be.instanceOf(StorageAccessError);
+      }
+      // ... and in a body, as an object, a string or an escaped string
+      for (const body of [{ docs: [{ _id: "k:volatile" }] }, { VOLATILE: 1 }, '{"_id":"k:\\u0076olatile"}', "k%3Avolatile"]) {
+        expect(await refused(() => inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledger_wallets/_bulk_docs`, "POST", undefined, body as any))), JSON.stringify(body)).to.be.instanceOf(StorageAccessError);
+      }
+      // The node's error database and its archive too
+      for (const p of ["/activeledgererrors/x", "/activeledgererror/x", "/activeledgererrors_archive/x"]) {
+        expect(await refused(() => inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}${p}`, "GET"))), p).to.be.instanceOf(StorageAccessError);
+      }
+      expect(hits.storage).to.equal(0);
+      ContractScope.neverDatabases(["activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror", "activeledgererrors_archive"]);
       // Another database is still reachable on that whole-port entry
       const ok: any = await inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledger_wallets/x`, "GET"));
       expect(ok.data).to.deep.equal({ ok: true });
