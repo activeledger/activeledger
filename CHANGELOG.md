@@ -50,7 +50,7 @@
   `50600`. A destination built at run time cannot be seen by the scan: the run-time guard is what stops that.
 - **`allowDatabases`, a namespace flag for custom databases** (build `50600`). Rather than a list per database, a
   namespace whose policy (`security.namespace.<namespace>.policy`) has `allowDatabases: true` (every custom database) or
-  `allowDatabases: ["activeledger_wallets", ...]` (exactly those) may use custom databases on the storage (GET and POST on the document routes), like the flags that allow libraries. The deploy
+  `allowDatabases: ["activeledger_wallets", ...]` (exactly those; `["*"]` is every custom database, as `true`) may use custom databases on the storage (GET and POST on the document routes), like the flags that allow libraries. The deploy
   scan checks against it: source that names a custom database path (`.../activeledger_wallets/...`) is refused
   unless the flag is set, and a path in one of the node's own databases is refused whatever the flag. Volatile and the
   node's own databases stay refused at run time too. The node-wide `security.contractEgress.storage: "open"` still opens

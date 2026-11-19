@@ -88,6 +88,8 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
     ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: ["activeledger_wallets"] } } } });
     expect(scan(wrap('return "/activeledger_wallets/abc";'))).to.equal(null);
     expect(scan(wrap('return "/activeledger_deposits/abc";'))).to.include("allowDatabases");
+    ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: ["*"] } } } });
+    expect(scan(wrap('return "/activeledger_deposits/abc";'))).to.equal(null);
     // Words and short paths are not databases
     for (const s of ["activeledger_wallets", "/activeledger", "see /docs/activeledger", "an activeledger/x note"]) expect(scan(wrap(`return "${s}";`)), s).to.equal(null);
   });

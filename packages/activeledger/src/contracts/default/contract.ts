@@ -1199,7 +1199,7 @@ export default class Contract extends Standard {
           } else if (
             /^activeledger[a-z0-9_-]+$/.test(database) &&
             policy.allowDatabases !== true &&
-            !(Array.isArray(policy.allowDatabases) && policy.allowDatabases.some((d: unknown) => typeof d === "string" && d.toLowerCase() === database))
+            !(Array.isArray(policy.allowDatabases) && policy.allowDatabases.some((d: unknown) => typeof d === "string" && (d === "*" || d.toLowerCase() === database)))
           ) {
             report(node, `A custom database needs allowDatabases for the namespace`);
           }

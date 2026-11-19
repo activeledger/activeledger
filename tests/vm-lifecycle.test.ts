@@ -812,6 +812,13 @@ exports.default = FakeContract;
       });
     });
 
+    it("allowDatabases [\"*\"] opens every custom database, and still not the node's own", async () => {
+      await withStorage(() => ({ namespace: { ns: { policy: { allowDatabases: ["*"] } } } }), async (port) => {
+        expect(await callFrom("/activeledger_anything/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+      });
+    });
+
     it("with storage open, opens a custom database with no list at all, and still refuses the node's own and volatile", async () => {
       await withStorage(() => ({ contractEgress: { storage: "open" } }), async (port, hits) => {
         expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
