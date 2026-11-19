@@ -51,8 +51,10 @@ export interface IContractDestination {
   port: number;
   /** The request path and query, for an HTTP request. Absent for a bare socket */
   path?: string;
-  /** The request body, when the sender has it (ActiveRequest) */
+  /** The request body, when the sender has it (ActiveRequest, a fetch with a string body) */
   body?: unknown;
+  /** A method that can carry a body whose content the sender cannot show (a raw http request): never approved */
+  unseenBody?: boolean;
 }
 
 export interface IContractScope {
@@ -206,7 +208,7 @@ export class ContractScope {
     }
     // A bare socket to the storage could say anything, so it is never approved
     // here; and no list overrides the node's own databases or any :volatile
-    if (destination.path !== undefined && !ContractScope.forbidden(destination.path, destination.body)) {
+    if (destination.path !== undefined && !destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body)) {
       if (scope.allow?.(destination)) {
         const als = (globalThis as any)[SCOPE];
         return <T>(run: () => T): T =>

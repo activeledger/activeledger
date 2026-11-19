@@ -167,6 +167,24 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
       expect(ok.data).to.deep.equal({ ok: true });
     });
 
+    it("allows POST only where the body can be read", async () => {
+      const whole = [`127.0.0.1:${storagePort}`];
+      const url = `http://127.0.0.1:${storagePort}/activeledger_wallets/_bulk_docs`;
+      // ActiveRequest shows its body to the check: a clean one goes through, one that says volatile does not
+      const ok: any = await inContractAllowing(whole, () => ActiveRequest.send(url, "POST", undefined, { docs: [{ _id: "w1", balance: 1 }], options: {} }));
+      expect(ok.data).to.deep.equal({ ok: true });
+      expect(await refused(() => inContractAllowing(whole, () => ActiveRequest.send(url, "POST", undefined, { docs: [{ _id: "w1", note: "Volatile" }] })))).to.be.instanceOf(StorageAccessError);
+      // A raw request is written to after it is made, so its body cannot be read: refused for any method that carries one
+      for (const method of ["POST", "PUT", "PATCH"]) {
+        await refused(() => inContractAllowing(whole, () => http.request(url, { method })));
+      }
+      // fetch: a string body is read; anything else cannot be
+      await refused(() => inContractAllowing(whole, () => (globalThis as any).fetch(url, { method: "POST", body: '{"a":"%76olatile"}' })));
+      await refused(() => inContractAllowing(whole, () => (globalThis as any).fetch(url, { method: "POST", body: new Uint8Array([1, 2, 3]) })));
+      // Reads and deletes carry no body: allowed on a listed database
+      await new Promise<void>((resolve, reject) => inContractAllowing(whole, () => http.get(`http://127.0.0.1:${storagePort}/activeledger_wallets/x`, (res) => { res.resume(); res.on("end", resolve); }).on("error", reject)));
+    });
+
     it("does not let a listed entry cover another port", async () => {
       expect(ContractScope.listed([`127.0.0.1:1/x`], { host: "127.0.0.1", port: 2, path: "/x" })).to.equal(false);
       expect(ContractScope.listed([`10.0.0.5:${storagePort}`], { host: "127.0.0.1", port: storagePort, path: "/" })).to.equal(false);

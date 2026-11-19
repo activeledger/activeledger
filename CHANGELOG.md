@@ -19,7 +19,9 @@
   `<namespace>/<contract>`); `security.contractEgress.storage: "allow"` turns the guard off. Add the list **before**
   upgrading a node whose contracts reach the storage. The `default` namespace is never restricted. Whatever a list
   says, any request that mentions `volatile` (path, query or body, any case, however escaped) and anything in the
-  node's own databases (ledger, events, errors and the error archive) is refused, and so is a bare socket to the storage port. It is a local check on each node, applied
+  node's own databases (ledger, events, errors and the error archive; taken from `db.database`, `db.event` and
+  `db.error`, with the defaults always included) is refused. A request with a body is allowed only where the body can
+  be read (`ActiveRequest`, a `fetch` with a string body), and so is a bare socket to the storage port. It is a local check on each node, applied
   from build `50600`; `security.contractEgress.protect` adds more ports to keep contracts off.
 - **`setVolatile()` now writes a volatile document that is not there.** On a stream that already existed, with no
   `<id>:volatile` document on the node, it silently wrote nothing (the volatile had no id, and a volatile without one

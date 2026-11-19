@@ -318,16 +318,18 @@ export class VirtualMachine
     // Further ports to keep contracts off (security.contractEgress.protect)
     const extra = ActiveOptions.get<any>("security", {})?.contractEgress?.protect;
     if (Array.isArray(extra)) ports.push(...extra);
-    const key = ports.join(",");
+    const names = [
+      db.database, db.event, db.error, db.error && `${db.error}_archive`,
+      "activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror",
+      "activeledgererrors_archive", "activeledgererror_archive",
+    ];
+    // The ports and the node's own database names, so a change to either is picked up
+    const key = ports.join(",") + "|" + names.join(",");
     if (key === this.protectedStorage) return;
     this.protectedStorage = key;
     ContractScope.protectPorts(ports);
     // The node's own databases are out of bounds to every contract, listed or not
-    ContractScope.neverDatabases([
-      db.database, db.event, db.error, db.error && `${db.error}_archive`,
-      "activeledger", "activeledgerevents", "activeledgererrors", "activeledgererror",
-      "activeledgererrors_archive", "activeledgererror_archive",
-    ]);
+    ContractScope.neverDatabases(names);
   }
 
   /**

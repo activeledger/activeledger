@@ -65,6 +65,8 @@ interface IDestination {
   port?: number | string;
   path?: string;
   socket?: string;
+  method?: string;
+  body?: unknown;
 }
 
 export class SupernodeOnlyError extends Error {
@@ -102,6 +104,7 @@ const requestDestination = (defaultPort: number) => (args: unknown[]): IDestinat
       if (options.port !== undefined) dest.port = options.port;
       else if (options.defaultPort !== undefined && dest.port === undefined) dest.port = options.defaultPort;
       if (typeof options.path === "string") dest.path = options.path;
+      if (typeof options.method === "string") dest.method = options.method;
     }
   }
   if (dest.port === undefined && !dest.socket) dest.port = defaultPort;
@@ -122,7 +125,14 @@ const connectDestination = (args: unknown[]): IDestination => {
 };
 
 /** fetch(url | Request) */
-const fetchDestination = (args: unknown[]): IDestination => urlDestination(args[0], 80);
+const fetchDestination = (args: unknown[]): IDestination => {
+  const dest = urlDestination(args[0], 80);
+  const init: any = args[1] && typeof args[1] === "object" ? args[1] : (args[0] as any);
+  if (init && typeof init.method === "string") dest.method = init.method;
+  if (init && typeof init.body === "string") dest.body = init.body;
+  else if (init && init.body !== undefined && init.body !== null) dest.body = undefined, (dest as any).opaqueBody = true;
+  return dest;
+};
 
 /**
  * Replace target[method] with a version that throws inside a contract
@@ -150,7 +160,11 @@ const guard = (
           }
           // A port is refused only if it is the storage's and this namespace is not allowed it
           if (dest.port !== undefined) {
-            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path });
+            // A method that carries a body is only approved if the body can be read: a raw
+            // request is written to afterwards, and a fetch body may be a stream
+            const bodyless = !dest.method || /^(GET|HEAD|DELETE|OPTIONS)$/i.test(dest.method);
+            const unseen = !bodyless && dest.body === undefined;
+            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, unseenBody: unseen });
             // An approved request carries that approval to the connection it opens
             if (approve) return approve(() => original.apply(this, args));
           }
