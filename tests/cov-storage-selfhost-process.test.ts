@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
+import * as vm from "vm";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
@@ -440,7 +441,7 @@ describe("Storage process lifecycle (selfhost)", function () {
     });
   });
 
-  describe("Fauxton assets", () => {
+  describe("Explorer page", () => {
     let s: Storage;
     before(async () => {
       s = await startStorage(["level"]);
@@ -450,82 +451,51 @@ describe("Storage process lifecycle (selfhost)", function () {
       s?.cleanup();
     });
 
-    const indexHtml = fs.readFileSync(
-      path.join(__dirname, "../packages/storage/lib/fauxton/index.html"),
+    const page = fs.readFileSync(
+      path.join(__dirname, "../packages/storage/lib/explorer/index.html"),
       "utf8"
     );
-    const assets = path.join(
-      __dirname,
-      "../packages/storage/lib/fauxton/dashboard.assets"
-    );
 
-    it("serves the app shell for /_utils and /_utils/", async () => {
-      for (const p of ["/_utils", "/_utils/"]) {
-        const r = await s.req("GET", p);
-        expect(r.status, p).to.equal(200);
-        expect(r.headers["content-type"], p).to.equal("text/html");
-        expect(r.text, p).to.equal(indexHtml);
+    it("has a script that parses, and the views it advertises", () => {
+      const script = /<script>([\s\S]*)<\/script>/.exec(page)![1];
+      // Throws on a syntax error anywhere in the page's script
+      new vm.Script(script);
+      for (const part of ['id="goto"', 'id="diff"', "Node status", "Export", "Delete selected", "History"]) {
+        expect(page, part).to.contain(part);
       }
     });
 
-    it("serves an asset with the content type for its extension", async () => {
-      const css = fs.readdirSync(path.join(assets, "css"))[0];
-      const r = await s.req("GET", `/_utils/dashboard.assets/css/${css}`);
-      expect(r.status).to.equal(200);
-      expect(r.headers["content-type"]).to.equal("text/css");
-      expect(r.text).to.equal(fs.readFileSync(path.join(assets, "css", css), "utf8"));
-    });
-
-    it("maps other extensions to their types and unknown ones to text/plain", async () => {
-      const woff = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.woff");
-      expect(woff.headers["content-type"]).to.equal("font/woff");
-      const ttf = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.ttf");
-      expect(ttf.headers["content-type"]).to.equal("aplication/font-sfnt");
-      const png = await s.req("GET", "/_utils/dashboard.assets/img/activeledger.png");
-      expect(png.headers["content-type"]).to.equal("image/png");
-      const eot = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.eot");
-      expect(eot.headers["content-type"]).to.equal("text/plain");
-    });
-
-    it("serves the same asset again from its cache", async () => {
-      const p = "/_utils/dashboard.assets/fonts/fauxtonicon5.woff";
-      const a = await s.req("GET", p);
-      const b = await s.req("GET", p);
-      expect(b.status).to.equal(200);
-      expect(b.text.length).to.equal(a.text.length);
-      expect(b.text.length).to.be.greaterThan(0);
-    });
-
-    it("a missing asset gets no app shell and the server carries on", async () => {
-      const http = require("http");
-      const got = await new Promise<string>((resolve) => {
-        const req = http.get(
-          { host: "127.0.0.1", port: s.port, path: "/_utils/dashboard.assets/js/missing.js", agent: false },
-          (res: any) => resolve(`response ${res.statusCode}`)
-        );
-        req.on("error", () => resolve("error"));
-        setTimeout(() => {
-          req.destroy();
-          resolve("none");
-        }, 600);
-      });
-      expect(got).to.not.equal("response 200");
-      expect((await s.req("GET", "/_utils/")).text).to.equal(indexHtml);
-    });
-
-    for (const p of [
-      "/_utils/../../../../../../../../etc/passwd",
-      "/_utils/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
-      "/_utils/../../package.json",
-      "/_utils/../fauxton-sibling/x",
-    ]) {
-      it(`does not serve files outside the asset folder (${p})`, async () => {
+    it("serves the page at /_explorer and /_explorer/", async () => {
+      for (const p of ["/_explorer", "/_explorer/"]) {
         const r = await s.req("GET", p);
-        expect(r.status).to.equal(200);
-        expect(r.text).to.equal(indexHtml);
-        expect(r.text).to.not.contain("root:");
-      });
-    }
+        expect(r.status, p).to.equal(200);
+        expect(r.headers["content-type"], p).to.equal("text/html");
+        expect(r.text, p).to.equal(page);
+        expect(r.text, p).to.contain("Activeledger");
+      }
+    });
+
+    it("answers every path under it with the same page and reads nothing from the path", async () => {
+      for (const p of [
+        "/_explorer/anything",
+        "/_explorer/../../package.json",
+        "/_explorer/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+      ]) {
+        const r = await s.req("GET", p);
+        if (r.status === 200) {
+          expect(r.text, p).to.equal(page);
+        }
+        expect(r.text, p).to.not.match(/root:x:0/);
+      }
+    });
+
+    it("sends /_utils, and anything under it, to the explorer", async () => {
+      for (const p of ["/_utils", "/_utils/", "/_utils/dashboard.assets/js/x.js", "/_utils/../../package.json"]) {
+        const r = await s.req("GET", p);
+        expect(r.status, p).to.equal(302);
+        expect(r.headers["location"], p).to.equal("/_explorer");
+      }
+    });
   });
 });
 
@@ -573,6 +543,30 @@ describe("Storage process /events and longpoll feeds (selfhost)", function () {
         expect(body).to.not.contain("an event");
       } finally {
         st.close();
+      }
+    });
+
+    it("sends transaction and failed rows live only when asked with ?also=", async () => {
+      const plain = await openStream(s.port, `/${db}/events`);
+      const asked = await openStream(s.port, `/${db}/events?also=umid,fail,notakind`);
+      try {
+        await plain.until((b) => b.length > 0);
+        await asked.until((b) => b.length > 0);
+        await s.req("POST", `/${db}`, { _id: "umid:1700000000000,abc", umid: "abc" });
+        await s.req("POST", `/${db}`, { _id: "fail:1700000000001,def", umid: "def" });
+        await s.req("POST", `/${db}`, { _id: "resent:ghi", until: 1 });
+        await s.req("POST", `/${db}`, { _id: "notakind:1", x: 1 });
+        await s.req("POST", `/${db}`, { _id: "event:also1", name: "e" });
+        const body = await asked.until((b) => b.includes("id:also1"));
+        expect(sseIds(body)).to.deep.equal(["umid:1700000000000,abc", "fail:1700000000001,def", "also1"]);
+        const m = body.match(/id:umid:1700000000000,abc\nevent: message\ndata:(.*)\n\n/);
+        expect(JSON.parse((m as RegExpMatchArray)[1])).to.deep.equal({ _id: "umid:1700000000000,abc", umid: "abc" });
+        // Without it the stream is the events alone
+        const old = await plain.until((b) => b.includes("id:also1"));
+        expect(sseIds(old)).to.deep.equal(["also1"]);
+      } finally {
+        plain.close();
+        asked.close();
       }
     });
 

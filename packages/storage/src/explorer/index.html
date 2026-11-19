@@ -1,0 +1,1093 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activeledger DB Explorer</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #14181f; --muted: #667085; --line: #e4e7ec;
+    --accent: #3b5bfd; --accent-ink: #ffffff; --soft: #eef1ff; --ok: #12805c; --warn: #b54708; --bad: #b42318;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1116; --panel: #161b22; --ink: #e6e9ef; --muted: #8b94a5; --line: #262d38;
+      --accent: #7c93ff; --accent-ink: #0e1116; --soft: #1c2440; --ok: #3ccf9b; --warn: #f1a54b; --bad: #f97066;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --panel: #161b22; --ink: #e6e9ef; --muted: #8b94a5; --line: #262d38;
+    --accent: #7c93ff; --accent-ink: #0e1116; --soft: #1c2440; --ok: #3ccf9b; --warn: #f1a54b; --bad: #f97066;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  .brand { font-weight: 650; letter-spacing: -.01em; display: flex; align-items: center; gap: 9px; }
+  .brand img { display: block; }
+  .brand span { color: var(--accent); }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+  .seg button { border: 0; background: none; padding: 5px 14px; border-radius: 7px; cursor: pointer; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+  .grow { flex: 1; }
+  input[type=text], input[type=search], select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  .btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-weight: 550; }
+  .btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); font-weight: 400; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100% - 55px); }
+  nav { border-right: 1px solid var(--line); background: var(--panel); padding: 14px 10px; }
+  nav h6 { margin: 0 8px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  nav h6.group:not(:first-child) { margin-top: 18px; }
+  nav h6.group.head { display: flex; justify-content: space-between; align-items: center; }
+  nav .mini { width: auto; padding: 2px 9px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; text-transform: none; letter-spacing: 0; color: var(--accent); }
+  .chips { display: inline-flex; gap: 6px; margin-left: 4px; }
+  nav .dbrow { display: flex; align-items: center; }
+  nav .dbrow > button:first-child { flex: 1; min-width: 0; }
+  nav .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  nav .kebab { width: auto; padding: 4px 8px; color: var(--muted); font-size: 16px; line-height: 1; border-radius: 7px; flex: none; }
+  nav .kebab:hover { color: var(--ink); background: var(--bg); }
+  #menu { position: fixed; z-index: 30; min-width: 190px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px #0003; }
+  #menu button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px; border-radius: 7px; cursor: pointer; }
+  #menu button:hover, #menu button:focus { background: var(--bg); outline: 0; }
+  #menu button.bad { color: var(--bad); }
+  nav button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+  nav button:hover { background: var(--bg); }
+  nav button[aria-current="true"] { background: var(--soft); color: var(--accent); font-weight: 600; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); margin-left: 4px; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.ok { color: var(--ok); } .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
+  section.content { padding: 18px 22px; min-width: 0; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .bar h2 { margin: 0 8px 0 0; font-size: 18px; letter-spacing: -.01em; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabs button { border: 0; background: none; padding: 8px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .pager { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; align-items: center; color: var(--muted); }
+  aside.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(860px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 32px #0003; transform: translateX(105%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
+  aside.drawer.open { transform: none; }
+  .drawer header button { white-space: nowrap; flex: none; }
+  .drawer header strong { min-width: 0; white-space: nowrap; }
+  .drawer header { position: static; border-bottom: 1px solid var(--line); }
+  .drawer .body { padding: 16px 20px; overflow: auto; flex: 1; }
+  pre.json { margin: 0; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+  .k { color: var(--accent); } .s { color: var(--ok); } .n { color: var(--warn); } .b { color: var(--bad); }
+  .lockgrid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: center; justify-items: start; }
+  .who { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .lockgrid .who { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .lockgrid .tag { display: inline-block; width: auto; }
+  .diffbox { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--mono); }
+  .diffgrid { display: grid; grid-template-columns: 1fr 1fr; min-width: 0; }
+  .diffgrid > div { padding: 0 8px; white-space: pre-wrap; word-break: break-word; min-height: 1.5em; border-bottom: 1px solid transparent; }
+  .diffgrid > div:nth-child(odd) { border-right: 1px solid var(--line); }
+  .diffgrid .del { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+  .diffgrid .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+  .diffgrid .gap { grid-column: 1 / -1; text-align: center; color: var(--muted); background: var(--bg); padding: 2px; border-right: 0 !important; }
+  .diffgrid .head { font: 600 12px var(--sans, system-ui); color: var(--muted); background: var(--bg); position: sticky; top: 0; }
+  .bulk { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  td.selcell, th.selcell { width: 1%; padding-right: 0; }
+  .node td .btn { margin-right: 6px; }
+  a.lnk { color: var(--accent, #4f8cff); text-decoration: underline dotted; cursor: pointer; }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin-bottom: 14px; }
+  .kv > div:nth-child(odd) { color: var(--muted); }
+  .note { font-size: 12.5px; color: var(--muted); margin: 8px 2px 0; }
+  .err { color: var(--bad); padding: 12px 16px; }
+  input.search { width: min(520px, 100%); padding: 8px 12px; font-size: 14px; }
+  .btn.danger { background: var(--bad); color: #fff; border: 0; }
+  #danger[aria-pressed="true"] { background: var(--bad); color: #fff; border-color: var(--bad); }
+  .strip { padding: 9px 12px; border-radius: 9px; margin-bottom: 12px; font-size: 13px; border: 1px solid var(--line); background: var(--bg); }
+  .strip.bad { border-color: var(--bad); color: var(--bad); }
+  .strip.ok { color: var(--ok); }
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--ink); padding: 20px; width: min(460px, 92vw); }
+  dialog::backdrop { background: #0008; }
+  dialog h3 { margin: 0 0 8px; }
+  dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .ed { position: relative; height: 340px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); overflow: hidden; }
+  .ed:focus-within { border-color: var(--accent); }
+  .ed pre.hl, .ed textarea.edit { position: absolute; inset: 0; margin: 0; padding: 10px 12px; border: 0; font: 12.5px/1.5 var(--mono); white-space: pre; tab-size: 2; overflow: auto; width: 100%; height: 100%; }
+  .ed pre.hl { overflow: hidden; pointer-events: none; }
+  .ed textarea.edit { background: transparent; color: transparent; caret-color: var(--ink); resize: none; outline: 0; border-radius: 0; }
+  .ed .errline { background: color-mix(in srgb, var(--bad) 14%, transparent); }
+  .ed .errchar { background: var(--bad); color: #fff; border-radius: 2px; }
+  .jsonmsg { margin-top: 8px; font-size: 13px; }
+  .jsonmsg.bad { color: var(--bad); font-weight: 550; }
+  .jsonmsg.ok { color: var(--ok); }
+  textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; min-height: 90px; resize: vertical; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } nav { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><img src="data:image/png;base64,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" alt="" width="26" height="26">Activeledger <span>DB Explorer</span></div>
+  <div class="seg" role="group" aria-label="View">
+    <button id="v-al" aria-pressed="true">Activeledger</button>
+    <button id="v-gen" aria-pressed="false">General</button>
+  </div>
+  <div class="grow"></div>
+  <button class="btn ghost" id="goto-btn" title="Go to a transaction, stream or document (Ctrl+K)">Go to… <kbd>Ctrl K</kbd></button>
+  <button class="btn ghost" id="danger" aria-pressed="false" title="Allow editing consensus data (the activeledger database)">Danger mode: off</button>
+  <input type="text" id="base" size="26" aria-label="Storage URL" spellcheck="false">
+  <button class="btn ghost" id="theme" title="Toggle theme">Theme</button>
+</header>
+<main>
+  <nav><div id="dbs"></div></nav>
+  <section class="content" id="content"></section>
+</main>
+<dialog id="goto" style="width:min(560px,94vw)"><input type="text" id="goto-input" style="width:100%" spellcheck="false" autocomplete="off" placeholder="Paste a transaction id, stream id or document id"><div id="goto-msg" class="note" style="margin:10px 0 0">Enter to open · Esc to close</div></dialog>
+<dialog id="diff" style="width:min(1100px,96vw)"><h3 id="diff-title">Review your change</h3><div id="diff-sum" class="note" style="margin:0 0 10px"></div><div id="diff-body" class="diffbox"></div><div class="row"><button class="btn ghost" id="diff-no">Back to editing</button><button class="btn" id="diff-yes">Save</button></div></dialog>
+<dialog id="ask"><h3 id="ask-title"></h3><div id="ask-body"></div><div id="ask-msg" class="err" style="padding:6px 0 0"></div><input type="text" id="ask-input" style="width:100%;margin-top:12px" spellcheck="false" autocomplete="off"><div class="row"><button class="btn ghost" id="ask-no">Cancel</button><button class="btn" id="ask-yes">Confirm</button></div></dialog>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <header><button class="btn ghost" id="d-back" style="display:none">← Back</button><strong id="d-title" class="mono" style="overflow:hidden;text-overflow:ellipsis"></strong><div class="grow"></div><button class="btn ghost" id="d-close" aria-label="Close" title="Close (Esc)">✕</button></header>
+  <div class="body" id="d-body"></div>
+</aside>
+<script>
+"use strict";
+/* Everything from the ledger is untrusted text: it is only ever written with textContent. */
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) if (v == null || v === false) continue; else k === "class" ? (e.className = v) : k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+};
+/* replaceChildren turns a null argument into the text "null", so empty slots are dropped first. */
+const put = (parent, ...kids) => parent.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
+const store = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+const hash = new URLSearchParams(location.hash.slice(1));
+const state = { base: hash.get("base") || store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: hash.get("view") || store.get("al.view", "al"), db: hash.get("db"), dbs: [], tab: "streams", cursor: [null], page: 0, q: "", danger: false, pageSize: +store.get("al.pagesize", "50") || 50, sizes: {}, avg: {}, perStream: {}, exact: {}, probed: {}, sel: new Map(), pageDocs: [] };
+const PAGE_SIZES = [25, 50, 100, 200];
+const fmtBytes = (n) => (typeof n !== "number" ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB" : (n / 1073741824).toFixed(1) + " GB");
+
+const api = async (path, opts) => {
+  const r = await fetch(state.base.replace(/\/$/, "") + path, opts);
+  if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 200));
+  return r.json();
+};
+/* The node\'s own databases (db.database, db.event, db.error and the error archive); anything else is custom. */
+const SYSTEM = /^activeledger(events?|errors?(_archive)?)?$/;
+const isSystem = (name) => SYSTEM.test(name);
+const role = (name) => (!isSystem(name) ? "custom" : /event/.test(name) ? "events" : /error/.test(name) ? "errors" : "ledger");
+const short = (s, n = 14) => (s && s.length > n * 2 + 1 ? s.slice(0, n) + "…" + s.slice(-6) : s);
+
+/* JSON view and editor. Text is only ever added as text nodes. */
+const TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g;
+const highlight = (text) => {
+  const frag = document.createDocumentFragment();
+  let last = 0, m; TOKEN.lastIndex = 0;
+  while ((m = TOKEN.exec(text))) {
+    frag.append(text.slice(last, m.index));
+    frag.append(el("span", { class: m[1] ? (m[2] ? "k" : "s") : m[3] ? "b" : "n" }, m[1] ? m[1] + (m[2] ?? "") : m[0]));
+    last = TOKEN.lastIndex;
+  }
+  frag.append(text.slice(last));
+  return frag;
+};
+const jsonView = (value) => el("pre", { class: "json" }, highlight(JSON.stringify(value, null, 2) ?? "undefined"));
+/* Where JSON.parse gave up: line, column and a plain message. */
+const jsonError = (text) => {
+  try { JSON.parse(text); return null; } catch (e) {
+    let pos = text.length;
+    const at = /position (\d+)/.exec(e.message), lc = /line (\d+) column (\d+)/.exec(e.message);
+    if (at) pos = +at[1];
+    else if (lc) pos = text.split("\n").slice(0, +lc[1] - 1).reduce((n, l) => n + l.length + 1, 0) + (+lc[2] - 1);
+    pos = Math.min(pos, text.length);
+    const before = text.slice(0, pos).split("\n");
+    return { line: before.length, col: before[before.length - 1].length + 1, message: String(e.message).replace(/\s*(in JSON )?at position \d+.*$/, "").replace(/\s*\(line \d+ column \d+\)/, "").replace(/^JSON\.parse: /, "") };
+  }
+};
+const paint = (text, err) => {
+  const frag = document.createDocumentFragment(), lines = text.split("\n");
+  lines.forEach((line, i) => {
+    if (err && i + 1 === err.line) {
+      const c = Math.min(err.col - 1, line.length);
+      frag.append(el("span", { class: "errline" }, highlight(line.slice(0, c)), el("span", { class: "errchar" }, line[c] ?? " "), highlight(line.slice(c + 1))));
+    } else frag.append(highlight(line));
+    if (i < lines.length - 1) frag.append("\n");
+  });
+  frag.append("\n");
+  return frag;
+};
+/* A textarea over a highlighted copy of its own text, checked as you type. onState(valid) says if Save is allowed. */
+const jsonEditor = (text, onState) => {
+  const hl = el("pre", { class: "hl", "aria-hidden": "true" });
+  const ta = el("textarea", { class: "edit", spellcheck: "false", wrap: "off", "aria-label": "JSON" }); ta.value = text;
+  const msg = el("div", { class: "jsonmsg" });
+  const run = () => {
+    const err = jsonError(ta.value);
+    hl.replaceChildren(paint(ta.value, err));
+    msg.className = "jsonmsg " + (err ? "bad" : "ok");
+    msg.textContent = err ? `Line ${err.line}, column ${err.col}: ${err.message}` : "Valid JSON";
+    onState(!err);
+  };
+  ta.addEventListener("input", run);
+  ta.addEventListener("scroll", () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Tab" && !e.shiftKey) { e.preventDefault(); ta.setRangeText("  ", ta.selectionStart, ta.selectionEnd, "end"); run(); } });
+  const format = () => { try { ta.value = JSON.stringify(JSON.parse(ta.value), null, 2); run(); } catch {} };
+  return { wrap: el("div", { class: "ed" }, hl, ta), msg, ta, run, format };
+};
+
+/* Drawer */
+const drawer = {
+  stack: [],
+  show(title, nodes) { $("#d-title").textContent = title; $("#d-body").replaceChildren(...nodes); $("#d-back").style.display = this.stack.length ? "" : "none"; $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false"); },
+  /* Opens fresh: whatever was stacked is dropped. */
+  open(title, ...nodes) { this.stack = []; this.show(title, nodes); },
+  /* Opens on top of what is showing; Back returns to it exactly as it was. */
+  push(title, ...nodes) { this.stack.push({ title: $("#d-title").textContent, nodes: [...$("#d-body").childNodes] }); this.show(title, nodes); },
+  back() { const prev = this.stack.pop(); if (prev) this.show(prev.title, prev.nodes); },
+  close() { drawer.stack = []; $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); },
+};
+$("#d-back").onclick = () => drawer.back();
+$("#d-close").onclick = drawer.close;
+addEventListener("keydown", (e) => e.key === "Escape" && drawer.close());
+
+/* Documents */
+const listDocs = async (db, { startkey, endkey, limit = state.pageSize + 1, include_docs = true } = {}) => {
+  const q = new URLSearchParams({ include_docs: String(include_docs), limit: String(limit) });
+  if (startkey != null) q.set("startkey", JSON.stringify(startkey));
+  if (endkey != null) q.set("endkey", JSON.stringify(endkey));
+  const rows = (await api(`/${encodeURIComponent(db)}/_all_docs?${q}`)).rows || [];
+  /* With include_docs this server answers with the documents themselves; without it, id/key/value rows. Both become { id, doc }. */
+  if (include_docs && rows.length) {
+    const t = (state.avg[db] ||= { bytes: 0, n: 0 });
+    for (const r of rows) { t.bytes += JSON.stringify(r).length; t.n++; }
+  }
+  return rows.map((r) => (include_docs ? { id: r._id, doc: r } : { id: r.id ?? r._id, doc: r.doc }));
+};
+/* A missing document may come back as { notFound: true } rather than an error: that is not a document, so it throws like one. */
+const getDoc = async (db, id) => {
+  const doc = await api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`);
+  if (!doc || doc._id === undefined) throw new Error("Not found");
+  return doc;
+};
+
+/* Activeledger stream = state + :stream meta + :volatile, shown as one thing */
+const groupStreams = (rows) => {
+  const map = new Map();
+  for (const r of rows) {
+    const doc = r.doc; if (!doc) continue;
+    const id = String(doc._id);
+    if (id.endsWith(":umid") || id.includes(":data")) continue;
+    const base = id.replace(/:(stream|volatile)$/, "");
+    const g = map.get(base) || { id: base };
+    if (id.endsWith(":stream")) g.meta = doc; else if (id.endsWith(":volatile")) g.volatile = doc; else g.state = doc;
+    map.set(base, g);
+  }
+  return [...map.values()];
+};
+const lockTags = (meta) => {
+  const t = [];
+  if (!meta) return t;
+  if (meta.contractlock?.length) t.push(el("span", { class: "tag warn" }, "contract lock"));
+  if (meta.namespaceLock?.length) t.push(el("span", { class: "tag warn" }, "namespace lock"));
+  if (meta.readLock) t.push(el("span", { class: "tag warn" }, "read lock"));
+  return t;
+};
+/* Every transaction that touched a stream, newest first. Each transaction records the one it replaced on that stream (streams.updated[].prev), so the chain is followed one fetch per step, 25 at a time. A transaction from before that was recorded ends the chain. */
+const historyPanel = (db, id, meta) => {
+  const box = el("div"), list = el("div", { class: "card" }), more = el("button", { class: "btn ghost", style: "margin-top:10px" }, "Older");
+  let next = meta?.umid;
+  const rows = el("tbody");
+  list.append(el("table", {}, el("thead", {}, el("tr", {}, ["Transaction", "Contract", "Committed", ""].map((c) => el("th", {}, c)))), rows));
+  const load = async () => {
+    more.disabled = true;
+    for (let i = 0; i < 25 && next; i++) {
+      const umid = next; next = null;
+      let tx;
+      try { tx = await getDoc(db, umid + ":umid"); } catch { rows.append(el("tr", {}, el("td", { class: "mono" }, short(umid, 18)), el("td", { class: "muted", colspan: "3" }, "Not held on this node"))); break; }
+      const created = (tx.streams?.new || []).some((n) => n.id === id);
+      const upd = (tx.streams?.updated || []).find((u) => u.id === id);
+      rows.append(el("tr", { onclick: () => openTransaction(db, umid, true) },
+        el("td", { class: "mono" }, short(umid, 18)), el("td", {}, tx.umid?.$tx?.$contract ?? ""),
+        el("td", { class: "muted" }, tx.umid?.$datetime ? new Date(tx.umid.$datetime).toLocaleString() : ""),
+        el("td", {}, created ? el("span", { class: "tag ok" }, "created") : "")));
+      next = upd?.prev || null;
+    }
+    more.disabled = false; more.style.display = next ? "" : "none";
+    if (!next && !rows.children.length) rows.append(el("tr", {}, el("td", { class: "muted", colspan: "4" }, "No transactions recorded")));
+  };
+  more.onclick = load;
+  box.append(list, more); load();
+  return box;
+};
+/* Who may sign for a stream: type, stake, the key's hash, and the transaction that set it. */
+const authView = (ledger, meta) => {
+  const list = meta?.authorities || [];
+  if (!list.length) return el("div", { class: "muted" }, "None");
+  const copy = (text) => navigator.clipboard?.writeText(text);
+  const rows = list.map((a) => el("tr", {},
+    el("td", {}, el("span", { class: "tag" }, a.type || "rsa")),
+    el("td", { class: "muted" }, a.stake != null ? a.stake + "%" : ""),
+    el("td", { class: "mono", title: a.hash || "" }, short(a.hash || "", 10)),
+    el("td", {}, a.label || ""),
+    el("td", {}, a.umid ? el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openTransaction(ledger, a.umid, true); } }, short(a.umid, 8)) : ""),
+    el("td", {}, a.public ? el("button", { class: "btn ghost", style: "padding:0 8px", title: "Copy the public key", onclick: () => copy(a.public) }, "Copy key") : "")));
+  return el("div", {}, el("table", {}, el("thead", {}, el("tr", {}, ["Type", "Stake", "Key hash", "Label", "Set by", ""].map((c) => el("th", {}, c)))), el("tbody", {}, ...rows)),
+    meta.removedAuthorities?.length ? el("div", { class: "muted", style: "margin-top:6px" }, meta.removedAuthorities.length + " removed") : "");
+};
+/* A contract stream keeps its versions in state.contract: a reference (source hash, the deploy transaction, the ES target) or, for old versions, the source itself as base64. */
+const decodeSource = (b64) => { try { return new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch { return null; } };
+const showSource = async (ledger, version, entry) => {
+  let text = null;
+  if (typeof entry === "string") text = decodeSource(entry);
+  else if (entry?.umid) {
+    try {
+      const tx = await getDoc(ledger, entry.umid + ":umid");
+      const inputs = Object.values(tx.umid?.$tx?.$i || {});
+      const found = inputs.find((i) => i && typeof i.contract === "string");
+      if (found) text = decodeSource(found.contract);
+    } catch {}
+  }
+  drawer.push("Source " + version, text == null ? el("div", { class: "empty" }, "The source is not held on this node") : el("pre", { class: "json" }, text));
+};
+const contractPanel = (ledger, state, meta) => {
+  const versions = state?.contract || {};
+  const locked = new Set(state?.locks?.versions || []);
+  const names = Object.keys(versions);
+  if (!names.length) return el("div", { class: "empty" }, "No versions");
+  const rows = names.map((v) => {
+    const e = versions[v];
+    const ref = typeof e === "object" && e !== null;
+    return el("tr", {},
+      el("td", { class: "mono" }, v),
+      el("td", { class: "mono", title: ref ? e.hash || "" : "" }, ref ? short(e.hash || "", 10) : el("span", { class: "muted" }, "source held inline")),
+      el("td", {}, ref && e.target ? el("span", { class: "tag" }, e.target) : el("span", { class: "muted" }, "es2017")),
+      el("td", {}, ref && e.umid ? el("a", { class: "lnk mono", href: "#", onclick: (ev) => { ev.preventDefault(); openTransaction(ledger, e.umid, true); } }, short(e.umid, 8)) : ""),
+      el("td", {}, state?.locks?.all || locked.has(v) ? el("span", { class: "tag warn" }, "locked") : ""),
+      el("td", {}, el("button", { class: "btn ghost", style: "padding:0 8px", onclick: () => showSource(ledger, v, e) }, "Source")));
+  });
+  return el("div", {}, el("div", { class: "kv" }, el("div", {}, "Contract"), el("div", { class: "mono" }, meta?.name ?? "—"), el("div", {}, "Namespace"), el("div", {}, meta?.ns ?? state?.namespace ?? "default"),
+    el("div", {}, "Locks"), el("div", {}, state?.locks?.all ? el("span", { class: "tag warn" }, "all versions") : locked.size ? [...locked].map((v) => el("span", { class: "tag warn" }, v)) : el("span", { class: "muted" }, "None"))),
+    el("div", { class: "card" }, el("table", {}, el("thead", {}, el("tr", {}, ["Version", "Source hash", "Compiled to", "Deployed by", "", ""].map((c) => el("th", {}, c)))), el("tbody", {}, ...rows))));
+};
+const openStream = async (db, g, push = false) => {
+  let { state: s, meta, volatile: v } = g;
+  try { s = s || await getDoc(db, g.id); } catch {}
+  try { meta = meta || await getDoc(db, g.id + ":stream"); } catch {}
+  try { v = v || await getDoc(db, g.id + ":volatile"); } catch {}
+  const isContract = s && typeof s.contract === "object" && s.contract !== null && !Array.isArray(s.contract);
+  const tabs = { State: s, Meta: meta, Volatile: v, History: true, ...(isContract ? { Contract: true } : {}) };
+  const holder = el("div");
+  const bar = el("div", { class: "tabs" });
+  const show = (name) => { [...bar.children].forEach((b) => b.setAttribute("aria-selected", String(b.textContent === name))); if (name === "History") return holder.replaceChildren(historyPanel(db, g.id, meta)); if (name === "Contract") return holder.replaceChildren(contractPanel(db, s, meta)); holder.replaceChildren(tabs[name] ? docPanel(db, tabs[name], afterWrite) : el("div", { class: "empty" }, "Not held on this node", name === "Volatile" ? el("div", { style: "margin-top:10px" }, el("button", { class: "btn ghost", onclick: () => holder.replaceChildren(docPanel(db, { _id: g.id + ":volatile" }, afterWrite, true)) }, "Create volatile")) : null)); };
+  Object.keys(tabs).forEach((n) => bar.append(el("button", { onclick: () => show(n) }, n)));
+  /* A transaction id that opens the transaction on top of this stream; Back returns here. */
+  const txLink = (umid) => umid ? el("a", { class: "lnk mono", href: "#", title: "Open the transaction", onclick: (e) => { e.preventDefault(); openTransaction(db, umid, true); } }, short(umid, 18)) : "—";
+  const prevCell = el("div", { class: "mono" });
+  const lines = (...rows) => el("div", {}, ...rows.map((r) => el("div", { class: "mono" }, r)));
+  /* One compact grid: what is locked on the left, who it applies to on the right. Tags are as wide as their text. */
+  const lockCells = [];
+  const lockLine = (label, ...tags) => lockCells.push(el("span", { class: "muted" }, label), el("span", { class: "who" }, ...tags));
+  const tag = (text, cls = "") => el("span", { class: "tag " + cls }, String(text));
+  if (meta?.contractlock?.length) lockLine("Contracts", ...meta.contractlock.map((c) => tag(c, "warn")));
+  if (meta?.namespaceLock?.length) lockLine("Write", ...meta.namespaceLock.map((n) => tag(n, "warn")));
+  if (meta?.readLock) {
+    const r = meta.readLock;
+    /* Unset means the default: state and stream open to every contract, volatile to the creating namespace only. */
+    const read = (label, x, fallback) => {
+      if (x === "*") return lockLine(label, tag("anyone", "ok"));
+      if (x === undefined || x === null || x === "default") return lockLine(label, tag("default"), el("span", { class: "muted" }, fallback));
+      const list = Array.isArray(x) ? x : [x];
+      lockLine(label, ...(list.length ? list.map((n) => tag(n, "warn")) : [tag("nobody", "bad")]));
+    };
+    read("Read state", r.state, "open to all");
+    read("Read stream", r.stream, "open to all");
+    read("Read volatile", r.volatile, "creator only");
+  }
+  const lockRows = lockCells.length ? [el("div", { class: "lockgrid" }, ...lockCells)] : [];
+  const facts = el("div", { class: "kv" },
+    el("div", {}, "Name"), el("div", {}, meta?.name ?? "—"),
+    el("div", {}, "Namespace"), el("div", {}, meta?.ns ?? "default"),
+    el("div", {}, "Created by"), txLink(meta?.origin),
+    el("div", {}, "Last transaction"), txLink(meta?.umid),
+    el("div", {}, "Previous"), prevCell,
+    el("div", {}, "Authorities"), authView(db, meta),
+    el("div", {}, "Locks"), lockRows.length ? el("div", {}, ...lockRows) : el("div", { class: "muted" }, "None"),
+    el("div", {}, "Revisions"), el("div", { class: "mono" }, el("div", {}, "State  " + (s?._rev ?? "—")), el("div", {}, "Meta   " + (meta?._rev ?? "—"))));
+  (push ? drawer.push.bind(drawer) : drawer.open.bind(drawer))(g.id, facts, bar, holder);
+  show("State");
+  /* The transaction before the latest one: it is recorded on the latest transaction, against this stream. */
+  if (meta?.umid && meta.umid !== meta.origin) {
+    prevCell.textContent = "…";
+    getDoc(db, meta.umid + ":umid").then((tx) => {
+      const hit = (tx.streams?.updated || []).find((u) => u.id === g.id);
+      prevCell.replaceChildren(hit?.prev ? txLink(hit.prev) : "—");
+    }).catch(() => (prevCell.textContent = "—"));
+  } else prevCell.textContent = "— (created by the last transaction)";
+};
+
+/* Editing. open: a custom database, or :volatile (node-local). local: this node's own events and errors.
+   consensus: everything else in the activeledger database; every node has to agree on it. */
+const tier = (db, id) => (!isSystem(db) ? "open" : role(db) === "ledger" ? (/:volatile$/.test(String(id)) ? "open" : "consensus") : "local");
+const ask = ({ title, body, expect, danger, field, check }) => new Promise((resolve) => {
+  const d = $("#ask"), input = $("#ask-input"), yes = $("#ask-yes"), msg = $("#ask-msg");
+  $("#ask-title").textContent = title; $("#ask-body").textContent = body; msg.textContent = "";
+  const typed = !!(expect || field);
+  input.style.display = typed ? "" : "none"; input.value = field ? field.start || "" : ""; input.placeholder = expect ? "Type " + expect + " to confirm" : field ? field.hint || "" : "";
+  yes.className = danger ? "btn danger" : "btn"; yes.disabled = typed;
+  input.oninput = () => {
+    if (expect) return (yes.disabled = input.value !== expect);
+    const err = check ? check(input.value) : "";
+    msg.textContent = input.value ? err || (field.preview ? field.preview(input.value) : "") : ""; msg.style.color = err ? "" : "var(--muted)";
+    yes.disabled = !input.value || !!err;
+  };
+  const done = (v) => { d.close(); resolve(v); };
+  yes.onclick = () => done(field ? input.value : true); $("#ask-no").onclick = () => done(field ? null : false); d.oncancel = () => resolve(field ? null : false);
+  d.showModal(); (typed ? input : yes).focus(); if (field) input.oninput();
+});
+const confirmWrite = (db, id, what) => {
+  const t = tier(db, id);
+  if (t === "open") return what === "Delete" ? ask({ title: "Delete " + short(String(id), 12) + "?", body: "This cannot be undone." }) : Promise.resolve(true);
+  if (t === "local") return ask({ title: what + " in " + db + "?", body: "This is this node's own record. It is not part of consensus, but other tools on the node may read it." });
+  return ask({ title: what + " consensus data?", body: "Every node must hold the same stream state and meta. Changing it here makes this node disagree with the network: it can fail votes, or be overwritten by a repair from the other nodes.", expect: String(id).replace(/:.*/, "").slice(-8), danger: true });
+};
+const JSON_HEADERS = { "Content-Type": "application/json" };
+const save = async (db, doc, isNew) => {
+  if (!isNew) return api(`/${encodeURIComponent(db)}/${encodeURIComponent(doc._id)}`, { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(doc) });
+  /* No _id: let the store choose one. Otherwise write it as it is: a _rev in the JSON is kept exactly, and without one the store builds it. */
+  if (!doc._id) return api(`/${encodeURIComponent(db)}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(doc) });
+  const r = await api(`/${encodeURIComponent(db)}/_bulk_docs`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ docs: [doc], options: { new_edits: false } }) });
+  if (r?.ok !== true) throw new Error("The store did not accept the document (is there already one with that _id?).");
+  return r;
+};
+/* Delete, then create it again exactly as written. The only way to set a document's _rev; if the new one is refused the original goes back. */
+const replaceKeepingRev = async (db, before, after) => {
+  await api(`/${encodeURIComponent(db)}/${encodeURIComponent(before._id)}`, { method: "DELETE" });
+  try { await save(db, after, true); } catch (e) {
+    try { await save(db, before, true); } catch { throw new Error("The new document was refused and the original could not be put back. The original was: " + JSON.stringify(before)); }
+    throw new Error("The new document was refused (" + (e.message || e) + "). The original was put back.");
+  }
+};
+/* One document: its JSON, and Edit / Delete when allowed. `after` runs once something changed. */
+const docPanel = (db, doc, after, isNew = false) => {
+  const wrap = el("div"), t = tier(db, doc._id), locked = t === "consensus" && !state.danger;
+  const show = () => {
+    const strip = t === "consensus" ? el("div", { class: "strip bad" }, locked ? "Consensus data. Read only until Danger mode is on." : "Consensus data. Changes make this node disagree with the network.")
+      : t === "local" ? el("div", { class: "strip" }, "This node's own record, not part of consensus.")
+      : el("div", { class: "strip ok" }, isSystem(db) ? "Volatile: node-local, safe to edit." : "Custom database: safe to edit.");
+    const bar = el("div", { class: "bar" },
+      el("button", { class: "btn ghost", disabled: locked, onclick: edit }, "Edit"),
+      el("button", { class: "btn ghost", disabled: locked, onclick: remove }, "Delete"),
+      el("span", { class: "grow" }),
+      el("a", { class: "btn ghost", href: rawUrl(db, doc._id), target: "_blank", rel: "noopener", style: "text-decoration:none", title: "Open the document as the server returns it" }, "Raw"),
+      el("button", { class: "btn ghost", onclick: async (e) => { const b = e.currentTarget, was = b.textContent; b.textContent = (await copyText(JSON.stringify(doc, null, 2))) ? "Copied" : "Copy failed"; setTimeout(() => (b.textContent = was), 1500); } }, "Copy"));
+    wrap.replaceChildren(strip, bar, jsonView(doc));
+  };
+  const edit = () => {
+    const msg = el("div", { class: "err", style: "padding:6px 0" });
+    const saveBtn = el("button", { class: "btn", onclick: () => go() }, isNew ? "Create" : "Save");
+    const keep = el("input", { type: "checkbox", id: "keeprev" });
+    const keepRow = isNew ? el("div", { class: "note", style: "margin:8px 0 0" }, "A _rev in the JSON is kept exactly as written. Without one, the store builds it.")
+      : el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin:8px 0 0;cursor:pointer" }, keep, el("span", {}, "Keep the _rev exactly as written. Replaces the document (delete, then create) instead of making a new revision."));
+    const ed = jsonEditor(JSON.stringify(doc, null, 2), (valid) => (saveBtn.disabled = !valid));
+    const go = async () => {
+      let next; try { next = JSON.parse(ed.ta.value); } catch (e) { return ed.run(); }
+      if (!isNew && next._id !== doc._id) return (msg.textContent = "The _id cannot be changed here. Create a new document instead.");
+      if (isNew && isSystem(db) && !next._id) return (msg.textContent = "Give the document an _id.");
+      if (!isNew) {
+        const before = JSON.stringify(doc, null, 2), after = JSON.stringify(next, null, 2);
+        if (before === after) return (msg.textContent = "Nothing has changed.");
+        if (!(await reviewDiff(doc._id, before, after))) return;
+      }
+      if (!(await confirmWrite(db, next._id || doc._id, isNew ? "Create" : "Save"))) return;
+      try {
+        /* The server takes the last write whatever _rev it is sent, so look first. */
+        if (!isNew && doc._rev) {
+          const now = await getDoc(db, doc._id).catch(() => null);
+          if (now && now._rev !== doc._rev) return (msg.textContent = "This document changed since you opened it (now revision " + now._rev + "). Close this panel and open it again to edit the latest.");
+        }
+        if (keep.checked && !isNew) await replaceKeepingRev(db, doc, next); else await save(db, next, isNew);
+        drawer.close(); after && after();
+      } catch (e) { msg.textContent = String(e.message || e); }
+    };
+    wrap.replaceChildren(el("div", { class: "bar" }, saveBtn, el("button", { class: "btn ghost", onclick: ed.format }, "Format"), el("button", { class: "btn ghost", onclick: isNew ? drawer.close : show }, "Cancel")), ed.wrap, ed.msg, keepRow, msg);
+    ed.run();
+  };
+  const remove = async () => {
+    if (!(await confirmWrite(db, doc._id, "Delete"))) return;
+    try { await api(`/${encodeURIComponent(db)}/${encodeURIComponent(doc._id)}`, { method: "DELETE" }); drawer.close(); after && after(); } catch (e) { wrap.prepend(el("div", { class: "err" }, String(e.message || e))); }
+  };
+  isNew ? edit() : show();
+  return wrap;
+};
+const notify = (title, body) => ask({ title, body });
+/* The clipboard API needs a secure page (localhost is one); on plain http elsewhere, fall back to a hidden selection. */
+const copyText = async (text) => {
+  try { await navigator.clipboard.writeText(text); return true; } catch {
+    const t = el("textarea"); t.value = text; t.style.cssText = "position:fixed;opacity:0"; document.body.append(t); t.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {} t.remove(); return ok;
+  }
+};
+const rawUrl = (db, id) => state.base.replace(/\/$/, "") + "/" + encodeURIComponent(db) + "/" + encodeURIComponent(id);
+const rowDelete = (db, doc) => {
+  const locked = tier(db, doc._id) === "consensus" && !state.danger;
+  return el("td", { style: "text-align:right;width:1%" }, el("button", { class: "btn ghost", disabled: locked, title: locked ? "Consensus data: turn on Danger mode to delete" : "Delete this document", onclick: async (e) => {
+    e.stopPropagation();
+    if (!(await confirmWrite(db, doc._id, "Delete"))) return;
+    try { await api(`/${encodeURIComponent(db)}/${encodeURIComponent(doc._id)}`, { method: "DELETE" }); afterWrite(); } catch (err) { notify("Could not delete", String(err.message || err)); }
+  } }, "Delete"));
+};
+const openDoc = (db, doc) => drawer.open(doc._id, docPanel(db, doc, afterWrite));
+
+/* Go to: one box for any id. A transaction, a stream, or a document in any database, tried in that order. */
+const gotoId = async (raw) => {
+  const id = raw.trim().replace(/^["']|["']$/g, "");
+  if (!id) return null;
+  const ledger = state.dbs.find((d) => role(d) === "ledger");
+  const base = id.replace(/:(umid|stream|volatile)$/, "");
+  /* A missing document comes back as { notFound: true }, not an error, so only a reply with an _id is a hit. */
+  const tryGet = async (db, key) => { try { const doc = await getDoc(db, key); return doc && doc._id ? doc : null; } catch { return null; } };
+  if (ledger) {
+    if (await tryGet(ledger, base + ":umid")) return () => openTransaction(ledger, base);
+    if (await tryGet(ledger, base) || await tryGet(ledger, base + ":stream")) return () => openStream(ledger, { id: base });
+  }
+  for (const db of state.dbs) {
+    const doc = await tryGet(db, id);
+    if (doc && doc._id) return () => openDoc(db, doc);
+  }
+  return null;
+};
+const gotoDlg = $("#goto"), gotoInput = $("#goto-input"), gotoMsg = $("#goto-msg");
+const openGoto = () => { gotoMsg.textContent = "Enter to open · Esc to close"; gotoInput.value = ""; if (!gotoDlg.open) gotoDlg.showModal(); gotoInput.focus(); };
+$("#goto-btn").onclick = openGoto;
+addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openGoto(); } });
+gotoInput.onkeydown = async (e) => {
+  if (e.key !== "Enter") return;
+  gotoMsg.textContent = "Looking…";
+  const open = await gotoId(gotoInput.value);
+  if (!open) return (gotoMsg.textContent = "Nothing with that id on this node.");
+  gotoDlg.close(); open();
+};
+
+/* ---- Review a change: stored document on the left, the edited one on the right, line by line. */
+const diffRows = (aText, bText) => {
+  const A = aText.split("\n"), B = bText.split("\n");
+  let s0 = 0; while (s0 < A.length && s0 < B.length && A[s0] === B[s0]) s0++;
+  let ea = A.length, eb = B.length; while (ea > s0 && eb > s0 && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  const a = A.slice(s0, ea), b = B.slice(s0, eb), ops = [];
+  if (a.length * b.length > 2.5e6) { a.forEach((x) => ops.push({ t: "del", a: x })); b.forEach((x) => ops.push({ t: "add", b: x })); }
+  else {
+    const n = a.length, m = b.length, L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) { if (a[i] === b[j]) { ops.push({ t: "same", a: a[i], b: b[j] }); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) ops.push({ t: "del", a: a[i++] }); else ops.push({ t: "add", b: b[j++] }); }
+    while (i < n) ops.push({ t: "del", a: a[i++] }); while (j < m) ops.push({ t: "add", b: b[j++] });
+  }
+  const rows = [];
+  A.slice(0, s0).forEach((x) => rows.push({ a: x, b: x, t: "same" }));
+  for (let k = 0; k < ops.length;) {
+    if (ops[k].t === "same") { rows.push({ a: ops[k].a, b: ops[k].b, t: "same" }); k++; continue; }
+    const dels = [], adds = [];
+    while (k < ops.length && ops[k].t !== "same") (ops[k].t === "del" ? dels : adds).push(ops[k++]);
+    for (let q = 0; q < Math.max(dels.length, adds.length); q++) rows.push({ a: dels[q] ? dels[q].a : null, b: adds[q] ? adds[q].b : null, t: "chg" });
+  }
+  A.slice(ea).forEach((x) => rows.push({ a: x, b: x, t: "same" }));
+  return rows;
+};
+const reviewDiff = (title, before, after) => new Promise((resolve) => {
+  const rows = diffRows(before, after), removed = rows.filter((r) => r.t === "chg" && r.a != null).length, added = rows.filter((r) => r.t === "chg" && r.b != null).length;
+  const CONTEXT = 3, keep = new Array(rows.length).fill(false);
+  rows.forEach((r, i) => { if (r.t !== "same") for (let d = -CONTEXT; d <= CONTEXT; d++) if (rows[i + d]) keep[i + d] = true; });
+  const cells = [el("div", { class: "head" }, "Stored"), el("div", { class: "head" }, "Your change")];
+  for (let i = 0; i < rows.length; i++) {
+    if (!keep[i]) { let j = i; while (j < rows.length && !keep[j]) j++; cells.push(el("div", { class: "gap" }, "… " + (j - i) + " unchanged line" + (j - i === 1 ? "" : "s") + " …")); i = j - 1; continue; }
+    const r = rows[i];
+    cells.push(el("div", { class: r.t === "chg" && r.a != null ? "del" : "" }, r.a ?? ""), el("div", { class: r.t === "chg" && r.b != null ? "add" : "" }, r.b ?? ""));
+  }
+  const d = $("#diff");
+  $("#diff-title").textContent = "Review your change to " + title;
+  $("#diff-sum").textContent = removed + " line" + (removed === 1 ? "" : "s") + " changed or removed, " + added + " changed or added";
+  put($("#diff-body"), el("div", { class: "diffgrid" }, ...cells));
+  const done = (v) => { d.close(); resolve(v); };
+  $("#diff-yes").onclick = () => done(true); $("#diff-no").onclick = () => done(false); d.oncancel = () => resolve(false);
+  d.showModal(); $("#diff-yes").focus();
+});
+
+/* ---- Export. The volatile document of a stream is node-private, so a file made here never holds it. */
+const download = (name, parts, type) => {
+  const url = URL.createObjectURL(new Blob(parts, { type }));
+  const a = el("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+/* A cell that starts like a formula is quoted so a spreadsheet shows it instead of running it. */
+const csvCell = (v) => { let t = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const toCsv = (docs) => { const cols = []; for (const d of docs) for (const k of Object.keys(d)) if (!cols.includes(k) && cols.length < 40) cols.push(k); return [cols.map(csvCell).join(","), ...docs.map((d) => cols.map((c) => csvCell(d[c])).join(","))].join("\n"); };
+const stamp = () => new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+const exportPage = (format) => {
+  const docs = state.pageDocs.filter((d) => d && !String(d._id).endsWith(":volatile"));
+  if (!docs.length) return notify("Nothing to export", "This page has no documents.");
+  const base = shown(state.db) + "-" + stamp();
+  if (format === "csv") download(base + ".csv", [toCsv(docs)], "text/csv"); else download(base + ".json", [JSON.stringify(docs, null, 2)], "application/json");
+};
+let exporting = null;
+const exportAll = async (db, button) => {
+  if (exporting) { exporting.cancel = true; return; }
+  const job = (exporting = { cancel: false }), parts = [], label = button ? button.textContent : "";
+  let n = 0, startkey, size = 0;
+  try {
+    for (;;) {
+      const rows = await listDocs(db, { startkey, limit: 501 });
+      for (const r of rows.slice(0, 500)) { if (r.doc && !String(r.id).endsWith(":volatile")) { const line = JSON.stringify(r.doc) + "\n"; parts.push(line); size += line.length; n++; } }
+      if (button) button.textContent = "Exporting " + n.toLocaleString() + " (click to stop)";
+      if (rows.length <= 500) break;
+      if (job.cancel) break;
+      if (size > 400 * 1048576) { notify("Export stopped", "The file reached 400 MB, which is more than a browser should hold. It has what was read so far."); break; }
+      startkey = rows[500].id;
+    }
+    if (n) download(shown(db) + "-" + stamp() + ".jsonl", parts, "application/x-ndjson"); else notify("Nothing to export", "No documents were read.");
+  } catch (e) { notify("Export failed", String(e.message || e)); }
+  finally { exporting = null; if (button) button.textContent = label; }
+};
+const exportMenu = () => el("button", { class: "btn ghost", onclick: (e) => menu.open(e.currentTarget, [["This page as JSON", () => exportPage("json")], ["This page as CSV", () => exportPage("csv")], ["Whole database (JSON lines)", () => exportAll(state.db, e.currentTarget)]]) }, "Export");
+
+/* ---- Select rows and delete them together. Consensus data needs Danger mode, as it does one at a time. */
+let bulkEl = null;
+const drawBulk = () => {
+  if (!bulkEl) return;
+  const n = state.sel.size;
+  bulkEl.style.display = n ? "" : "none";
+  put(bulkEl, el("strong", {}, n + " selected"), el("button", { class: "btn danger", onclick: () => deleteSelected(bulkEl.dataset.db) }, "Delete selected"), el("button", { class: "btn ghost", onclick: clearSel }, "Clear"));
+};
+const clearSel = () => { state.sel.clear(); document.querySelectorAll("input.sel").forEach((b) => (b.checked = false)); drawBulk(); };
+const bulkBar = (db) => { bulkEl = el("div", { class: "bar bulk" }); bulkEl.dataset.db = db; drawBulk(); return bulkEl; };
+const selCell = (db, key, ids) => {
+  const locked = ids.some((id) => tier(db, id) === "consensus") && !state.danger;
+  const box = el("input", { type: "checkbox", class: "sel", "aria-label": "Select " + key, title: locked ? "Consensus data: turn on Danger mode to select" : "Select", disabled: locked });
+  box.checked = state.sel.has(key);
+  box.addEventListener("click", (e) => e.stopPropagation());
+  box.addEventListener("change", () => { box.checked ? state.sel.set(key, ids) : state.sel.delete(key); drawBulk(); });
+  return el("td", { class: "selcell" }, box);
+};
+/* On the activeledger database every row is consensus data, which cannot be selected until Danger mode is on, so there is nothing for this to select. */
+const selAll = (db) => {
+  const locked = role(db) === "ledger" && !state.danger;
+  return el("th", { class: "selcell" }, el("input", { type: "checkbox", "aria-label": "Select every row on this page", disabled: locked, title: locked ? "Consensus data: turn on Danger mode to select" : "Select every row on this page", onchange: (e) => document.querySelectorAll("input.sel:not(:disabled)").forEach((b) => { if (b.checked !== e.target.checked) b.click(); }) }));
+};
+const selTable = (db, cols, body) => [bulkBar(db), el("div", { class: "card" }, body.length
+  ? el("table", {}, el("thead", {}, el("tr", {}, selAll(db), cols.map((c) => el("th", {}, c)))), el("tbody", {}, body))
+  : el("div", { class: "empty" }, state.q.trim() ? "Nothing matches that search" : "0 " + state.noun))];
+async function deleteSelected(db) {
+  const ids = [...state.sel.values()].flat(), n = state.sel.size;
+  if (!ids.length) return;
+  const consensus = ids.some((id) => tier(db, id) === "consensus");
+  const what = n + " selected item" + (n === 1 ? "" : "s") + (ids.length > n ? " (" + ids.length + " documents: each stream's state, meta and volatile)" : "");
+  if (!(await ask(consensus
+    ? { title: "Delete consensus data?", body: what + " will be removed. Every node must hold the same stream state and meta, so this makes this node disagree with the network. It cannot be undone.", expect: "delete", danger: true }
+    : { title: "Delete " + n + " item" + (n === 1 ? "" : "s") + "?", body: what + " will be removed. This cannot be undone.", danger: true }))) return;
+  let failed = 0, first = "";
+  for (const id of ids) {
+    try { await api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+    catch (e) { if (!/:(stream|volatile)$/.test(id)) { failed++; first = first || String(e.message || e); } }
+  }
+  state.sel.clear(); afterWrite();
+  if (failed) notify("Some deletes failed", failed + " of " + ids.length + " could not be deleted. The first error: " + first);
+}
+
+/* ---- Node status: what is stored, and the storage server's own maintenance routes. */
+const NODE = "__node";
+const kindsFor = (db) => role(db) === "errors" ? [["error", "Errors"]] : role(db) === "events" ? [["event", "Events"], ["umid", "Transaction index rows"], ["fail", "Failed transaction rows"], ["resent", "Resent records"]] : [];
+const FILE = /^[A-Za-z0-9._-]{1,100}$/;
+async function runPrune(db, kind, before, dryRun, onPage) {
+  let after, total = { removed: 0, scanned: 0, kept: 0 };
+  for (let guard = 0; guard < 100000; guard++) {
+    const page = await api(`/${encodeURIComponent(db)}/_prune`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ kind, before, dryRun, ...(after ? { after } : {}) }) });
+    total.removed += page.removed || 0; total.scanned += page.scanned || 0; total.kept += page.kept || 0;
+    onPage && onPage(total);
+    if (!page.next) break;
+    after = page.next;
+  }
+  return total;
+}
+async function pruneFlow(db, kind, label, btn) {
+  const days = await ask({ title: "Prune " + label.toLowerCase() + " in " + shown(db), body: "Remove rows older than this many days (at least 1). Nothing is removed yet: it counts first.", field: { start: "30", hint: "days", check: (v) => (/^\d+$/.test(v) && +v >= 1 ? "" : "A whole number of days, 1 or more."), preview: (v) => "Older than " + new Date(Date.now() - v * 864e5).toLocaleString() } });
+  if (!days) return;
+  const before = Date.now() - +days * 864e5, was = btn.textContent;
+  try {
+    btn.disabled = true; btn.textContent = "Counting…";
+    const dry = await runPrune(db, kind, before, true, (t) => (btn.textContent = "Counting " + t.scanned.toLocaleString() + "…"));
+    btn.textContent = was; btn.disabled = false;
+    if (!dry.removed) return notify("Nothing to prune", dry.scanned.toLocaleString() + " rows looked at; none are old enough" + (dry.kept ? " or ready to remove (" + dry.kept.toLocaleString() + " kept)." : "."));
+    if (!(await ask({ title: "Remove " + dry.removed.toLocaleString() + " rows?", body: dry.removed.toLocaleString() + " of " + dry.scanned.toLocaleString() + " " + label.toLowerCase() + " rows in " + shown(db) + " are older than " + days + " days and will be removed. This cannot be undone.", expect: "prune", danger: true }))) return;
+    btn.disabled = true;
+    const done = await runPrune(db, kind, before, false, (t) => (btn.textContent = "Removed " + t.removed.toLocaleString() + "…"));
+    notify("Pruned", done.removed.toLocaleString() + " rows removed from " + shown(db) + ".");
+  } catch (e) { notify("Prune failed", String(e.message || e)); }
+  finally { btn.textContent = was; btn.disabled = false; loadSize(db).then(() => state.db === NODE && renderNode()); }
+}
+async function backupFlow(db) {
+  const name = await ask({ title: "Back up " + shown(db), body: "Writes a copy of the database to a file in the storage server's backup folder, on the machine the storage runs on. It is not downloaded here; use Export for that.", field: { start: shown(db).replace(/^$/, "ledger") + "-" + stamp(), hint: "file name", check: (v) => (FILE.test(v) ? "" : "Letters, numbers, . _ - (up to 100).") } });
+  if (!name) return;
+  try { await api(`/${encodeURIComponent(db)}/_backup`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ filename: name }) }); notify("Backup started", "The storage server is writing " + name + ". Large databases take a while.") } catch (e) { notify("Backup failed", String(e.message || e)); }
+}
+async function restoreFlow(db) {
+  const name = await ask({ title: "Restore " + shown(db) + " from a backup file", body: "Reads a file from the storage server's backup folder into this database. Documents in the file replace those held here.", field: { start: "", hint: "file name", check: (v) => (FILE.test(v) ? "" : "Letters, numbers, . _ - (up to 100).") } });
+  if (!name) return;
+  if (!(await ask({ title: "Restore " + shown(db) + "?", body: "Replaces documents in " + db + " with those in " + name + ". For the activeledger database every node must agree on this data.", expect: shown(db), danger: true }))) return;
+  try { await api(`/${encodeURIComponent(db)}/_restore`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ filename: name }) }); notify("Restore started", "The storage server is reading " + name + "."); } catch (e) { notify("Restore failed", String(e.message || e)); }
+}
+async function renderNode() {
+  closeLive(); renderNav();
+  const total = Object.values(state.sizes).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
+  const rows = state.dbs.map((d) => {
+    const kinds = kindsFor(d), acts = el("td", {});
+    const compact = el("button", { class: "btn ghost", onclick: async () => { compact.disabled = true; compact.textContent = "Compacting…"; try { await api(`/${encodeURIComponent(d)}/_compact`); await loadSize(d); notify("Compacted", shown(d) + " is " + (fmtBytes(state.sizes[d]) || "compacted") + " on disk now."); } catch (e) { notify("Compact failed", String(e.message || e)); } finally { compact.disabled = false; compact.textContent = "Compact"; renderNode(); } } }, "Compact");
+    acts.append(compact, el("button", { class: "btn ghost", onclick: () => backupFlow(d) }, "Backup"), el("button", { class: "btn ghost", onclick: (e) => exportAll(d, e.currentTarget) }, "Export"));
+    if (kinds.length) { const pr = el("button", { class: "btn ghost", onclick: (e) => menu.open(e.currentTarget, kinds.map(([k, l]) => [l, () => pruneFlow(d, k, l, pr)])) }, "Prune…"); acts.append(pr); }
+    acts.append(el("button", { class: "btn ghost", disabled: !state.danger, title: state.danger ? "Restore from a backup file" : "Turn on Danger mode to restore", onclick: () => restoreFlow(d) }, "Restore…"));
+    return el("tr", {}, el("td", { class: "mono" }, shown(d)), el("td", {}, isSystem(d) ? el("span", { class: "tag" }, role(d)) : el("span", { class: "muted" }, "custom")), el("td", {}, fmtBytes(state.sizes[d]) || "…"), acts);
+  });
+  put(content, el("div", { class: "bar" }, el("h2", {}, "Node status"), el("span", { class: "tag" }, state.base), el("span", { class: "tag" }, state.dbs.length + " databases"), total ? el("span", { class: "tag" }, fmtBytes(total) + " on disk") : null),
+    el("div", { class: "note" }, "Maintenance for the storage server this page is talking to. Compact and Backup are safe to run on a live node. Prune counts first and asks before it removes anything; it only touches the events and errors databases. Restore needs Danger mode."),
+    el("div", { class: "card node" }, el("table", {}, el("thead", {}, el("tr", {}, ["Database", "Kind", "Size", "Actions"].map((c) => el("th", {}, c)))), el("tbody", {}, rows))));
+}
+
+/* Pages */
+const content = $("#content");
+const loading = () => content.replaceChildren(el("div", { class: "empty" }, "Loading…"));
+const fail = (e) => content.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e))));
+const table = (cols, rows) => el("div", { class: "card" }, rows.length
+  ? el("table", {}, el("thead", {}, el("tr", {}, cols.map((c) => el("th", {}, c)))), el("tbody", {}, rows))
+  : el("div", { class: "empty" }, state.q.trim() ? "Nothing matches that search" : "0 " + state.noun));
+/* An estimate, not a count: the database's size on disk over the average size of the documents seen so far. The files carry some
+   overhead and are compressed, so it can be well out; it is only ever shown as "about". perItem: documents per listed item. */
+const estimateItems = (db, perItem = 1) => {
+  const t = state.avg[db], size = state.sizes[db];
+  return t && t.n >= 5 && typeof size === "number" ? Math.max(1, Math.round(size / (t.bytes / t.n) / perItem)) : null;
+};
+const pager = (hasNext, go, perItem = 0) => {
+  let label = "Page " + (state.page + 1);
+  if (!hasNext) label += " of " + (state.page + 1);
+  else if (!state.q && perItem) { const e = estimateItems(state.db, perItem); if (e) label += " of about " + Math.max(Math.ceil(e / state.pageSize), state.page + 2).toLocaleString(); }
+  const select = el("select", { "aria-label": "Rows per page", onchange: (e) => { state.pageSize = +e.target.value; store.set("al.pagesize", String(state.pageSize)); state.cursor = [null]; state.page = 0; refreshBody(); } },
+    PAGE_SIZES.map((n) => el("option", { value: String(n), selected: n === state.pageSize }, n + " per page")));
+  return el("div", { class: "pager" }, select, el("span", { title: "Page counts are estimated from the size on disk and the average document size. On the Streams tab a page is " + state.pageSize + " streams, not documents." }, label),
+    el("button", { class: "btn ghost", disabled: state.page === 0, onclick: () => go(-1) }, "Previous"),
+    el("button", { class: "btn ghost", disabled: !hasNext, onclick: () => go(1) }, "Next"));
+};
+
+const pagedRows = async (db, range) => {
+  const startkey = state.cursor[state.page] ?? range.startkey;
+  const rows = await listDocs(db, { ...range, startkey });
+  const size = state.pageSize, hasNext = rows.length > size;
+  if (hasNext) state.cursor[state.page + 1] = rows[size].id;
+  state.pageDocs = rows.slice(0, size).map((r) => r.doc).filter(Boolean);
+  return { rows: rows.slice(0, size), hasNext };
+};
+let refreshBody = () => render();
+state.noun = "documents";
+let refreshChips = () => {};
+/* After a write the document count is stale: ask again, then redraw. */
+const afterWrite = () => { delete state.exact[state.db]; delete state.probed[state.db]; loadSize(state.db).then(() => refreshChips()); refreshBody(); };
+const go = (d) => { state.page += d; state.sel.clear(); refreshBody(); };
+
+/* Typing the start of a key finds everything that starts with it. `fallback` is the prefix keys of this kind carry, added when it is left off. */
+const keyRange = (whole = {}, fallback = "") => {
+  const q = state.q.trim();
+  if (!q) return whole;
+  const prefix = fallback && !q.startsWith(fallback) ? fallback + q : q;
+  return { startkey: prefix, endkey: prefix + "\ufff0" };
+};
+
+const pageStreams = async (db) => {
+  const size = state.pageSize, limit = size * 4 + 4;
+  const rows = await listDocs(db, { ...keyRange(), startkey: state.cursor[state.page] ?? keyRange().startkey, limit });
+  const all = groupStreams(rows);
+  /* A full fetch may end part way through a stream: leave that one for the next page. */
+  let next = null;
+  if (rows.length >= limit && all.length) next = all.pop().id;
+  if (all.length > size) next = all[size].id;
+  if (next) state.cursor[state.page + 1] = next;
+  if (all.length) state.perStream[db] = Math.max(1, rows.length / (all.length + (next ? 1 : 0)));
+  const groups = all.slice(0, size);
+  state.pageDocs = groups.flatMap((g) => [g.state, g.meta].filter(Boolean));
+  const body = groups.map((g) => el("tr", { onclick: () => openStream(db, g) },
+    selCell(db, g.id, [g.id, g.id + ":stream", g.id + ":volatile"]),
+    el("td", { class: "mono" }, short(g.id)), el("td", {}, g.meta?.name ?? g.state?.name ?? ""),
+    el("td", {}, lockTags(g.meta)), el("td", { class: "muted" }, g.state?._rev ?? ""), el("td", { class: "muted mono" }, short(g.meta?.umid ?? "", 8))));
+  return [el("div", { class: "note" }, "A stream is shown once, with its state, meta and volatile together."), ...selTable(db, ["Stream", "Name", "Locks", "Revision", "Last transaction"], body), pager(!!next, go, state.perStream[db] || 3)];
+};
+/* The streams a transaction created or updated, each opening that stream; for an update, the transaction it replaced. */
+const streamList = (ledger, d) => {
+  const open = (id) => el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openStream(ledger, { id }, true); } }, short(id, 14));
+  const rows = [
+    ...(d.streams?.new || []).map((n) => el("div", {}, el("span", { class: "tag ok" }, "new"), " ", open(n.id))),
+    ...(d.streams?.updated || []).map((u) => el("div", {}, el("span", { class: "tag" }, "updated"), " ", open(u.id), u.prev ? el("span", { class: "muted" }, "  replaced ") : "", u.prev ? el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openTransaction(ledger, u.prev, true); } }, short(u.prev, 12)) : "")),
+  ];
+  return rows.length ? el("div", {}, ...rows) : el("div", { class: "muted" }, "None");
+};
+/* A stream id shown as text, upgraded to a link once the ledger confirms it holds that stream (names such as a new stream's label are not ids). */
+const idLink = (ledger, key, push = true) => {
+  const out = el("span", { class: "mono" }, short(String(key), 14));
+  out.title = String(key);
+  getDoc(ledger, String(key)).then((doc) => {
+    if (!doc || !doc._id) return;
+    const a = el("a", { class: "lnk mono", href: "#", title: String(key), onclick: (e) => { e.preventDefault(); openStream(ledger, { id: String(key) }, push); } }, short(String(key), 14));
+    out.replaceChildren(a);
+  }).catch(() => {});
+  return out;
+};
+const chips = (ledger, keys) => keys.length ? el("div", { class: "who" }, ...keys.slice(0, 30).map((k) => idLink(ledger, k)), keys.length > 30 ? el("span", { class: "muted" }, "+" + (keys.length - 30) + " more") : "") : el("span", { class: "muted" }, "None");
+const txFacts = (ledger, d) => {
+  const u = d.umid || {}, t = u.$tx || {}, sigs = u.$sigs || d.$sigs || {};
+  const kv = [];
+  const row = (k, v) => kv.push(el("div", {}, k), v instanceof Node ? v : el("div", {}, v));
+  row("Contract", el("div", {}, el("span", { class: "mono" }, t.$contract ?? "—"), t.$entry ? el("span", { class: "muted" }, "  entry " + t.$entry) : ""));
+  row("Namespace", t.$namespace ?? "—");
+  row("Committed", u.$datetime ? new Date(u.$datetime).toLocaleString() + "  (" + u.$datetime + ")" : "—");
+  if (u.$origin) row("Received by", u.$origin);
+  row("Signed by", chips(ledger, Object.keys(sigs)));
+  row("Inputs", chips(ledger, Object.keys(t.$i || {})));
+  row("Outputs", chips(ledger, Object.keys(t.$o || {})));
+  row("Streams", el("div", {}, `${d.streams?.new?.length ?? 0} new · ${d.streams?.updated?.length ?? 0} updated`));
+  row("Touched", streamList(ledger, d));
+  row("Events", el("div", {}, String(d.events?.length ?? 0)));
+  return el("div", { class: "kv" }, ...kv);
+};
+const openTransaction = async (ledger, umid, push = false) => {
+  const show = push ? drawer.push.bind(drawer) : drawer.open.bind(drawer);
+  try {
+    const d = await getDoc(ledger, umid + ":umid");
+    if (!d || !d._id) throw new Error("no such transaction");
+    show(umid, txFacts(ledger, d), docPanel(ledger, d, afterWrite));
+  } catch (e) { show(umid, el("div", { class: "err" }, "That transaction is not held on this node (" + e.message + ")")); }
+};
+const pageTransactions = async (ledger) => {
+  if (state.q.trim()) {
+    /* A transaction is the document <umid>:umid in the ledger, so its id prefix is a key prefix there. */
+    const { rows, hasNext } = await pagedRows(ledger, keyRange());
+    const found = rows.filter((r) => String(r.id).endsWith(":umid"));
+    return [table(["Transaction", "Contract", "Committed"], found.map((r) => {
+      const umid = String(r.id).replace(/:umid$/, ""), tx = r.doc?.umid;
+      return el("tr", { onclick: () => openTransaction(ledger, umid) }, el("td", { class: "mono" }, short(umid)), el("td", {}, tx?.$tx?.$contract ?? ""), el("td", { class: "muted" }, tx?.$datetime ? new Date(tx.$datetime).toLocaleString() : ""));
+    })), pager(hasNext, go)];
+  }
+  /* The time-ordered index (umid:<ms>,<umid>) is kept in the events database. */
+  const db = state.dbs.find((d) => role(d) === "events");
+  if (!db) return [el("div", { class: "empty" }, "No events database found, so there is no transaction index to list")];
+  const { rows, hasNext } = await pagedRows(db, { startkey: "umid:", endkey: "umid;" });
+  const body = rows.filter((r) => String(r.id).startsWith("umid:")).map((r) => {
+    const [stamp, umid] = String(r.id).replace(/^umid:/, "").split(",");
+    return el("tr", { onclick: () => openTransaction(ledger, umid) },
+      el("td", { class: "mono" }, short(umid || String(r.id))), el("td", { class: "muted" }, stamp && /^\d+$/.test(stamp) ? new Date(+stamp).toLocaleString() : stamp || ""));
+  });
+  return [table(["Transaction", "Committed"], body), pager(hasNext, go)];
+};
+const pageEvents = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, keyRange({ startkey: "event:", endkey: "event;" }, "event:"));
+  const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) },
+    selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id), 18)), el("td", {}, r.doc?.contract ?? r.doc?.event ?? ""), el("td", { class: "muted mono" }, short(r.doc?.umid ?? "", 10)), rowDelete(db, r.doc)));
+  return [...selTable(db, ["Event", "Name", "Transaction", ""], body), pager(hasNext, go)];
+};
+/* Rows of one kind in the events database, found by the prefix of their id (event:, umid:, fail:, resent:). */
+const msOf = (id) => { const m = /^[a-z]+:(\d{10,})/.exec(String(id)); return m ? +m[1] : null; };
+const details = (doc) => Object.entries(doc || {}).filter(([k]) => !k.startsWith("_")).slice(0, 3).map(([k, v]) => k + ": " + short(typeof v === "string" ? v : JSON.stringify(v), 12)).join("   ");
+const pagePrefix = (prefix) => async (db) => {
+  const { rows, hasNext } = await pagedRows(db, keyRange({ startkey: prefix, endkey: prefix.slice(0, -1) + ";" }, prefix));
+  const body = rows.map((r) => { const ms = msOf(r.id); return el("tr", { onclick: () => openDoc(db, r.doc) },
+    selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id).replace(prefix, ""), 14)), el("td", { class: "muted" }, ms ? new Date(ms).toLocaleString() : ""), el("td", { class: "muted" }, details(r.doc)), rowDelete(db, r.doc)); });
+  return [...selTable(db, ["Id", "Time", "Details", ""], body), pager(hasNext, go)];
+};
+
+/* Live: what the node writes from now on, as it happens. The server sends events, and with ?also= the transaction and failed rows;
+   nothing is replayed. The connection is closed whenever the page moves on. */
+let liveSource = null;
+const closeLive = () => { liveSource?.close(); liveSource = null; };
+const KIND = { umid: ["Transaction", "ok"], fail: ["Failed", "bad"], resent: ["Resent", ""], event: ["Event", ""] };
+const pageLive = async (db) => {
+  const MAX = 300;
+  const status = el("span", { class: "tag" }, "Connecting…"), count = el("span", { class: "muted" }), tbody = el("tbody");
+  let n = 0, paused = false;
+  const add = (id, doc) => {
+    const kind = KIND[String(id).split(":")[0]] ? String(id).split(":")[0] : "event", [label, tone] = KIND[kind];
+    const when = msOf(id) ? new Date(msOf(id)) : new Date();
+    tbody.prepend(el("tr", { onclick: () => drawer.open(String(id), jsonView(doc)) },
+      el("td", { class: "muted" }, when.toLocaleTimeString()), el("td", {}, el("span", { class: "tag " + tone }, label)),
+      el("td", { class: "mono" }, short(String(id).replace(/^[a-z]+:/, ""), 14)), el("td", { class: "muted" }, details(doc))));
+    while (tbody.children.length > MAX) tbody.lastChild.remove();
+    count.textContent = ++n + " seen" + (n > MAX ? ", showing the latest " + MAX : "");
+  };
+  const connect = () => {
+    closeLive();
+    const es = new EventSource(state.base.replace(/\/$/, "") + "/" + encodeURIComponent(db) + "/events?also=umid,fail");
+    liveSource = es;
+    es.onopen = () => { status.textContent = "Live"; status.className = "tag ok"; };
+    es.onerror = () => { status.textContent = "Reconnecting…"; status.className = "tag warn"; };
+    es.onmessage = (e) => { try { add(e.lastEventId, JSON.parse(e.data)); } catch {} };
+  };
+  const toggle = el("button", { class: "btn ghost", onclick: () => { paused = !paused; if (paused) { closeLive(); status.textContent = "Paused"; status.className = "tag"; } else connect(); toggle.textContent = paused ? "Resume" : "Pause"; } }, "Pause");
+  connect();
+  return [el("div", { class: "bar" }, status, toggle, el("button", { class: "btn ghost", onclick: () => { tbody.replaceChildren(); n = 0; count.textContent = ""; } }, "Clear"), count),
+    el("div", { class: "note", style: "margin:0 0 10px" }, "From now on only. Events, transactions and failed transactions appear as the node writes them; nothing earlier is replayed, use the other tabs for that."),
+    el("div", { class: "card" }, el("table", {}, el("thead", {}, el("tr", {}, ["Time", "Kind", "Id", "Details"].map((c) => el("th", {}, c)))), tbody))];
+};
+
+const pageGeneral = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, keyRange());
+  const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) }, selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id), 24)), el("td", { class: "muted mono" }, r.doc?._rev ?? ""), el("td", { class: "muted" }, Object.keys(r.doc || {}).filter((k) => !k.startsWith("_")).slice(0, 5).join(", ")), rowDelete(db, r.doc)));
+  if (!state.q && state.page === 0) { if (hasNext) delete state.exact[db]; else state.exact[db] = rows.length; refreshChips(); }
+  return [...selTable(db, ["Id", "Revision", "Fields", ""], body), pager(hasNext, go, 1)];
+};
+const searchHint = { live: "", streams: "Search by stream id: type the start of it", umids: "Search by transaction id: type the start of it", umidx: "Search by time: type the start of the milliseconds, e.g. 17950", fails: "Search by time: type the start of the milliseconds, e.g. 17950", resent: "Search by transaction id: type the start of it", events: "Search by event key, for example event:1795", docs: "Search by document id: type the start of it" };
+const tabsFor = (db) => {
+  if (db === NODE) return [["node", "Node status", async () => []]];
+  if (state.view === "general") return [["docs", "Documents", pageGeneral]];
+  const r = role(db);
+  if (r === "ledger") return [["streams", "Streams", pageStreams], ["umids", "Transactions", pageTransactions]];
+  if (r === "events") return [["live", "Live", pageLive], ["events", "Events", pageEvents], ["umidx", "Umids", pagePrefix("umid:")], ["fails", "Failed", pagePrefix("fail:")], ["resent", "Resent", pagePrefix("resent:")], ["docs", "All documents", pageGeneral]];
+  return [["docs", "Documents", pageGeneral]];
+};
+async function render() {
+  closeLive();
+  state.sel.clear();
+  renderNav();
+  if (state.db === NODE) return renderNode();
+  if (!state.db) return content.replaceChildren(el("div", { class: "empty" }, "Choose a database"));
+  const tabs = tabsFor(state.db);
+  if (!tabs.find((t) => t[0] === state.tab)) state.tab = tabs[0][0];
+  state.noun = String(tabs.find((t) => t[0] === state.tab)[1]).toLowerCase().replace(/^all /, "");
+  const chips = el("span", { class: "chips" });
+  const db0 = state.db;
+  refreshChips = () => {
+    if (state.db !== db0) return;
+    const size = fmtBytes(state.sizes[db0]), exact = state.exact[db0], est = exact == null ? estimateItems(db0, 1) : null;
+    /* The Streams list counts streams, which are several documents each, so say that too: 25 streams a page is about 100 documents. */
+    const streams = state.tab === "streams" && exact == null && state.perStream[db0] ? estimateItems(db0, state.perStream[db0]) : null;
+    put(chips, size ? el("span", { class: "tag" }, size + " on disk") : null,
+      streams ? el("span", { class: "tag", title: "A stream is its state, meta and volatile documents, so it is several documents" }, "about " + streams.toLocaleString() + " streams") : null,
+      exact != null ? el("span", { class: "tag" }, exact.toLocaleString() + " documents") : est ? el("span", { class: "tag", title: "Estimated from the size on disk and the average document size" }, "about " + est.toLocaleString() + " documents") : null);
+  };
+  /* One key is enough to tell an empty database from one with documents, so it can say "0 documents". */
+  if (state.exact[db0] === undefined && !state.probed[db0]) {
+    state.probed[db0] = true;
+    listDocs(db0, { limit: 1, include_docs: false }).then((rows) => { if (!rows.length) { state.exact[db0] = 0; refreshChips(); } }).catch(() => {});
+  }
+  const head = el("div", { class: "bar" }, el("h2", { title: state.db }, shown(state.db)), state.view === "al" ? el("span", { class: "tag" }, role(state.db)) : null, chips);
+  const bar = el("div", { class: "tabs", role: "tablist" }, tabs.map(([id, label]) => el("button", { role: "tab", "aria-selected": String(id === state.tab), onclick: () => { state.tab = id; state.q = ""; state.cursor = [null]; state.page = 0; render(); } }, label)));
+  const body = el("div");
+  const search = el("input", { type: "search", class: "search", placeholder: searchHint[state.tab] || "Search by key: type the start of it", "aria-label": "Search by key", spellcheck: "false", autocomplete: "off" });
+  search.value = state.q;
+  let timer;
+  const draw = async () => { try { body.replaceChildren(...(await tabs.find((t) => t[0] === state.tab)[2](state.db))); } catch (e) { body.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e)))); } refreshChips(); };
+  refreshBody = draw;
+  search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { state.q = search.value; state.cursor = [null]; state.page = 0; draw(); }, 200); });
+  put(content, head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, exportMenu(), (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
+  refreshChips();
+  try { history.replaceState(null, "", "#" + new URLSearchParams({ db: state.db, tab: state.tab })); } catch {}
+  await draw();
+}
+const PREFIX = "activeledger";
+/* Every database name starts with activeledger, so a mistyped address cannot create one. It is left off what is shown, except for the ledger itself. */
+const shown = (d) => (d !== PREFIX && d.startsWith(PREFIX) ? d.slice(PREFIX.length) : d);
+const NAME = /^activeledger[A-Za-z0-9_-]{0,64}$/;
+const dbCheck = (suffix) => { const full = PREFIX + suffix; return !NAME.test(full) ? "Use letters, numbers, _ or - (up to 64)." : isSystem(full) ? "That name is used by the node itself." : state.dbs.includes(full) ? "That database already exists." : ""; };
+async function loadSizes() {
+  await Promise.all(state.dbs.map(async (d) => { try { state.sizes[d] = (await api("/" + encodeURIComponent(d))).data_size; } catch {} }));
+  renderNav();
+}
+const loadSize = async (db) => { try { state.sizes[db] = (await api("/" + encodeURIComponent(db))).data_size; } catch {} };
+
+async function reloadDbs(select) {
+  state.dbs = (await api("/_all_dbs")).filter((d) => !d.startsWith("_"));
+  if (select !== undefined) { state.db = select; state.q = ""; state.cursor = [null]; state.page = 0; }
+  if (state.db !== NODE && !state.dbs.includes(state.db)) state.db = state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
+  state.tab = state.db ? tabsFor(state.db)[0][0] : "streams";
+  render(); loadSizes();
+}
+async function addDb() {
+  const suffix = await ask({ title: "New custom database", body: "Letters, numbers, _ or -. It is stored with the prefix " + PREFIX + ", which the server needs.", field: { start: "", hint: "inventory", preview: (v) => "Created as " + PREFIX + v }, check: dbCheck });
+  if (!suffix) return;
+  const name = PREFIX + suffix;
+  try { await api(`/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); await reloadDbs(name); } catch (e) { notify("Could not create the database", String(e.message || e)); }
+}
+async function dropDb(name) {
+  if (!(await ask({ title: "Delete database " + shown(name) + "?", body: "Every document in " + name + " is removed and cannot be recovered.", expect: shown(name), danger: true }))) return;
+  try { await api(`/${encodeURIComponent(name)}`, { method: "DELETE" }); await reloadDbs(null); } catch (e) { notify("Could not delete the database", String(e.message || e)); }
+}
+const select = (d) => { state.db = d; state.tab = tabsFor(d)[0][0]; state.q = ""; state.cursor = [null]; state.page = 0; render(); };
+const openInTab = (name) => {
+  const p = new URLSearchParams({ db: name });
+  if (state.base !== location.origin) p.set("base", state.base);
+  window.open(location.pathname + "#" + p, "_blank", "noopener");
+};
+const menu = {
+  el: null,
+  close() { this.el?.remove(); this.el = null; },
+  open(anchor, items) {
+    this.close();
+    const m = el("div", { id: "menu", role: "menu" }, items.map(([label, run, bad]) => el("button", { role: "menuitem", class: bad ? "bad" : "", onclick: () => { menu.close(); run(); } }, label)));
+    document.body.append(m);
+    const r = anchor.getBoundingClientRect();
+    m.style.top = r.bottom + 4 + "px";
+    m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + "px";
+    this.el = m; m.querySelector("button")?.focus();
+  },
+};
+addEventListener("click", (e) => { if (menu.el && !menu.el.contains(e.target) && !e.target.closest(".kebab")) menu.close(); });
+addEventListener("keydown", (e) => e.key === "Escape" && menu.close());
+async function showInfo(name) {
+  let info = {};
+  try { info = await api("/" + encodeURIComponent(name)); state.sizes[name] = info.data_size; } catch (e) { return notify("Could not read the database", String(e.message || e)); }
+  const est = estimateItems(name, 1), docs = state.exact[name] != null ? state.exact[name].toLocaleString() : est ? "about " + est.toLocaleString() + " (estimate)" : "—";
+  drawer.open(shown(name), el("div", { class: "kv" },
+    el("div", {}, "Name"), el("div", { class: "mono" }, name),
+    el("div", {}, "Group"), el("div", {}, isSystem(name) ? "Activeledger (" + role(name) + ")" : "Custom"),
+    el("div", {}, "Data on disk"), el("div", {}, fmtBytes(info.data_size) || "—"),
+    el("div", {}, "Documents"), el("div", {}, docs)),
+    el("div", { class: "note", style: "margin:0 0 14px" }, "Data on disk counts the table files, the write-ahead log and the manifest, not the text logs."),
+    el("div", { class: "bar" },
+      el("a", { class: "btn ghost", href: state.base.replace(/\/$/, "") + "/" + encodeURIComponent(name), target: "_blank", rel: "noopener", style: "text-decoration:none" }, "Raw info")));
+}
+function renderNav() {
+  const item = (d) => {
+    const open = el("button", { "aria-current": String(d === state.db), onclick: () => select(d) }, el("span", { class: "name", title: d }, shown(d)), state.view === "al" && isSystem(d) ? el("span", { class: "tag" }, role(d)) : null);
+    const items = [["Open in new tab", () => openInTab(d)], ["Info page", () => showInfo(d)], ...(isSystem(d) ? [] : [["Delete…", () => dropDb(d), true]])];
+    return el("div", { class: "dbrow" }, open, el("button", { class: "kebab", title: "More", "aria-label": "Actions for " + d, "aria-haspopup": "menu", onclick: (e) => menu.open(e.currentTarget, items) }, "⋮"));
+  };
+  const system = state.dbs.filter(isSystem), custom = state.dbs.filter((d) => !isSystem(d));
+  $("#dbs").replaceChildren(
+    el("div", { class: "dbrow" }, el("button", { "aria-current": String(state.db === NODE), onclick: () => select(NODE) }, el("span", { class: "name" }, "Node status"))),
+    ...(system.length ? [el("h6", { class: "group" }, "Activeledger"), ...system.map(item)] : []),
+    el("h6", { class: "group head" }, "Custom", el("button", { class: "mini", onclick: addDb }, "Add new")),
+    ...(custom.length ? custom.map(item) : [el("div", { class: "note", style: "margin:4px 8px" }, "None yet")]));
+}
+const setView = (v) => { state.view = v; store.set("al.view", v); $("#v-al").setAttribute("aria-pressed", String(v === "al")); $("#v-gen").setAttribute("aria-pressed", String(v === "general")); state.tab = state.db ? tabsFor(state.db)[0][0] : "streams"; state.q = ""; state.cursor = [null]; state.page = 0; render(); };
+$("#v-al").onclick = () => setView("al"); $("#v-gen").onclick = () => setView("general");
+$("#theme").onclick = () => { const r = document.documentElement; const cur = r.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); r.dataset.theme = cur === "dark" ? "light" : "dark"; store.set("al.theme", r.dataset.theme); };
+$("#danger").onclick = async () => {
+  const b = $("#danger");
+  if (!state.danger && !(await ask({ title: "Turn on Danger mode?", body: "This unlocks editing of the activeledger database's stream state, meta and transactions. Every node must agree on that data, so a change here can make this node disagree with the network.", expect: "danger", danger: true }))) return;
+  state.danger = !state.danger; drawer.close(); render();
+  b.setAttribute("aria-pressed", String(state.danger)); b.textContent = "Danger mode: " + (state.danger ? "ON" : "off");
+};
+$("#base").value = state.base;
+$("#base").addEventListener("change", (e) => { state.base = e.target.value.trim(); store.set("al.base", state.base); boot(); });
+async function boot() {
+  const t = store.get("al.theme", ""); if (t) document.documentElement.dataset.theme = t;
+  $("#v-al").setAttribute("aria-pressed", String(state.view === "al")); $("#v-gen").setAttribute("aria-pressed", String(state.view === "general"));
+  loading();
+  try {
+    state.dbs = (await api("/_all_dbs")).filter((d) => !d.startsWith("_"));
+    state.db = state.db === NODE ? NODE : state.dbs.find((d) => d === state.db) || state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
+    const wanted = hash.get("tab");
+    state.tab = state.db ? (tabsFor(state.db).some((t) => t[0] === wanted) ? wanted : tabsFor(state.db)[0][0]) : "streams";
+    render(); loadSizes();
+  } catch (e) { renderNav(); fail(new Error("Cannot reach the storage server at " + state.base + " — " + (e.message || e))); }
+}
+boot();
+</script>
+</body>
+</html>
