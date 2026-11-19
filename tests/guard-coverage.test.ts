@@ -81,6 +81,17 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       expect(seen).to.deep.equal([]);
     });
 
+    it("refuses connection-shaping options on net and tls (lookup, agent, createConnection, socket)", async () => {
+      const other = net.createServer((s) => s.end());
+      await new Promise<void>((r) => other.listen(0, "127.0.0.1", r));
+      const p = (other.address() as net.AddressInfo).port;
+      for (const extra of [{ lookup: () => undefined }, { createConnection: () => undefined }, { agent: new http.Agent() }, { socket: new net.Socket() }]) {
+        expect(await refused(() => inContract(() => net.connect({ port: p, host: "127.0.0.1", ...extra } as any))), Object.keys(extra)[0]).to.be.instanceOf(StorageAccessError);
+        expect(await refused(() => inContract(() => tls.connect({ port: p, host: "127.0.0.1", ...extra } as any))), `tls ${Object.keys(extra)[0]}`).to.be.instanceOf(StorageAccessError);
+      }
+      other.close();
+    });
+
     it("leaves a socket to anywhere else alone", async () => {
       const other = net.createServer((s) => s.end());
       await new Promise<void>((r) => other.listen(0, "127.0.0.1", r));
@@ -149,6 +160,15 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
 
     it("drops a response that is more than the call may read", async () => {
       const r: any = await limited(() => ActiveRequest.send(`http://127.0.0.1:${bigPort}/x`, "GET"));
+      expect(r.data).to.equal(null);
+    });
+
+    it("does not read a compressed answer (it could expand past the byte budget)", async () => {
+      const zlib = require("zlib");
+      const gz = http.createServer((_q, res) => { res.setHeader("content-encoding", "gzip"); res.end(zlib.gzipSync('{"ok":true}')); });
+      await new Promise<void>((r) => gz.listen(0, "127.0.0.1", r));
+      const r: any = await limited(() => ActiveRequest.send(`http://127.0.0.1:${(gz.address() as net.AddressInfo).port}/x`, "GET"));
+      gz.close();
       expect(r.data).to.equal(null);
     });
 

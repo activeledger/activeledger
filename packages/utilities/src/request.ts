@@ -336,6 +336,13 @@ async function perform(
           },
           onHeaders: (_statusCode: number, rawHeaders: Buffer[] | null) => {
             encoding = rawHeader(rawHeaders, "content-encoding");
+            // A contract never asks for compression, so an encoded answer is not read: it
+            // could expand far past the byte budget the contract was given
+            if (scope && encoding) {
+              abortRequest?.();
+              done({ data: null });
+              return false;
+            }
             return true;
           },
           onData: (chunk: Buffer) => {

@@ -191,6 +191,9 @@ const snapshotArgs = (args: unknown[]): unknown[] =>
  * methods: no copying, but nothing a contract could change between reads (a
  * Proxy, a getter, a class instance) is accepted.
  */
+// Options that change how a connection is made (resolver, socket, agent): never a contract's to set
+const REFUSED_OPTIONS = new Set(["lookup", "createConnection", "agent", "socket", "socketPath", "fd", "handle", "dispatcher", "setHost", "secureContext", "checkServerIdentity"]);
+
 const lightCheck = (args: unknown[]): void => {
   const visit = (value: unknown, depth: number): void => {
     if (!value || typeof value !== "object" || value instanceof URL) return;
@@ -200,6 +203,9 @@ const lightCheck = (args: unknown[]): void => {
     if (proto !== Object.prototype && proto !== null) throw new StorageAccessError("An argument that is not plain data");
     for (const d of Object.values(Object.getOwnPropertyDescriptors(value)) as any[]) {
       if (d.get || d.set) throw new StorageAccessError("An option that is not plain data");
+    }
+    for (const key of Object.keys(value)) {
+      if (REFUSED_OPTIONS.has(key)) throw new StorageAccessError(`The option '${key}'`);
     }
   };
   args.forEach((a) => visit(a, 0));
