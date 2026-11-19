@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 import { ActiveGZip } from "./gzip";
+import { StorageSocket } from "./storagesocket";
 import { Dispatcher, setGlobalDispatcher, getGlobalDispatcher, Agent } from "undici";
 
 /**
@@ -87,6 +88,9 @@ export const SERVER_IDLE_TIMEOUT_MS = 10_000;
  * lost commit costs a transaction.
  */
 const CLIENT_IDLE_TIMEOUT_MS = 4_000;
+
+// Routes that hold the response open and stream it
+const STREAMING_PATH = /\/(_changes|events)(\?|$)/;
 
 export const DISPATCHER_OPTIONS = {
   connect: {
@@ -215,6 +219,30 @@ export class ActiveRequest {
     } catch {
       // Same contract as every other failure here: never throw at the caller.
       return { data: null };
+    }
+
+    // Storage socket: the node's own storage process answers the same
+    // routes over a persistent framed connection. Only plain requests use it;
+    // anything with custom headers or compression, and the long-lived feeds,
+    // stay on HTTP. If nothing was written (not connected) HTTP carries on.
+    if (!header && !enableGZip && !STREAMING_PATH.test(path)) {
+      const socket = StorageSocket.for(origin);
+      if (socket) {
+        const reply = await socket.request(
+          method,
+          path,
+          body === undefined ? undefined : Buffer.isBuffer(body) ? body : Buffer.from(body),
+          timeout
+        );
+        if (reply !== undefined) {
+          if (!reply) return { data: null };
+          try {
+            return { data: JSON.parse(reply.body.toString()) };
+          } catch {
+            return { data: null };
+          }
+        }
+      }
     }
 
     return new Promise<IHTTPResponse>((resolve) => {

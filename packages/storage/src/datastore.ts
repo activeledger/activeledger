@@ -26,6 +26,7 @@ import { promises as fsPromises } from "fs";
 import * as child from "child_process";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveLogger } from "@activeledger/activelogger";
+import { StorageSocket } from "@activeledger/activeutilities";
 
 // Maximum restarts allowed
 const MAX_RESTARTS = 5;
@@ -130,6 +131,11 @@ export class ActiveDataStore {
           ...process.env,
           ...(dbInfo.selfhost.writeBufferMb > 0
             ? { ACTIVE_LEVEL_WRITE_BUFFER_MB: `${dbInfo.selfhost.writeBufferMb}` }
+            : {}),
+          // Local socket for this node's own processes, on unless
+          // db.selfhost.socket is false
+          ...(dbInfo.selfhost.socket !== false
+            ? { ACTIVE_STORAGE_SOCKET: StorageSocket.defaultPath(dbInfo.selfhost.port) }
             : {}),
           ...(dbInfo.selfhost.cacheMb > 0
             ? { ACTIVE_LEVEL_CACHE_MB: `${dbInfo.selfhost.cacheMb}` }

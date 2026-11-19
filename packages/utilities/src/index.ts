@@ -24,5 +24,6 @@
 import { ActiveRequest } from "./request";
 import { ActiveGZip } from "./gzip";
 import { ActiveClone } from "./clone";
-export { ActiveRequest, ActiveGZip, ActiveClone, ActiveFrame };
+export { ActiveRequest, ActiveGZip, ActiveClone, ActiveFrame, StorageSocket };
+import { StorageSocket } from "./storagesocket";
 import { ActiveFrame } from "./frame";

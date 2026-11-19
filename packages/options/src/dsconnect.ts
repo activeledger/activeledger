@@ -23,7 +23,7 @@
 import * as querystring from "querystring";
 import { createHash } from "crypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { ActiveRequest } from "@activeledger/activeutilities";
+import { ActiveRequest, StorageSocket } from "@activeledger/activeutilities";
 import { EventEmitter } from "events";
 import { ActiveOptions } from "./options";
 
@@ -57,6 +57,23 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
    * @param {string} location
    */
   constructor(private location: string) {
+    // Local socket to the node's storage process, unless switched off
+    // (db.selfhost.socket: false), and only when this
+    // really is that process (same loopback port)
+    const selfhost = ActiveOptions.get<any>("db", {}).selfhost;
+    if (selfhost && selfhost.socket !== false) {
+      try {
+        const url = new URL(location);
+        if (
+          (url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
+          url.port === `${selfhost.port}`
+        ) {
+          StorageSocket.register(url.origin, StorageSocket.defaultPath(selfhost.port));
+        }
+      } catch {
+        // Not a URL: nothing to register
+      }
+    }
     // Search to make sure the database exists
     // DISABLED
     //this.timerUnCache();

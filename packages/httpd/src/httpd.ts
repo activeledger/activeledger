@@ -432,6 +432,107 @@ export class ActiveHttpd {
   }
 
   /**
+   * Runs a request through the registered routes without an HTTP connection,
+   * for transports that carry the same method, path and JSON body some other
+   * way (the storage process's local socket). Answers like the HTTP server
+   * would: the status and the body text. Routes that write to the connection
+   * themselves (long-lived feeds) cannot be served this way and answer 501.
+   *
+   * @param {string} method
+   * @param {string} url path and query, as in a request line
+   * @param {Buffer} [body]
+   */
+  public async invoke(
+    method: string,
+    url: string,
+    body?: Buffer
+  ): Promise<{ status: number; body: string }> {
+    if (!this.compiled || !Object.keys(this.compiled).length) {
+      this.compile();
+    }
+    method = method.toUpperCase();
+    const cut = url.indexOf("?");
+    const pathPart = cut < 0 ? url : url.slice(0, cut);
+    const rawQuery = cut < 0 ? "" : url.slice(cut + 1);
+    const query = rawQuery
+      ? Object.fromEntries(new URLSearchParams(rawQuery).entries())
+      : {};
+    const segments = pathPart.split("/").filter((part) => part);
+    if (!segments.length) {
+      segments.push("/");
+    }
+
+    let parsed: any = "";
+    if (method === "POST" || method === "PUT") {
+      const text = body ? body.toString() : "";
+      try {
+        parsed = text.length ? JSON.parse(text) : {};
+      } catch (e) {
+        return { status: 400, body: JSON.stringify({ error: "Invalid JSON body" }) };
+      }
+    }
+
+    const handler = this.findHandler(
+      segments.slice(0),
+      method,
+      this.compiled[method] || this.compiled["ALL"] || []
+    );
+    if (!handler) {
+      return { status: 404, body: "" };
+    }
+
+    // Handlers that use the connection directly get one that refuses
+    let touched = false;
+    const refuse = () => {
+      touched = true;
+    };
+    const res: any = {
+      writable: true,
+      onAborted: refuse,
+      onData: refuse,
+      cork: refuse,
+      writeStatus: refuse,
+      writeHeader: refuse,
+      write: refuse,
+      end: refuse,
+    };
+    const local = "127.0.0.1";
+    try {
+      const data = await handler(
+        { url: segments, query, body: parsed, ip: { remote: local } },
+        {
+          headers: {},
+          method,
+          url,
+          connection: { remoteAddress: local },
+        },
+        res
+      );
+      if (touched || data == "handled") {
+        return { status: 501, body: "" };
+      }
+      if (!data) {
+        return { status: 404, body: "" };
+      }
+      if (data.mime) {
+        return {
+          status: 200,
+          body: Buffer.isBuffer(data.data) ? data.data.toString() : String(data.data),
+        };
+      }
+      return {
+        status: 200,
+        body: Buffer.isBuffer(data) || typeof data !== "object" ? String(data) : JSON.stringify(data),
+      };
+    } catch (error: any) {
+      return {
+        status: error?.status || error?.statusCode || 500,
+        body: JSON.stringify(error),
+      };
+    }
+  }
+
+  /**
    * Write the data correctly for the response
    *
    * @private
