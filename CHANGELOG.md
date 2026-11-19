@@ -40,7 +40,7 @@
   that needs a local service sets `allowLocalhost: true` in `security.namespace.<namespace>.policy`, or lists the
   destination in `security.contractEgress.allow`. It is opt-in and not needed for custom databases on the storage port,
   and it does not open the storage port itself: the always-refused list (volatile, the node's own databases, other
-  verbs and routes) still applies. A host name that only resolves to this machine is not recognised.
+  verbs and routes) still applies. The check is on the address as written: a host name that resolves to this machine, or one of the machine's own non-loopback addresses, is not recognised (enforcing on the resolved address is a follow-up).
   `allowLocalhost` also allows a URL to this machine in the contract's source. The deploy scan (which is part of the
   deploy vote) now also refuses, for a non-default namespace: a string that is a path or URL naming volatile data
   (`.../abc:volatile`, any case, percent- or `\u`-escaped); a URL to this machine unless `allowLocalhost`; and the

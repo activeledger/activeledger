@@ -384,12 +384,21 @@ export class ContractScope {
       }
     }
     if (h === "localhost" || h.endsWith(".localhost")) return true;
-    if (h === "::1" || h === "::" || h === "0:0:0:0:0:0:0:1" || h === "0:0:0:0:0:0:0:0") return true;
-    const mapped = /^::ffff:(.+)$/.exec(h);
-    if (mapped) {
-      const v = mapped[1];
-      if (/^7f[0-9a-f]{2}:[0-9a-f]{1,4}$/.test(v) || v === "0:0") return true;
-      return ContractScope.isLoopbackHost(v);
+    if (h.includes(":")) {
+      // An IPv6 address: drop a zone id, let the URL parser put it in one canonical form
+      // (::ffff:127.0.0.1 and 0:0:0:0:0:ffff:7f00:1 both become ::ffff:7f00:1), then compare
+      try {
+        h = new URL("http://[" + h.replace(/%.*$/, "") + "]").hostname.replace(/^\[|\]$/g, "");
+      } catch {
+        return true; // not an address we can read: not one to let through
+      }
+      if (h === "::1" || h === "::") return true;
+      const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+      if (mapped) {
+        const hi = parseInt(mapped[1], 16);
+        return hi >> 8 === 127 || (hi === 0 && parseInt(mapped[2], 16) === 0);
+      }
+      return false;
     }
     return /^127\.\d+\.\d+\.\d+$/.test(h) || h === "0.0.0.0";
   }
