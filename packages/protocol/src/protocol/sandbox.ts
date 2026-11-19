@@ -123,6 +123,8 @@ const requestDestination = (defaultPort: number) => (args: unknown[]): IDestinat
 
 /** net.connect / tls.connect / Socket.prototype.connect: (options) | (port, host) | (path) */
 const connectDestination = (args: unknown[]): IDestination => {
+  // net.connect hands Socket.prototype.connect its normalised [options, callback] as one array
+  if (Array.isArray(args[0])) return connectDestination(args[0] as unknown[]);
   const first = args[0];
   if (first && typeof first === "object") {
     const options: any = first;
@@ -271,8 +273,12 @@ const guard = (
  * Wrap the egress entry points. Idempotent.
  */
 export const installSandbox = (): void => {
-  if (installed) return;
+  // Once for the process, not once per copy of this module: wrapped twice, one connection would
+  // be checked (and its approval spent) twice
+  const INSTALLED = Symbol.for("activeledger.sandboxInstalled");
+  if (installed || (globalThis as any)[INSTALLED]) return;
   installed = true;
+  (globalThis as any)[INSTALLED] = true;
 
   // require(), not import: the module objects themselves must be patched,
   // not an interop copy of them
@@ -299,14 +305,17 @@ export const installSandbox = (): void => {
 };
 
 /** A value that is awaitable but not by this realm's own machinery: its then is the contract's code */
-const normalise = (value: any): any =>
-  value && (typeof value === "object" || typeof value === "function") && typeof value.then === "function"
-    ? new Promise((resolve) => resolve(value))
-    : value;
+export const normalise = (value: any): any => {
+  if (!value || (typeof value !== "object" && typeof value !== "function")) return value;
+  // then is read once; what is resolved is a native thenable around it
+  const then = value.then;
+  if (typeof then !== "function") return value;
+  return new Promise((resolve) => resolve({ then: (onOk: any, onErr: any) => then.call(value, onOk, onErr) }));
+};
 
 /** A thrown object that is not an Error is copied to plain data (its toString and getters are not ours to run) */
 const plainThrown = (error: unknown): unknown => {
-  if (!error || typeof error !== "object" || error instanceof Error) return error;
+  if (!error || typeof error !== "object" || error instanceof Error || require("util").types.isNativeError(error)) return error;
   try {
     return JSON.parse(JSON.stringify(error));
   } catch {
@@ -337,13 +346,18 @@ export const runSandboxed = <T>(ctx: ISandboxContext, fn: () => T): T => {
     ctx.inflight?.forEach((abort) => { try { abort(); } catch { /* already done */ } });
   };
   let result: any;
+  let thenable = false;
+  const frozen = Object.freeze({ ...ctx });
   try {
-    result = context.run(Object.freeze({ ...ctx }), () => {
+    result = context.run(frozen, () => {
       // Whatever the contract hands back is made plain here, inside its sandbox: a thenable's
       // then, a getter or a thrown object's toString would otherwise run when the host
       // later awaits, reads or logs it, outside the sandbox
       try {
-        return normalise(fn());
+        const raw = fn();
+        const settled = normalise(raw);
+        thenable = settled !== raw;
+        return settled;
       } catch (error) {
         throw plainThrown(error);
       }
@@ -352,10 +366,12 @@ export const runSandboxed = <T>(ctx: ISandboxContext, fn: () => T): T => {
     end();
     throw error;
   }
-  if (result && typeof result.then === "function") {
-    return result.then(
+  if (thenable) {
+    return Promise.prototype.then.call(
+      result,
       (value: unknown) => { end(); return value; },
-      (error: unknown) => { end(); throw error; }
+      // A rejection is made plain inside the contract's context too
+      (error: unknown) => { const plain = context.run(frozen, () => plainThrown(error)); end(); throw plain; }
     ) as T;
   }
   end();

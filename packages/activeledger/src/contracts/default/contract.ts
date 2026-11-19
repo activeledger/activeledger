@@ -1159,7 +1159,10 @@ export default class Contract extends Standard {
             seen = next;
           }
           const squashed = seen.replace(/["'`\s\u200b-\u200f\u2060\ufeff\u0000-\u001f]/g, "");
-          if (/[:\/]volatile/i.test(squashed) || (/(^|[^a-z])(https?:)?\/\//i.test(squashed) && /volatile/i.test(squashed))) {
+          // Only text shaped like a path or id (no spaces, or a leading slash, or a scheme) and
+          // not a string type: prose such as "Error: volatile data missing" is not a path
+          const pathish = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(seen) || /^\s*\//.test(seen) || !/\s/.test(seen.trim());
+          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed)) {
             report(node, `A path to volatile data is forbidden`);
           }
           // This machine, as a URL or a host:port, read the way a URL parser reads it
@@ -1185,7 +1188,11 @@ export default class Contract extends Standard {
         // one (activeledger plus more) needs allowDatabases for the namespace
         if (text !== undefined) {
           const candidate = text.replace(/[\t\r\n\u0000]/g, "").trim();
-          const pathOf = /^(?:[a-z][a-z0-9+.-]*:)?\/\/[^\/?#]*(\/[^?#]*)/i.exec(candidate)?.[1] ?? (/^\/[^\/]/.test(candidate) ? candidate.split(/[?#]/)[0] : "");
+          const urlMatch = /^(?:[a-z][a-z0-9+.-]*:)?\/\/([^\/?#]*)(\/[^?#]*)/i.exec(candidate);
+          // A database path on a public host (a repository link, a docs page) is not a storage database
+          const hostName = urlMatch ? urlMatch[1].replace(/^[^@]*@/, "").replace(/:\d+$/, "") : "";
+          const publicHost = !!urlMatch && hostName !== "" && !isLocalHost(hostName);
+          const pathOf = publicHost ? "" : urlMatch?.[2] ?? (/^\/[^\/]/.test(candidate) ? candidate.split(/[?#]/)[0] : "");
           let database = "";
           try {
             database = decodeURIComponent(pathOf).split("/").filter(Boolean)[0]?.toLowerCase() ?? "";

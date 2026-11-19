@@ -68,6 +68,13 @@
   ideographic dots, the machine's own name). The deploy scan folds `"a:" + "volatile"` and template literals, ignores quotes in
   a volatile path, reads URLs the way a URL parser does, and sees options passed to `new X(...)`, element-access calls and
   parenthesised or `as` objects.
+- **Review pass 3 fixes.** A raw `net.connect` (which hands the socket its arguments as one array) is now checked, so a
+  bare socket to the storage or to a closed local port no longer opens unchecked, and its approval is spent once. A
+  rejected promise or thenable rejection from a contract is made plain inside the sandbox like a resolved value. The
+  copy to plain data applies only where the guard is on (not a hybrid, the default namespace or builds below 50600),
+  falls back to the original value for data JSON cannot hold (cycles, BigInt), and a method that returns the contract
+  returns the facade. The sandbox wraps the network modules once per process. The deploy scan no longer refuses prose
+  (`"Error: volatile data missing"`), string types, or database-looking paths on public hosts (a repository or docs link).
 - **Encoded responses are not read by contracts** and `net`/`tls` connections refuse the options `lookup`, `agent`,
   `createConnection`, `socket` (hidden or symbol-keyed too).
 - **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and

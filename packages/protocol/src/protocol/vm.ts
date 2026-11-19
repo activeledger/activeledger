@@ -39,7 +39,7 @@ import {
   IVMExecution,
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
-import { runSandboxed, runUnsandboxed, bindToContext } from "./sandbox";
+import { runSandboxed, runUnsandboxed, bindToContext, normalise } from "./sandbox";
 import { ReadLock } from "./readlock";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
@@ -1166,7 +1166,9 @@ export class VirtualMachine
       return facade;
     };
     const remove = (event: string, listener: (...args: any[]) => void) => {
-      for (const wrapped of bound.get(listener) || []) emitter.removeListener(event, wrapped as any);
+      // One registration, the latest, as an EventEmitter does
+      const wrapped = (bound.get(listener) || []).pop();
+      if (wrapped) emitter.removeListener(event, wrapped as any);
       return facade;
     };
     const facade: any = Object.freeze({
@@ -1193,12 +1195,21 @@ export class VirtualMachine
   private scopedContract(umid: string, instance: any): any {
     if (!instance || typeof instance !== "object") return instance;
     const plain = (value: any): any => {
-      if (!ContractScope.current()) return value;
-      if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+      // Only where the guard is on (a storage-mode context): a hybrid, the default namespace
+      // and builds below 50600 are handed what the contract returned, as before
+      if ((ContractScope.current() as any)?.mode !== "storage") return value;
+      if (value && typeof value === "object") {
+        try {
+          return JSON.parse(JSON.stringify(value));
+        } catch {
+          // Not plain data (a cycle, a BigInt): left as it was, as it is without the guard
+          return value;
+        }
+      }
       return value;
     };
     const wrappers = new Map<PropertyKey, Function>();
-    return new Proxy(instance, {
+    const proxy: any = new Proxy(instance, {
       get: (target, prop) => {
         const value = this.sandboxed(umid, () => Reflect.get(target, prop, target));
         if (typeof value !== "function") return value;
@@ -1207,9 +1218,11 @@ export class VirtualMachine
           wrapper = (...args: unknown[]) =>
             this.sandboxed(umid, () => {
               const result = value.apply(target, args);
-              return result && typeof result.then === "function"
-                ? new Promise((resolve) => resolve(result)).then(plain)
-                : plain(result);
+              // A method that returns the contract itself returns the facade
+              if (result === target) return proxy;
+              // then is read once (normalise), and a thenable is awaited inside the sandbox
+              const settled = normalise(result);
+              return settled !== result ? settled.then(plain) : plain(result);
             });
           (wrapper as any).__target = value;
           wrappers.set(prop, wrapper);
@@ -1217,6 +1230,7 @@ export class VirtualMachine
         return wrapper;
       },
     });
+    return proxy;
   }
 
   private listenForVolatile(): void {

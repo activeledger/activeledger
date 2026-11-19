@@ -73,10 +73,10 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
   });
 
   it("refuses a custom database path unless the namespace has allowDatabases, and the node's own always", () => {
-    for (const s of ["http://x:5259/activeledger_wallets/abc", "/activeledger_wallets/_all_docs", "https://h/activeledgerfoo"]) {
+    for (const s of ["/activeledger_wallets/abc", "/activeledger_wallets/_all_docs", "/activeledgerfoo/x"]) {
       expect(scan(wrap(`return "${s}";`)), s).to.include("allowDatabases");
     }
-    for (const s of ["http://x:5259/activeledger/abc", "/activeledgerevents/_all_docs", "http://h/activeledgererrors/x"]) {
+    for (const s of ["/activeledger/abc", "/activeledgerevents/_all_docs", "/activeledgererrors/x"]) {
       expect(scan(wrap(`return "${s}";`)), s).to.include("own database");
     }
     ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: true } } } });
@@ -90,6 +90,12 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
     expect(scan(wrap('return "/activeledger_deposits/abc";'))).to.include("allowDatabases");
     ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: ["*"] } } } });
     expect(scan(wrap('return "/activeledger_deposits/abc";'))).to.equal(null);
+    // A public host's path is not the node's storage (a repository link, a docs page)
+    ActiveOptions.set("security", {});
+    for (const s of ["https://github.com/activeledger/activeledger", "https://example.com/activeledger-docs/page", "https://github.com/activeledger/activeledger-sdk-js"]) expect(scan(wrap(`return "${s}";`)), s).to.equal(null);
+    // Prose and types that say volatile are not paths
+    for (const s of ["Error: volatile data missing", "Stream: volatile", "see https://docs.activeledger.io/guide for volatile data"]) expect(scan(wrap(`return "${s}";`)), s).to.equal(null);
+    expect(scan('type K = "state:volatile"; export default class Foo { vote() { return 1; } }')).to.equal(null);
     // Words and short paths are not databases
     for (const s of ["activeledger_wallets", "/activeledger", "see /docs/activeledger", "an activeledger/x note"]) expect(scan(wrap(`return "${s}";`)), s).to.equal(null);
   });

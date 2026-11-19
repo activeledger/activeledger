@@ -372,7 +372,7 @@ export class ContractScope {
 
   /** Whether the path's database is one of these names (compared exactly, and still a custom database name) */
   public static isNamedDatabase(path: string, names: string[] | undefined): boolean {
-    if (!names || names.length === 0 || !ContractScope.isCustomDatabase(path)) return false;
+    if (!Array.isArray(names) || names.length === 0 || !ContractScope.isCustomDatabase(path)) return false;
     let first = "";
     try {
       first = decodeURIComponent(ContractScope.normalPath(path)).split("/").filter(Boolean)[0] ?? "";
