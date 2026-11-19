@@ -273,7 +273,8 @@ export class VirtualMachine
       const policy = ActiveOptions.get<any>("security", {})?.contractEgress || {};
       // From build 50600, like the namespace binding it goes with, so a network
       // that has not raised its build behaves as before.
-      // security.contractEgress.storage: "allow" switches the guard off.
+      // security.contractEgress.storage: "allow" switches the guard off; "deny" closes the port
+      // to everything the allow list does not name (by default custom databases are open).
       if (!ReadLock.enabled() || policy.storage === "allow") return fn();
       this.protectStorage();
       // What this contract's namespace (or namespace/contract) may reach in spite of the guard
@@ -286,6 +287,8 @@ export class VirtualMachine
       return runSandboxed(
         {
           mode: "storage",
+          // Custom databases are open unless the node is set to deny the storage port outright
+          customDatabases: policy.storage !== "deny",
           allow: entries.length ? (destination) => ContractScope.listed(entries, destination) : undefined,
           onBlocked: (what) =>
             ActiveLogger.warn(`Contract refused access to ${what} (${umid})`),

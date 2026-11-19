@@ -607,10 +607,36 @@ export class StreamUpdater {
     const created = new Set(
       (this.refStreams?.new || []).map((stream) => this.shared.filterPrefix(String(stream.id)))
     );
+    // The volatile of a stream this transaction is writing, and no other. The
+    // contract holds the volatile object and can set its id, so the id it
+    // carries is not what says whose volatile this is: only the streams that
+    // passed the checks above (state and meta naming the same stream) own one.
+    const owned = new Set<string>();
+    const loaded = ReadLock.enabled() ? this.virtualMachine?.getLoadedLocks?.(this.entry.$umid) : undefined;
+    for (const stream of this.streams || []) {
+      const state = stream.state?._id;
+      if (state === undefined) continue;
+      const id = this.shared.filterPrefix(String(state));
+      // A change that only touches volatile data is exported without its meta;
+      // when there is one, it must name the same stream
+      if (stream.meta?._id) {
+        const meta = String(stream.meta._id).replace(/:stream$/, "");
+        if (this.shared.filterPrefix(meta) !== id) continue;
+      }
+      // And the stream is one this transaction loaded or made
+      if (loaded && loaded(String(state)) === undefined && !created.has(id)) continue;
+      owned.add(id);
+    }
     for (let i = (this.docs || []).length; i--; ) {
       const doc = this.docs[i];
       const id = String(doc?._id ?? "");
-      if (!id.endsWith(":volatile") || doc._rev) continue;
+      if (!id.endsWith(":volatile")) continue;
+      if (!owned.has(this.shared.filterPrefix(id.slice(0, -":volatile".length)))) {
+        // Not the volatile of any stream in this transaction: never written
+        this.docs.splice(i, 1);
+        continue;
+      }
+      if (doc._rev) continue;
       if (created.has(this.shared.filterPrefix(id.slice(0, -":volatile".length)))) continue;
       let stored: any;
       try {

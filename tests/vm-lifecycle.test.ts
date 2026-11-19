@@ -771,7 +771,7 @@ exports.default = FakeContract;
     });
 
     it("lets a namespace the node's config allows reach a listed storage database, and not its others", async () => {
-      await withStorage((port: number) => ({ contractEgress: { allow: { ns: [`127.0.0.1:${port}/activeledger_wallets`] } } }), async (port, hits) => {
+      await withStorage((port: number) => ({ contractEgress: { storage: "deny", allow: { ns: [`127.0.0.1:${port}/activeledger_wallets`] } } }), async (port, hits) => {
         expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
         expect(await callFrom("/activeledger/a:volatile", port)).to.equal("refused");
         await new Promise((r) => setTimeout(r, 30));
@@ -779,8 +779,19 @@ exports.default = FakeContract;
       });
     });
 
+    it("opens a custom database with no list at all, and still refuses the node's own and volatile", async () => {
+      await withStorage(() => ({}), async (port, hits) => {
+        expect(await callFrom("/activeledger_wallets/a", port)).to.equal("ran");
+        expect(await callFrom("/activeledger/a", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/a:volatile", port)).to.equal("refused");
+        expect(await callFrom("/activeledger_wallets/_backup", port)).to.equal("refused");
+        await new Promise((r) => setTimeout(r, 30));
+        expect(hits()).to.equal(1);
+      });
+    });
+
     it("does not extend one namespace's list to another", async () => {
-      await withStorage((port: number) => ({ contractEgress: { allow: { other: [`127.0.0.1:${port}`] } } }), async (port, hits) => {
+      await withStorage((port: number) => ({ contractEgress: { storage: "deny", allow: { other: [`127.0.0.1:${port}`] } } }), async (port, hits) => {
         expect(await callFrom("/activeledger_wallets/a", port)).to.equal("refused");
         expect(hits()).to.equal(0);
       });

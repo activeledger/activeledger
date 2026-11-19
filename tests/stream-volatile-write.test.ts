@@ -35,6 +35,8 @@ describe("Writing volatile data to an existing stream (Activecontracts, Activepr
       const reads: string[] = [];
       const u: any = Object.create(StreamUpdater.prototype);
       u.docs = docs;
+      // The streams this transaction is writing: the ones that own a volatile
+      u.streams = [{ state: { _id: "s" }, meta: { _id: "s:stream" } }, { state: { _id: "n" }, meta: { _id: "n:stream" } }];
       u.refStreams = { new: created.map((id) => ({ id })), updated: [] };
       u.shared = { filterPrefix: (id: string) => id };
       u.db = { get: async (id: string) => { reads.push(id); if (id in stored) return stored[id]; throw new Error("missing"); } };
@@ -58,6 +60,20 @@ describe("Writing volatile data to an existing stream (Activecontracts, Activepr
       await u.reconcileVolatile();
       expect(reads).to.deep.equal([]);
       expect(u.docs[0]).to.deep.equal({ _id: "s:volatile", _rev: "2-x", key: "part" });
+    });
+
+    it("keeps the volatile of a stream exported without its meta (a change to volatile data alone)", async () => {
+      const { u } = updater([{ _id: "s:volatile", _rev: "2-x", key: "mine" }], {});
+      u.streams = [{ state: { _id: "s" }, volatile: { _id: "s:volatile" } }];
+      await u.reconcileVolatile();
+      expect(u.docs).to.have.length(1);
+    });
+
+    it("drops a volatile that belongs to no stream in the transaction, whatever id the contract gave it", async () => {
+      const { u, reads } = updater([{ _id: "victim:volatile", key: "part" }, { _id: "s:volatile", _rev: "2-x", key: "mine" }], {});
+      await u.reconcileVolatile();
+      expect(u.docs).to.deep.equal([{ _id: "s:volatile", _rev: "2-x", key: "mine" }]);
+      expect(reads).to.deep.equal([]);
     });
 
     it("does not read for a stream made in this transaction", async () => {

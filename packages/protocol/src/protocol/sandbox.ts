@@ -57,6 +57,8 @@ export interface ISandboxContext {
   mode?: "all" | "storage";
   /** In "storage" mode: whether this contract's namespace may reach a destination the storage guard would refuse */
   allow?(destination: IContractDestination): boolean;
+  /** In "storage" mode: custom databases are open without a list */
+  customDatabases?: boolean;
 }
 
 /** Where an outgoing connection is headed: a host and port (and the path of an HTTP request), or a unix socket */
@@ -139,6 +141,20 @@ const fetchDestination = (args: unknown[]): IDestination => {
  * execution: always in "all" mode, and in "storage" mode only for a
  * destination that is the node's storage.
  */
+/**
+ * Arguments whose values could change between the guard reading them and the
+ * real call reading them again: a top-level object that is not a plain object
+ * or a URL (a Request, a class instance with getters), or one with accessor
+ * properties. Contracts do not need them; they are refused.
+ */
+const suspicious = (args: unknown[]): boolean =>
+  args.some((arg) => {
+    if (!arg || typeof arg !== "object" || arg instanceof URL || Array.isArray(arg) || ArrayBuffer.isView(arg)) return false;
+    const proto = Object.getPrototypeOf(arg);
+    if (proto !== Object.prototype && proto !== null) return true;
+    return Object.values(Object.getOwnPropertyDescriptors(arg)).some((d: any) => d.get || d.set);
+  });
+
 const guard = (
   target: any,
   method: string,
@@ -151,6 +167,10 @@ const guard = (
     const ctx = context.getStore();
     if (ctx) {
       if (ctx.mode === "storage") {
+        if (destination && suspicious(args)) {
+          ctx.onBlocked(`storage:${what}`);
+          throw new StorageAccessError(`${what} with arguments that could change after they are checked`);
+        }
         const dest = destination ? destination(args) : undefined;
         if (dest) {
           // A unix socket is never a contract's business
@@ -164,7 +184,7 @@ const guard = (
             // request is written to afterwards, and a fetch body may be a stream
             const bodyless = !dest.method || /^(GET|HEAD|DELETE|OPTIONS)$/i.test(dest.method);
             const unseen = !bodyless && dest.body === undefined;
-            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, unseenBody: unseen });
+            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, method: dest.method, unseenBody: unseen });
             // An approved request carries that approval to the connection it opens
             if (approve) return approve(() => original.apply(this, args));
           }
@@ -215,7 +235,8 @@ export const installSandbox = (): void => {
  */
 export const runSandboxed = <T>(ctx: ISandboxContext, fn: () => T): T => {
   installSandbox();
-  return context.run(ctx, fn);
+  // Frozen: the context is handed to code that must not be able to change it
+  return context.run(Object.freeze({ ...ctx }), fn);
 };
 
 /**

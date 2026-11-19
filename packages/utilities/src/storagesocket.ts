@@ -26,6 +26,7 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { ActiveFrame } from "./frame";
+import { ContractScope, StorageAccessError } from "./contractscope";
 
 /**
  * What a socket request resolves to. `undefined` means nothing was written,
@@ -201,6 +202,10 @@ export class StorageSocket {
     body: Buffer | undefined,
     timeoutMs: number
   ): Promise<StorageSocketReply> {
+    // The engine's own route to its storage: not for contract code, except for a
+    // request ActiveRequest has just approved (which carries an approval)
+    const scope = ContractScope.current();
+    if (scope && !scope.approved) throw new StorageAccessError("The node's storage");
     if (!(await this.connect()) || !this.socket) return undefined;
 
     const id = this.nextId;

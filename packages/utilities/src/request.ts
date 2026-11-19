@@ -146,13 +146,15 @@ export class ActiveRequest {
     header?: string[],
     data?: any,
     enableGZip: boolean = false,
-    timeout: number = 300 // undici default
+    timeout: number = 300, // undici default
+    // Set by send() itself when it re-enters under an approval; callers leave it
+    checked: boolean = false
   ): Promise<IHTTPResponse> {
     // A contract's HTTP is this class. It may call out, but not to the storage
     // (unless its namespace has been allowed that database).
-    const approve = ContractScope.check(reqUrl, data);
+    const approve = checked ? undefined : ContractScope.check(reqUrl, data, type);
     if (approve) {
-      return approve(() => ActiveRequest.send(reqUrl, type, header, data, enableGZip, timeout));
+      return approve(() => ActiveRequest.send(reqUrl, type, header, data, enableGZip, timeout, true));
     }
     //enableGZip = false
     timeout = timeout * 1000;

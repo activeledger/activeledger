@@ -53,6 +53,8 @@ export interface IContractDestination {
   path?: string;
   /** The request body, when the sender has it (ActiveRequest, a fetch with a string body) */
   body?: unknown;
+  /** The HTTP method, when the sender has it */
+  method?: string;
   /** A method that can carry a body whose content the sender cannot show (a raw http request): never approved */
   unseenBody?: boolean;
 }
@@ -62,11 +64,13 @@ export interface IContractScope {
   onBlocked?(what: string): void;
   /** Whether this contract's namespace has been allowed to reach the destination */
   allow?(destination: IContractDestination): boolean;
+  /** Custom databases (a name starting activeledger with more after it) are open to contracts without a list */
+  customDatabases?: boolean;
   /**
    * A request already approved at a higher level (it was checked with its path):
    * the connection that carries it is not a bare socket to be judged again.
    */
-  approved?: { host?: string; port: number };
+  approved?: { host?: string; port: number; expires: number; used: boolean };
 }
 
 export class StorageAccessError extends Error {
@@ -108,7 +112,8 @@ export class ContractScope {
    */
   public static check(
     target: string | URL | number | undefined,
-    body?: unknown
+    body?: unknown,
+    method?: string
   ): (<T>(run: () => T) => T) | undefined {
     const scope = ContractScope.current();
     if (!scope) return undefined;
@@ -122,6 +127,7 @@ export class ContractScope {
           port: Number(url.port || (url.protocol === "https:" ? 443 : 80)),
           path: url.pathname + url.search,
           body,
+          method,
         };
       } catch {
         return undefined;
@@ -169,7 +175,7 @@ export class ContractScope {
    * database), or it is in one of the node's own databases (ledger, events,
    * errors and the error archive).
    */
-  public static forbidden(path: string, body?: unknown): boolean {
+  public static forbidden(path: string, body?: unknown, method?: string): boolean {
     if (ContractScope.mentionsVolatile(path)) return true;
     if (body !== undefined && body !== null) {
       let text: string;
@@ -186,9 +192,18 @@ export class ContractScope {
     } catch {
       return true;
     }
-    const first = decoded.split("/").filter(Boolean)[0]?.toLowerCase();
+    const parts = decoded.split("/").filter(Boolean);
+    const first = parts[0]?.toLowerCase();
     const never: Set<string> | undefined = (globalThis as any)[NEVER];
-    return !!first && !!never && never.has(first);
+    if (first && never && never.has(first)) return true;
+    // The storage's own routes (backup, restore, prune, compact, raw, ...) take
+    // their target from the body or act on the whole database, so a contract
+    // gets documents, _all_docs and _bulk_docs and nothing else
+    const second = parts[1];
+    if (second && second.startsWith("_") && second !== "_all_docs" && second !== "_bulk_docs") return true;
+    // Creating or dropping a database is not a contract's to do
+    if (parts.length <= 1 && method && !/^(GET|HEAD|OPTIONS)$/i.test(method)) return true;
+    return false;
   }
 
   /** The decision, shared by every route a contract has to the network */
@@ -197,22 +212,25 @@ export class ContractScope {
     destination: IContractDestination
   ): (<T>(run: () => T) => T) | undefined {
     if (!ContractScope.isProtected(destination.port)) return undefined;
-    // A request already approved at the HTTP level: the connection that carries it
-    const approved = scope.approved;
-    if (
-      approved &&
-      approved.port === destination.port &&
-      ContractScope.hostKey(approved.host) === ContractScope.hostKey(destination.host)
-    ) {
-      return undefined;
-    }
-    // A bare socket to the storage could say anything, so it is never approved
-    // here; and no list overrides the node's own databases or any :volatile
-    if (destination.path !== undefined && !destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body)) {
-      if (scope.allow?.(destination)) {
+    // A bare socket to the storage could say anything, so only the connection of
+    // an HTTP request that was just approved (with its path) gets through, once,
+    // and only for a moment. Everything with a path is checked in full every
+    // time: an approval is never a pass for what the contract does next.
+    if (destination.path === undefined) {
+      const approved = scope.approved;
+      if (
+        approved && !approved.used && Date.now() < approved.expires &&
+        approved.port === destination.port &&
+        ContractScope.hostKey(approved.host) === ContractScope.hostKey(destination.host)
+      ) {
+        approved.used = true;
+        return undefined;
+      }
+    } else if (!destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body, destination.method)) {
+      if (scope.allow?.(destination) || (scope.customDatabases && ContractScope.isCustomDatabase(destination.path))) {
         const als = (globalThis as any)[SCOPE];
-        return <T>(run: () => T): T =>
-          als.run({ ...scope, approved: { host: destination.host, port: destination.port } }, run);
+        const approval = { host: destination.host, port: destination.port, expires: Date.now() + 5000, used: false };
+        return <T>(run: () => T): T => als.run(Object.freeze({ ...scope, approved: approval }), run);
       }
     }
     scope.onBlocked?.("storage");
@@ -233,6 +251,22 @@ export class ContractScope {
       return /[A-Za-z0-9\-._~]/.test(c) ? c : match;
     });
     return decoded.replace(/\/{2,}/g, "/");
+  }
+
+  /**
+   * A database of a user's own: every database name starts with `activeledger`,
+   * and the node's own (which are refused before this is asked) are those names
+   * exactly. So a name with more after it is a custom one.
+   */
+  public static isCustomDatabase(path: string): boolean {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(ContractScope.normalPath(path));
+    } catch {
+      return false;
+    }
+    const first = decoded.split("/").filter(Boolean)[0] ?? "";
+    return /^activeledger[A-Za-z0-9_-]{1,64}$/.test(first);
   }
 
   /** localhost, 127.0.0.1 and ::1 are one host */
