@@ -1124,31 +1124,43 @@ export default class Contract extends Standard {
       }
 
       // 7a. The scan treats this.getAnyStreamReadOnly(...) as the engine's own call (see below), so
-      // the name cannot be declared, assigned or overridden by the contract (from build 50600).
+      // the name may appear in the source only as exactly that call. Any other use is refused:
+      // declaring it, passing it, assigning to it (plain, compound or destructured), reading it off
+      // another object, or spelling it as a string or a computed key. Static and the same on every
+      // node. A key built at run time cannot be seen here; the run-time guard does not depend on
+      // this name, so nothing is weakened if one gets past.
       if (guardsFromSource) {
         const NAME = "getAnyStreamReadOnly";
-        const declared =
-          ((ts.isFunctionDeclaration(node) ||
-            ts.isMethodDeclaration(node) ||
-            ts.isPropertyDeclaration(node) ||
-            ts.isVariableDeclaration(node) ||
-            ts.isPropertyAssignment(node) ||
-            ts.isParameter(node) ||
-            ts.isBindingElement(node) ||
-            ts.isGetAccessorDeclaration(node) ||
-            ts.isSetAccessorDeclaration(node)) &&
-            !!node.name &&
-            (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) || ts.isNoSubstitutionTemplateLiteral(node.name)) &&
-            node.name.text === NAME) ||
-          (ts.isShorthandPropertyAssignment(node) && node.name.text === NAME) ||
-          (ts.isBinaryExpression(node) &&
-            node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-            ((ts.isPropertyAccessExpression(node.left) && node.left.name.text === NAME) ||
-              (ts.isElementAccessExpression(node.left) &&
-                (ts.isStringLiteral(node.left.argumentExpression) || ts.isNoSubstitutionTemplateLiteral(node.left.argumentExpression)) &&
-                (node.left.argumentExpression as ts.StringLiteral).text === NAME)));
-        if (declared) {
-          report(node, `'${NAME}' cannot be redefined`);
+        let named = ts.isIdentifier(node) && node.text === NAME;
+        if (!named && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node) || ts.isBinaryExpression(node))) {
+          // A string that spells it out, or pieces that fold to it ("getAny" + "StreamReadOnly")
+          const spelled = ((): string | undefined => {
+            const f = (n: ts.Node): string | undefined => {
+              if (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isNonNullExpression(n)) return f(n.expression);
+              if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+              if (ts.isTemplateExpression(n)) return n.head.text + n.templateSpans.map((span) => (f(span.expression) ?? "") + span.literal.text).join("");
+              if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+                const l = f(n.left), r = f(n.right);
+                return l === undefined && r === undefined ? undefined : (l ?? "") + (r ?? "");
+              }
+              return undefined;
+            };
+            return f(node);
+          })();
+          named = spelled === NAME;
+        }
+        if (named) {
+          const access = node.parent;
+          const allowed =
+            ts.isIdentifier(node) &&
+            ts.isPropertyAccessExpression(access) &&
+            access.name === node &&
+            access.expression.kind === ts.SyntaxKind.ThisKeyword &&
+            ts.isCallExpression(access.parent) &&
+            access.parent.expression === access;
+          if (!allowed) {
+            report(node, `'${NAME}' cannot be redefined`);
+          }
         }
       }
 
