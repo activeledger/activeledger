@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- **The deploy scan no longer refuses a stream id passed straight to `getAnyStreamReadOnly`.** From build `50600` the
+  scan read `` this.getAnyStreamReadOnly(`${id}:volatile`) `` as a path to volatile data and refused the contract
+  (`A path to volatile data is forbidden`), although it is the engine's own call and what it may read is decided by
+  the stream's read lock. The text that is the argument of that call (through a template, a `+` or brackets), with no
+  slash in it, is now left alone. Anything else that names volatile data is refused as before: a path, a URL, text
+  handed to a request, or the same text kept in a variable first (write the call with the id in it). Writing volatile
+  data over HTTP stays refused, so use `setVolatile` (it creates a missing volatile document). The run-time guard is
+  unchanged. A scan rule is part of the deploy vote, so upgrade every node before raising `build` to `50600`.
+
 ## [5.7.1] - 2026-11-19
 
 ### Fixed

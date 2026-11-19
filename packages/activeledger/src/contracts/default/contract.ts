@@ -1162,7 +1162,33 @@ export default class Contract extends Standard {
           // Only text shaped like a path or id (no spaces, or a leading slash, or a scheme) and
           // not a string type: prose such as "Error: volatile data missing" is not a path
           const pathish = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(seen) || /^\s*\//.test(seen) || !/\s/.test(seen.trim());
-          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed)) {
+          // The one use of `<id>:volatile` that is not a path: the stream id handed straight to
+          // the engine's own getAnyStreamReadOnly, which the stream's read lock decides. Only the
+          // argument itself counts (through a template, a "+" or brackets); text that reaches a
+          // request, or anything else, is still refused.
+          const isStreamIdArgument = (): boolean => {
+            let arg: ts.Node = node;
+            while (
+              arg.parent &&
+              (ts.isParenthesizedExpression(arg.parent) ||
+                ts.isAsExpression(arg.parent) ||
+                ts.isNonNullExpression(arg.parent) ||
+                ts.isTemplateSpan(arg.parent) ||
+                ts.isTemplateExpression(arg.parent) ||
+                (ts.isBinaryExpression(arg.parent) && arg.parent.operatorToken.kind === ts.SyntaxKind.PlusToken))
+            ) {
+              arg = arg.parent;
+            }
+            const call = arg.parent;
+            if (!call || !ts.isCallExpression(call) || call.arguments.indexOf(arg as ts.Expression) === -1) return false;
+            let callee: ts.Node = call.expression;
+            while (ts.isParenthesizedExpression(callee) || ts.isAsExpression(callee) || ts.isNonNullExpression(callee)) callee = callee.expression;
+            return (
+              (ts.isPropertyAccessExpression(callee) && callee.name.text === "getAnyStreamReadOnly") ||
+              (ts.isIdentifier(callee) && callee.text === "getAnyStreamReadOnly")
+            );
+          };
+          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed) && !(isStreamIdArgument() && !/[\/\\]/.test(squashed))) {
             report(node, `A path to volatile data is forbidden`);
           }
           // This machine, as a URL or a host:port, read the way a URL parser reads it

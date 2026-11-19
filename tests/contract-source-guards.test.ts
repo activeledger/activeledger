@@ -45,6 +45,30 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
     expect(scan(wrap('return { volatile: 1 };'))).to.equal(null);
   });
 
+  it("leaves a stream id that ends in :volatile alone when it goes straight to getAnyStreamReadOnly", () => {
+    for (const body of [
+      "return this.getAnyStreamReadOnly(`${keyId}:volatile`);",
+      'return this.getAnyStreamReadOnly("abc:volatile");',
+      "return this.getAnyStreamReadOnly(id + ':volatile');",
+      "return this.getAnyStreamReadOnly((`${id}:volatile`));",
+      "return getAnyStreamReadOnly(`${id}:volatile`);",
+      "return Promise.all(ids.map((i) => this.getAnyStreamReadOnly(`${i}:volatile`)));",
+    ]) expect(scan(wrap(body)), body).to.equal(null);
+  });
+
+  it("still refuses volatile text anywhere else, including a request and a path", () => {
+    for (const body of [
+      "return HTTP.send(`${id}:volatile`);",
+      'return client.request({ url: "x:volatile" });',
+      "return client.get(`${base}/${id}:volatile`);",
+      'return HTTP.send(url, "POST", [], { _id: "abc:volatile", v: 1 });',
+      "return `/activeledger_w/${id}:volatile`;",
+      "return this.getAnyStreamReadOnly(`/db/${id}:volatile`);",
+      "return this.somethingElse(`${id}:volatile`);",
+      'return this.getAnyStreamReadOnly("abc:volatile", client.send("x:volatile"));',
+    ]) expect(scan(wrap(body)), body).to.include("volatile");
+  });
+
   it("refuses a URL to this machine unless the namespace has allowLocalhost", () => {
     for (const s of ["http://127.0.0.1:5259/x", "http://localhost:8080/", "http://[::1]:5259/x", "//localhost:1/x", "localhost:5290/p", "http://0.0.0.0:80/", "http://user@127.1.2.3/x"]) {
       expect(scan(wrap(`return "${s}";`)), s).to.include("allowLocalhost");
