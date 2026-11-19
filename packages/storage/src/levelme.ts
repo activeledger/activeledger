@@ -846,8 +846,11 @@ export class LevelMe {
       // others, so do them together instead of one threadpool round trip
       // after another. The puts go into the same batch (the writer chain is
       // the batch itself), and the changes keep their original order.
+      //
+      // One read for all of them, not one trip to the native store each.
+      const current = await this.currentRoots(docs);
       const settled = await Promise.allSettled(
-        docs.map((doc) => this.prepareForWrite(doc, batch, options))
+        docs.map((doc) => this.prepareForWrite(doc, batch, options, current))
       );
       // The serial loop below went from the last document to the first and
       // stopped at the first failure; report the same one, not whichever read
@@ -936,17 +939,47 @@ export class LevelMe {
   }
 
   /**
+   * The stored document of each of these, read together (one trip to the
+   * native store) and matched by id, because a document that is not stored is
+   * left out of the answer.
+   *
+   * @private
+   * @param {document[]} docs
+   * @returns {Promise<Map<string, schema>>}
+   */
+  private async currentRoots(docs: document[]): Promise<Map<string, schema>> {
+    const roots = new Map<string, schema>();
+    const raws = await this.driver.getMany(
+      docs.map((doc) => LevelMe.DOC_PREFIX + doc._id)
+    );
+    const decoded = await Promise.all(
+      raws.map((raw: any) =>
+        raw === undefined || raw === null
+          ? undefined
+          : (ActiveClone.deserialize(raw) as Promise<schema>)
+      )
+    );
+    for (const root of decoded) {
+      if (root?._id) roots.set(root._id, root);
+    }
+    return roots;
+  }
+
+  /**
    * Prepare batch written of all meta documents
    *
    * @private
    * @param {document} doc
    * @param {LevelUpChain<any, any>} chain
+   * @param {Map<string, schema>} [current] The stored documents, when the
+   * caller has already read them together. Without it this one is read here.
    * @returns {Promise<{ chain: LevelUpChain<any, any>; rev: string }>}
    */
   private async prepareForWrite(
     doc: document,
     chain: LevelUpChain<any, any>,
-    options: { new_edits: boolean; force_rev?: string } = { new_edits: true }
+    options: { new_edits: boolean; force_rev?: string } = { new_edits: true },
+    current?: Map<string, schema>
   ): Promise<{
     chain: LevelUpChain<any, any>;
     rev: string;
@@ -973,18 +1006,22 @@ export class LevelMe {
     // (every new document and every event row is a miss, and a thrown Error
     // costs a stack capture just to be caught here).
     let currentDocRoot: schema | undefined;
-    try {
-      const key = LevelMe.DOC_PREFIX + doc._id;
-      const raw = this.driver.getOrUndefined
-        ? await this.driver.getOrUndefined(key)
-        : await this.driver.get(key);
-      if (raw !== undefined) {
-        currentDocRoot = (await ActiveClone.deserialize(raw)) as schema;
-      }
-    } catch (error) {
-      // A driver that throws for a missing key marks it notFound
-      if (!error.notFound) {
-        throw error;
+    if (current) {
+      currentDocRoot = current.get(doc._id);
+    } else {
+      try {
+        const key = LevelMe.DOC_PREFIX + doc._id;
+        const raw = this.driver.getOrUndefined
+          ? await this.driver.getOrUndefined(key)
+          : await this.driver.get(key);
+        if (raw !== undefined) {
+          currentDocRoot = (await ActiveClone.deserialize(raw)) as schema;
+        }
+      } catch (error) {
+        // A driver that throws for a missing key marks it notFound
+        if (!error.notFound) {
+          throw error;
+        }
       }
     }
 
