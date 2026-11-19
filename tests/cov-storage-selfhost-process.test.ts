@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
+import * as vm from "vm";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
@@ -454,6 +455,15 @@ describe("Storage process lifecycle (selfhost)", function () {
       path.join(__dirname, "../packages/storage/lib/explorer/index.html"),
       "utf8"
     );
+
+    it("has a script that parses, and the views it advertises", () => {
+      const script = /<script>([\s\S]*)<\/script>/.exec(page)![1];
+      // Throws on a syntax error anywhere in the page's script
+      new vm.Script(script);
+      for (const part of ['id="goto"', 'id="diff"', "Node status", "Export", "Delete selected", "History"]) {
+        expect(page, part).to.contain(part);
+      }
+    });
 
     it("serves the page at /_explorer and /_explorer/", async () => {
       for (const p of ["/_explorer", "/_explorer/"]) {

@@ -57,6 +57,7 @@
   nav button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
   nav button:hover { background: var(--bg); }
   nav button[aria-current="true"] { background: var(--soft); color: var(--accent); font-weight: 600; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); margin-left: 4px; }
   .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .tag.ok { color: var(--ok); } .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
   section.content { padding: 18px 22px; min-width: 0; }
@@ -76,14 +77,32 @@
   .muted { color: var(--muted); }
   .empty { padding: 40px; text-align: center; color: var(--muted); }
   .pager { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; align-items: center; color: var(--muted); }
-  aside.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(640px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 32px #0003; transform: translateX(105%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
+  aside.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(860px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 32px #0003; transform: translateX(105%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
   aside.drawer.open { transform: none; }
+  .drawer header button { white-space: nowrap; flex: none; }
+  .drawer header strong { min-width: 0; white-space: nowrap; }
   .drawer header { position: static; border-bottom: 1px solid var(--line); }
   .drawer .body { padding: 16px 20px; overflow: auto; flex: 1; }
   pre.json { margin: 0; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
   .k { color: var(--accent); } .s { color: var(--ok); } .n { color: var(--warn); } .b { color: var(--bad); }
+  .lockgrid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; align-items: center; justify-items: start; }
+  .who { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .lockgrid .who { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .lockgrid .tag { display: inline-block; width: auto; }
+  .diffbox { max-height: 62vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; font: 12px/1.5 var(--mono); }
+  .diffgrid { display: grid; grid-template-columns: 1fr 1fr; min-width: 0; }
+  .diffgrid > div { padding: 0 8px; white-space: pre-wrap; word-break: break-word; min-height: 1.5em; border-bottom: 1px solid transparent; }
+  .diffgrid > div:nth-child(odd) { border-right: 1px solid var(--line); }
+  .diffgrid .del { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+  .diffgrid .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+  .diffgrid .gap { grid-column: 1 / -1; text-align: center; color: var(--muted); background: var(--bg); padding: 2px; border-right: 0 !important; }
+  .diffgrid .head { font: 600 12px var(--sans, system-ui); color: var(--muted); background: var(--bg); position: sticky; top: 0; }
+  .bulk { background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  td.selcell, th.selcell { width: 1%; padding-right: 0; }
+  .node td .btn { margin-right: 6px; }
+  a.lnk { color: var(--accent, #4f8cff); text-decoration: underline dotted; cursor: pointer; }
   .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin-bottom: 14px; }
-  .kv div:nth-child(odd) { color: var(--muted); }
+  .kv > div:nth-child(odd) { color: var(--muted); }
   .note { font-size: 12.5px; color: var(--muted); margin: 8px 2px 0; }
   .err { color: var(--bad); padding: 12px 16px; }
   input.search { width: min(520px, 100%); padding: 8px 12px; font-size: 14px; }
@@ -118,6 +137,7 @@
     <button id="v-gen" aria-pressed="false">General</button>
   </div>
   <div class="grow"></div>
+  <button class="btn ghost" id="goto-btn" title="Go to a transaction, stream or document (Ctrl+K)">Go to… <kbd>Ctrl K</kbd></button>
   <button class="btn ghost" id="danger" aria-pressed="false" title="Allow editing consensus data (the activeledger database)">Danger mode: off</button>
   <input type="text" id="base" size="26" aria-label="Storage URL" spellcheck="false">
   <button class="btn ghost" id="theme" title="Toggle theme">Theme</button>
@@ -126,9 +146,11 @@
   <nav><div id="dbs"></div></nav>
   <section class="content" id="content"></section>
 </main>
+<dialog id="goto" style="width:min(560px,94vw)"><input type="text" id="goto-input" style="width:100%" spellcheck="false" autocomplete="off" placeholder="Paste a transaction id, stream id or document id"><div id="goto-msg" class="note" style="margin:10px 0 0">Enter to open · Esc to close</div></dialog>
+<dialog id="diff" style="width:min(1100px,96vw)"><h3 id="diff-title">Review your change</h3><div id="diff-sum" class="note" style="margin:0 0 10px"></div><div id="diff-body" class="diffbox"></div><div class="row"><button class="btn ghost" id="diff-no">Back to editing</button><button class="btn" id="diff-yes">Save</button></div></dialog>
 <dialog id="ask"><h3 id="ask-title"></h3><div id="ask-body"></div><div id="ask-msg" class="err" style="padding:6px 0 0"></div><input type="text" id="ask-input" style="width:100%;margin-top:12px" spellcheck="false" autocomplete="off"><div class="row"><button class="btn ghost" id="ask-no">Cancel</button><button class="btn" id="ask-yes">Confirm</button></div></dialog>
 <aside class="drawer" id="drawer" aria-hidden="true">
-  <header><strong id="d-title" class="mono" style="overflow:hidden;text-overflow:ellipsis"></strong><div class="grow"></div><button class="btn ghost" id="d-close">Close</button></header>
+  <header><button class="btn ghost" id="d-back" style="display:none">← Back</button><strong id="d-title" class="mono" style="overflow:hidden;text-overflow:ellipsis"></strong><div class="grow"></div><button class="btn ghost" id="d-close" aria-label="Close" title="Close (Esc)">✕</button></header>
   <div class="body" id="d-body"></div>
 </aside>
 <script>
@@ -146,7 +168,7 @@ const put = (parent, ...kids) => parent.replaceChildren(...kids.flat().filter((k
 const store = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
 const hash = new URLSearchParams(location.hash.slice(1));
-const state = { base: hash.get("base") || store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: hash.get("view") || store.get("al.view", "al"), db: hash.get("db"), dbs: [], tab: "streams", cursor: [null], page: 0, q: "", danger: false, pageSize: +store.get("al.pagesize", "50") || 50, sizes: {}, avg: {}, perStream: {}, exact: {}, probed: {} };
+const state = { base: hash.get("base") || store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: hash.get("view") || store.get("al.view", "al"), db: hash.get("db"), dbs: [], tab: "streams", cursor: [null], page: 0, q: "", danger: false, pageSize: +store.get("al.pagesize", "50") || 50, sizes: {}, avg: {}, perStream: {}, exact: {}, probed: {}, sel: new Map(), pageDocs: [] };
 const PAGE_SIZES = [25, 50, 100, 200];
 const fmtBytes = (n) => (typeof n !== "number" ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB" : (n / 1073741824).toFixed(1) + " GB");
 
@@ -219,7 +241,17 @@ const jsonEditor = (text, onState) => {
 };
 
 /* Drawer */
-const drawer = { open(title, ...nodes) { $("#d-title").textContent = title; const b = $("#d-body"); b.replaceChildren(...nodes); $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false"); }, close() { $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); } };
+const drawer = {
+  stack: [],
+  show(title, nodes) { $("#d-title").textContent = title; $("#d-body").replaceChildren(...nodes); $("#d-back").style.display = this.stack.length ? "" : "none"; $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false"); },
+  /* Opens fresh: whatever was stacked is dropped. */
+  open(title, ...nodes) { this.stack = []; this.show(title, nodes); },
+  /* Opens on top of what is showing; Back returns to it exactly as it was. */
+  push(title, ...nodes) { this.stack.push({ title: $("#d-title").textContent, nodes: [...$("#d-body").childNodes] }); this.show(title, nodes); },
+  back() { const prev = this.stack.pop(); if (prev) this.show(prev.title, prev.nodes); },
+  close() { drawer.stack = []; $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); },
+};
+$("#d-back").onclick = () => drawer.back();
 $("#d-close").onclick = drawer.close;
 addEventListener("keydown", (e) => e.key === "Escape" && drawer.close());
 
@@ -236,7 +268,12 @@ const listDocs = async (db, { startkey, endkey, limit = state.pageSize + 1, incl
   }
   return rows.map((r) => (include_docs ? { id: r._id, doc: r } : { id: r.id ?? r._id, doc: r.doc }));
 };
-const getDoc = (db, id) => api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`);
+/* A missing document may come back as { notFound: true } rather than an error: that is not a document, so it throws like one. */
+const getDoc = async (db, id) => {
+  const doc = await api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`);
+  if (!doc || doc._id === undefined) throw new Error("Not found");
+  return doc;
+};
 
 /* Activeledger stream = state + :stream meta + :volatile, shown as one thing */
 const groupStreams = (rows) => {
@@ -260,24 +297,137 @@ const lockTags = (meta) => {
   if (meta.readLock) t.push(el("span", { class: "tag warn" }, "read lock"));
   return t;
 };
-const openStream = async (db, g) => {
+/* Every transaction that touched a stream, newest first. Each transaction records the one it replaced on that stream (streams.updated[].prev), so the chain is followed one fetch per step, 25 at a time. A transaction from before that was recorded ends the chain. */
+const historyPanel = (db, id, meta) => {
+  const box = el("div"), list = el("div", { class: "card" }), more = el("button", { class: "btn ghost", style: "margin-top:10px" }, "Older");
+  let next = meta?.umid;
+  const rows = el("tbody");
+  list.append(el("table", {}, el("thead", {}, el("tr", {}, ["Transaction", "Contract", "Committed", ""].map((c) => el("th", {}, c)))), rows));
+  const load = async () => {
+    more.disabled = true;
+    for (let i = 0; i < 25 && next; i++) {
+      const umid = next; next = null;
+      let tx;
+      try { tx = await getDoc(db, umid + ":umid"); } catch { rows.append(el("tr", {}, el("td", { class: "mono" }, short(umid, 18)), el("td", { class: "muted", colspan: "3" }, "Not held on this node"))); break; }
+      const created = (tx.streams?.new || []).some((n) => n.id === id);
+      const upd = (tx.streams?.updated || []).find((u) => u.id === id);
+      rows.append(el("tr", { onclick: () => openTransaction(db, umid, true) },
+        el("td", { class: "mono" }, short(umid, 18)), el("td", {}, tx.umid?.$tx?.$contract ?? ""),
+        el("td", { class: "muted" }, tx.umid?.$datetime ? new Date(tx.umid.$datetime).toLocaleString() : ""),
+        el("td", {}, created ? el("span", { class: "tag ok" }, "created") : "")));
+      next = upd?.prev || null;
+    }
+    more.disabled = false; more.style.display = next ? "" : "none";
+    if (!next && !rows.children.length) rows.append(el("tr", {}, el("td", { class: "muted", colspan: "4" }, "No transactions recorded")));
+  };
+  more.onclick = load;
+  box.append(list, more); load();
+  return box;
+};
+/* Who may sign for a stream: type, stake, the key's hash, and the transaction that set it. */
+const authView = (ledger, meta) => {
+  const list = meta?.authorities || [];
+  if (!list.length) return el("div", { class: "muted" }, "None");
+  const copy = (text) => navigator.clipboard?.writeText(text);
+  const rows = list.map((a) => el("tr", {},
+    el("td", {}, el("span", { class: "tag" }, a.type || "rsa")),
+    el("td", { class: "muted" }, a.stake != null ? a.stake + "%" : ""),
+    el("td", { class: "mono", title: a.hash || "" }, short(a.hash || "", 10)),
+    el("td", {}, a.label || ""),
+    el("td", {}, a.umid ? el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openTransaction(ledger, a.umid, true); } }, short(a.umid, 8)) : ""),
+    el("td", {}, a.public ? el("button", { class: "btn ghost", style: "padding:0 8px", title: "Copy the public key", onclick: () => copy(a.public) }, "Copy key") : "")));
+  return el("div", {}, el("table", {}, el("thead", {}, el("tr", {}, ["Type", "Stake", "Key hash", "Label", "Set by", ""].map((c) => el("th", {}, c)))), el("tbody", {}, ...rows)),
+    meta.removedAuthorities?.length ? el("div", { class: "muted", style: "margin-top:6px" }, meta.removedAuthorities.length + " removed") : "");
+};
+/* A contract stream keeps its versions in state.contract: a reference (source hash, the deploy transaction, the ES target) or, for old versions, the source itself as base64. */
+const decodeSource = (b64) => { try { return new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))); } catch { return null; } };
+const showSource = async (ledger, version, entry) => {
+  let text = null;
+  if (typeof entry === "string") text = decodeSource(entry);
+  else if (entry?.umid) {
+    try {
+      const tx = await getDoc(ledger, entry.umid + ":umid");
+      const inputs = Object.values(tx.umid?.$tx?.$i || {});
+      const found = inputs.find((i) => i && typeof i.contract === "string");
+      if (found) text = decodeSource(found.contract);
+    } catch {}
+  }
+  drawer.push("Source " + version, text == null ? el("div", { class: "empty" }, "The source is not held on this node") : el("pre", { class: "json" }, text));
+};
+const contractPanel = (ledger, state, meta) => {
+  const versions = state?.contract || {};
+  const locked = new Set(state?.locks?.versions || []);
+  const names = Object.keys(versions);
+  if (!names.length) return el("div", { class: "empty" }, "No versions");
+  const rows = names.map((v) => {
+    const e = versions[v];
+    const ref = typeof e === "object" && e !== null;
+    return el("tr", {},
+      el("td", { class: "mono" }, v),
+      el("td", { class: "mono", title: ref ? e.hash || "" : "" }, ref ? short(e.hash || "", 10) : el("span", { class: "muted" }, "source held inline")),
+      el("td", {}, ref && e.target ? el("span", { class: "tag" }, e.target) : el("span", { class: "muted" }, "es2017")),
+      el("td", {}, ref && e.umid ? el("a", { class: "lnk mono", href: "#", onclick: (ev) => { ev.preventDefault(); openTransaction(ledger, e.umid, true); } }, short(e.umid, 8)) : ""),
+      el("td", {}, state?.locks?.all || locked.has(v) ? el("span", { class: "tag warn" }, "locked") : ""),
+      el("td", {}, el("button", { class: "btn ghost", style: "padding:0 8px", onclick: () => showSource(ledger, v, e) }, "Source")));
+  });
+  return el("div", {}, el("div", { class: "kv" }, el("div", {}, "Contract"), el("div", { class: "mono" }, meta?.name ?? "—"), el("div", {}, "Namespace"), el("div", {}, meta?.ns ?? state?.namespace ?? "default"),
+    el("div", {}, "Locks"), el("div", {}, state?.locks?.all ? el("span", { class: "tag warn" }, "all versions") : locked.size ? [...locked].map((v) => el("span", { class: "tag warn" }, v)) : el("span", { class: "muted" }, "None"))),
+    el("div", { class: "card" }, el("table", {}, el("thead", {}, el("tr", {}, ["Version", "Source hash", "Compiled to", "Deployed by", "", ""].map((c) => el("th", {}, c)))), el("tbody", {}, ...rows))));
+};
+const openStream = async (db, g, push = false) => {
   let { state: s, meta, volatile: v } = g;
   try { s = s || await getDoc(db, g.id); } catch {}
   try { meta = meta || await getDoc(db, g.id + ":stream"); } catch {}
   try { v = v || await getDoc(db, g.id + ":volatile"); } catch {}
-  const tabs = { State: s, Meta: meta, Volatile: v };
+  const isContract = s && typeof s.contract === "object" && s.contract !== null && !Array.isArray(s.contract);
+  const tabs = { State: s, Meta: meta, Volatile: v, History: true, ...(isContract ? { Contract: true } : {}) };
   const holder = el("div");
   const bar = el("div", { class: "tabs" });
-  const show = (name) => { [...bar.children].forEach((b) => b.setAttribute("aria-selected", String(b.textContent === name))); holder.replaceChildren(tabs[name] ? docPanel(db, tabs[name], afterWrite) : el("div", { class: "empty" }, "Not held on this node", name === "Volatile" ? el("div", { style: "margin-top:10px" }, el("button", { class: "btn ghost", onclick: () => holder.replaceChildren(docPanel(db, { _id: g.id + ":volatile" }, afterWrite, true)) }, "Create volatile")) : null)); };
+  const show = (name) => { [...bar.children].forEach((b) => b.setAttribute("aria-selected", String(b.textContent === name))); if (name === "History") return holder.replaceChildren(historyPanel(db, g.id, meta)); if (name === "Contract") return holder.replaceChildren(contractPanel(db, s, meta)); holder.replaceChildren(tabs[name] ? docPanel(db, tabs[name], afterWrite) : el("div", { class: "empty" }, "Not held on this node", name === "Volatile" ? el("div", { style: "margin-top:10px" }, el("button", { class: "btn ghost", onclick: () => holder.replaceChildren(docPanel(db, { _id: g.id + ":volatile" }, afterWrite, true)) }, "Create volatile")) : null)); };
   Object.keys(tabs).forEach((n) => bar.append(el("button", { onclick: () => show(n) }, n)));
+  /* A transaction id that opens the transaction on top of this stream; Back returns here. */
+  const txLink = (umid) => umid ? el("a", { class: "lnk mono", href: "#", title: "Open the transaction", onclick: (e) => { e.preventDefault(); openTransaction(db, umid, true); } }, short(umid, 18)) : "—";
+  const prevCell = el("div", { class: "mono" });
+  const lines = (...rows) => el("div", {}, ...rows.map((r) => el("div", { class: "mono" }, r)));
+  /* One compact grid: what is locked on the left, who it applies to on the right. Tags are as wide as their text. */
+  const lockCells = [];
+  const lockLine = (label, ...tags) => lockCells.push(el("span", { class: "muted" }, label), el("span", { class: "who" }, ...tags));
+  const tag = (text, cls = "") => el("span", { class: "tag " + cls }, String(text));
+  if (meta?.contractlock?.length) lockLine("Contracts", ...meta.contractlock.map((c) => tag(c, "warn")));
+  if (meta?.namespaceLock?.length) lockLine("Write", ...meta.namespaceLock.map((n) => tag(n, "warn")));
+  if (meta?.readLock) {
+    const r = meta.readLock;
+    /* Unset means the default: state and stream open to every contract, volatile to the creating namespace only. */
+    const read = (label, x, fallback) => {
+      if (x === "*") return lockLine(label, tag("anyone", "ok"));
+      if (x === undefined || x === null || x === "default") return lockLine(label, tag("default"), el("span", { class: "muted" }, fallback));
+      const list = Array.isArray(x) ? x : [x];
+      lockLine(label, ...(list.length ? list.map((n) => tag(n, "warn")) : [tag("nobody", "bad")]));
+    };
+    read("Read state", r.state, "open to all");
+    read("Read stream", r.stream, "open to all");
+    read("Read volatile", r.volatile, "creator only");
+  }
+  const lockRows = lockCells.length ? [el("div", { class: "lockgrid" }, ...lockCells)] : [];
   const facts = el("div", { class: "kv" },
     el("div", {}, "Name"), el("div", {}, meta?.name ?? "—"),
-    el("div", {}, "Created by"), el("div", { class: "mono" }, short(meta?.origin ?? "—", 18)),
-    el("div", {}, "Last transaction"), el("div", { class: "mono" }, short(meta?.umid ?? "—", 18)),
-    el("div", {}, "Authorities"), el("div", {}, String(meta?.authorities?.length ?? 0)),
-    el("div", {}, "Revisions"), el("div", { class: "mono" }, `${s?._rev ?? "—"} · ${meta?._rev ?? "—"}`));
-  drawer.open(g.id, facts, bar, holder);
+    el("div", {}, "Namespace"), el("div", {}, meta?.ns ?? "default"),
+    el("div", {}, "Created by"), txLink(meta?.origin),
+    el("div", {}, "Last transaction"), txLink(meta?.umid),
+    el("div", {}, "Previous"), prevCell,
+    el("div", {}, "Authorities"), authView(db, meta),
+    el("div", {}, "Locks"), lockRows.length ? el("div", {}, ...lockRows) : el("div", { class: "muted" }, "None"),
+    el("div", {}, "Revisions"), el("div", { class: "mono" }, el("div", {}, "State  " + (s?._rev ?? "—")), el("div", {}, "Meta   " + (meta?._rev ?? "—"))));
+  (push ? drawer.push.bind(drawer) : drawer.open.bind(drawer))(g.id, facts, bar, holder);
   show("State");
+  /* The transaction before the latest one: it is recorded on the latest transaction, against this stream. */
+  if (meta?.umid && meta.umid !== meta.origin) {
+    prevCell.textContent = "…";
+    getDoc(db, meta.umid + ":umid").then((tx) => {
+      const hit = (tx.streams?.updated || []).find((u) => u.id === g.id);
+      prevCell.replaceChildren(hit?.prev ? txLink(hit.prev) : "—");
+    }).catch(() => (prevCell.textContent = "—"));
+  } else prevCell.textContent = "— (created by the last transaction)";
 };
 
 /* Editing. open: a custom database, or :volatile (node-local). local: this node's own events and errors.
@@ -348,6 +498,11 @@ const docPanel = (db, doc, after, isNew = false) => {
       let next; try { next = JSON.parse(ed.ta.value); } catch (e) { return ed.run(); }
       if (!isNew && next._id !== doc._id) return (msg.textContent = "The _id cannot be changed here. Create a new document instead.");
       if (isNew && isSystem(db) && !next._id) return (msg.textContent = "Give the document an _id.");
+      if (!isNew) {
+        const before = JSON.stringify(doc, null, 2), after = JSON.stringify(next, null, 2);
+        if (before === after) return (msg.textContent = "Nothing has changed.");
+        if (!(await reviewDiff(doc._id, before, after))) return;
+      }
       if (!(await confirmWrite(db, next._id || doc._id, isNew ? "Create" : "Save"))) return;
       try {
         /* The server takes the last write whatever _rev it is sent, so look first. */
@@ -388,6 +543,214 @@ const rowDelete = (db, doc) => {
 };
 const openDoc = (db, doc) => drawer.open(doc._id, docPanel(db, doc, afterWrite));
 
+/* Go to: one box for any id. A transaction, a stream, or a document in any database, tried in that order. */
+const gotoId = async (raw) => {
+  const id = raw.trim().replace(/^["']|["']$/g, "");
+  if (!id) return null;
+  const ledger = state.dbs.find((d) => role(d) === "ledger");
+  const base = id.replace(/:(umid|stream|volatile)$/, "");
+  /* A missing document comes back as { notFound: true }, not an error, so only a reply with an _id is a hit. */
+  const tryGet = async (db, key) => { try { const doc = await getDoc(db, key); return doc && doc._id ? doc : null; } catch { return null; } };
+  if (ledger) {
+    if (await tryGet(ledger, base + ":umid")) return () => openTransaction(ledger, base);
+    if (await tryGet(ledger, base) || await tryGet(ledger, base + ":stream")) return () => openStream(ledger, { id: base });
+  }
+  for (const db of state.dbs) {
+    const doc = await tryGet(db, id);
+    if (doc && doc._id) return () => openDoc(db, doc);
+  }
+  return null;
+};
+const gotoDlg = $("#goto"), gotoInput = $("#goto-input"), gotoMsg = $("#goto-msg");
+const openGoto = () => { gotoMsg.textContent = "Enter to open · Esc to close"; gotoInput.value = ""; if (!gotoDlg.open) gotoDlg.showModal(); gotoInput.focus(); };
+$("#goto-btn").onclick = openGoto;
+addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openGoto(); } });
+gotoInput.onkeydown = async (e) => {
+  if (e.key !== "Enter") return;
+  gotoMsg.textContent = "Looking…";
+  const open = await gotoId(gotoInput.value);
+  if (!open) return (gotoMsg.textContent = "Nothing with that id on this node.");
+  gotoDlg.close(); open();
+};
+
+/* ---- Review a change: stored document on the left, the edited one on the right, line by line. */
+const diffRows = (aText, bText) => {
+  const A = aText.split("\n"), B = bText.split("\n");
+  let s0 = 0; while (s0 < A.length && s0 < B.length && A[s0] === B[s0]) s0++;
+  let ea = A.length, eb = B.length; while (ea > s0 && eb > s0 && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  const a = A.slice(s0, ea), b = B.slice(s0, eb), ops = [];
+  if (a.length * b.length > 2.5e6) { a.forEach((x) => ops.push({ t: "del", a: x })); b.forEach((x) => ops.push({ t: "add", b: x })); }
+  else {
+    const n = a.length, m = b.length, L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) { if (a[i] === b[j]) { ops.push({ t: "same", a: a[i], b: b[j] }); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) ops.push({ t: "del", a: a[i++] }); else ops.push({ t: "add", b: b[j++] }); }
+    while (i < n) ops.push({ t: "del", a: a[i++] }); while (j < m) ops.push({ t: "add", b: b[j++] });
+  }
+  const rows = [];
+  A.slice(0, s0).forEach((x) => rows.push({ a: x, b: x, t: "same" }));
+  for (let k = 0; k < ops.length;) {
+    if (ops[k].t === "same") { rows.push({ a: ops[k].a, b: ops[k].b, t: "same" }); k++; continue; }
+    const dels = [], adds = [];
+    while (k < ops.length && ops[k].t !== "same") (ops[k].t === "del" ? dels : adds).push(ops[k++]);
+    for (let q = 0; q < Math.max(dels.length, adds.length); q++) rows.push({ a: dels[q] ? dels[q].a : null, b: adds[q] ? adds[q].b : null, t: "chg" });
+  }
+  A.slice(ea).forEach((x) => rows.push({ a: x, b: x, t: "same" }));
+  return rows;
+};
+const reviewDiff = (title, before, after) => new Promise((resolve) => {
+  const rows = diffRows(before, after), removed = rows.filter((r) => r.t === "chg" && r.a != null).length, added = rows.filter((r) => r.t === "chg" && r.b != null).length;
+  const CONTEXT = 3, keep = new Array(rows.length).fill(false);
+  rows.forEach((r, i) => { if (r.t !== "same") for (let d = -CONTEXT; d <= CONTEXT; d++) if (rows[i + d]) keep[i + d] = true; });
+  const cells = [el("div", { class: "head" }, "Stored"), el("div", { class: "head" }, "Your change")];
+  for (let i = 0; i < rows.length; i++) {
+    if (!keep[i]) { let j = i; while (j < rows.length && !keep[j]) j++; cells.push(el("div", { class: "gap" }, "… " + (j - i) + " unchanged line" + (j - i === 1 ? "" : "s") + " …")); i = j - 1; continue; }
+    const r = rows[i];
+    cells.push(el("div", { class: r.t === "chg" && r.a != null ? "del" : "" }, r.a ?? ""), el("div", { class: r.t === "chg" && r.b != null ? "add" : "" }, r.b ?? ""));
+  }
+  const d = $("#diff");
+  $("#diff-title").textContent = "Review your change to " + title;
+  $("#diff-sum").textContent = removed + " line" + (removed === 1 ? "" : "s") + " changed or removed, " + added + " changed or added";
+  put($("#diff-body"), el("div", { class: "diffgrid" }, ...cells));
+  const done = (v) => { d.close(); resolve(v); };
+  $("#diff-yes").onclick = () => done(true); $("#diff-no").onclick = () => done(false); d.oncancel = () => resolve(false);
+  d.showModal(); $("#diff-yes").focus();
+});
+
+/* ---- Export. The volatile document of a stream is node-private, so a file made here never holds it. */
+const download = (name, parts, type) => {
+  const url = URL.createObjectURL(new Blob(parts, { type }));
+  const a = el("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+};
+/* A cell that starts like a formula is quoted so a spreadsheet shows it instead of running it. */
+const csvCell = (v) => { let t = v == null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+const toCsv = (docs) => { const cols = []; for (const d of docs) for (const k of Object.keys(d)) if (!cols.includes(k) && cols.length < 40) cols.push(k); return [cols.map(csvCell).join(","), ...docs.map((d) => cols.map((c) => csvCell(d[c])).join(","))].join("\n"); };
+const stamp = () => new Date().toISOString().replace(/[:T]/g, "-").slice(0, 16);
+const exportPage = (format) => {
+  const docs = state.pageDocs.filter((d) => d && !String(d._id).endsWith(":volatile"));
+  if (!docs.length) return notify("Nothing to export", "This page has no documents.");
+  const base = shown(state.db) + "-" + stamp();
+  if (format === "csv") download(base + ".csv", [toCsv(docs)], "text/csv"); else download(base + ".json", [JSON.stringify(docs, null, 2)], "application/json");
+};
+let exporting = null;
+const exportAll = async (db, button) => {
+  if (exporting) { exporting.cancel = true; return; }
+  const job = (exporting = { cancel: false }), parts = [], label = button ? button.textContent : "";
+  let n = 0, startkey, size = 0;
+  try {
+    for (;;) {
+      const rows = await listDocs(db, { startkey, limit: 501 });
+      for (const r of rows.slice(0, 500)) { if (r.doc && !String(r.id).endsWith(":volatile")) { const line = JSON.stringify(r.doc) + "\n"; parts.push(line); size += line.length; n++; } }
+      if (button) button.textContent = "Exporting " + n.toLocaleString() + " (click to stop)";
+      if (rows.length <= 500) break;
+      if (job.cancel) break;
+      if (size > 400 * 1048576) { notify("Export stopped", "The file reached 400 MB, which is more than a browser should hold. It has what was read so far."); break; }
+      startkey = rows[500].id;
+    }
+    if (n) download(shown(db) + "-" + stamp() + ".jsonl", parts, "application/x-ndjson"); else notify("Nothing to export", "No documents were read.");
+  } catch (e) { notify("Export failed", String(e.message || e)); }
+  finally { exporting = null; if (button) button.textContent = label; }
+};
+const exportMenu = () => el("button", { class: "btn ghost", onclick: (e) => menu.open(e.currentTarget, [["This page as JSON", () => exportPage("json")], ["This page as CSV", () => exportPage("csv")], ["Whole database (JSON lines)", () => exportAll(state.db, e.currentTarget)]]) }, "Export");
+
+/* ---- Select rows and delete them together. Consensus data needs Danger mode, as it does one at a time. */
+let bulkEl = null;
+const drawBulk = () => {
+  if (!bulkEl) return;
+  const n = state.sel.size;
+  bulkEl.style.display = n ? "" : "none";
+  put(bulkEl, el("strong", {}, n + " selected"), el("button", { class: "btn danger", onclick: () => deleteSelected(bulkEl.dataset.db) }, "Delete selected"), el("button", { class: "btn ghost", onclick: clearSel }, "Clear"));
+};
+const clearSel = () => { state.sel.clear(); document.querySelectorAll("input.sel").forEach((b) => (b.checked = false)); drawBulk(); };
+const bulkBar = (db) => { bulkEl = el("div", { class: "bar bulk" }); bulkEl.dataset.db = db; drawBulk(); return bulkEl; };
+const selCell = (db, key, ids) => {
+  const locked = ids.some((id) => tier(db, id) === "consensus") && !state.danger;
+  const box = el("input", { type: "checkbox", class: "sel", "aria-label": "Select " + key, title: locked ? "Consensus data: turn on Danger mode to select" : "Select", disabled: locked });
+  box.checked = state.sel.has(key);
+  box.addEventListener("click", (e) => e.stopPropagation());
+  box.addEventListener("change", () => { box.checked ? state.sel.set(key, ids) : state.sel.delete(key); drawBulk(); });
+  return el("td", { class: "selcell" }, box);
+};
+const selAll = () => el("th", { class: "selcell" }, el("input", { type: "checkbox", "aria-label": "Select every row on this page", onchange: (e) => document.querySelectorAll("input.sel:not(:disabled)").forEach((b) => { if (b.checked !== e.target.checked) b.click(); }) }));
+const selTable = (db, cols, body) => [bulkBar(db), el("div", { class: "card" }, body.length
+  ? el("table", {}, el("thead", {}, el("tr", {}, selAll(), cols.map((c) => el("th", {}, c)))), el("tbody", {}, body))
+  : el("div", { class: "empty" }, state.q.trim() ? "Nothing matches that search" : "0 " + state.noun))];
+async function deleteSelected(db) {
+  const ids = [...state.sel.values()].flat(), n = state.sel.size;
+  if (!ids.length) return;
+  const consensus = ids.some((id) => tier(db, id) === "consensus");
+  const what = n + " selected item" + (n === 1 ? "" : "s") + (ids.length > n ? " (" + ids.length + " documents: each stream's state, meta and volatile)" : "");
+  if (!(await ask(consensus
+    ? { title: "Delete consensus data?", body: what + " will be removed. Every node must hold the same stream state and meta, so this makes this node disagree with the network. It cannot be undone.", expect: "delete", danger: true }
+    : { title: "Delete " + n + " item" + (n === 1 ? "" : "s") + "?", body: what + " will be removed. This cannot be undone.", danger: true }))) return;
+  let failed = 0, first = "";
+  for (const id of ids) {
+    try { await api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+    catch (e) { if (!/:(stream|volatile)$/.test(id)) { failed++; first = first || String(e.message || e); } }
+  }
+  state.sel.clear(); afterWrite();
+  if (failed) notify("Some deletes failed", failed + " of " + ids.length + " could not be deleted. The first error: " + first);
+}
+
+/* ---- Node status: what is stored, and the storage server's own maintenance routes. */
+const NODE = "__node";
+const kindsFor = (db) => role(db) === "errors" ? [["error", "Errors"]] : role(db) === "events" ? [["event", "Events"], ["umid", "Transaction index rows"], ["fail", "Failed transaction rows"], ["resent", "Resent records"]] : [];
+const FILE = /^[A-Za-z0-9._-]{1,100}$/;
+async function runPrune(db, kind, before, dryRun, onPage) {
+  let after, total = { removed: 0, scanned: 0, kept: 0 };
+  for (let guard = 0; guard < 100000; guard++) {
+    const page = await api(`/${encodeURIComponent(db)}/_prune`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ kind, before, dryRun, ...(after ? { after } : {}) }) });
+    total.removed += page.removed || 0; total.scanned += page.scanned || 0; total.kept += page.kept || 0;
+    onPage && onPage(total);
+    if (!page.next) break;
+    after = page.next;
+  }
+  return total;
+}
+async function pruneFlow(db, kind, label, btn) {
+  const days = await ask({ title: "Prune " + label.toLowerCase() + " in " + shown(db), body: "Remove rows older than this many days (at least 1). Nothing is removed yet: it counts first.", field: { start: "30", hint: "days", check: (v) => (/^\d+$/.test(v) && +v >= 1 ? "" : "A whole number of days, 1 or more."), preview: (v) => "Older than " + new Date(Date.now() - v * 864e5).toLocaleString() } });
+  if (!days) return;
+  const before = Date.now() - +days * 864e5, was = btn.textContent;
+  try {
+    btn.disabled = true; btn.textContent = "Counting…";
+    const dry = await runPrune(db, kind, before, true, (t) => (btn.textContent = "Counting " + t.scanned.toLocaleString() + "…"));
+    btn.textContent = was; btn.disabled = false;
+    if (!dry.removed) return notify("Nothing to prune", dry.scanned.toLocaleString() + " rows looked at; none are old enough" + (dry.kept ? " or ready to remove (" + dry.kept.toLocaleString() + " kept)." : "."));
+    if (!(await ask({ title: "Remove " + dry.removed.toLocaleString() + " rows?", body: dry.removed.toLocaleString() + " of " + dry.scanned.toLocaleString() + " " + label.toLowerCase() + " rows in " + shown(db) + " are older than " + days + " days and will be removed. This cannot be undone.", expect: "prune", danger: true }))) return;
+    btn.disabled = true;
+    const done = await runPrune(db, kind, before, false, (t) => (btn.textContent = "Removed " + t.removed.toLocaleString() + "…"));
+    notify("Pruned", done.removed.toLocaleString() + " rows removed from " + shown(db) + ".");
+  } catch (e) { notify("Prune failed", String(e.message || e)); }
+  finally { btn.textContent = was; btn.disabled = false; loadSize(db).then(() => state.db === NODE && renderNode()); }
+}
+async function backupFlow(db) {
+  const name = await ask({ title: "Back up " + shown(db), body: "Writes a copy of the database to a file in the storage server's backup folder, on the machine the storage runs on. It is not downloaded here; use Export for that.", field: { start: shown(db).replace(/^$/, "ledger") + "-" + stamp(), hint: "file name", check: (v) => (FILE.test(v) ? "" : "Letters, numbers, . _ - (up to 100).") } });
+  if (!name) return;
+  try { await api(`/${encodeURIComponent(db)}/_backup`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ filename: name }) }); notify("Backup started", "The storage server is writing " + name + ". Large databases take a while.") } catch (e) { notify("Backup failed", String(e.message || e)); }
+}
+async function restoreFlow(db) {
+  const name = await ask({ title: "Restore " + shown(db) + " from a backup file", body: "Reads a file from the storage server's backup folder into this database. Documents in the file replace those held here.", field: { start: "", hint: "file name", check: (v) => (FILE.test(v) ? "" : "Letters, numbers, . _ - (up to 100).") } });
+  if (!name) return;
+  if (!(await ask({ title: "Restore " + shown(db) + "?", body: "Replaces documents in " + db + " with those in " + name + ". For the activeledger database every node must agree on this data.", expect: shown(db), danger: true }))) return;
+  try { await api(`/${encodeURIComponent(db)}/_restore`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ filename: name }) }); notify("Restore started", "The storage server is reading " + name + "."); } catch (e) { notify("Restore failed", String(e.message || e)); }
+}
+async function renderNode() {
+  closeLive(); renderNav();
+  const total = Object.values(state.sizes).reduce((a, b) => a + (typeof b === "number" ? b : 0), 0);
+  const rows = state.dbs.map((d) => {
+    const kinds = kindsFor(d), acts = el("td", {});
+    const compact = el("button", { class: "btn ghost", onclick: async () => { compact.disabled = true; compact.textContent = "Compacting…"; try { await api(`/${encodeURIComponent(d)}/_compact`); await loadSize(d); notify("Compacted", shown(d) + " is " + (fmtBytes(state.sizes[d]) || "compacted") + " on disk now."); } catch (e) { notify("Compact failed", String(e.message || e)); } finally { compact.disabled = false; compact.textContent = "Compact"; renderNode(); } } }, "Compact");
+    acts.append(compact, el("button", { class: "btn ghost", onclick: () => backupFlow(d) }, "Backup"), el("button", { class: "btn ghost", onclick: (e) => exportAll(d, e.currentTarget) }, "Export"));
+    if (kinds.length) { const pr = el("button", { class: "btn ghost", onclick: (e) => menu.open(e.currentTarget, kinds.map(([k, l]) => [l, () => pruneFlow(d, k, l, pr)])) }, "Prune…"); acts.append(pr); }
+    acts.append(el("button", { class: "btn ghost", disabled: !state.danger, title: state.danger ? "Restore from a backup file" : "Turn on Danger mode to restore", onclick: () => restoreFlow(d) }, "Restore…"));
+    return el("tr", {}, el("td", { class: "mono" }, shown(d)), el("td", {}, isSystem(d) ? el("span", { class: "tag" }, role(d)) : el("span", { class: "muted" }, "custom")), el("td", {}, fmtBytes(state.sizes[d]) || "…"), acts);
+  });
+  put(content, el("div", { class: "bar" }, el("h2", {}, "Node status"), el("span", { class: "tag" }, state.base), el("span", { class: "tag" }, state.dbs.length + " databases"), total ? el("span", { class: "tag" }, fmtBytes(total) + " on disk") : null),
+    el("div", { class: "note" }, "Maintenance for the storage server this page is talking to. Compact and Backup are safe to run on a live node. Prune counts first and asks before it removes anything; it only touches the events and errors databases. Restore needs Danger mode."),
+    el("div", { class: "card node" }, el("table", {}, el("thead", {}, el("tr", {}, ["Database", "Kind", "Size", "Actions"].map((c) => el("th", {}, c)))), el("tbody", {}, rows))));
+}
+
 /* Pages */
 const content = $("#content");
 const loading = () => content.replaceChildren(el("div", { class: "empty" }, "Loading…"));
@@ -417,6 +780,7 @@ const pagedRows = async (db, range) => {
   const rows = await listDocs(db, { ...range, startkey });
   const size = state.pageSize, hasNext = rows.length > size;
   if (hasNext) state.cursor[state.page + 1] = rows[size].id;
+  state.pageDocs = rows.slice(0, size).map((r) => r.doc).filter(Boolean);
   return { rows: rows.slice(0, size), hasNext };
 };
 let refreshBody = () => render();
@@ -424,7 +788,7 @@ state.noun = "documents";
 let refreshChips = () => {};
 /* After a write the document count is stale: ask again, then redraw. */
 const afterWrite = () => { delete state.exact[state.db]; delete state.probed[state.db]; loadSize(state.db).then(() => refreshChips()); refreshBody(); };
-const go = (d) => { state.page += d; refreshBody(); };
+const go = (d) => { state.page += d; state.sel.clear(); refreshBody(); };
 
 /* Typing the start of a key finds everything that starts with it. `fallback` is the prefix keys of this kind carry, added when it is left off. */
 const keyRange = (whole = {}, fallback = "") => {
@@ -445,16 +809,57 @@ const pageStreams = async (db) => {
   if (next) state.cursor[state.page + 1] = next;
   if (all.length) state.perStream[db] = Math.max(1, rows.length / (all.length + (next ? 1 : 0)));
   const groups = all.slice(0, size);
+  state.pageDocs = groups.flatMap((g) => [g.state, g.meta].filter(Boolean));
   const body = groups.map((g) => el("tr", { onclick: () => openStream(db, g) },
+    selCell(db, g.id, [g.id, g.id + ":stream", g.id + ":volatile"]),
     el("td", { class: "mono" }, short(g.id)), el("td", {}, g.meta?.name ?? g.state?.name ?? ""),
     el("td", {}, lockTags(g.meta)), el("td", { class: "muted" }, g.state?._rev ?? ""), el("td", { class: "muted mono" }, short(g.meta?.umid ?? "", 8))));
-  return [el("div", { class: "note" }, "A stream is shown once, with its state, meta and volatile together."), table(["Stream", "Name", "Locks", "Revision", "Last transaction"], body), pager(!!next, go, state.perStream[db] || 3)];
+  return [el("div", { class: "note" }, "A stream is shown once, with its state, meta and volatile together."), ...selTable(db, ["Stream", "Name", "Locks", "Revision", "Last transaction"], body), pager(!!next, go, state.perStream[db] || 3)];
 };
-const openTransaction = async (ledger, umid) => {
+/* The streams a transaction created or updated, each opening that stream; for an update, the transaction it replaced. */
+const streamList = (ledger, d) => {
+  const open = (id) => el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openStream(ledger, { id }, true); } }, short(id, 14));
+  const rows = [
+    ...(d.streams?.new || []).map((n) => el("div", {}, el("span", { class: "tag ok" }, "new"), " ", open(n.id))),
+    ...(d.streams?.updated || []).map((u) => el("div", {}, el("span", { class: "tag" }, "updated"), " ", open(u.id), u.prev ? el("span", { class: "muted" }, "  replaced ") : "", u.prev ? el("a", { class: "lnk mono", href: "#", onclick: (e) => { e.preventDefault(); openTransaction(ledger, u.prev, true); } }, short(u.prev, 12)) : "")),
+  ];
+  return rows.length ? el("div", {}, ...rows) : el("div", { class: "muted" }, "None");
+};
+/* A stream id shown as text, upgraded to a link once the ledger confirms it holds that stream (names such as a new stream's label are not ids). */
+const idLink = (ledger, key, push = true) => {
+  const out = el("span", { class: "mono" }, short(String(key), 14));
+  out.title = String(key);
+  getDoc(ledger, String(key)).then((doc) => {
+    if (!doc || !doc._id) return;
+    const a = el("a", { class: "lnk mono", href: "#", title: String(key), onclick: (e) => { e.preventDefault(); openStream(ledger, { id: String(key) }, push); } }, short(String(key), 14));
+    out.replaceChildren(a);
+  }).catch(() => {});
+  return out;
+};
+const chips = (ledger, keys) => keys.length ? el("div", { class: "who" }, ...keys.slice(0, 30).map((k) => idLink(ledger, k)), keys.length > 30 ? el("span", { class: "muted" }, "+" + (keys.length - 30) + " more") : "") : el("span", { class: "muted" }, "None");
+const txFacts = (ledger, d) => {
+  const u = d.umid || {}, t = u.$tx || {}, sigs = u.$sigs || d.$sigs || {};
+  const kv = [];
+  const row = (k, v) => kv.push(el("div", {}, k), v instanceof Node ? v : el("div", {}, v));
+  row("Contract", el("div", {}, el("span", { class: "mono" }, t.$contract ?? "—"), t.$entry ? el("span", { class: "muted" }, "  entry " + t.$entry) : ""));
+  row("Namespace", t.$namespace ?? "—");
+  row("Committed", u.$datetime ? new Date(u.$datetime).toLocaleString() + "  (" + u.$datetime + ")" : "—");
+  if (u.$origin) row("Received by", u.$origin);
+  row("Signed by", chips(ledger, Object.keys(sigs)));
+  row("Inputs", chips(ledger, Object.keys(t.$i || {})));
+  row("Outputs", chips(ledger, Object.keys(t.$o || {})));
+  row("Streams", el("div", {}, `${d.streams?.new?.length ?? 0} new · ${d.streams?.updated?.length ?? 0} updated`));
+  row("Touched", streamList(ledger, d));
+  row("Events", el("div", {}, String(d.events?.length ?? 0)));
+  return el("div", { class: "kv" }, ...kv);
+};
+const openTransaction = async (ledger, umid, push = false) => {
+  const show = push ? drawer.push.bind(drawer) : drawer.open.bind(drawer);
   try {
     const d = await getDoc(ledger, umid + ":umid");
-    drawer.open(umid, el("div", { class: "kv" }, el("div", {}, "Contract"), el("div", {}, d.umid?.$tx?.$contract ?? "—"), el("div", {}, "Namespace"), el("div", {}, d.umid?.$tx?.$namespace ?? "—"), el("div", {}, "Streams"), el("div", {}, `${d.streams?.new?.length ?? 0} new · ${d.streams?.updated?.length ?? 0} updated`), el("div", {}, "Events"), el("div", {}, String(d.events?.length ?? 0))), docPanel(ledger, d, afterWrite));
-  } catch (e) { drawer.open(umid, el("div", { class: "err" }, e.message)); }
+    if (!d || !d._id) throw new Error("no such transaction");
+    show(umid, txFacts(ledger, d), docPanel(ledger, d, afterWrite));
+  } catch (e) { show(umid, el("div", { class: "err" }, "That transaction is not held on this node (" + e.message + ")")); }
 };
 const pageTransactions = async (ledger) => {
   if (state.q.trim()) {
@@ -480,8 +885,8 @@ const pageTransactions = async (ledger) => {
 const pageEvents = async (db) => {
   const { rows, hasNext } = await pagedRows(db, keyRange({ startkey: "event:", endkey: "event;" }, "event:"));
   const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) },
-    el("td", { class: "mono" }, short(String(r.id), 18)), el("td", {}, r.doc?.contract ?? r.doc?.event ?? ""), el("td", { class: "muted mono" }, short(r.doc?.umid ?? "", 10)), rowDelete(db, r.doc)));
-  return [table(["Event", "Name", "Transaction", ""], body), pager(hasNext, go)];
+    selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id), 18)), el("td", {}, r.doc?.contract ?? r.doc?.event ?? ""), el("td", { class: "muted mono" }, short(r.doc?.umid ?? "", 10)), rowDelete(db, r.doc)));
+  return [...selTable(db, ["Event", "Name", "Transaction", ""], body), pager(hasNext, go)];
 };
 /* Rows of one kind in the events database, found by the prefix of their id (event:, umid:, fail:, resent:). */
 const msOf = (id) => { const m = /^[a-z]+:(\d{10,})/.exec(String(id)); return m ? +m[1] : null; };
@@ -489,8 +894,8 @@ const details = (doc) => Object.entries(doc || {}).filter(([k]) => !k.startsWith
 const pagePrefix = (prefix) => async (db) => {
   const { rows, hasNext } = await pagedRows(db, keyRange({ startkey: prefix, endkey: prefix.slice(0, -1) + ";" }, prefix));
   const body = rows.map((r) => { const ms = msOf(r.id); return el("tr", { onclick: () => openDoc(db, r.doc) },
-    el("td", { class: "mono" }, short(String(r.id).replace(prefix, ""), 14)), el("td", { class: "muted" }, ms ? new Date(ms).toLocaleString() : ""), el("td", { class: "muted" }, details(r.doc)), rowDelete(db, r.doc)); });
-  return [table(["Id", "Time", "Details", ""], body), pager(hasNext, go)];
+    selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id).replace(prefix, ""), 14)), el("td", { class: "muted" }, ms ? new Date(ms).toLocaleString() : ""), el("td", { class: "muted" }, details(r.doc)), rowDelete(db, r.doc)); });
+  return [...selTable(db, ["Id", "Time", "Details", ""], body), pager(hasNext, go)];
 };
 
 /* Live: what the node writes from now on, as it happens. The server sends events, and with ?also= the transaction and failed rows;
@@ -528,12 +933,13 @@ const pageLive = async (db) => {
 
 const pageGeneral = async (db) => {
   const { rows, hasNext } = await pagedRows(db, keyRange());
-  const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) }, el("td", { class: "mono" }, short(String(r.id), 24)), el("td", { class: "muted mono" }, r.doc?._rev ?? ""), el("td", { class: "muted" }, Object.keys(r.doc || {}).filter((k) => !k.startsWith("_")).slice(0, 5).join(", ")), rowDelete(db, r.doc)));
+  const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) }, selCell(db, r.id, [r.id]), el("td", { class: "mono" }, short(String(r.id), 24)), el("td", { class: "muted mono" }, r.doc?._rev ?? ""), el("td", { class: "muted" }, Object.keys(r.doc || {}).filter((k) => !k.startsWith("_")).slice(0, 5).join(", ")), rowDelete(db, r.doc)));
   if (!state.q && state.page === 0) { if (hasNext) delete state.exact[db]; else state.exact[db] = rows.length; refreshChips(); }
-  return [table(["Id", "Revision", "Fields", ""], body), pager(hasNext, go, 1)];
+  return [...selTable(db, ["Id", "Revision", "Fields", ""], body), pager(hasNext, go, 1)];
 };
 const searchHint = { live: "", streams: "Search by stream id: type the start of it", umids: "Search by transaction id: type the start of it", umidx: "Search by time: type the start of the milliseconds, e.g. 17950", fails: "Search by time: type the start of the milliseconds, e.g. 17950", resent: "Search by transaction id: type the start of it", events: "Search by event key, for example event:1795", docs: "Search by document id: type the start of it" };
 const tabsFor = (db) => {
+  if (db === NODE) return [["node", "Node status", async () => []]];
   if (state.view === "general") return [["docs", "Documents", pageGeneral]];
   const r = role(db);
   if (r === "ledger") return [["streams", "Streams", pageStreams], ["umids", "Transactions", pageTransactions]];
@@ -542,7 +948,9 @@ const tabsFor = (db) => {
 };
 async function render() {
   closeLive();
+  state.sel.clear();
   renderNav();
+  if (state.db === NODE) return renderNode();
   if (!state.db) return content.replaceChildren(el("div", { class: "empty" }, "Choose a database"));
   const tabs = tabsFor(state.db);
   if (!tabs.find((t) => t[0] === state.tab)) state.tab = tabs[0][0];
@@ -572,7 +980,7 @@ async function render() {
   const draw = async () => { try { body.replaceChildren(...(await tabs.find((t) => t[0] === state.tab)[2](state.db))); } catch (e) { body.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e)))); } refreshChips(); };
   refreshBody = draw;
   search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { state.q = search.value; state.cursor = [null]; state.page = 0; draw(); }, 200); });
-  put(content, head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
+  put(content, head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, exportMenu(), (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
   refreshChips();
   try { history.replaceState(null, "", "#" + new URLSearchParams({ db: state.db, tab: state.tab })); } catch {}
   await draw();
@@ -591,7 +999,7 @@ const loadSize = async (db) => { try { state.sizes[db] = (await api("/" + encode
 async function reloadDbs(select) {
   state.dbs = (await api("/_all_dbs")).filter((d) => !d.startsWith("_"));
   if (select !== undefined) { state.db = select; state.q = ""; state.cursor = [null]; state.page = 0; }
-  if (!state.dbs.includes(state.db)) state.db = state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
+  if (state.db !== NODE && !state.dbs.includes(state.db)) state.db = state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
   state.tab = state.db ? tabsFor(state.db)[0][0] : "streams";
   render(); loadSizes();
 }
@@ -647,6 +1055,7 @@ function renderNav() {
   };
   const system = state.dbs.filter(isSystem), custom = state.dbs.filter((d) => !isSystem(d));
   $("#dbs").replaceChildren(
+    el("div", { class: "dbrow" }, el("button", { "aria-current": String(state.db === NODE), onclick: () => select(NODE) }, el("span", { class: "name" }, "Node status"))),
     ...(system.length ? [el("h6", { class: "group" }, "Activeledger"), ...system.map(item)] : []),
     el("h6", { class: "group head" }, "Custom", el("button", { class: "mini", onclick: addDb }, "Add new")),
     ...(custom.length ? custom.map(item) : [el("div", { class: "note", style: "margin:4px 8px" }, "None yet")]));
@@ -668,7 +1077,7 @@ async function boot() {
   loading();
   try {
     state.dbs = (await api("/_all_dbs")).filter((d) => !d.startsWith("_"));
-    state.db = state.dbs.find((d) => d === state.db) || state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
+    state.db = state.db === NODE ? NODE : state.dbs.find((d) => d === state.db) || state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
     const wanted = hash.get("tab");
     state.tab = state.db ? (tabsFor(state.db).some((t) => t[0] === wanted) ? wanted : tabsFor(state.db)[0][0]) : "streams";
     render(); loadSizes();
