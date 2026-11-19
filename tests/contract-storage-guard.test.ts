@@ -88,6 +88,20 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
     expect(hits.storage).to.equal(2);
   });
 
+  it("cannot be told to skip its own check by an extra argument, or fooled by a body that changes when asked again", async () => {
+    // The toolkit's HTTP is ActiveRequest with whatever arguments the contract passes
+    const send: any = ActiveRequest.send;
+    for (const extra of [[true], [300, true], [false, 300, true, true]]) {
+      expect(await refused(() => inContract(() => send.call(ActiveRequest, `http://127.0.0.1:${storagePort}/activeledger/x`, "GET", undefined, undefined, ...extra)))).to.be.instanceOf(StorageAccessError);
+    }
+    // A body that says one thing the first time it is serialised and another the second
+    let asked = 0;
+    const sneaky = { toJSON: () => (++asked === 1 ? { note: "VOLATILE" } : { note: "fine" }) };
+    const allowing = [`127.0.0.1:${storagePort}`];
+    expect(await refused(() => runSandboxed({ mode: "storage", onBlocked: () => undefined, customDatabases: true, allow: (d) => ContractScope.listed(allowing, d) }, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledger_wallets/_bulk_docs`, "POST", undefined, sneaky as any)))).to.be.instanceOf(StorageAccessError);
+    expect(hits.storage).to.equal(0);
+  });
+
   it("keeps the older all-network block for a hybrid execution", async () => {
     const e = await refused(() => runSandboxed({ onBlocked: () => undefined }, () => http.get(`http://127.0.0.1:${otherPort}/`)));
     expect(e.name).to.equal("SupernodeOnly");

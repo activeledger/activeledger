@@ -146,16 +146,35 @@ export class ActiveRequest {
     header?: string[],
     data?: any,
     enableGZip: boolean = false,
-    timeout: number = 300, // undici default
-    // Set by send() itself when it re-enters under an approval; callers leave it
-    checked: boolean = false
+    timeout: number = 300 // undici default
   ): Promise<IHTTPResponse> {
     // A contract's HTTP is this class. It may call out, but not to the storage
     // (unless its namespace has been allowed that database).
-    const approve = checked ? undefined : ContractScope.check(reqUrl, data, type);
-    if (approve) {
-      return approve(() => ActiveRequest.send(reqUrl, type, header, data, enableGZip, timeout, true));
+    if (ContractScope.current()) {
+      // Serialised once, here: what is checked is exactly what is sent, whatever
+      // toJSON or a getter would answer the second time it was asked
+      if (data && typeof data === "object" && !Buffer.isBuffer(data)) data = JSON.stringify(data);
+      const approve = ContractScope.check(reqUrl, data, type);
+      if (approve) {
+        return approve(() => perform(reqUrl, type, header, data, enableGZip, timeout));
+      }
     }
+    return perform(reqUrl, type, header, data, enableGZip, timeout);
+  }
+}
+
+/**
+ * The request itself. Module private, so nothing outside this file (a contract
+ * holding ActiveRequest, say) can call it without going through send()'s check.
+ */
+async function perform(
+  reqUrl: string,
+  type: string,
+  header?: string[],
+  data?: any,
+  enableGZip: boolean = false,
+  timeout: number = 300
+): Promise<IHTTPResponse> {
     //enableGZip = false
     timeout = timeout * 1000;
     const headers: Record<string, string> = {};
@@ -321,4 +340,3 @@ export class ActiveRequest {
       );
     });
   }
-}
