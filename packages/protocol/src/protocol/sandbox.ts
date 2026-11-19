@@ -152,6 +152,8 @@ const suspicious = (args: unknown[]): boolean =>
     if (!arg || typeof arg !== "object" || arg instanceof URL || Array.isArray(arg) || ArrayBuffer.isView(arg)) return false;
     const proto = Object.getPrototypeOf(arg);
     if (proto !== Object.prototype && proto !== null) return true;
+    // Options that hand the request to the contract's own code to connect
+    if ("agent" in arg || "createConnection" in arg || "lookup" in arg) return true;
     return Object.values(Object.getOwnPropertyDescriptors(arg)).some((d: any) => d.get || d.set);
   });
 

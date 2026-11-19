@@ -263,7 +263,26 @@ export class ContractScope {
       if (scope.allow?.(destination) || (scope.customDatabases && ContractScope.isCustomDatabase(destination.path))) {
         const als = (globalThis as any)[SCOPE];
         const approval = { host: destination.host, port: destination.port, expires: Date.now() + 5000, used: false };
-        return <T>(run: () => T): T => als.run(Object.freeze({ ...scope, approved: approval }), run);
+        return <T>(run: () => T): T => {
+          // The approval lasts while the request is being made (the call, or the
+          // promise it returns) and is spent the moment that ends, so a callback or
+          // a later step of the contract cannot use what is left of it
+          let result: any;
+          try {
+            result = als.run(Object.freeze({ ...scope, approved: approval }), run);
+          } catch (error) {
+            approval.used = true;
+            throw error;
+          }
+          if (result && typeof result.then === "function") {
+            return result.then(
+              (value: unknown) => { approval.used = true; return value; },
+              (error: unknown) => { approval.used = true; throw error; }
+            ) as T;
+          }
+          approval.used = true;
+          return result;
+        };
       }
     }
     scope.onBlocked?.("storage");
