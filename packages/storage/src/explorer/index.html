@@ -407,7 +407,7 @@ const pager = (hasNext, go, perItem = 0) => {
   else if (!state.q && perItem) { const e = estimateItems(state.db, perItem); if (e) label += " of about " + Math.max(Math.ceil(e / state.pageSize), state.page + 2).toLocaleString(); }
   const select = el("select", { "aria-label": "Rows per page", onchange: (e) => { state.pageSize = +e.target.value; store.set("al.pagesize", String(state.pageSize)); state.cursor = [null]; state.page = 0; refreshBody(); } },
     PAGE_SIZES.map((n) => el("option", { value: String(n), selected: n === state.pageSize }, n + " per page")));
-  return el("div", { class: "pager" }, select, el("span", { title: "Page counts are estimated from the size on disk and the average document size" }, label),
+  return el("div", { class: "pager" }, select, el("span", { title: "Page counts are estimated from the size on disk and the average document size. On the Streams tab a page is " + state.pageSize + " streams, not documents." }, label),
     el("button", { class: "btn ghost", disabled: state.page === 0, onclick: () => go(-1) }, "Previous"),
     el("button", { class: "btn ghost", disabled: !hasNext, onclick: () => go(1) }, "Next"));
 };
@@ -552,7 +552,10 @@ async function render() {
   refreshChips = () => {
     if (state.db !== db0) return;
     const size = fmtBytes(state.sizes[db0]), exact = state.exact[db0], est = exact == null ? estimateItems(db0, 1) : null;
+    /* The Streams list counts streams, which are several documents each, so say that too: 25 streams a page is about 100 documents. */
+    const streams = state.tab === "streams" && exact == null && state.perStream[db0] ? estimateItems(db0, state.perStream[db0]) : null;
     put(chips, size ? el("span", { class: "tag" }, size + " on disk") : null,
+      streams ? el("span", { class: "tag", title: "A stream is its state, meta and volatile documents, so it is several documents" }, "about " + streams.toLocaleString() + " streams") : null,
       exact != null ? el("span", { class: "tag" }, exact.toLocaleString() + " documents") : est ? el("span", { class: "tag", title: "Estimated from the size on disk and the average document size" }, "about " + est.toLocaleString() + " documents") : null);
   };
   /* One key is enough to tell an empty database from one with documents, so it can say "0 documents". */
