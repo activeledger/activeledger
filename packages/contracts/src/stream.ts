@@ -429,6 +429,11 @@ export class Stream {
     streamId: string
   ): Promise<ActiveDefinitions.IStream> {
     return new Promise((resolve, reject) => {
+      // An id is a string. Anything else is an object whose methods the host
+      // would end up calling.
+      if (typeof streamId !== "string") {
+        return reject("Stream id must be a string");
+      }
       const umid = this.umid;
       // once: each request gets exactly one answer, and a listener left
       // behind would also fire for a later read of the same stream

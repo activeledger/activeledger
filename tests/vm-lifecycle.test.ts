@@ -846,6 +846,23 @@ exports.default = FakeContract;
       expect(data).to.equal(undefined);
     });
 
+    it("turns a contract's stream id into a plain string while still in its sandbox (its own toString must not run outside it)", async () => {
+      const { ContractScope } = require("@activeledger/activeutilities");
+      const { runSandboxed } = require("../packages/protocol/src/protocol/sandbox");
+      for (const event of ["getStreamData", "getVolatile"]) {
+        const machine = new VirtualMachine("h", fakeDb({}) as any, {} as any);
+        const emitter = (machine as any).emitter;
+        const where: boolean[] = [];
+        const evil: any = { toString: () => { where.push(!!ContractScope.current()); return "s9"; }, indexOf: () => { where.push(!!ContractScope.current()); return -1; } };
+        const reply = once(emitter, event === "getVolatile" ? "volatileFetched-u1s9" : "getStreamDataFetched-u1s9");
+        runSandboxed({ mode: "storage", onBlocked: () => undefined }, () => emitter.emit(event, "u1", evil));
+        await reply;
+        // Whatever of the contract's code ran, it ran inside its sandbox, and the host used plain strings
+        expect(where.length, event).to.be.greaterThan(0);
+        expect(where.every(Boolean), event).to.equal(true);
+      }
+    });
+
     it("answers getVolatile with the error when the stream has none", async () => {
       const machine = new VirtualMachine("h", fakeDb({}) as any, {} as any);
       const emitter = (machine as any).emitter;

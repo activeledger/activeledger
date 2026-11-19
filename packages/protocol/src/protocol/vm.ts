@@ -1124,9 +1124,14 @@ export class VirtualMachine
   }
 
   private listenForVolatile(): void {
-    this.emitter.on("getVolatile", (umid: string, streamId: string) =>
+    this.emitter.on("getVolatile", (umidIn: string, streamIdIn: string) => {
+      // These came from the contract. Made plain strings here, while still inside
+      // its sandbox, so that what the host work below touches is data and not an
+      // object whose toString or indexOf is the contract's own code, which would
+      // run outside the sandbox.
+      const umid = String(umidIn), streamId = String(streamIdIn);
       // Host work: never inside the contract's egress sandbox
-      runUnsandboxed(async () => {
+      return runUnsandboxed(async () => {
         // Volatile is per node. A hybrid reads its own copy, as every node
         // does; what a contract does with a value that may differ is up to
         // the contract.
@@ -1148,8 +1153,8 @@ export class VirtualMachine
         } catch (error) {
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
         }
-      })
-    );
+      });
+    });
   }
 
   /**
@@ -1158,9 +1163,11 @@ export class VirtualMachine
    * @private
    */
   private listenForFetch(): void {
-    this.emitter.on("getStreamData", (umid: string, streamId: string) =>
+    this.emitter.on("getStreamData", (umidIn: string, streamIdIn: string) => {
+      // As getVolatile: plain strings, made inside the contract's sandbox
+      const umid = String(umidIn), streamId = String(streamIdIn);
       // Host work: never inside the contract's egress sandbox
-      runUnsandboxed(async () => {
+      return runUnsandboxed(async () => {
         try {
           const db = this.executions[umid]?.db || this.db;
           const data: ActiveDefinitions.IStream = await this.contractRead(
@@ -1176,8 +1183,8 @@ export class VirtualMachine
         } catch (error) {
           this.emitter.emit(`getStreamDataFetched-${umid}${streamId}`, error);
         }
-      })
-    );
+      });
+    });
   }
 
   /**

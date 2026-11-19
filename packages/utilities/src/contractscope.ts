@@ -170,13 +170,31 @@ export class ContractScope {
   }
 
   /**
+   * mentionsVolatile, also against the text with the characters the storage
+   * drops or ignores taken out (it deletes quotes from startkey and endkey, so
+   * vo"latile reaches it as volatile), and spaces, separators and zero-width marks.
+   */
+  public static mentionsVolatileSquashed(text: string): boolean {
+    if (ContractScope.mentionsVolatile(text)) return true;
+    let decoded = String(text);
+    for (let round = 0; round < 8; round++) {
+      let next: string;
+      try { next = decodeURIComponent(decoded); } catch { next = decoded; }
+      next = next.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
+      if (next === decoded) break;
+      decoded = next;
+    }
+    return /volatile/i.test(decoded.replace(/[\s"'`\\+._\-\u200b-\u200f\u2060\ufeff]/g, ""));
+  }
+
+  /**
    * Whether a request is out of bounds for any contract: it mentions volatile
    * anywhere in its path, query or body (the node's private data, in any
    * database), or it is in one of the node's own databases (ledger, events,
    * errors and the error archive).
    */
   public static forbidden(path: string, body?: unknown, method?: string): boolean {
-    if (ContractScope.mentionsVolatile(path)) return true;
+    if (ContractScope.mentionsVolatileSquashed(path)) return true;
     if (body !== undefined && body !== null) {
       let text: string;
       try {
@@ -184,7 +202,7 @@ export class ContractScope {
       } catch {
         return true;
       }
-      if (ContractScope.mentionsVolatile(text ?? "")) return true;
+      if (ContractScope.mentionsVolatileSquashed(text ?? "")) return true;
     }
     let decoded: string;
     try {
@@ -196,6 +214,8 @@ export class ContractScope {
     const first = parts[0]?.toLowerCase();
     const never: Set<string> | undefined = (globalThis as any)[NEVER];
     if (first && never && never.has(first)) return true;
+    // _all_dbs, _explorer, _utils: the storage's own pages and listings
+    if (first && first.startsWith("_")) return true;
     // The storage's own routes (backup, restore, prune, compact, raw, ...) take
     // their target from the body or act on the whole database, so a contract
     // gets documents, _all_docs and _bulk_docs and nothing else
