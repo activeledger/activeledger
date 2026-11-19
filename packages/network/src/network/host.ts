@@ -49,7 +49,7 @@ import { PhysicalCores } from "./cpus";
 import { DEFAULT_WORKER_COUNT, workerCount } from "./workercount";
 import { workerExecArgv } from "./workerheap";
 import { reportedUpdatedStreams } from "./updatedstreams";
-import { changedNodes } from "./nodedelta";
+import { changedNodes, nodeSignature } from "./nodedelta";
 import { releaseHoldMs, releaseStubMs, releaseTailMs } from "./releasetimes";
 import { voteOnlyRecord } from "./voteonly";
 import * as process from "process";
@@ -183,6 +183,8 @@ interface process {
   broadcasting?: boolean;
   /** signatures of the node responses already forwarded to the worker (see nodedelta.ts) */
   sentNodes?: { [reference: string]: string };
+  /** signature of this node's own response as last handed to each neighbour (p2pQuietReplies) */
+  sentVote?: { [reference: string]: string };
 }
 
 /**
@@ -296,6 +298,21 @@ export class Host extends Home {
    * Called once the API is listening. Lets the CLI report real progress.
    */
   public static onListening?: () => void;
+
+  /**
+   * p2pQuietReplies: do not answer a neighbour's message with our vote when
+   * that vote was already handed to it. The resend timer (see armResend)
+   * covers a neighbour that never answers.
+   */
+  private static quietReplies(): boolean {
+    return ActiveOptions.get<boolean>("p2pQuietReplies", true) !== false;
+  }
+
+  /** How long a neighbour may stay silent before our vote is sent to it again (p2pResendMs), doubling each try */
+  private static resendMs(): number {
+    const ms = Number(ActiveOptions.get<number>("p2pResendMs", 250));
+    return Number.isFinite(ms) && ms >= 10 ? ms : 250;
+  }
 
   private p2pServer: net.Server;
 
@@ -565,7 +582,10 @@ export class Host extends Home {
               }
 
             }
-            if (!entry.$$noreply) {
+            if (
+              !entry.$$noreply &&
+              !(Host.quietReplies() && (Host.prototype as any).quietReply.call(this, entry.$umid, replyRecipients, entry))
+            ) {
               // Only the node that asked can use our answer, so send it to
               // that node alone when we can tell who it is, else to everyone.
               this.broadcast(entry.$umid, false, true, replyRecipients);
@@ -784,6 +804,9 @@ export class Host extends Home {
    */
   constructor() {
     super();
+
+    // A neighbour lost a frame it had accepted: what we sent it is not delivered
+    Neighbour.onDropped = (reference) => this.peerDropped(reference);
 
     if (Host.p2pServerWanted()) {
       // Start P2P TCP Server
@@ -1798,7 +1821,7 @@ export class Host extends Home {
         const slim =
           only &&
           data.$$noreply &&
-          ActiveOptions.get<boolean>("p2pSlimReplies", false)
+          ActiveOptions.get<boolean>("p2pSlimReplies", true) !== false
             ? {
                 $umid: data.$umid,
                 $broadcast: data.$broadcast,
@@ -1809,6 +1832,13 @@ export class Host extends Home {
         let serialised: Promise<Buffer> | undefined;
         const serialiseOnce = () =>
           serialised || (serialised = Neighbour.serialiseParams(slim ?? data));
+
+        // What this node's own response looks like now, to tell later whether a
+        // neighbour already has it
+        const ourSignature =
+          selfEntry && !selfEntry.early && Host.quietReplies()
+            ? nodeSignature(selfEntry)
+            : undefined;
 
         // Loop them all and broadcast the transaction
         for (let i = nodes.length; i--;) {
@@ -1824,7 +1854,15 @@ export class Host extends Home {
             (!only || only.includes(node.reference))
           ) {
             // Need to detect if we have already sent and got response for nodes for performance
-            promises.push(node.knock("init", data, false, 0, true, serialiseOnce));
+            promises.push(
+              node.knock("init", data, false, 0, true, serialiseOnce).then((answer: any) => {
+                if (ourSignature !== undefined) {
+                  const held = this.processPending[umid];
+                  if (held) (held.sentVote ||= {})[node.reference] = ourSignature;
+                }
+                return answer;
+              })
+            );
           }
         }
 
@@ -1838,6 +1876,8 @@ export class Host extends Home {
           .then(() => {
             if (!only) {
               this.processPending[umid].broadcasting = false;
+              // Our vote is out: give a neighbour that never answers a nudge
+              if (ourSignature !== undefined) this.armResend(umid, 0);
             }
             // As it is bundled we don't get a response. We need to trigger rebroadcast
           })
@@ -1853,6 +1893,77 @@ export class Host extends Home {
             }, 250);
           });
       }
+    }
+  }
+
+  /**
+   * Whether to leave a reply unsent: p2pQuietReplies is on, the neighbour that
+   * asked is known, our current response (vote, or commit data) was already
+   * handed to it, and the transaction does not use inter node comms, whose
+   * data travels in these responses and is always answered as before.
+   */
+  private quietReply(
+    umid: string,
+    recipients: string[] | undefined,
+    incoming: ActiveDefinitions.LedgerEntry
+  ): boolean {
+    if (!Host.quietReplies() || !recipients || recipients.length !== 1) return false;
+    const held = this.processPending[umid];
+    const own = held?.entry?.$nodes?.[this.reference];
+    if (!held || !own || own.early) return false;
+    if (Host.usesInterNodeComms(held.entry) || Host.usesInterNodeComms(incoming)) {
+      return false;
+    }
+    return held.sentVote?.[recipients[0]] === nodeSignature(own);
+  }
+
+  /** Does any response in this entry carry inter node comms data */
+  private static usesInterNodeComms(entry?: ActiveDefinitions.LedgerEntry): boolean {
+    const nodes: any = entry?.$nodes;
+    if (!nodes) return false;
+    for (const reference of Object.keys(nodes)) {
+      if (nodes[reference]?.incomms) return true;
+    }
+    return false;
+  }
+
+  /** Has this node heard from the neighbour about the transaction (its vote, held here or already passed to the worker) */
+  private heardFrom(held: process, reference: string): boolean {
+    const node: any = held.entry?.$nodes?.[reference];
+    return (node && node.vote !== undefined) || held.sentNodes?.[reference] !== undefined;
+  }
+
+  /**
+   * The backup for the fast lane. When a neighbour has not sent its vote a
+   * while after ours went out, send ours to it again (it answers with its
+   * own), then again after twice the wait, up to five times. In a healthy
+   * network every vote arrives within milliseconds and this does nothing.
+   */
+  private armResend(umid: string, attempt: number): void {
+    if (!Host.quietReplies() || attempt > 4) return;
+    const held = this.processPending[umid];
+    const token = held?.token;
+    const timer = setTimeout(() => {
+      const now = this.processPending[umid];
+      if (!now || now.finished || now.token !== token) return;
+      const hood = this.neighbourhood.get();
+      const silent = this.neighbourhood
+        .keys()
+        .filter((ref: string) => hood[ref].isHome && ref !== this.reference && !this.heardFrom(now, ref));
+      if (!silent.length) return;
+      // Whatever we thought they had, they have not answered it
+      for (const ref of silent) if (now.sentVote) delete now.sentVote[ref];
+      this.broadcast(umid, false, false, silent);
+      this.armResend(umid, attempt + 1);
+    }, Host.resendMs() * 2 ** attempt);
+    timer.unref?.();
+  }
+
+  /** A neighbour accepted frames it could not write: nothing sent to it recently counts as delivered */
+  private peerDropped(reference: string): void {
+    for (const umid of Object.keys(this.processPending)) {
+      const held = this.processPending[umid];
+      if (held.sentVote) delete held.sentVote[reference];
     }
   }
 

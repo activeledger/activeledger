@@ -21,7 +21,9 @@ The node reads `./config.json` from the folder it is started in (or the file giv
 | `remote` | Allow `GET /a/admin-reload` to reload this file without a restart. Only this host or a neighbour may call it. | `false` |
 | `p2pStream` | Send consensus traffic to neighbours over a TCP connection instead of HTTP. | `true` |
 | `p2pStreamServer` | Accept that TCP traffic. It listens on `port + 1` (5261 by default). | `true` |
-| `p2pSlimReplies` | Answer a neighbour's message over `p2pStream` with just the vote, not the whole transaction again. About half the bytes between nodes, and a higher sustained rate on a busy network. Safe in a mixed network: a node that is not on this release already reads such a message correctly. Has no effect on the signed or encrypted HTTP path. | `false` |
+| `p2pQuietReplies` | Do not answer a neighbour's message with this node's vote when that vote was already handed to it, which removes about a third of the messages between nodes on a busy network. A neighbour that never gets the vote is sent it again after `p2pResendMs`, doubling the wait each try, so a dropped message costs a delay and not a vote. Inter-node comms (INC) keep answering as before. Safe in a mixed network. On by default; set `false` to turn it off. | `true` |
+| `p2pResendMs` | First wait, in milliseconds, before this node sends its vote again to a neighbour that has not sent anything back (`p2pQuietReplies`). Doubles each try, up to 5 tries. Minimum 10. | `250` |
+| `p2pSlimReplies` | Answer a neighbour's message over `p2pStream` with just the vote, not the whole transaction again. About half the bytes between nodes, and a higher sustained rate on a busy network. Safe in a mixed network: a node that is not on this release already reads such a message correctly. Has no effect on the signed or encrypted HTTP path. On by default; set `false` to turn it off. | `true` |
 | `configVersion` | Marks a file written by a current release. Set to `1` on a file you have checked. | `1` |
 
 A node with a `hybrid` section needs `"build": 40300` for it to take effect.
