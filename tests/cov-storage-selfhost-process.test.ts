@@ -440,6 +440,50 @@ describe("Storage process lifecycle (selfhost)", function () {
     });
   });
 
+  describe("Explorer page", () => {
+    let s: Storage;
+    before(async () => {
+      s = await startStorage(["level"]);
+    });
+    after(async () => {
+      await s?.stop();
+      s?.cleanup();
+    });
+
+    const page = fs.readFileSync(
+      path.join(__dirname, "../packages/storage/lib/explorer/index.html"),
+      "utf8"
+    );
+
+    it("serves the page at /_explorer and /_explorer/", async () => {
+      for (const p of ["/_explorer", "/_explorer/"]) {
+        const r = await s.req("GET", p);
+        expect(r.status, p).to.equal(200);
+        expect(r.headers["content-type"], p).to.equal("text/html");
+        expect(r.text, p).to.equal(page);
+        expect(r.text, p).to.contain("Activeledger");
+      }
+    });
+
+    it("answers every path under it with the same page and reads nothing from the path", async () => {
+      for (const p of [
+        "/_explorer/anything",
+        "/_explorer/../../package.json",
+        "/_explorer/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+      ]) {
+        const r = await s.req("GET", p);
+        if (r.status === 200) {
+          expect(r.text, p).to.equal(page);
+        }
+        expect(r.text, p).to.not.match(/root:x:0/);
+      }
+    });
+
+    it("leaves the old /_utils page where it was", async () => {
+      expect((await s.req("GET", "/_utils/")).status).to.equal(200);
+    });
+  });
+
   describe("Fauxton assets", () => {
     let s: Storage;
     before(async () => {

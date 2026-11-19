@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activeledger Explorer</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #14181f; --muted: #667085; --line: #e4e7ec;
+    --accent: #3b5bfd; --accent-ink: #ffffff; --soft: #eef1ff; --ok: #12805c; --warn: #b54708; --bad: #b42318;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1116; --panel: #161b22; --ink: #e6e9ef; --muted: #8b94a5; --line: #262d38;
+      --accent: #7c93ff; --accent-ink: #0e1116; --soft: #1c2440; --ok: #3ccf9b; --warn: #f1a54b; --bad: #f97066;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --panel: #161b22; --ink: #e6e9ef; --muted: #8b94a5; --line: #262d38;
+    --accent: #7c93ff; --accent-ink: #0e1116; --soft: #1c2440; --ok: #3ccf9b; --warn: #f1a54b; --bad: #f97066;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  .brand { font-weight: 650; letter-spacing: -.01em; }
+  .brand span { color: var(--accent); }
+  .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+  .seg button { border: 0; background: none; padding: 5px 14px; border-radius: 7px; cursor: pointer; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px #0002; }
+  .grow { flex: 1; }
+  input[type=text], input[type=search], select, textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; outline: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  .btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-weight: 550; }
+  .btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); font-weight: 400; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100% - 55px); }
+  nav { border-right: 1px solid var(--line); background: var(--panel); padding: 14px 10px; }
+  nav h6 { margin: 0 8px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  nav button { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+  nav button:hover { background: var(--bg); }
+  nav button[aria-current="true"] { background: var(--soft); color: var(--accent); font-weight: 600; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.ok { color: var(--ok); } .tag.warn { color: var(--warn); } .tag.bad { color: var(--bad); }
+  section.content { padding: 18px 22px; min-width: 0; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .bar h2 { margin: 0 8px 0 0; font-size: 18px; letter-spacing: -.01em; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabs button { border: 0; background: none; padding: 8px 14px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .muted { color: var(--muted); }
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .pager { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; align-items: center; color: var(--muted); }
+  aside.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(640px, 100%); background: var(--panel); border-left: 1px solid var(--line); box-shadow: -12px 0 32px #0003; transform: translateX(105%); transition: transform .18s ease; z-index: 10; display: flex; flex-direction: column; }
+  aside.drawer.open { transform: none; }
+  .drawer header { position: static; border-bottom: 1px solid var(--line); }
+  .drawer .body { padding: 16px 20px; overflow: auto; flex: 1; }
+  pre.json { margin: 0; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
+  .k { color: var(--accent); } .s { color: var(--ok); } .n { color: var(--warn); } .b { color: var(--bad); }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin-bottom: 14px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .note { font-size: 12.5px; color: var(--muted); margin: 8px 2px 0; }
+  .err { color: var(--bad); padding: 12px 16px; }
+  textarea { width: 100%; font-family: var(--mono); font-size: 12.5px; min-height: 90px; resize: vertical; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } nav { border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">Activeledger <span>Explorer</span></div>
+  <div class="seg" role="group" aria-label="View">
+    <button id="v-al" aria-pressed="true">Activeledger</button>
+    <button id="v-gen" aria-pressed="false">General</button>
+  </div>
+  <div class="grow"></div>
+  <input type="text" id="base" size="26" aria-label="Storage URL" spellcheck="false">
+  <button class="btn ghost" id="theme" title="Toggle theme">Theme</button>
+</header>
+<main>
+  <nav><h6>Databases</h6><div id="dbs"></div></nav>
+  <section class="content" id="content"></section>
+</main>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <header><strong id="d-title" class="mono" style="overflow:hidden;text-overflow:ellipsis"></strong><div class="grow"></div><button class="btn ghost" id="d-close">Close</button></header>
+  <div class="body" id="d-body"></div>
+</aside>
+<script>
+"use strict";
+/* Everything from the ledger is untrusted text: it is only ever written with textContent. */
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) k === "class" ? (e.className = v) : k.startsWith("on") ? e.addEventListener(k.slice(2), v) : e.setAttribute(k, v);
+  for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+};
+const store = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+
+const state = { base: store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: store.get("al.view", "al"), db: null, dbs: [], tab: "streams", cursor: [null], page: 0 };
+const PAGE = 50;
+
+const api = async (path, opts) => {
+  const r = await fetch(state.base.replace(/\/$/, "") + path, opts);
+  if (!r.ok) throw new Error(r.status + " " + (await r.text()).slice(0, 200));
+  return r.json();
+};
+const role = (name) => (/event/i.test(name) ? "events" : /error/i.test(name) ? "errors" : "ledger");
+const short = (s, n = 14) => (s && s.length > n * 2 + 1 ? s.slice(0, n) + "…" + s.slice(-6) : s);
+
+/* JSON view */
+const jsonView = (value) => {
+  const out = el("pre", { class: "json" });
+  const text = JSON.stringify(value, null, 2) ?? "undefined";
+  const re = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    out.append(text.slice(last, m.index));
+    const cls = m[1] ? (m[2] ? "k" : "s") : m[3] ? "b" : "n";
+    out.append(el("span", { class: cls }, m[1] ? m[1] + (m[2] ?? "") : m[0]));
+    last = re.lastIndex;
+  }
+  out.append(text.slice(last));
+  return out;
+};
+
+/* Drawer */
+const drawer = { open(title, ...nodes) { $("#d-title").textContent = title; const b = $("#d-body"); b.replaceChildren(...nodes); $("#drawer").classList.add("open"); $("#drawer").setAttribute("aria-hidden", "false"); }, close() { $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); } };
+$("#d-close").onclick = drawer.close;
+addEventListener("keydown", (e) => e.key === "Escape" && drawer.close());
+
+/* Documents */
+const listDocs = async (db, { startkey, endkey, limit = PAGE + 1, include_docs = true } = {}) => {
+  const q = new URLSearchParams({ include_docs: String(include_docs), limit: String(limit) });
+  if (startkey != null) q.set("startkey", JSON.stringify(startkey));
+  if (endkey != null) q.set("endkey", JSON.stringify(endkey));
+  return (await api(`/${encodeURIComponent(db)}/_all_docs?${q}`)).rows || [];
+};
+const getDoc = (db, id) => api(`/${encodeURIComponent(db)}/${encodeURIComponent(id)}`);
+
+/* Activeledger stream = state + :stream meta + :volatile, shown as one thing */
+const groupStreams = (rows) => {
+  const map = new Map();
+  for (const r of rows) {
+    const doc = r.doc; if (!doc) continue;
+    const id = String(doc._id);
+    if (id.endsWith(":umid") || id.includes(":data")) continue;
+    const base = id.replace(/:(stream|volatile)$/, "");
+    const g = map.get(base) || { id: base };
+    if (id.endsWith(":stream")) g.meta = doc; else if (id.endsWith(":volatile")) g.volatile = doc; else g.state = doc;
+    map.set(base, g);
+  }
+  return [...map.values()];
+};
+const lockTags = (meta) => {
+  const t = [];
+  if (!meta) return t;
+  if (meta.contractlock?.length) t.push(el("span", { class: "tag warn" }, "contract lock"));
+  if (meta.namespaceLock?.length) t.push(el("span", { class: "tag warn" }, "namespace lock"));
+  if (meta.readLock) t.push(el("span", { class: "tag warn" }, "read lock"));
+  return t;
+};
+const openStream = async (db, g) => {
+  let { state: s, meta, volatile: v } = g;
+  try { s = s || await getDoc(db, g.id); } catch {}
+  try { meta = meta || await getDoc(db, g.id + ":stream"); } catch {}
+  try { v = v || await getDoc(db, g.id + ":volatile"); } catch {}
+  const tabs = { State: s, Meta: meta, Volatile: v };
+  const holder = el("div");
+  const bar = el("div", { class: "tabs" });
+  const show = (name) => { [...bar.children].forEach((b) => b.setAttribute("aria-selected", String(b.textContent === name))); holder.replaceChildren(tabs[name] ? jsonView(tabs[name]) : el("div", { class: "empty" }, "Not held on this node")); };
+  Object.keys(tabs).forEach((n) => bar.append(el("button", { onclick: () => show(n) }, n)));
+  const facts = el("div", { class: "kv" },
+    el("div", {}, "Name"), el("div", {}, meta?.name ?? "—"),
+    el("div", {}, "Created by"), el("div", { class: "mono" }, short(meta?.origin ?? "—", 18)),
+    el("div", {}, "Last transaction"), el("div", { class: "mono" }, short(meta?.umid ?? "—", 18)),
+    el("div", {}, "Authorities"), el("div", {}, String(meta?.authorities?.length ?? 0)),
+    el("div", {}, "Revisions"), el("div", { class: "mono" }, `${s?._rev ?? "—"} · ${meta?._rev ?? "—"}`));
+  drawer.open(g.id, facts, bar, holder);
+  show("State");
+};
+
+/* Pages */
+const content = $("#content");
+const loading = () => content.replaceChildren(el("div", { class: "empty" }, "Loading…"));
+const fail = (e) => content.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e))));
+const table = (cols, rows) => el("div", { class: "card" }, rows.length
+  ? el("table", {}, el("thead", {}, el("tr", {}, cols.map((c) => el("th", {}, c)))), el("tbody", {}, rows))
+  : el("div", { class: "empty" }, "Nothing here"));
+const pager = (hasNext, go) => el("div", { class: "pager" }, el("span", {}, "Page " + (state.page + 1)),
+  el("button", { class: "btn ghost", disabled: state.page === 0 ? "" : null, onclick: () => go(-1) }, "Previous"),
+  el("button", { class: "btn ghost", disabled: hasNext ? null : "", onclick: () => go(1) }, "Next"));
+
+const pagedRows = async (db, range) => {
+  const startkey = state.cursor[state.page] ?? range.startkey;
+  const rows = await listDocs(db, { ...range, startkey });
+  const hasNext = rows.length > PAGE;
+  if (hasNext) state.cursor[state.page + 1] = rows[PAGE].id;
+  return { rows: rows.slice(0, PAGE), hasNext };
+};
+const go = (d) => { state.page += d; render(); };
+
+const pageStreams = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, {});
+  const groups = groupStreams(rows);
+  const body = groups.map((g) => el("tr", { onclick: () => openStream(db, g) },
+    el("td", { class: "mono" }, short(g.id)), el("td", {}, g.meta?.name ?? g.state?.name ?? ""),
+    el("td", {}, lockTags(g.meta)), el("td", { class: "muted" }, g.state?._rev ?? ""), el("td", { class: "muted mono" }, short(g.meta?.umid ?? "", 8))));
+  return [el("div", { class: "note" }, "A stream is shown once, with its state, meta and volatile together."), table(["Stream", "Name", "Locks", "Revision", "Last transaction"], body), pager(hasNext, go)];
+};
+const pageTransactions = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, { startkey: "umid:", endkey: "umid;" });
+  const body = rows.filter((r) => r.doc?.umid || String(r.id).startsWith("umid:")).map((r) => {
+    const [stamp, umid] = String(r.id).replace(/^umid:/, "").split(",");
+    return el("tr", { onclick: async () => { try { const d = await getDoc(db, umid + ":umid"); drawer.open(umid, el("div", { class: "kv" }, el("div", {}, "Contract"), el("div", {}, d.umid?.$tx?.$contract ?? "—"), el("div", {}, "Namespace"), el("div", {}, d.umid?.$tx?.$namespace ?? "—"), el("div", {}, "Streams"), el("div", {}, `${d.streams?.new?.length ?? 0} new · ${d.streams?.updated?.length ?? 0} updated`), el("div", {}, "Events"), el("div", {}, String(d.events?.length ?? 0))), jsonView(d)); } catch (e) { drawer.open(umid, el("div", { class: "err" }, e.message)); } } },
+      el("td", { class: "mono" }, short(umid || String(r.id))), el("td", { class: "muted" }, stamp && /^\d+$/.test(stamp) ? new Date(+stamp).toLocaleString() : stamp || ""));
+  });
+  return [table(["Transaction", "Committed"], body), pager(hasNext, go)];
+};
+const pageEvents = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, { startkey: "event:", endkey: "event;" });
+  const body = rows.map((r) => el("tr", { onclick: () => drawer.open(r.id, jsonView(r.doc)) },
+    el("td", { class: "mono" }, short(String(r.id), 18)), el("td", {}, r.doc?.contract ?? r.doc?.event ?? ""), el("td", { class: "muted mono" }, short(r.doc?.umid ?? "", 10))));
+  return [table(["Event", "Name", "Transaction"], body), pager(hasNext, go)];
+};
+const pageGeneral = async (db) => {
+  const { rows, hasNext } = await pagedRows(db, {});
+  const body = rows.map((r) => el("tr", { onclick: () => drawer.open(r.id, jsonView(r.doc)) }, el("td", { class: "mono" }, short(String(r.id), 24)), el("td", { class: "muted mono" }, r.doc?._rev ?? ""), el("td", { class: "muted" }, Object.keys(r.doc || {}).filter((k) => !k.startsWith("_")).slice(0, 5).join(", "))));
+  return [table(["Id", "Revision", "Fields"], body), pager(hasNext, go)];
+};
+const pageQuery = async (db) => {
+  const box = el("textarea", { spellcheck: "false" }); box.value = '{\n  "selector": { "_id": { "$gt": null } },\n  "limit": 25\n}';
+  const out = el("div", { style: "margin-top:12px" });
+  const run = el("button", { class: "btn", onclick: async () => { try { out.replaceChildren(el("div", { class: "card", style: "padding:14px" }, jsonView(await api(`/${encodeURIComponent(db)}/_find`, { method: "POST", headers: { "Content-Type": "application/json" }, body: box.value })))); } catch (e) { out.replaceChildren(el("div", { class: "err" }, e.message)); } } }, "Run query");
+  return [el("div", { class: "note" }, "A Mango selector, run against this database only."), box, el("div", { style: "margin-top:8px" }, run), out];
+};
+
+const tabsFor = (db) => {
+  if (state.view === "general") return [["docs", "Documents", pageGeneral], ["query", "Query", pageQuery]];
+  const r = role(db);
+  if (r === "ledger") return [["streams", "Streams", pageStreams], ["umids", "Transactions", pageTransactions], ["query", "Query", pageQuery]];
+  if (r === "events") return [["events", "Events", pageEvents], ["docs", "All documents", pageGeneral]];
+  return [["docs", "Documents", pageGeneral], ["query", "Query", pageQuery]];
+};
+async function render() {
+  renderNav();
+  if (!state.db) return content.replaceChildren(el("div", { class: "empty" }, "Choose a database"));
+  const tabs = tabsFor(state.db);
+  if (!tabs.find((t) => t[0] === state.tab)) state.tab = tabs[0][0];
+  const head = el("div", { class: "bar" }, el("h2", {}, state.db), state.view === "al" ? el("span", { class: "tag" }, role(state.db)) : null);
+  const bar = el("div", { class: "tabs", role: "tablist" }, tabs.map(([id, label]) => el("button", { role: "tab", "aria-selected": String(id === state.tab), onclick: () => { state.tab = id; state.cursor = [null]; state.page = 0; render(); } }, label)));
+  const body = el("div");
+  content.replaceChildren(head, bar, body);
+  try { body.replaceChildren(...(await tabs.find((t) => t[0] === state.tab)[2](state.db))); } catch (e) { body.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e)))); }
+}
+function renderNav() {
+  $("#dbs").replaceChildren(...state.dbs.map((d) => el("button", { "aria-current": String(d === state.db), onclick: () => { state.db = d; state.tab = tabsFor(d)[0][0]; state.cursor = [null]; state.page = 0; render(); } }, el("span", {}, d), state.view === "al" ? el("span", { class: "tag" }, role(d)) : null)));
+}
+const setView = (v) => { state.view = v; store.set("al.view", v); $("#v-al").setAttribute("aria-pressed", String(v === "al")); $("#v-gen").setAttribute("aria-pressed", String(v === "general")); state.tab = state.db ? tabsFor(state.db)[0][0] : "streams"; state.cursor = [null]; state.page = 0; render(); };
+$("#v-al").onclick = () => setView("al"); $("#v-gen").onclick = () => setView("general");
+$("#theme").onclick = () => { const r = document.documentElement; const cur = r.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); r.dataset.theme = cur === "dark" ? "light" : "dark"; store.set("al.theme", r.dataset.theme); };
+$("#base").value = state.base;
+$("#base").addEventListener("change", (e) => { state.base = e.target.value.trim(); store.set("al.base", state.base); boot(); });
+async function boot() {
+  const t = store.get("al.theme", ""); if (t) document.documentElement.dataset.theme = t;
+  $("#v-al").setAttribute("aria-pressed", String(state.view === "al")); $("#v-gen").setAttribute("aria-pressed", String(state.view === "general"));
+  loading();
+  try {
+    state.dbs = (await api("/_all_dbs")).filter((d) => !d.startsWith("_"));
+    state.db = state.dbs.find((d) => d === state.db) || state.dbs.find((d) => role(d) === "ledger") || state.dbs[0] || null;
+    state.tab = state.db ? tabsFor(state.db)[0][0] : "streams";
+    render();
+  } catch (e) { renderNav(); fail(new Error("Cannot reach the storage server at " + state.base + " — " + (e.message || e))); }
+}
+boot();
+</script>
+</body>
+</html>

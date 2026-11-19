@@ -43,6 +43,7 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   const fauxtonCache: { [key: string]: { mime: string; data: Buffer } } = {};
   // Fauxton Path
   const FAUXTON_PATH = __dirname + "/fauxton/";
+  const EXPLORER_PATH = __dirname + "/explorer";
 
   // Directory Prefix
   const DIR_PREFIX = "./" + process.argv[2] + "/";
@@ -1125,6 +1126,26 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
   };
   http.use("_utils", "GET", fauxton);
   http.use("_utils/**", "GET", fauxton);
+
+  // Explorer: one static page that reads this server's own API. Nothing is
+  // resolved from the request path, so there is no file lookup to escape
+  // from; every path under /_explorer answers with the same page.
+  const explorer = async () => {
+    const file = EXPLORER_PATH + "/index.html";
+    if (fauxtonCache[file]) return fauxtonCache[file];
+    try {
+      const response = {
+        mime: ActiveHttpd.mimeType[".html"] || "text/html",
+        data: (await fsPromises.readFile(file)) as Buffer,
+      };
+      fauxtonCache[file] = response;
+      return response;
+    } catch {
+      // Not found, will result in a 404 from httpd
+    }
+  };
+  http.use("_explorer", "GET", explorer);
+  http.use("_explorer/**", "GET", explorer);
 
   // Start Server
   http.listen(parseInt(PORT), false, BIND_HOST);
