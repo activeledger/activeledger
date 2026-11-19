@@ -77,17 +77,18 @@ touches diverge.
 | 40200 | New contract versions compile to ES2025 (see the 4.10.0 changelog for the one breaking case) | 4.10.0 |
 | 40250 | Two fixes to the stream permission check (a contract `:data` stream with an ordinary stream, and `$sigOnly` inputs) | 5.2.0 |
 | 40300 | Hybrid nodes: signed votes and commit attestations, the `hybrid` section on the ledger, the `/h/*` API, contract update locks. Votes and attestations are only signed once the network turns hybrids on (below) | 5.3.0 |
-| 50300 | Nothing new: a new install starts here so the number matches the release (5.3.0). Everything up to 40300 is on | 5.3.0 |
+| 50300 | Nothing new: new installs started here from 5.3.0 to 5.5.0 so the number matched the release. Everything up to 40300 is on | 5.3.0 |
+| 50600 | A contract runs only for the namespace it lives in: the loaded-contract cache is keyed by namespace and contract | 5.6.0 |
 
-A new node gets **50300**: its `config.json` is generated from the default the
+A new node gets **50600**: its `config.json` is generated from the default the
 first time it starts. An existing `config.json` is never changed by an upgrade.
 
 **Upgrading an existing network.** Upgrade every node first, leaving `build`
-alone. Once all of them run the new release, set `"build": 50300` in each
+alone. Once all of them run the new release, set `"build": 50600` in each
 node's `config.json` and restart it, or call `/a/admin-reload` on nodes with
 `remote` enabled. Raising it before every node is upgraded splits the network.
 
-**Adding a node to an existing network.** Its generated config says 50300. Set
+**Adding a node to an existing network.** Its generated config says 50600. Set
 `build` to whatever the rest of the network runs before it joins.
 
 ### Hybrid nodes
