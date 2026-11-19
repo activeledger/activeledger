@@ -141,10 +141,12 @@ const el = (tag, props = {}, ...kids) => {
   for (const c of kids.flat()) if (c != null) e.append(c.nodeType ? c : document.createTextNode(String(c)));
   return e;
 };
+/* replaceChildren turns a null argument into the text "null", so empty slots are dropped first. */
+const put = (parent, ...kids) => parent.replaceChildren(...kids.flat().filter((k) => k != null && k !== false));
 const store = { get: (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 
 const hash = new URLSearchParams(location.hash.slice(1));
-const state = { base: hash.get("base") || store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: hash.get("view") || store.get("al.view", "al"), db: hash.get("db"), dbs: [], tab: "streams", cursor: [null], page: 0, q: "", danger: false, pageSize: +store.get("al.pagesize", "50") || 50, sizes: {}, avg: {}, perStream: {}, exact: {} };
+const state = { base: hash.get("base") || store.get("al.base", location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:5260"), view: hash.get("view") || store.get("al.view", "al"), db: hash.get("db"), dbs: [], tab: "streams", cursor: [null], page: 0, q: "", danger: false, pageSize: +store.get("al.pagesize", "50") || 50, sizes: {}, avg: {}, perStream: {}, exact: {}, probed: {} };
 const PAGE_SIZES = [25, 50, 100, 200];
 const fmtBytes = (n) => (typeof n !== "number" ? "" : n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB" : (n / 1073741824).toFixed(1) + " GB");
 
@@ -392,7 +394,7 @@ const loading = () => content.replaceChildren(el("div", { class: "empty" }, "Loa
 const fail = (e) => content.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e))));
 const table = (cols, rows) => el("div", { class: "card" }, rows.length
   ? el("table", {}, el("thead", {}, el("tr", {}, cols.map((c) => el("th", {}, c)))), el("tbody", {}, rows))
-  : el("div", { class: "empty" }, "Nothing here"));
+  : el("div", { class: "empty" }, state.q.trim() ? "Nothing matches that search" : "0 " + state.noun));
 /* An estimate, not a count: the database's size on disk over the average size of the documents seen so far. The files carry some
    overhead and are compressed, so it can be well out; it is only ever shown as "about". perItem: documents per listed item. */
 const estimateItems = (db, perItem = 1) => {
@@ -418,9 +420,10 @@ const pagedRows = async (db, range) => {
   return { rows: rows.slice(0, size), hasNext };
 };
 let refreshBody = () => render();
+state.noun = "documents";
 let refreshChips = () => {};
 /* After a write the document count is stale: ask again, then redraw. */
-const afterWrite = () => { delete state.exact[state.db]; loadSize(state.db).then(() => refreshChips()); refreshBody(); };
+const afterWrite = () => { delete state.exact[state.db]; delete state.probed[state.db]; loadSize(state.db).then(() => refreshChips()); refreshBody(); };
 const go = (d) => { state.page += d; refreshBody(); };
 
 /* Typing the start of a key finds everything that starts with it. `fallback` is the prefix keys of this kind carry, added when it is left off. */
@@ -543,14 +546,20 @@ async function render() {
   if (!state.db) return content.replaceChildren(el("div", { class: "empty" }, "Choose a database"));
   const tabs = tabsFor(state.db);
   if (!tabs.find((t) => t[0] === state.tab)) state.tab = tabs[0][0];
+  state.noun = String(tabs.find((t) => t[0] === state.tab)[1]).toLowerCase().replace(/^all /, "");
   const chips = el("span", { class: "chips" });
   const db0 = state.db;
   refreshChips = () => {
     if (state.db !== db0) return;
     const size = fmtBytes(state.sizes[db0]), exact = state.exact[db0], est = exact == null ? estimateItems(db0, 1) : null;
-    chips.replaceChildren(size ? el("span", { class: "tag" }, size + " on disk") : null,
+    put(chips, size ? el("span", { class: "tag" }, size + " on disk") : null,
       exact != null ? el("span", { class: "tag" }, exact.toLocaleString() + " documents") : est ? el("span", { class: "tag", title: "Estimated from the size on disk and the average document size" }, "about " + est.toLocaleString() + " documents") : null);
   };
+  /* One key is enough to tell an empty database from one with documents, so it can say "0 documents". */
+  if (state.exact[db0] === undefined && !state.probed[db0]) {
+    state.probed[db0] = true;
+    listDocs(db0, { limit: 1, include_docs: false }).then((rows) => { if (!rows.length) { state.exact[db0] = 0; refreshChips(); } }).catch(() => {});
+  }
   const head = el("div", { class: "bar" }, el("h2", { title: state.db }, shown(state.db)), state.view === "al" ? el("span", { class: "tag" }, role(state.db)) : null, chips);
   const bar = el("div", { class: "tabs", role: "tablist" }, tabs.map(([id, label]) => el("button", { role: "tab", "aria-selected": String(id === state.tab), onclick: () => { state.tab = id; state.q = ""; state.cursor = [null]; state.page = 0; render(); } }, label)));
   const body = el("div");
@@ -560,7 +569,7 @@ async function render() {
   const draw = async () => { try { body.replaceChildren(...(await tabs.find((t) => t[0] === state.tab)[2](state.db))); } catch (e) { body.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e)))); } refreshChips(); };
   refreshBody = draw;
   search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { state.q = search.value; state.cursor = [null]; state.page = 0; draw(); }, 200); });
-  content.replaceChildren(head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
+  put(content, head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
   refreshChips();
   try { history.replaceState(null, "", "#" + new URLSearchParams({ db: state.db, tab: state.tab })); } catch {}
   await draw();
