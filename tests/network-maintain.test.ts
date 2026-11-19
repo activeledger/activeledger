@@ -26,6 +26,7 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
     host: "h-" + reference,
     port: 5260,
     isHome,
+    state: isHome ? "home" : "unknown",
     graceStop,
     knock,
     setState(this: any, state: string, reason?: string) {
@@ -298,6 +299,75 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
       await M.checkNeighbourhood();
       expect(ns[1].isHome).to.equal(false);
       expect(setCalls).to.have.length(0);
+    });
+
+    it("asks only the neighbours not yet home, and never itself", async () => {
+      const asked: string[] = [];
+      const track = (ref: string) => async () => {
+        asked.push(ref);
+      };
+      const ns = [
+        fake("a", false, false, track("a")),
+        fake("b", true, false, track("b")),
+        fake("c", false, false, track("c")),
+        fake("d", false, false, track("d")),
+      ];
+      setup("a", ns);
+      Home.reference = "net-1";
+      await M.checkNeighbourhood();
+      expect(asked.sort()).to.deep.equal(["c", "d"]);
+    });
+
+    it("counts itself as home without a request", async () => {
+      let asked = 0;
+      const self = fake("a", false, false, async () => {
+        asked++;
+      });
+      setup("a", [self, fake("b")]);
+      Home.reference = "net-1";
+      await M.checkNeighbourhood();
+      expect(self.isHome).to.equal(true);
+      expect(self.state).to.equal("home");
+      expect(asked).to.equal(0);
+    });
+
+    it("leaves a neighbour already home alone, whatever it would answer", async () => {
+      const b = fake("b", true, false, async () => {
+        throw new Error("would fail if asked");
+      });
+      setup("a", [fake("a"), b]);
+      Home.reference = "net-1";
+      await M.checkNeighbourhood();
+      expect(b.isHome).to.equal(true);
+    });
+
+    it("says a neighbour that has not answered is unreachable, and keeps a reason it already has", async () => {
+      const silent = fake("b", false, false, async () => {
+        throw new Error("refused");
+      });
+      const other = fake("c", false, false, async () => {
+        throw new Error("refused");
+      });
+      other.state = "mismatch";
+      other.reason = "chain 2";
+      setup("a", [fake("a"), silent, other]);
+      Home.reference = "net-1";
+      await M.checkNeighbourhood();
+      expect(silent.state).to.equal("unreachable");
+      expect(silent.reason).to.equal("no answer yet");
+      expect(other.state).to.equal("mismatch");
+      expect(other.reason).to.equal("chain 2");
+    });
+
+    it("moves a neighbour that answers to home", async () => {
+      const b = fake("b", false, false, async () => ({}));
+      b.state = "unreachable";
+      b.reason = "no answer yet";
+      setup("a", [fake("a"), b]);
+      Home.reference = "net-1";
+      await M.checkNeighbourhood();
+      expect(b.state).to.equal("home");
+      expect(b.isHome).to.equal(true);
     });
 
     it("does not mark home or pair if the network was reset meanwhile", async () => {

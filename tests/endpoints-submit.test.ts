@@ -755,10 +755,11 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         getStatus: () => "STATUS",
         neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },
       };
-      const reply = await Endpoints.status(host, "NA");
+      // A caller from this machine gets the detail: counts, and since
+      const reply = await Endpoints.status(host, "NA", undefined, "127.0.0.1");
       expect(reply.statusCode).to.equal(200);
       const { knocks, ...rest } = reply.content.neighbourhood;
-      expect(reply.content.neighbourhood.knocks).to.have.all.keys("sent", "received");
+      expect(knocks).to.have.all.keys("sent", "received");
       expect(knocks.sent).to.be.a("number");
       expect(knocks.received).to.be.a("number");
       expect({ ...reply.content, neighbourhood: rest }).to.deep.equal({
@@ -774,6 +775,14 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           },
         },
         pem: "PEM",
+      });
+      // Anyone else gets only whether each is home, and the state
+      const anon = await Endpoints.status(host, "NA", undefined, "203.0.113.9");
+      expect(anon.content.neighbourhood).to.deep.equal({
+        neighbours: {
+          a: { isHome: true, state: "home" },
+          b: { isHome: false, state: "unknown" },
+        },
       });
     });
   });

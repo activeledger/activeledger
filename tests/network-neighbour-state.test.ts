@@ -66,11 +66,48 @@ describe("Neighbour state and reason", () => {
     Home.left = { reference: "L" } as any;
     Home.right = { reference: "R" } as any;
     const before = Endpoints.statusKnocksReceived;
-    const reply = await Endpoints.status(host, "NA");
+    const reply = await Endpoints.status(host, "NA", undefined, "127.0.0.1");
     const shown = reply.content.neighbourhood.neighbours;
     expect(shown[a.reference]).to.include({ isHome: false, state: "unreachable", reason: "no answer yet" });
     expect(shown[b.reference]).to.include({ isHome: true, state: "home" });
     expect(shown[b.reference]).to.not.have.property("reason");
     expect(reply.content.neighbourhood.knocks.received).to.equal(before + 1);
+  });
+
+  it("keeps the reason, the change time and the knock counts from a caller off this machine", async () => {
+    const a = new Neighbour("10.0.0.2", 5260);
+    a.setState("unreachable", "no answer yet");
+    const hood: any = { [a.reference]: a };
+    const host: any = {
+      reference: "me",
+      getStatus: () => 4,
+      neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },
+    };
+    Home.left = { reference: "L" } as any;
+    Home.right = { reference: "R" } as any;
+    for (const address of ["203.0.113.9", "10.1.2.3", "::ffff:10.0.0.1", undefined]) {
+      const reply = await Endpoints.status(host, "NA", undefined, address as any);
+      const shown = reply.content.neighbourhood.neighbours[a.reference];
+      expect(shown, String(address)).to.deep.equal({ isHome: false, state: "unreachable" });
+      expect(reply.content.neighbourhood, String(address)).to.not.have.property("knocks");
+    }
+  });
+
+  it("gives the detail to loopback callers in every spelling", async () => {
+    const a = new Neighbour("10.0.0.2", 5260);
+    a.setState("mismatch", "chain 2");
+    const hood: any = { [a.reference]: a };
+    const host: any = {
+      reference: "me",
+      getStatus: () => 4,
+      neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },
+    };
+    Home.left = { reference: "L" } as any;
+    Home.right = { reference: "R" } as any;
+    for (const address of ["127.0.0.1", "::1", "::ffff:127.0.0.1", "127.0.1.1"]) {
+      const reply = await Endpoints.status(host, "NA", undefined, address);
+      expect(reply.content.neighbourhood.neighbours[a.reference], address).to.include({ state: "mismatch", reason: "chain 2" });
+      expect(reply.content.neighbourhood, address).to.have.property("knocks");
+    }
   });
 });

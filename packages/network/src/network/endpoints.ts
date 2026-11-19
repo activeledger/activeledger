@@ -37,6 +37,7 @@ import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
 import { Neighbour } from "./neighbour";
+import { isLoopback } from "./hybridAdmin";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 import { Locker } from "./locker";
 
@@ -1686,6 +1687,8 @@ export class Endpoints {
       } else {
         // Prevent circular (Added since no longer creating new left / right using reference for easy identity)
         // Status shouldn't be called much in comparison
+        // The detail below is for a caller on this machine
+        const local = isLoopback(peerAddress);
         let neighbourhood = host.neighbourhood.get();
         let keys = host.neighbourhood.keys();
         let i = keys.length;
@@ -1699,8 +1702,10 @@ export class Endpoints {
             neighbours[neighbour.reference] = {
               isHome: neighbour.isHome,
               state: neighbour.state ?? (neighbour.isHome ? "home" : "unknown"),
-              ...(neighbour.reason ? { reason: neighbour.reason } : {}),
-              since: neighbour.since,
+              // Why and since when, only to a caller on this machine: this
+              // route answers anyone who can reach the port
+              ...(local && neighbour.reason ? { reason: neighbour.reason } : {}),
+              ...(local ? { since: neighbour.since } : {}),
             };
           }
         }
@@ -1716,11 +1721,15 @@ export class Endpoints {
             neighbourhood: {
               neighbours: neighbours,
               // Status knocks since this node started: how much of its
-              // traffic is neighbour discovery
-              knocks: {
-                sent: Neighbour.statusKnocksSent,
-                received: Endpoints.statusKnocksReceived,
-              },
+              // traffic is neighbour discovery. Local callers only.
+              ...(local
+                ? {
+                    knocks: {
+                      sent: Neighbour.statusKnocksSent,
+                      received: Endpoints.statusKnocksReceived,
+                    },
+                  }
+                : {}),
             },
             pem: Home.publicPem,
           },

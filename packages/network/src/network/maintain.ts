@@ -358,7 +358,7 @@ export class Maintain {
     // checks (Neighbour.markUnavailable).
     await Promise.all(
       Maintain.neighbourOrder.map((neighbour: Neighbour) => {
-        if (neighbour.reference === Home.reference) {
+        if (neighbour.reference === Maintain.home.reference) {
           neighbour.setState("home");
           return Promise.resolve();
         }
