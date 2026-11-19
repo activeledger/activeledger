@@ -64,8 +64,27 @@ export interface IMeta extends IFullState {
   public?: string;
   hash?: string;
   contractlock?: Array<string>;
+  /** Namespaces allowed to write this stream (checked on `$i` / `$o`) */
+  namespaceLock?: Array<string>;
+  /** Namespace of the contract that created the stream, recorded with a readLock */
+  ns?: string;
+  /** Who may read each part of the stream. See IReadLock */
+  readLock?: IReadLock;
   acl?: { [reference: string]: string };
   removedAuthorities?: Array<ILedgerRemovedAuthority>;
+}
+
+/**
+ * Who may read each part of a stream from a contract: `"*"` for any
+ * namespace, or a list of namespaces. The creating namespace (`meta.ns`) and
+ * the `default` namespace can always read. A part left out takes its default:
+ * `state` and `stream` are open to every namespace, `volatile` is the
+ * creating namespace only.
+ */
+export interface IReadLock {
+  state?: "*" | Array<string>;
+  stream?: "*" | Array<string>;
+  volatile?: "*" | Array<string>;
 }
 
 /**

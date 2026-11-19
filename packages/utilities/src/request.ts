@@ -22,6 +22,7 @@
  */
 import { ActiveGZip } from "./gzip";
 import { StorageSocket } from "./storagesocket";
+import { ContractScope, StorageAccessError } from "./contractscope";
 import { Dispatcher, setGlobalDispatcher, getGlobalDispatcher, Agent } from "undici";
 
 /**
@@ -147,8 +148,64 @@ export class ActiveRequest {
     enableGZip: boolean = false,
     timeout: number = 300 // undici default
   ): Promise<IHTTPResponse> {
+    // A contract's HTTP is this class. It may call out, but not to the storage
+    // (unless its namespace has been allowed that database).
+    if (ContractScope.current()) {
+      // Everything is turned into plain values once, here, and the check and the
+      // request both get these: whatever a toString, toJSON or getter would answer
+      // the second time it was asked cannot change what was approved.
+      reqUrl = String(reqUrl);
+      type = String(type ?? "GET").toUpperCase();
+      // No compression from a contract: nothing to decompress and nothing to scan
+      enableGZip = false;
+      // No request outlives what a contract call is allowed
+      const cap = ContractScope.current()?.limits?.timeoutSeconds;
+      if (cap) timeout = Math.min(Number(timeout) || cap, cap);
+      if (header !== undefined) {
+        if (!Array.isArray(header)) throw new StorageAccessError("Headers that are not a list");
+        header = header.map((h) => String(h));
+        // The storage decompresses what is declared encoded, so an encoded body
+        // is one the check cannot read
+        if (header.some((h) => /^\s*(content|transfer)-encoding\s*:/i.test(h))) {
+          throw new StorageAccessError("An encoded request");
+        }
+      }
+      if (data && typeof data === "object") {
+        if (Buffer.isBuffer(data) || ArrayBuffer.isView(data)) {
+          const bytes = Buffer.from(data as any);
+          // The storage also decompresses a gzip body without being told
+          if (bytes[0] === 0x1f && bytes[1] === 0x8b) throw new StorageAccessError("A compressed request");
+          data = bytes;
+        } else {
+          data = JSON.stringify(data);
+        }
+      }
+      const approve = ContractScope.check(reqUrl, data, type);
+      if (approve) {
+        return approve(() => perform(reqUrl, type, header, data, enableGZip, timeout));
+      }
+    }
+    return perform(reqUrl, type, header, data, enableGZip, timeout);
+  }
+}
+
+/**
+ * The request itself. Module private, so nothing outside this file (a contract
+ * holding ActiveRequest, say) can call it without going through send()'s check.
+ */
+async function perform(
+  reqUrl: string,
+  type: string,
+  header?: string[],
+  data?: any,
+  enableGZip: boolean = false,
+  timeout: number = 300
+): Promise<IHTTPResponse> {
     //enableGZip = false
     timeout = timeout * 1000;
+    // Inside a contract call: its limits, and the way to cancel this request when the call ends
+    const scope = ContractScope.current();
+    let abortRequest: (() => void) | undefined;
     const headers: Record<string, string> = {};
 
     // Compressable?
@@ -256,6 +313,7 @@ export class ActiveRequest {
       const done = (value: IHTTPResponse) => {
         if (settled) return;
         settled = true;
+        if (abortRequest) scope?.inflight?.delete(abortRequest);
         resolve(value);
       };
 
@@ -270,12 +328,33 @@ export class ActiveRequest {
           bodyTimeout: timeout,
         },
         {
-          onConnect: () => {},
+          onConnect: (abort: () => void) => {
+            abortRequest = abort;
+            scope?.inflight?.add(abort);
+            // The call ended before this request got going: it does not go
+            if (scope?.ended?.value) abort();
+          },
           onHeaders: (_statusCode: number, rawHeaders: Buffer[] | null) => {
             encoding = rawHeader(rawHeaders, "content-encoding");
+            // A contract never asks for compression, so an encoded answer is not read: it
+            // could expand far past the byte budget the contract was given
+            if (scope && encoding) {
+              abortRequest?.();
+              done({ data: null });
+              return false;
+            }
             return true;
           },
           onData: (chunk: Buffer) => {
+            // A contract call may only read so much; past that the request is dropped
+            if (scope?.spent && scope.limits) {
+              scope.spent.bytes += chunk.length;
+              if (scope.spent.bytes > scope.limits.maxResponseBytes) {
+                abortRequest?.();
+                done({ data: null });
+                return false;
+              }
+            }
             chunks.push(chunk);
             return true;
           },
@@ -312,4 +391,3 @@ export class ActiveRequest {
       );
     });
   }
-}

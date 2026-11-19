@@ -26,6 +26,7 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { ActiveFrame } from "./frame";
+import { ContractScope, StorageAccessError } from "./contractscope";
 
 /**
  * What a socket request resolves to. `undefined` means nothing was written,
@@ -133,8 +134,18 @@ export class StorageSocket {
     }
     if (this.connecting) return this.connecting;
 
+    // The node's own connection: made outside any contract's sandbox (which refuses sockets),
+    // so a contract that happens to trigger it cannot leave it failed for everyone
+    const als = (globalThis as any)[Symbol.for("activeledger.contractScope")];
+    const unscoped = <T>(fn: () => T): T => (als ? als.exit(fn) : fn());
+    let socket: net.Socket;
+    try {
+      socket = unscoped(() => net.connect(this.socketPath));
+    } catch {
+      this.retryAt = Date.now() + StorageSocket.RETRY_MS;
+      return Promise.resolve(false);
+    }
     this.connecting = new Promise<boolean>((resolve) => {
-      const socket = net.connect(this.socketPath);
       let settled = false;
       const settle = (ok: boolean) => {
         if (settled) return;
@@ -201,6 +212,11 @@ export class StorageSocket {
     body: Buffer | undefined,
     timeoutMs: number
   ): Promise<StorageSocketReply> {
+    // The engine's own route to its storage: not for contract code, except for a
+    // request ActiveRequest has just approved (which carries an approval)
+    const scope = ContractScope.current();
+    const approved = scope?.approved;
+    if (scope && !(approved && !approved.used && Date.now() < approved.expires)) throw new StorageAccessError("The node's storage");
     if (!(await this.connect()) || !this.socket) return undefined;
 
     const id = this.nextId;

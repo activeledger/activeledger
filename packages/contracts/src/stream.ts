@@ -300,7 +300,8 @@ export class Stream {
         this.umid,
         // A new stream created by a default-namespace contract is privileged,
         // so its first setState may set engine-managed authority state.
-        this.transactions?.$namespace === "default"
+        this.transactions?.$namespace === "default",
+        this.transactions?.$namespace
       );
 
       // Set Secret Key
@@ -428,6 +429,11 @@ export class Stream {
     streamId: string
   ): Promise<ActiveDefinitions.IStream> {
     return new Promise((resolve, reject) => {
+      // An id is a string. Anything else is an object whose methods the host
+      // would end up calling.
+      if (typeof streamId !== "string") {
+        return reject("Stream id must be a string");
+      }
       const umid = this.umid;
       // once: each request gets exactly one answer, and a listener left
       // behind would also fire for a later read of the same stream
@@ -817,6 +823,9 @@ export class Activity {
    */
   private privileged: boolean = false;
 
+  /** Namespace of the contract that is creating this stream (new streams only) */
+  private namespace?: string;
+
   /**
    * Holds volatile data if it exists
    *
@@ -866,10 +875,13 @@ export class Activity {
     txUmid?: string,
     // True only when the creating contract runs in the `default` namespace.
     // Threaded from the base Stream, which knows it from the transaction.
-    privileged: boolean = false
+    privileged: boolean = false,
+    // The namespace of the contract creating this stream
+    namespace?: string
   ) {
     this.txUmid = txUmid || umid;
     this.privileged = privileged;
+    this.namespace = namespace;
 
     // Only if name is defined (Quick solution)
     if (umid && name) {
@@ -1279,6 +1291,46 @@ export class Activity {
   }
 
   /**
+   * Restricts which namespaces may read parts of this activity stream from a
+   * contract (`$r`, getAnyStreamReadOnly, getVolatile). Only for a stream this
+   * contract is creating. The creating namespace is recorded as `meta.ns` and
+   * can always read; a part left out takes its default (state and stream
+   * open, volatile the creating namespace only).
+   *
+   * @param {ActiveDefinitions.IReadLock} policy
+   * @returns {boolean}
+   */
+  public setReadLock(policy: ActiveDefinitions.IReadLock): boolean {
+    if (this.safeMode) {
+      throw new Error("Cannot create set read lock in Safe Mode");
+    }
+    if (!(this.name && this.umid)) return false;
+    if (!this.namespace) {
+      throw new Error("A read lock needs the namespace of the creating contract");
+    }
+    if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+      throw new Error("Read lock must be an object");
+    }
+    const lock: ActiveDefinitions.IReadLock = {};
+    for (const part of Object.keys(policy)) {
+      if (part !== "state" && part !== "stream" && part !== "volatile") {
+        throw new Error(`Read lock has no part named ${part}`);
+      }
+      const who = (policy as any)[part];
+      if (
+        who !== "*" &&
+        !(Array.isArray(who) && who.every((n) => typeof n === "string" && n))
+      ) {
+        throw new Error(`Read lock ${part} must be "*" or a list of namespaces`);
+      }
+      (lock as any)[part] = who === "*" ? who : who.slice();
+    }
+    this.meta.ns = this.namespace;
+    this.meta.readLock = lock;
+    return true;
+  }
+
+  /**
    * Alise of getName
    *
    * @returns {string}
@@ -1436,6 +1488,18 @@ export class Activity {
     // Remove _id & _rev
     if (fVolatile._id) delete fVolatile._id;
     if (fVolatile._rev) delete fVolatile._rev;
+
+    // A stream that already exists has no volatile document of its own here
+    // until one is loaded (getVolatile), and a volatile without an id is never
+    // written, so on a node with no volatile document for it this was a silent
+    // no-op. Name it, and the commit writes it: merged into the stored one if
+    // there is one, created if there is not.
+    if (!(this.volatile as ActiveDefinitions.IFullState)?._id && this.state?._id) {
+      this.volatile = {
+        ...this.volatile,
+        _id: this.state._id + ":volatile",
+      } as ActiveDefinitions.IFullState;
+    }
 
     // Merge Objects
     this.volatile = {

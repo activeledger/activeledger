@@ -101,6 +101,8 @@ interface IVMContractReferenceData {
   contractName: string;
   contractLocation: string;
   inputs: ActiveDefinitions.LedgerStream[];
+  /** Lock fields of the loaded streams, copied before the contract runs */
+  lockOf?: (stream: string) => ActiveDefinitions.IMeta | undefined;
   tx: ActiveDefinitions.LedgerTransaction;
   key: number;
 }
@@ -137,6 +139,10 @@ export interface IVirtualMachine {
   destroy(umid: string): void;
 
   getInputs(umid: string): ActiveDefinitions.LedgerStream[];
+
+  getLoadedLocks?(
+    umid: string
+  ): ((stream: string) => ActiveDefinitions.IMeta | undefined) | undefined;
 
   initialise(
     payload: IVMDataPayload,
