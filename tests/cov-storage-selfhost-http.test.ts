@@ -2,6 +2,7 @@ import { expect } from "chai";
 import "mocha";
 import * as fs from "fs";
 import * as path from "path";
+import { isDataFile } from "../packages/storage/src/selfhost-helpers";
 import {
   Storage,
   killAll,
@@ -150,16 +151,19 @@ describe("Storage process HTTP API (selfhost)", function () {
       }
     });
 
-    it("reports database info with the on disk size", async () => {
+    it("reports database info with the size of its data files on disk", async () => {
       await s.req("PUT", "/x", { name: "activeledgerinfo" });
       const r = await s.req("GET", "/activeledgerinfo");
       expect(r.status).to.equal(200);
       expect(r.json.db_name).to.equal("activeledgerinfo");
-      expect(r.json.update_seq).to.equal(0);
-      expect(r.json.doc_count).to.equal("----");
+      // No placeholder fields: the store keeps neither a count nor a sequence
+      expect(r.json).to.not.have.property("update_seq");
+      expect(r.json).to.not.have.property("doc_count");
       const dir = path.join(s.dir, "data", "activeledgerinfo");
+      // The data files only: not the text logs, CURRENT or LOCK
       const expected = fs
         .readdirSync(dir)
+        .filter(isDataFile)
         .reduce((t, f) => t + fs.statSync(path.join(dir, f)).size, 0);
       expect(r.json.data_size).to.be.greaterThan(0);
       expect(r.json.data_size).to.equal(expected);

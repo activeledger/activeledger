@@ -149,10 +149,12 @@ export class ActiveChanges extends events.EventEmitter {
         this.db
           .info()
           .then((info: any) => {
-            // Is our last sequence ahead?
-            if (this.lastSequence && this.lastSequence > info.update_seq) {
+            // Is our last sequence ahead? (The selfhost store reports no
+            // sequence of its own, which counts as 0.)
+            const current = info.update_seq ?? 0;
+            if (this.lastSequence && this.lastSequence > current) {
               // Yes, Reset it back
-              this.lastSequence = info.update_seq;
+              this.lastSequence = current;
             }
             // Reset restarting flag
             this.restarting = false;
