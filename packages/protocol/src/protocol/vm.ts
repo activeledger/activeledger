@@ -289,6 +289,15 @@ export class VirtualMachine
           mode: "storage",
           // Custom databases are open unless the node is set to deny the storage port outright
           customDatabases: policy.storage !== "deny",
+          // What one contract call may use: how long a request may take and how much it may read.
+          // security.contractEgress.timeoutSeconds (5) and .maxResponseBytes (2 MB)
+          limits: {
+            timeoutSeconds: Number(policy.timeoutSeconds) > 0 ? Number(policy.timeoutSeconds) : 5,
+            maxResponseBytes: Number(policy.maxResponseBytes) > 0 ? Number(policy.maxResponseBytes) : 2 * 1024 * 1024,
+          },
+          spent: { bytes: 0 },
+          inflight: new Set<() => void>(),
+          ended: { value: false },
           allow: entries.length ? (destination) => ContractScope.listed(entries, destination) : undefined,
           onBlocked: (what) =>
             ActiveLogger.warn(`Contract refused access to ${what} (${umid})`),

@@ -29,6 +29,10 @@
   is never saved). It now creates the document, and a `setVolatile` without a `getVolatile` first is merged into the
   stored one instead of being refused as a revision conflict. `getVolatile()` on a missing document now rejects with
   "Volatile Data - Not Found" rather than handing the contract the store's `{ notFound: true }` body.
+- **A contract call's network requests are limited**: 5 seconds each, 2 MB of response in total, and cancelled when the call
+  ends (`security.contractEgress.timeoutSeconds`, `.maxResponseBytes`). Options passed to the `http` and `fetch` modules are
+  copied into plain objects once and anything outside a short list of plain keys (an `agent`, `createConnection`, `lookup`, a
+  `dispatcher`, a Proxy, a getter) is refused.
 - **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and
   meta to name the same stream, and refuses an existing stream the transaction did not load.
 

@@ -66,6 +66,14 @@ export interface IContractScope {
   allow?(destination: IContractDestination): boolean;
   /** Custom databases (a name starting activeledger with more after it) are open to contracts without a list */
   customDatabases?: boolean;
+  /** What one contract call may use: the longest a request may take, and the most response it may read */
+  limits?: { timeoutSeconds: number; maxResponseBytes: number };
+  /** Response bytes read so far by this call's requests */
+  spent?: { bytes: number };
+  /** Aborts of this call's requests still in flight; all are called when the call ends */
+  inflight?: Set<() => void>;
+  /** Set when the call has ended: a request that had not connected yet is dropped as it does */
+  ended?: { value: boolean };
   /**
    * A request already approved at a higher level (it was checked with its path):
    * the connection that carries it is not a bare socket to be judged again.

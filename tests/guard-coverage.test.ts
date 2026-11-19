@@ -125,6 +125,53 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
     });
   });
 
+  describe("limits on a contract call", () => {
+    let slow: http.Server, slowPort = 0, big: http.Server, bigPort = 0;
+    const events: string[] = [];
+    before(async () => {
+      slow = http.createServer((q, res) => { events.push("request arrived"); q.on("close", () => events.push("client gone")); setTimeout(() => { if (!res.destroyed) res.end('{"late":true}'); }, 1500); });
+      big = http.createServer((_q, res) => { res.setHeader("content-type", "application/json"); res.end('{"x":"' + "a".repeat(3 * 1024 * 1024) + '"}'); });
+      await Promise.all([slow, big].map((x) => new Promise<void>((r) => x.listen(0, "127.0.0.1", r))));
+      slowPort = (slow.address() as net.AddressInfo).port; bigPort = (big.address() as net.AddressInfo).port;
+    });
+    after(() => { slow.close(); big.close(); });
+    beforeEach(() => { events.length = 0; });
+
+    const limited = <T>(fn: () => T, limits = { timeoutSeconds: 0.3, maxResponseBytes: 1024 * 1024 }) =>
+      runSandboxed({ mode: "storage", onBlocked: () => undefined, limits, spent: { bytes: 0 }, inflight: new Set(), ended: { value: false } }, fn);
+
+    it("cuts a request off at the timeout, whatever timeout the contract asked for", async () => {
+      const started = Date.now();
+      const r: any = await limited(() => ActiveRequest.send(`http://127.0.0.1:${slowPort}/x`, "GET", undefined, undefined, false, 300));
+      expect(r.data).to.equal(null);
+      expect(Date.now() - started).to.be.lessThan(1200);
+    });
+
+    it("drops a response that is more than the call may read", async () => {
+      const r: any = await limited(() => ActiveRequest.send(`http://127.0.0.1:${bigPort}/x`, "GET"));
+      expect(r.data).to.equal(null);
+    });
+
+    it("cancels a request still in flight when the contract's call ends", async () => {
+      // The call returns without waiting for what it started
+      limited(() => { ActiveRequest.send(`http://127.0.0.1:${slowPort}/y`, "GET", undefined, undefined, false, 4); return "done"; }, { timeoutSeconds: 4, maxResponseBytes: 1024 * 1024 });
+      await new Promise((r) => setTimeout(r, 400));
+      // Either it never got to the server, or it was dropped the moment it did: it does not run to the end
+      expect(events.filter((e) => e === "request arrived").length === events.filter((e) => e === "client gone").length).to.equal(true);
+      await new Promise((r) => setTimeout(r, 1300));
+      expect(events).to.not.include("completed");
+    });
+
+    it("applies to nothing outside a contract: the explorer and the CLI are not contracts", async () => {
+      // Any verb, the node's own databases, volatile: not restricted when no contract is running
+      for (const [method, path] of [["PUT", "/activeledger/x"], ["DELETE", "/activeledger/x:volatile"], ["POST", "/activeledgerevents/_bulk_docs"], ["DELETE", "/activeledger_w"]]) {
+        const r: any = await ActiveRequest.send(`http://127.0.0.1:${port}${path}`, method, undefined, method === "POST" ? { a: 1 } : undefined);
+        expect(r.data, `${method} ${path}`).to.deep.equal({ ok: true });
+      }
+      expect(seen).to.have.length(4);
+    });
+  });
+
   describe("approvals", () => {
     it("is checked again for everything a contract does after a request was approved", async () => {
       const url = `http://127.0.0.1:${port}`;

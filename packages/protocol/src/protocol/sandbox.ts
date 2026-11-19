@@ -59,6 +59,10 @@ export interface ISandboxContext {
   allow?(destination: IContractDestination): boolean;
   /** In "storage" mode: custom databases are open without a list */
   customDatabases?: boolean;
+  limits?: { timeoutSeconds: number; maxResponseBytes: number };
+  spent?: { bytes: number };
+  inflight?: Set<() => void>;
+  ended?: { value: boolean };
 }
 
 /** Where an outgoing connection is headed: a host and port (and the path of an HTTP request), or a unix socket */
@@ -142,20 +146,64 @@ const fetchDestination = (args: unknown[]): IDestination => {
  * destination that is the node's storage.
  */
 /**
- * Arguments whose values could change between the guard reading them and the
- * real call reading them again: a top-level object that is not a plain object
- * or a URL (a Request, a class instance with getters), or one with accessor
- * properties. Contracts do not need them; they are refused.
+ * What a contract may pass to http, net, tls or fetch for them to be looked at:
+ * strings, URLs, callbacks, and plain objects holding only the keys below with
+ * plain values. The guard copies the arguments into fresh objects ONCE and both
+ * checks and uses the copy, so nothing the contract controls (a getter, a Proxy, a
+ * class, an agent, a custom connection, a dispatcher, a lookup) is read twice or
+ * reaches the real call. Anything else is refused.
  */
-const suspicious = (args: unknown[]): boolean =>
-  args.some((arg) => {
-    if (!arg || typeof arg !== "object" || arg instanceof URL || Array.isArray(arg) || ArrayBuffer.isView(arg)) return false;
+const PLAIN_KEYS = new Set([
+  "host", "hostname", "port", "path", "method", "headers", "protocol", "family", "timeout", "servername",
+  "body", "redirect", "cache", "credentials", "mode", "referrer", "referrerPolicy", "integrity", "keepalive", "auth", "setHost",
+]);
+const isPlain = (v: unknown) => v === null || ["string", "number", "boolean", "undefined"].includes(typeof v);
+const snapshotArgs = (args: unknown[]): unknown[] =>
+  args.map((arg) => {
+    if (arg === null || arg === undefined || typeof arg === "string" || typeof arg === "number" || typeof arg === "boolean" || typeof arg === "function") return arg;
+    if (arg instanceof URL) return new URL(arg.href);
+    if (!arg || typeof arg !== "object" || require("util").types.isProxy(arg)) throw new StorageAccessError("An argument that is not plain data");
+    if (Array.isArray(arg) || ArrayBuffer.isView(arg)) throw new StorageAccessError("An argument that is not plain data");
     const proto = Object.getPrototypeOf(arg);
-    if (proto !== Object.prototype && proto !== null) return true;
-    // Options that hand the request to the contract's own code to connect
-    if ("agent" in arg || "createConnection" in arg || "lookup" in arg) return true;
-    return Object.values(Object.getOwnPropertyDescriptors(arg)).some((d: any) => d.get || d.set);
+    if (proto !== Object.prototype && proto !== null) throw new StorageAccessError("An argument that is not plain data");
+    const copy: any = {};
+    for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(arg)) as Array<[string, any]>) {
+      if (descriptor.get || descriptor.set || !PLAIN_KEYS.has(key)) throw new StorageAccessError(`The option ${key}`);
+      const value = descriptor.value;
+      if (key === "headers" && value && typeof value === "object" && !Array.isArray(value) && !require("util").types.isProxy(value) && Object.getPrototypeOf(value) === Object.prototype) {
+        const headers: any = {};
+        for (const [name, d] of Object.entries(Object.getOwnPropertyDescriptors(value)) as Array<[string, any]>) {
+          if (d.get || d.set) throw new StorageAccessError("A header that is not plain data");
+          headers[name] = Array.isArray(d.value) ? d.value.map(String) : String(d.value);
+        }
+        copy.headers = headers;
+      } else if (isPlain(value)) {
+        copy[key] = value;
+      } else {
+        throw new StorageAccessError(`The option ${key}`);
+      }
+    }
+    return copy;
   });
+
+/**
+ * For net and tls, whose own code passes normalised argument arrays between its
+ * methods: no copying, but nothing a contract could change between reads (a
+ * Proxy, a getter, a class instance) is accepted.
+ */
+const lightCheck = (args: unknown[]): void => {
+  const visit = (value: unknown, depth: number): void => {
+    if (!value || typeof value !== "object" || value instanceof URL) return;
+    if (require("util").types.isProxy(value) || depth > 2) throw new StorageAccessError("An argument that is not plain data");
+    if (Array.isArray(value)) { value.forEach((v) => visit(v, depth + 1)); return; }
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) throw new StorageAccessError("An argument that is not plain data");
+    for (const d of Object.values(Object.getOwnPropertyDescriptors(value)) as any[]) {
+      if (d.get || d.set) throw new StorageAccessError("An option that is not plain data");
+    }
+  };
+  args.forEach((a) => visit(a, 0));
+};
 
 const guard = (
   target: any,
@@ -167,13 +215,19 @@ const guard = (
   if (typeof original !== "function") return;
   const guarded = function (this: unknown, ...args: unknown[]) {
     const ctx = context.getStore();
+    let safe: unknown[] = args;
     if (ctx) {
       if (ctx.mode === "storage") {
-        if (destination && suspicious(args)) {
-          ctx.onBlocked(`storage:${what}`);
-          throw new StorageAccessError(`${what} with arguments that could change after they are checked`);
+        if (destination) {
+          try {
+            if (what === "http" || what === "https" || what === "fetch") safe = snapshotArgs(args);
+            else lightCheck(args);
+          } catch (error) {
+            ctx.onBlocked(`storage:${what}`);
+            throw error;
+          }
         }
-        const dest = destination ? destination(args) : undefined;
+        const dest = destination ? destination(safe) : undefined;
         if (dest) {
           // A unix socket is never a contract's business
           if (dest.socket) {
@@ -188,7 +242,7 @@ const guard = (
             const unseen = !bodyless && dest.body === undefined;
             const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, method: dest.method, unseenBody: unseen });
             // An approved request carries that approval to the connection it opens
-            if (approve) return approve(() => original.apply(this, args));
+            if (approve) return approve(() => original.apply(this, safe));
           }
         }
       } else {
@@ -196,7 +250,7 @@ const guard = (
         throw new SupernodeOnlyError(what);
       }
     }
-    return original.apply(this, args);
+    return original.apply(this, safe);
   };
   target[method] = guarded;
 };
@@ -238,7 +292,27 @@ export const installSandbox = (): void => {
 export const runSandboxed = <T>(ctx: ISandboxContext, fn: () => T): T => {
   installSandbox();
   // Frozen: the context is handed to code that must not be able to change it
-  return context.run(Object.freeze({ ...ctx }), fn);
+  // When the call ends, whatever requests it started are cancelled: nothing a
+  // contract began may land after its transaction has moved on
+  const end = () => {
+    if (ctx.ended) ctx.ended.value = true;
+    ctx.inflight?.forEach((abort) => { try { abort(); } catch { /* already done */ } });
+  };
+  let result: any;
+  try {
+    result = context.run(Object.freeze({ ...ctx }), fn);
+  } catch (error) {
+    end();
+    throw error;
+  }
+  if (result && typeof result.then === "function") {
+    return result.then(
+      (value: unknown) => { end(); return value; },
+      (error: unknown) => { end(); throw error; }
+    ) as T;
+  }
+  end();
+  return result;
 };
 
 /**

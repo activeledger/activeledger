@@ -158,6 +158,9 @@ export class ActiveRequest {
       type = String(type ?? "GET").toUpperCase();
       // No compression from a contract: nothing to decompress and nothing to scan
       enableGZip = false;
+      // No request outlives what a contract call is allowed
+      const cap = ContractScope.current()?.limits?.timeoutSeconds;
+      if (cap) timeout = Math.min(Number(timeout) || cap, cap);
       if (header !== undefined) {
         if (!Array.isArray(header)) throw new StorageAccessError("Headers that are not a list");
         header = header.map((h) => String(h));
@@ -200,6 +203,9 @@ async function perform(
 ): Promise<IHTTPResponse> {
     //enableGZip = false
     timeout = timeout * 1000;
+    // Inside a contract call: its limits, and the way to cancel this request when the call ends
+    const scope = ContractScope.current();
+    let abortRequest: (() => void) | undefined;
     const headers: Record<string, string> = {};
 
     // Compressable?
@@ -307,6 +313,7 @@ async function perform(
       const done = (value: IHTTPResponse) => {
         if (settled) return;
         settled = true;
+        if (abortRequest) scope?.inflight?.delete(abortRequest);
         resolve(value);
       };
 
@@ -321,12 +328,26 @@ async function perform(
           bodyTimeout: timeout,
         },
         {
-          onConnect: () => {},
+          onConnect: (abort: () => void) => {
+            abortRequest = abort;
+            scope?.inflight?.add(abort);
+            // The call ended before this request got going: it does not go
+            if (scope?.ended?.value) abort();
+          },
           onHeaders: (_statusCode: number, rawHeaders: Buffer[] | null) => {
             encoding = rawHeader(rawHeaders, "content-encoding");
             return true;
           },
           onData: (chunk: Buffer) => {
+            // A contract call may only read so much; past that the request is dropped
+            if (scope?.spent && scope.limits) {
+              scope.spent.bytes += chunk.length;
+              if (scope.spent.bytes > scope.limits.maxResponseBytes) {
+                abortRequest?.();
+                done({ data: null });
+                return false;
+              }
+            }
             chunks.push(chunk);
             return true;
           },
