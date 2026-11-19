@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- **Read locks on streams** (build `50600`). A contract that creates a stream can call `setReadLock({ state, stream,
+  volatile })` to say which namespaces may read each part of it from another contract (`$r`,
+  `getAnyStreamReadOnly`, `getVolatile`): `"*"` or a list. The creating namespace and `default` can always read;
+  `state` and `stream` default to open and `volatile` to the creating namespace only. A stream without a lock is
+  readable as before. The lock is fixed at creation: a transaction that adds, removes or changes it (or the
+  contract and namespace locks) is refused with 1238. It is an engine check and not isolation (see the security
+  guide).
+
 ## [5.6.0] - 2026-11-19
 
 Faster traffic between nodes and to the node's own storage, a database explorer, a fix for a contract running under

@@ -75,6 +75,8 @@ That is local to the node and is written to `hybrid-bans.json`. The key is refus
 
 A contract can keep data on a stream that is never shared: the volatile part. It stays on the node that wrote it. No node serves it, a restore never copies it, and a hybrid never downloads it. Do not expect it to match between nodes, and do not treat it as a backup.
 
+By default another namespace's contract can still read a stream's volatile data through the engine. A contract that creates a stream can restrict that with a read lock (`setReadLock`, build `50600`; see [the contract reference](../contracts/reference.md#who-may-read-a-stream)), so that only its own namespace reads the volatile part. This is an engine check, not isolation: contract code runs in the node's worker process as the node's user, and can reach the storage port or the data folder directly. Do not keep key shares or other secrets on a node that runs contracts from people you do not trust.
+
 ## What is logged
 
 The node logs to the console, one line per event, with a level (`INFO`, `WARN`, `ERROR`, `FATAL`). Under systemd or pm2 the start-up progress is printed as plain lines instead of the chain display. Logs carry transaction ids, repair activity (`SPI ...`), neighbour changes and start-up steps. They do not carry transaction bodies. A failed commit is logged with its reason, because the client only gets a short message.

@@ -74,6 +74,7 @@ Stream names beginning `activeledger.default.` are reserved; creating one outsid
 | `deleteAuthorities(pubKey \| pubKey[] \| filter)` | `void` | Removes authorities by public key, list of keys, or a function that returns `true` for each to remove. Refused if nothing would be left, or nothing permanent. |
 | `setContractLock(script \| script[])` | `boolean` | Only the named contract(s) may write this stream. New streams only. |
 | `setNamespaceLock(namespace \| namespace[])` | `boolean` | Only contracts in the named namespace(s) may write this stream. New streams only. |
+| `setReadLock(policy)` | `boolean` | Which namespaces may read this stream from another contract (`$r`, `getAnyStreamReadOnly`, `getVolatile`). New streams only, and the node must be at build `50600`. See [Who may read a stream](#who-may-read-a-stream). |
 | `getCng(buffer?)` | `number` | A number derived from the stream's revisions. Not random; the same on every node. |
 
 An authority (`ILedgerAuthority`) has `public`, `type` and `stake`, and optionally `hash`, `label`, `metadata`, `umid` and `expire` (an ISO date after which the key may no longer sign).
@@ -86,6 +87,24 @@ Each stream can hold a second document of data that is kept outside consensus.
 | --- | --- | --- |
 | `getVolatile()` | `Promise<IVolatile>` | A copy of the stream's volatile data, fetched from this node |
 | `setVolatile(volatile)` | `void` | Merges into the volatile data. Saved at commit on this node. |
+
+### Who may read a stream
+
+By default any contract can read any stream, in any namespace, through `$r`, `getAnyStreamReadOnly` and `getVolatile`. A contract that creates a stream can narrow that with `setReadLock`:
+
+```ts
+this.newActivityStream("shard-1").setReadLock({
+  volatile: [],            // nobody but the creating namespace
+  state: ["my-namespace", "partner"],
+});
+```
+
+Each part (`state`, `stream`, `volatile`) takes `"*"` (any namespace) or a list of namespaces. The creating namespace, recorded as `meta.ns`, and the `default` namespace can always read. A part you leave out takes its default: `state` and `stream` stay open to every namespace, `volatile` is the creating namespace only. A stream with no read lock is unchanged: it is readable by everyone, as before.
+
+The lock is set when the stream is created and cannot be changed later; a transaction that adds, removes or edits it is refused (code `1238`, with the same check on the contract and namespace locks). It applies from build `50600`, the same level that ties a transaction's namespace to the contract that runs. Below that build nothing is enforced.
+
+!!! warning
+    A read lock stops contract code that reads through the engine. It is not a sandbox. Contracts run in the node's worker process, as the node's user, next to its storage client, so a contract that deliberately goes around the engine (straight to the storage port or its local socket, or to the data folder) is not stopped by it. Treat it as a guard against mistakes and against contracts that follow the rules, and do not keep secrets such as key shares on a node that executes contracts you do not trust.
 
 !!! warning
     Volatile data belongs to one node only. It is never shared with other nodes and never synced. Use it for a cache or a local note, never for anything another node must also know.

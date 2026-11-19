@@ -300,7 +300,8 @@ export class Stream {
         this.umid,
         // A new stream created by a default-namespace contract is privileged,
         // so its first setState may set engine-managed authority state.
-        this.transactions?.$namespace === "default"
+        this.transactions?.$namespace === "default",
+        this.transactions?.$namespace
       );
 
       // Set Secret Key
@@ -817,6 +818,9 @@ export class Activity {
    */
   private privileged: boolean = false;
 
+  /** Namespace of the contract that is creating this stream (new streams only) */
+  private namespace?: string;
+
   /**
    * Holds volatile data if it exists
    *
@@ -866,10 +870,13 @@ export class Activity {
     txUmid?: string,
     // True only when the creating contract runs in the `default` namespace.
     // Threaded from the base Stream, which knows it from the transaction.
-    privileged: boolean = false
+    privileged: boolean = false,
+    // The namespace of the contract creating this stream
+    namespace?: string
   ) {
     this.txUmid = txUmid || umid;
     this.privileged = privileged;
+    this.namespace = namespace;
 
     // Only if name is defined (Quick solution)
     if (umid && name) {
@@ -1276,6 +1283,46 @@ export class Activity {
         return false;
       }
     }
+  }
+
+  /**
+   * Restricts which namespaces may read parts of this activity stream from a
+   * contract (`$r`, getAnyStreamReadOnly, getVolatile). Only for a stream this
+   * contract is creating. The creating namespace is recorded as `meta.ns` and
+   * can always read; a part left out takes its default (state and stream
+   * open, volatile the creating namespace only).
+   *
+   * @param {ActiveDefinitions.IReadLock} policy
+   * @returns {boolean}
+   */
+  public setReadLock(policy: ActiveDefinitions.IReadLock): boolean {
+    if (this.safeMode) {
+      throw new Error("Cannot create set read lock in Safe Mode");
+    }
+    if (!(this.name && this.umid)) return false;
+    if (!this.namespace) {
+      throw new Error("A read lock needs the namespace of the creating contract");
+    }
+    if (!policy || typeof policy !== "object" || Array.isArray(policy)) {
+      throw new Error("Read lock must be an object");
+    }
+    const lock: ActiveDefinitions.IReadLock = {};
+    for (const part of Object.keys(policy)) {
+      if (part !== "state" && part !== "stream" && part !== "volatile") {
+        throw new Error(`Read lock has no part named ${part}`);
+      }
+      const who = (policy as any)[part];
+      if (
+        who !== "*" &&
+        !(Array.isArray(who) && who.every((n) => typeof n === "string" && n))
+      ) {
+        throw new Error(`Read lock ${part} must be "*" or a list of namespaces`);
+      }
+      (lock as any)[part] = who === "*" ? who : who.slice();
+    }
+    this.meta.ns = this.namespace;
+    this.meta.readLock = lock;
+    return true;
   }
 
   /**

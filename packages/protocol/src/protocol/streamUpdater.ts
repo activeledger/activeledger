@@ -22,6 +22,7 @@
  */
 
 import { Attestation } from "./attest";
+import { ReadLock } from "./readlock";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
@@ -233,6 +234,42 @@ export class StreamUpdater {
             1237,
             new Error(`Stream names under "activeledger.default." are reserved for the default namespace`)
           );
+        }
+      }
+    }
+
+    // The lock fields of a stream (contract, namespace and read locks, and the
+    // namespace that created it) are set when it is created and never change.
+    // The setters in stream.ts only work on a new stream, but a contract holds
+    // the meta object itself, so this checks what is about to be written
+    // against what the stream was loaded with. A new stream may only claim
+    // its own namespace as creator.
+    if (
+      ReadLock.enabled() &&
+      this.entry.$tx?.$namespace !== "default"
+    ) {
+      const loaded = this.virtualMachine.getLoadedLocks?.(this.entry.$umid);
+      for (const stream of this.streams) {
+        const meta = stream.meta;
+        if (!meta) continue;
+        if (!meta._rev) {
+          if (meta.ns !== undefined && meta.ns !== this.entry.$tx?.$namespace) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error("A stream can only be created for the namespace of its contract")
+            );
+          }
+        } else {
+          const id = stream.state?._id || String(meta._id).replace(":stream", "");
+          // Nothing to compare with for a stream this execution did not load
+          const before = loaded?.(id);
+          const changed = before ? ReadLock.changed(before, meta) : [];
+          if (changed.length) {
+            return this.shared.raiseLedgerError(
+              1238,
+              new Error(`Stream ${id} lock cannot be changed (${changed.join(", ")})`)
+            );
+          }
         }
       }
     }

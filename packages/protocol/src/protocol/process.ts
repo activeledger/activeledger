@@ -40,6 +40,7 @@ import {
   IExecutionResult,
 } from "./interfaces/process.interface";
 import { Shared } from "./shared";
+import { ReadLock } from "./readlock";
 import { StreamUpdater } from "./streamUpdater";
 import { PermissionsChecker } from "./permissionsChecker";
 import { LedgerEntry } from "@activeledger/activedefinitions/lib/definitions";
@@ -1318,7 +1319,7 @@ export class Process extends EventEmitter {
       ActiveTiming.mark(this.entry.$umid, "proto.streamsReady");
 
       // Get readonly data
-      const readonly = await this.getReadOnlyStreams();
+      const readonly = await this.getReadOnlyStreams({ inputs, outputs });
 
       const contractName = this.contractLocation.substring(
         this.contractLocation.lastIndexOf("/") + 1
@@ -1991,7 +1992,10 @@ export class Process extends EventEmitter {
    * @private
    * @returns {Promise<boolean>}
    */
-  private getReadOnlyStreams(): Promise<ActiveDefinitions.LedgerIORputs> {
+  private getReadOnlyStreams(loaded: {
+    inputs?: ActiveDefinitions.LedgerStream[];
+    outputs?: ActiveDefinitions.LedgerStream[];
+  } = {}): Promise<ActiveDefinitions.LedgerIORputs> {
     return new Promise(async (resolve, reject) => {
       // Promise builder
       const manageRevisions = (
@@ -2001,7 +2005,12 @@ export class Process extends EventEmitter {
         return new Promise(async (resolve, reject) => {
           // Get Meta data
           try {
-            const read: any = await this.db.get(readOnly[reference]);
+            const read: any = await ReadLock.read(
+              this.db,
+              readOnly[reference],
+              this.entry.$tx.$namespace,
+              ReadLock.snapshot(loaded.inputs, loaded.outputs)
+            );
             // Remove _id and _rev
             delete read._id;
             delete read._rev;

@@ -39,6 +39,7 @@ import {
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
 import { runSandboxed, runUnsandboxed } from "./sandbox";
+import { ReadLock } from "./readlock";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
 import { serialize as v8Serialize, deserialize as v8Deserialize } from "v8";
@@ -510,6 +511,18 @@ export class VirtualMachine
   }
 
   /**
+   * The lock fields of the streams this execution was loaded with, as they
+   * were before the contract ran (a private copy, see ReadLock.snapshot)
+   *
+   * @param {string} umid
+   */
+  public getLoadedLocks(
+    umid: string
+  ): ((stream: string) => ActiveDefinitions.IMeta | undefined) | undefined {
+    return this.contractReferences?.[umid]?.lockOf;
+  }
+
+  /**
    * The consensus time for event ids, from build 40300. The events travel in
    * the `:umid` document, which supernodes must write identically so a hybrid
    * can check it against a signed hash; a local clock in the ids made every
@@ -540,6 +553,8 @@ export class VirtualMachine
       contractName,
       contractLocation: payload.contractLocation,
       inputs: payload.inputs,
+      // Copied now, before the contract can touch the streams it is handed
+      lockOf: ReadLock.snapshot(payload.inputs, payload.outputs),
       tx: payload.transaction,
       key: payload.key,
     };
@@ -1031,6 +1046,19 @@ export class VirtualMachine
   // ? Not sure if this is needed??
   // public getVolatile() {}
 
+  /**
+   * A contract reads a document: refused when the stream's read lock does
+   * not allow the namespace of the transaction that is running. The
+   * namespace comes from the engine's own record of the execution, never
+   * from anything the contract passes.
+   *
+   * @private
+   */
+  private contractRead(db: any, umid: string, id: string): Promise<any> {
+    const reference = this.contractReferences?.[umid];
+    return ReadLock.read(db, id, reference?.tx?.$namespace, reference?.lockOf);
+  }
+
   private listenForVolatile(): void {
     this.emitter.on("getVolatile", (umid: string, streamId: string) =>
       // Host work: never inside the contract's egress sandbox
@@ -1040,9 +1068,12 @@ export class VirtualMachine
         // the contract.
         const execution = this.executions[umid];
         try {
-          const volatile: ActiveDefinitions.IVolatile = await (
-            execution?.db || this.db
-          ).get(`${streamId}:volatile`);
+          const db = execution?.db || this.db;
+          const volatile: ActiveDefinitions.IVolatile = await this.contractRead(
+            db,
+            umid,
+            `${streamId}:volatile`
+          );
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, null, volatile);
         } catch (error) {
           this.emitter.emit(`volatileFetched-${umid}${streamId}`, error);
@@ -1061,9 +1092,12 @@ export class VirtualMachine
       // Host work: never inside the contract's egress sandbox
       runUnsandboxed(async () => {
         try {
-          const data: ActiveDefinitions.IStream = await (
-            this.executions[umid]?.db || this.db
-          ).get(streamId);
+          const db = this.executions[umid]?.db || this.db;
+          const data: ActiveDefinitions.IStream = await this.contractRead(
+            db,
+            umid,
+            streamId
+          );
           this.emitter.emit(
             `getStreamDataFetched-${umid}${streamId}`,
             null,
