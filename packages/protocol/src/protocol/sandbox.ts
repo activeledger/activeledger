@@ -217,7 +217,9 @@ const guard = (
   target: any,
   method: string,
   what: string,
-  destination?: (args: unknown[]) => IDestination
+  destination?: (args: unknown[]) => IDestination,
+  // net.connect and the like end in Socket.prototype.connect: the approval is spent there
+  peek = false
 ): void => {
   const original = target?.[method];
   if (typeof original !== "function") return;
@@ -248,7 +250,7 @@ const guard = (
             // request is written to afterwards, and a fetch body may be a stream
             const bodyless = !dest.method || /^(GET|HEAD|DELETE|OPTIONS)$/i.test(dest.method);
             const unseen = !bodyless && dest.body === undefined;
-            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, method: dest.method, unseenBody: unseen });
+            const approve = ContractScope.enforce(ctx, { host: dest.host, port: Number(dest.port), path: dest.path, body: dest.body, method: dest.method, unseenBody: unseen }, peek);
             // An approved request carries that approval to the connection it opens
             if (approve) return approve(() => original.apply(this, safe));
           }
@@ -282,16 +284,42 @@ export const installSandbox = (): void => {
   guard(http, "get", "http", requestDestination(80));
   guard(https, "request", "https", requestDestination(443));
   guard(https, "get", "https", requestDestination(443));
-  guard(net, "connect", "net", connectDestination);
-  guard(net, "createConnection", "net", connectDestination);
+  guard(net, "connect", "net", connectDestination, true);
+  guard(net, "createConnection", "net", connectDestination, true);
   // Catch-all for any client socket, whoever created it
   guard(net.Socket.prototype, "connect", "net", connectDestination);
-  guard(tls, "connect", "tls", connectDestination);
+  guard(tls, "connect", "tls", connectDestination, true);
   guard(dgram, "createSocket", "dgram");
   guard(dgram.Socket.prototype, "bind", "dgram");
   guard(dgram.Socket.prototype, "send", "dgram");
   guard(dgram.Socket.prototype, "connect", "dgram");
   guard(globalThis, "fetch", "fetch", fetchDestination);
+};
+
+/** A value that is awaitable but not by this realm's own machinery: its then is the contract's code */
+const normalise = (value: any): any =>
+  value && (typeof value === "object" || typeof value === "function") && typeof value.then === "function"
+    ? new Promise((resolve) => resolve(value))
+    : value;
+
+/** A thrown object that is not an Error is copied to plain data (its toString and getters are not ours to run) */
+const plainThrown = (error: unknown): unknown => {
+  if (!error || typeof error !== "object" || error instanceof Error) return error;
+  try {
+    return JSON.parse(JSON.stringify(error));
+  } catch {
+    return new Error("Contract threw a value that is not data");
+  }
+};
+
+/**
+ * Bind a callback to the contract context it was made in, so that when the host calls it
+ * later (an event from host work done outside the sandbox) it still runs inside it.
+ */
+export const bindToContext = <F extends (...args: any[]) => any>(fn: F): F => {
+  const ctx = context.getStore();
+  if (!ctx) return fn;
+  return ((...args: any[]) => context.run(ctx, () => fn(...args))) as F;
 };
 
 /**
@@ -308,7 +336,16 @@ export const runSandboxed = <T>(ctx: ISandboxContext, fn: () => T): T => {
   };
   let result: any;
   try {
-    result = context.run(Object.freeze({ ...ctx }), fn);
+    result = context.run(Object.freeze({ ...ctx }), () => {
+      // Whatever the contract hands back is made plain here, inside its sandbox: a thenable's
+      // then, a getter or a thrown object's toString would otherwise run when the host
+      // later awaits, reads or logs it, outside the sandbox
+      try {
+        return normalise(fn());
+      } catch (error) {
+        throw plainThrown(error);
+      }
+    });
   } catch (error) {
     end();
     throw error;

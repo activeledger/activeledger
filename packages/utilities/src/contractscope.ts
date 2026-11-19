@@ -207,6 +207,8 @@ export class ContractScope {
    * errors and the error archive).
    */
   public static forbidden(path: string, body?: unknown, method?: string): boolean {
+    // A fragment or backslash is not part of what the storage routes on, but it is of what it receives
+    if (/[#\\]/.test(path)) return true;
     if (ContractScope.mentionsVolatileSquashed(path)) return true;
     if (body !== undefined && body !== null) {
       let text: string;
@@ -255,7 +257,10 @@ export class ContractScope {
   /** The decision, shared by every route a contract has to the network */
   public static enforce(
     scope: IContractScope,
-    destination: IContractDestination
+    destination: IContractDestination,
+    // Looking only: a net.connect that ends in Socket.prototype.connect is one connection
+    // and is spent there, not twice
+    peek = false
   ): (<T>(run: () => T) => T) | undefined {
     if (!ContractScope.isProtected(destination.port)) {
       // Not the storage. This machine's other ports (a wallet service, a signer, an admin
@@ -268,7 +273,7 @@ export class ContractScope {
           approved.port === destination.port &&
           ContractScope.hostKey(approved.host) === ContractScope.hostKey(destination.host)
         ) {
-          approved.used = true;
+          if (!peek) approved.used = true;
           return undefined;
         }
         if (scope.allow?.(destination)) return undefined;
@@ -289,7 +294,7 @@ export class ContractScope {
         approved.port === destination.port &&
         ContractScope.hostKey(approved.host) === ContractScope.hostKey(destination.host)
       ) {
-        approved.used = true;
+        if (!peek) approved.used = true;
         return undefined;
       }
     } else if (!destination.unseenBody && !ContractScope.forbidden(destination.path, destination.body, destination.method)) {
@@ -374,7 +379,8 @@ export class ContractScope {
    */
   public static isLoopbackHost(host: string | undefined): boolean {
     if (host === undefined || host === null || host === "") return true;
-    let h = String(host).trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    // The resolver reads fullwidth and ideographic forms (127。0。0。1) as the plain ones
+    let h = String(host).normalize("NFKC").replace(/[\u3002\uff0e\uff61]/g, ".").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
     if (/^[0-9a-fx.]+$/.test(h)) {
       // 127.1, 0x7f.1, 2130706433: the resolver reads these as IPv4
       try {
@@ -383,7 +389,10 @@ export class ContractScope {
         return false;
       }
     }
-    if (h === "localhost" || h.endsWith(".localhost")) return true;
+    if (h === "localhost" || h.endsWith(".localhost") || h === "localhost.localdomain" || h === "ip6-localhost" || h === "ip6-loopback") return true;
+    // This machine's own name usually resolves to a loopback address (127.0.1.1)
+    const own = String(require("os").hostname()).toLowerCase();
+    if (h === own || h.startsWith(own + ".")) return true;
     if (h.includes(":")) {
       // An IPv6 address: drop a zone id, let the URL parser put it in one canonical form
       // (::ffff:127.0.0.1 and 0:0:0:0:0:ffff:7f00:1 both become ::ffff:7f00:1), then compare
@@ -420,7 +429,10 @@ export class ContractScope {
    */
   public static listed(entries: string[], destination: IContractDestination): boolean {
     let path: string | undefined;
-    if (destination.path !== undefined) {
+    // An escaped slash or backslash, an escaped percent, a path parameter or a fragment can
+    // mean a different path to the service than to this match, so such a path is never
+    // matched against an entry that limits the path
+    if (destination.path !== undefined && !/%2f|%5c|%25|;|\\|#/i.test(destination.path)) {
       try {
         path = ContractScope.normalPath(destination.path);
       } catch {

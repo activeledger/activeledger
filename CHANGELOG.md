@@ -49,6 +49,18 @@
   the namespace's own policy, so every node with the same config gives the same vote; they do not run below build
   `50600`. A destination built at run time cannot be seen by the scan: the run-time guard is what stops that.
 - **Per-namespace request limits**: `requestTimeoutSeconds` and `maxResponseBytes` in `security.namespace.<namespace>.policy` replace the node-wide 5 s / 2 MB for that namespace. The limits apply to every request a contract makes, whatever timeout it passes; a request past a limit returns `data: null` to the contract.
+- **Contract code can no longer run outside its sandbox through the VM.** The event emitter a contract is given is now a
+  facade whose listeners stay in the contract's context (an answer to `getVolatile` / `getStreamData` was emitted from
+  host work and ran the listener unsandboxed); the VM reaches the contract through a facade that runs every property read
+  and method call (`shutdown`, `getTimeout`, the export methods and the rest, not only `vote` / `commit`) inside the
+  sandbox; a thenable returned by a contract is resolved, and an object it returns or throws is copied to plain data,
+  inside the sandbox. A contract that triggered the node's storage socket connection no longer leaves the node's own
+  storage client failed. The unix-socket client refuses a request once its approval is spent. A path with a fragment, a
+  backslash, or an escaped slash, backslash or percent is not matched against a path-limited allow entry and a raw request path
+  with a fragment or backslash is refused. Loopback addresses are canonicalised (any IPv6 spelling, zone ids, fullwidth and
+  ideographic dots, the machine's own name). The deploy scan folds `"a:" + "volatile"` and template literals, ignores quotes in
+  a volatile path, reads URLs the way a URL parser does, and sees options passed to `new X(...)`, element-access calls and
+  parenthesised or `as` objects.
 - **Encoded responses are not read by contracts** and `net`/`tls` connections refuse the options `lookup`, `agent`,
   `createConnection`, `socket` (hidden or symbol-keyed too).
 - **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and

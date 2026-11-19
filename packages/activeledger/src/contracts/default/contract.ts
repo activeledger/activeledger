@@ -43,7 +43,32 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 const SOURCE_GUARDS_BUILD = 50600;
 // Request options that change how a connection is made, and the calls they are passed to
 const CONNECTION_OPTIONS = new Set(["agent", "createConnection", "dispatcher", "lookup", "socketPath", "setHost"]);
-const REQUEST_CALLS = new Set(["request", "get", "post", "put", "send", "connect", "createConnection", "fetch"]);
+const REQUEST_CALLS = new Set(["request", "get", "post", "put", "send", "connect", "createConnection", "fetch", "ClientRequest", "Client", "Pool", "Agent", "dispatch", "pipeline", "open", "got", "axios", "needle", "superagent", "undici"]);
+
+/** This machine by address or name, written any way a resolver reads it. Static: no node setting or machine name is used */
+const isLocalHost = (host: string): boolean => {
+  let h = String(host).normalize("NFKC").replace(/[\u3002\uff0e\uff61]/g, ".").trim().toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (h === "") return false;
+  if (/^[0-9a-fx.]+$/.test(h)) {
+    try {
+      h = new URL("http://" + h).hostname;
+    } catch {
+      return false;
+    }
+  }
+  if (h === "localhost" || h.endsWith(".localhost") || h === "localhost.localdomain" || h === "ip6-localhost" || h === "ip6-loopback") return true;
+  if (h.includes(":")) {
+    try {
+      h = new URL("http://[" + h.replace(/%.*$/, "") + "]").hostname.replace(/^\[|\]$/g, "");
+    } catch {
+      return true;
+    }
+    if (h === "::1" || h === "::") return true;
+    const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+    return !!mapped && (parseInt(mapped[1], 16) >> 8 === 127 || (parseInt(mapped[1], 16) === 0 && parseInt(mapped[2], 16) === 0));
+  }
+  return /^127\.\d+\.\d+\.\d+$/.test(h) || h === "0.0.0.0";
+};
 
 // Definitive denylist for identifiers (Globals and sensitive objects)
 const BANNED_IDENTIFIERS = [
@@ -1101,18 +1126,24 @@ export default class Contract extends Standard {
       // the node's config (the deploy scan is part of the vote). A destination built at
       // run time cannot be seen here; the run-time guard is what stops that.
       if (guardsFromSource) {
-        let text: string | undefined;
-        if (
-          ts.isStringLiteral(node) ||
-          ts.isNoSubstitutionTemplateLiteral(node) ||
-          ts.isTemplateHead(node) ||
-          ts.isTemplateMiddle(node) ||
-          ts.isTemplateTail(node)
-        ) {
-          text = node.text;
-        }
+        // Literals, and the text of "a" + "b" / `a${x}b` folded together (an unknown part
+        // counts as empty), so a word split across pieces is still seen
+        const fold = (n: ts.Node): string | undefined => {
+          if (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isNonNullExpression(n) || ts.isTypeAssertionExpression(n)) return fold(n.expression);
+          if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+          if (ts.isTemplateExpression(n)) {
+            return n.head.text + n.templateSpans.map((span) => (fold(span.expression) ?? "") + span.literal.text).join("");
+          }
+          if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+            const left = fold(n.left), right = fold(n.right);
+            return left === undefined && right === undefined ? undefined : (left ?? "") + (right ?? "");
+          }
+          return undefined;
+        };
+        const text = fold(node);
         if (text !== undefined) {
-          // Private data: a path or id that names a volatile part, however it is escaped
+          // Private data: a path or id that names a volatile part, however it is escaped or
+          // broken up (quotes and spaces are ignored by the storage)
           let seen = text;
           for (let round = 0; round < 4; round++) {
             let next = seen;
@@ -1125,28 +1156,57 @@ export default class Contract extends Standard {
             if (next === seen) break;
             seen = next;
           }
-          if (/[:\/]\s*volatile/i.test(seen) || (/(^|[^a-z])(https?:)?\/\//i.test(seen) && /volatile/i.test(seen))) {
+          const squashed = seen.replace(/["'`\s\u200b-\u200f\u2060\ufeff\u0000-\u001f]/g, "");
+          if (/[:\/]volatile/i.test(squashed) || (/(^|[^a-z])(https?:)?\/\//i.test(squashed) && /volatile/i.test(squashed))) {
             report(node, `A path to volatile data is forbidden`);
           }
-          // This machine, as a URL or a host:port
-          if (
-            policy.allowLocalhost !== true &&
-            /^\s*(?:[a-z][a-z0-9+.-]*:)?(?:\/\/)?(?:[^\/@\s]*@)?(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?|0\.0\.0\.0|\[?::ffff:[0-9a-f.:]+\]?)(?::\d+)?(?:[\/?#]|$)/i.test(seen) &&
-            /(\/\/|:\d)/.test(seen)
-          ) {
-            report(node, `A URL to this machine needs allowLocalhost for the namespace`);
+          // This machine, as a URL or a host:port, read the way a URL parser reads it
+          if (policy.allowLocalhost !== true) {
+            const candidate = seen.replace(/[\t\r\n\u0000]/g, "").trim();
+            const hosts: string[] = [];
+            for (const form of [candidate, "http://" + candidate, "http:" + candidate.replace(/^[\\/]+/, "//")]) {
+              try {
+                const parsed = new URL(form);
+                if (parsed.hostname) hosts.push(parsed.hostname);
+              } catch {
+                // not a URL in this form
+              }
+            }
+            // A bare word is not a destination: it needs a scheme, slashes or a port to be one
+            const looksLikeDestination = /[\\/]{2}|^[^\s\/]+:\d+(?:[\/?#]|$)/.test(candidate);
+            if (looksLikeDestination && hosts.some((h) => isLocalHost(h))) {
+              report(node, `A URL to this machine needs allowLocalhost for the namespace`);
+            }
           }
         }
         // Options that change how a request connects, passed to a request call
-        if (ts.isObjectLiteralExpression(node) && ts.isCallExpression(node.parent) && node.parent.arguments.indexOf(node) !== -1) {
-          const callee = node.parent.expression;
-          const calleeName = ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : "";
-          if (REQUEST_CALLS.has(calleeName)) {
-            for (const prop of node.properties) {
-              const name = prop.name;
-              const key = name && (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) ? name.text : undefined;
-              if (key !== undefined && CONNECTION_OPTIONS.has(key)) {
-                report(prop, `The request option '${key}' is forbidden`);
+        if (ts.isObjectLiteralExpression(node)) {
+          let outer: ts.Node = node;
+          while (outer.parent && (ts.isParenthesizedExpression(outer.parent) || ts.isAsExpression(outer.parent) || ts.isNonNullExpression(outer.parent) || ts.isTypeAssertionExpression(outer.parent))) outer = outer.parent;
+          const call = outer.parent;
+          if ((ts.isCallExpression(call) || ts.isNewExpression(call)) && call.arguments?.indexOf(outer as ts.Expression) !== -1) {
+            let callee: ts.Node = call.expression;
+            while (ts.isParenthesizedExpression(callee) || ts.isAsExpression(callee) || ts.isNonNullExpression(callee)) callee = callee.expression;
+            const calleeName = ts.isIdentifier(callee)
+              ? callee.text
+              : ts.isPropertyAccessExpression(callee)
+              ? callee.name.text
+              : ts.isElementAccessExpression(callee) && fold(callee.argumentExpression) !== undefined
+              ? fold(callee.argumentExpression)
+              : "";
+            if (REQUEST_CALLS.has(calleeName as string)) {
+              for (const prop of node.properties) {
+                const name = prop.name;
+                const key = !name
+                  ? undefined
+                  : ts.isComputedPropertyName(name)
+                  ? fold(name.expression)
+                  : ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
+                  ? name.text
+                  : undefined;
+                if (key !== undefined && CONNECTION_OPTIONS.has(key)) {
+                  report(prop, `The request option '${key}' is forbidden`);
+                }
               }
             }
           }

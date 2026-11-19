@@ -39,7 +39,7 @@ import {
   IVMExecution,
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
-import { runSandboxed, runUnsandboxed } from "./sandbox";
+import { runSandboxed, runUnsandboxed, bindToContext } from "./sandbox";
 import { ReadLock } from "./readlock";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
@@ -680,7 +680,7 @@ export class VirtualMachine
           contractData,
           payload.signatures,
           payload.key,
-          this.emitter,
+          this.contractEmitter(),
           this.selfHost,
         ];
 
@@ -752,6 +752,13 @@ export class VirtualMachine
             );
           }
         }
+
+        // From here the host only reaches the contract through a facade that runs every call
+        // inside the contract's sandbox (see scopedContract)
+        this.smartContracts[payload.umid] = this.scopedContract(
+          payload.umid,
+          this.smartContracts[payload.umid]
+        );
 
         // Set the maximum timeout for this contract execution
         this.maxTimeout = new Date();
@@ -1135,6 +1142,79 @@ export class VirtualMachine
   private contractRead(db: any, umid: string, id: string): Promise<any> {
     const reference = this.contractReferences?.[umid];
     return ReadLock.read(db, id, reference?.tx?.$namespace, reference?.lockOf);
+  }
+
+  /**
+   * The event emitter a contract is given. The real one carries the host's own listeners, and
+   * the answers to getVolatile / getStreamData are emitted from host work outside the
+   * sandbox, so a listener the contract adds would run there. Each listener is bound to the
+   * contract context it was added in, and the contract gets only these few methods.
+   *
+   * @private
+   */
+  private contractEmitter(): EventEmitter {
+    const emitter = this.emitter;
+    const bound = new WeakMap<Function, Function[]>();
+    const add = (method: "on" | "once") => (event: string, listener: (...args: any[]) => void) => {
+      const wrapped = bindToContext(listener);
+      const list = bound.get(listener) || [];
+      list.push(wrapped);
+      bound.set(listener, list);
+      emitter[method](event, wrapped);
+      return facade;
+    };
+    const remove = (event: string, listener: (...args: any[]) => void) => {
+      for (const wrapped of bound.get(listener) || []) emitter.removeListener(event, wrapped as any);
+      return facade;
+    };
+    const facade: any = Object.freeze({
+      on: add("on"),
+      addListener: add("on"),
+      once: add("once"),
+      off: remove,
+      removeListener: remove,
+      emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),
+    });
+    return facade;
+  }
+
+  /**
+   * The contract as the rest of the VM sees it. Every property read and method call goes
+   * through the sandbox, not only the main ones (vote, commit...) that already did: the VM
+   * also calls getTimeout, shutdown, the export methods and others, and a contract can
+   * replace any of them with code that would otherwise run outside its sandbox. Objects it
+   * returns are copied to plain data inside the sandbox, so a toJSON or getter is not the
+   * host's to run later.
+   *
+   * @private
+   */
+  private scopedContract(umid: string, instance: any): any {
+    if (!instance || typeof instance !== "object") return instance;
+    const plain = (value: any): any => {
+      if (!ContractScope.current()) return value;
+      if (value && typeof value === "object") return JSON.parse(JSON.stringify(value));
+      return value;
+    };
+    const wrappers = new Map<PropertyKey, Function>();
+    return new Proxy(instance, {
+      get: (target, prop) => {
+        const value = this.sandboxed(umid, () => Reflect.get(target, prop, target));
+        if (typeof value !== "function") return value;
+        let wrapper = wrappers.get(prop);
+        if (!wrapper || (wrapper as any).__target !== value) {
+          wrapper = (...args: unknown[]) =>
+            this.sandboxed(umid, () => {
+              const result = value.apply(target, args);
+              return result && typeof result.then === "function"
+                ? new Promise((resolve) => resolve(result)).then(plain)
+                : plain(result);
+            });
+          (wrapper as any).__target = value;
+          wrappers.set(prop, wrapper);
+        }
+        return wrapper;
+      },
+    });
   }
 
   private listenForVolatile(): void {

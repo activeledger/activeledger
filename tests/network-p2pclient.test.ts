@@ -43,7 +43,8 @@ const frame = (payload: Buffer): Buffer => {
 };
 
 describe("P2PClient", () => {
-  const realCreate = net.createConnection;
+  // Taken when each test starts, not when the file loads: another test may wrap net.createConnection in between
+  let realCreate = net.createConnection;
   const realNow = Date.now;
   const realSetTimeout = global.setTimeout;
   let sockets: FakeSocket[];
@@ -51,6 +52,7 @@ describe("P2PClient", () => {
   let timers: { fn: () => void; ms: number; unref: boolean }[];
 
   beforeEach(() => {
+    realCreate = net.createConnection;
     sockets = [];
     dialled = [];
     timers = [];

@@ -237,6 +237,21 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
     });
   });
 
+  describe("paths the storage and a matcher could read differently", () => {
+    it("never matches an escaped slash, backslash, percent, path parameter or fragment against a path-limited entry", () => {
+      const entries = ["127.0.0.1:5259/wallets"];
+      for (const path of ["/wallets/..%2fadmin", "/wallets/%2e%2e%2fadmin", "/wallets/..%5cadmin", "/wallets/%252e%252e/admin", "/wallets/..;/admin", "/wallets#x"]) {
+        expect(ContractScope.listed(entries, { host: "127.0.0.1", port: 5259, path }), path).to.equal(false);
+      }
+      expect(ContractScope.listed(entries, { host: "127.0.0.1", port: 5259, path: "/wallets/doc" })).to.equal(true);
+    });
+    it("refuses a fragment or backslash in a raw request path to the storage", async () => {
+      for (const path of ["/activeledger_x/_all_docs#x", "/activeledger_x/doc#frag", "/activeledger_x\\doc"]) {
+        expect(await refused(() => get({ ...base(), path })), path).to.be.instanceOf(StorageAccessError);
+      }
+    });
+  });
+
   describe("approvals", () => {
     it("is checked again for everything a contract does after a request was approved", async () => {
       const url = `http://127.0.0.1:${port}`;
