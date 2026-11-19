@@ -131,6 +131,9 @@ export class ActiveDataStore {
           ...(dbInfo.selfhost.writeBufferMb > 0
             ? { ACTIVE_LEVEL_WRITE_BUFFER_MB: `${dbInfo.selfhost.writeBufferMb}` }
             : {}),
+          // State and :stream meta stored as one record, off unless
+          // db.selfhost.merge is true
+          ...(dbInfo.selfhost.merge === true ? { ACTIVE_STORAGE_MERGE: "1" } : {}),
           ...(dbInfo.selfhost.cacheMb > 0
             ? { ACTIVE_LEVEL_CACHE_MB: `${dbInfo.selfhost.cacheMb}` }
             : {}),
