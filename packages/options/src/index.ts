@@ -23,7 +23,6 @@
 
 import { ActiveGZip, ActiveRequest, ActiveClone } from "@activeledger/activeutilities";
 import { ActiveOptions } from "./options";
-import { ActiveChanges } from "./changes";
 import { ActiveDSConnect } from "./dsconnect";
 import { ActiveCache, ActiveCacheManager } from "./cache";
 import * as Cli from "./cli";
@@ -33,7 +32,6 @@ export {
   ActiveDSConnect,
   ActiveOptions,
   ActiveRequest,
-  ActiveChanges,
   ActiveGZip,
   ActiveClone,
   ActiveCacheManager,

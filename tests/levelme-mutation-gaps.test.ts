@@ -95,20 +95,6 @@ describe("LevelMe - edges the tests did not pin (Activestorage)", () => {
     expect(rev).to.match(/^1-[0-9a-f]{32}$/);
   });
 
-  describe("the change feed", () => {
-    it("does not open a database nobody has used when asked from now on", async () => {
-      const db = open();
-      expect(await db.changesFromSeq({ since: "now" })).to.deep.equal({ results: [], last_seq: 0 });
-      expect(db.driver.isOpen()).to.equal(false);
-    });
-
-    it("opens it for any other starting point", async () => {
-      const db = open();
-      await db.changesFromSeq({ since: "0" });
-      expect(db.driver.isOpen()).to.equal(true);
-    });
-  });
-
   it("lets two reads of a database that is still opening both succeed", async () => {
     const first = open();
     await first.bulkDocs([{ _id: "a", v: 1 }], edit);

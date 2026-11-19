@@ -72,9 +72,8 @@ for (const dir of readdirSync("packages")) {
   for (const [field, target] of entries) {
     // Only assert against what has actually been built. A package that is
     // not built yet has nothing to exclude, and failing on it would report
-    // the wrong thing: nano-gateway is deliberately outside the root build
-    // chain and builds itself from prepublishOnly at publish time, so its
-    // output is legitimately absent here and its published tarball is fine.
+    // the wrong thing: a package built only at publish time has output that
+    // is legitimately absent here and a published tarball that is fine.
     //
     // The bug being guarded against is narrower and entirely different:
     // the file is ON DISK and npm leaves it OUT. That is the only case

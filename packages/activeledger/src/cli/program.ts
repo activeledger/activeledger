@@ -39,7 +39,6 @@ const CONFIG_KEYS = [
   "debugToClient",
   "gzip",
   "max_memory",
-  "nanoGateway",
   "neighbourhood",
   "neighbourhoodRemap",
   "network",

@@ -54,7 +54,6 @@ describe("Storage process HTTP API (selfhost)", function () {
       expect((await s.req("GET", "/_uuids?count=2")).status).to.be.oneOf([404, 500]);
       expect((await s.req("POST", "/activeledger/_find", {})).status).to.equal(404);
       expect((await s.req("POST", "/activeledger/_explain", {})).status).to.equal(404);
-      expect((await s.req("GET", "/activeledger/transactions?from=0")).status).to.be.oneOf([404, 500]);
     });
   });
 
@@ -422,8 +421,8 @@ describe("Storage process HTTP API (selfhost)", function () {
       expect(r.json.rows).to.deep.equal([{ umid: "ccc", timestamp: "300" }]);
     });
 
-    it("honours limit", async () => {
-      const r = await s.req("GET", `/${db}/umids?from=100&limit=2`);
+    it("serves the same data on /transactions, honouring limit", async () => {
+      const r = await s.req("GET", `/${db}/transactions?from=100&limit=2`);
       expect(r.json.rows).to.deep.equal([
         { umid: "aaa", timestamp: "100" },
         { umid: "bbb", timestamp: "200" },
@@ -489,7 +488,7 @@ describe("Storage process HTTP API (selfhost)", function () {
     });
   });
 
-  describe("_seq and _compact on a legacy rev-tree database", () => {
+  describe("_compact on a legacy rev-tree database", () => {
     // Older versions stored a root document pointing at by-sequence entries.
     // Those are seeded straight into the database before it is opened by the
     // server, since nothing over HTTP writes them any more.
@@ -585,83 +584,6 @@ describe("Storage process HTTP API (selfhost)", function () {
     it("_raw with an @revision the root does not know fails", async () => {
       const r = await legacy.req("GET", "/activeledger/_raw/legacy1@9-zzz");
       expect(r.status).to.equal(500);
-    });
-
-    it("_seq returns a sequence entry and 500s when there is none", async () => {
-      const { ActiveClone } = require("../packages/utilities/src/clone");
-      const http = require("http");
-      const fetchRaw = (p: string) =>
-        new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
-          http.get(
-            { host: "127.0.0.1", port: legacy.port, path: p, agent: false },
-            (res: any) => {
-              const chunks: Buffer[] = [];
-              res.on("data", (c: Buffer) => chunks.push(c));
-              res.on("end", () =>
-                resolve({ status: res.statusCode, body: Buffer.concat(chunks) })
-              );
-            }
-          ).on("error", reject);
-        });
-      const hit = await fetchRaw(`/activeledger/_seq/${pad(3)}`);
-      expect(hit.status).to.equal(200);
-      expect(await ActiveClone.deserialize(hit.body)).to.deep.include({ _id: "legacy3" });
-      const miss = await fetchRaw(`/activeledger/_seq/${pad(99)}`);
-      expect(miss.status).to.equal(500);
-    });
-
-    it("_changes lists the sequence entries after `since`", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=1&limit=10");
-      expect(r.status).to.equal(200);
-      expect(r.json.results).to.deep.equal([
-        { id: "legacy1", seq: 2, changes: [{ rev: "2-bbb" }] },
-        { id: "legacy3", seq: 3, changes: [{ rev: "1-ccc" }] },
-      ]);
-      expect(r.json.last_seq).to.equal(0);
-    });
-
-    it("_changes defaults to five entries and honours limit", async () => {
-      const all = await legacy.req("GET", "/activeledger/_changes?since=0");
-      expect(all.json.results.map((x: any) => x.seq)).to.deep.equal([1, 2, 3]);
-      const one = await legacy.req("GET", "/activeledger/_changes?since=0&limit=1");
-      expect(one.json.results.map((x: any) => x.seq)).to.deep.equal([1]);
-    });
-
-    it("_changes treats a limit below 1 as 1", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=0&limit=0");
-      expect(r.json.results.map((x: any) => x.seq)).to.deep.equal([1]);
-    });
-
-    it("_changes can run descending and include docs", async () => {
-      const r = await legacy.req(
-        "GET",
-        "/activeledger/_changes?since=0&descending=true&include_docs=true&limit=2"
-      );
-      expect(r.json.results.map((x: any) => x.seq)).to.deep.equal([3, 2]);
-      expect(r.json.results[0].doc).to.deep.include({ _id: "legacy3", v: "three" });
-    });
-
-    it("_changes with since=now answers empty straight away", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=now");
-      expect(r.status).to.equal(200);
-      expect(r.json).to.deep.equal({ results: [], last_seq: 0 });
-    });
-
-    it("a longpoll with changes already pending answers at once and completes", async () => {
-      const st = await openStream(legacy.port, "/activeledger/_changes?feed=longpoll&since=1&limit=10");
-      expect(st.status).to.equal(200);
-      expect(st.headers["content-type"]).to.equal("application/json");
-      await st.until(() => st.ended());
-      const parsed = JSON.parse(st.body());
-      expect(parsed.results.map((x: any) => x.seq)).to.deep.equal([2, 3]);
-    });
-
-    it("_seq DELETE removes the entry", async () => {
-      const del = await legacy.req("DELETE", `/activeledger/_seq/${pad(3)}`);
-      expect(del.status).to.equal(200);
-      expect(del.json).to.deep.equal({ success: "ok" });
-      const after = await legacy.req("GET", "/activeledger/_changes?since=0&limit=10");
-      expect(after.json.results.map((x: any) => x.seq)).to.deep.equal([1, 2]);
     });
 
     it("_compact is accepted and leaves the data readable", async () => {
