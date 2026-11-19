@@ -25,6 +25,7 @@ import * as path from "path";
 import { promises as fsPromises } from "fs";
 import { randomUUID } from "crypto";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
+import { serveStorageSocket } from "./storagesocket";
 import { LevelMe } from "./levelme";
 //import { Socket } from "net";
 import { SSE } from "./sse";
@@ -1128,4 +1129,10 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
   // Start Server
   http.listen(parseInt(PORT), false, BIND_HOST);
+
+  // Local socket for this node's own processes (db.selfhost.socket). The same
+  // routes, without HTTP. The path comes from the node that launched us.
+  if (process.env.ACTIVE_STORAGE_SOCKET) {
+    serveStorageSocket(http, process.env.ACTIVE_STORAGE_SOCKET);
+  }
 })();
