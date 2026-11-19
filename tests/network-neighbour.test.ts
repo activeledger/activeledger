@@ -161,6 +161,32 @@ describe("Neighbour and Neighbourhood", () => {
         expect(seen[0].headers["x-activeledger"]).to.equal("home-ref");
       });
 
+      it("tells the neighbour which chain this node is on", async () => {
+        const savedChain = ActiveOptions.get("chain", undefined);
+        ActiveOptions.set("chain", { id: 7 });
+        try {
+          await neighbour().knock("status");
+          expect(seen[0].headers["x-activeledger-chain"]).to.equal("7");
+        } finally {
+          ActiveOptions.set("chain", savedChain);
+        }
+      });
+
+      it("rejects a status knock answered as a different chain, so it is never marked home", async () => {
+        answer = (_req, res) => {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ chainMismatch: 2 }));
+        };
+        let failed: Error | undefined;
+        try {
+          await neighbour().knock("status");
+        } catch (e: any) {
+          failed = e;
+        }
+        expect(failed?.message).to.equal("Neighbour is on a different chain");
+      });
+
       it("rejects a status knock when the neighbour cannot be reached", async () => {
         let failed = false;
         try {

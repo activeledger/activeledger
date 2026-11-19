@@ -910,6 +910,7 @@ export class Host extends Home {
       const headers = {
         "Accept-Encoding": req.getHeader("accept-encoding"),
         "X-Activeledger": req.getHeader("x-activeledger"),
+        "x-activeledger-chain": req.getHeader("x-activeledger-chain"),
         "x-activeledger-encrypt": req.getHeader("x-activeledger-encrypt"),
         "content-encoding": req.getHeader("content-encoding"),
         "X-Bundle": req.getHeader("x-bundle"),

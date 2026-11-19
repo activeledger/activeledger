@@ -1651,7 +1651,9 @@ export class Endpoints {
               `Neighbour ${peerAddress || requester} is on chain ${mismatch}, this node is on chain ${own}. Not pairing.`
             );
           }
-          resolve({ statusCode: 403 });
+          // The asker only sees the body (ActiveRequest.send resolves the
+          // parsed body, never the status), so the refusal has to be in it
+          resolve({ statusCode: 403, content: { chainMismatch: own } });
           return;
         }
         // Increase Count
