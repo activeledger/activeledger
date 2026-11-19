@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
+import { ActiveChain, ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
@@ -266,7 +266,12 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
         ActiveRequest.send(
           `http://${this.host}:${this.port}/a/${endpoint}`,
           "GET",
-          ["X-Activeledger:" + Home.reference],
+          [
+            "X-Activeledger:" + Home.reference,
+            // Which chain this node belongs to, so a node on another chain is
+            // refused at pairing instead of voting against this one
+            ...(ActiveChain.idHeader(ActiveOptions.get<any>("chain", null))),
+          ],
           null,
           false,
           60

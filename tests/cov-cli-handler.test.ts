@@ -673,7 +673,7 @@ describe("CLIHandler (in-process)", () => {
 
     it("draws the start-up display for a real boot and then boots an embedded database", () => {
       prepare();
-      fs.writeFileSync("config.json", "{}");
+      fs.writeFileSync("config.json", JSON.stringify({ chain: { id: 1 } }));
       C.version = "3.2.1";
       C.normalStart();
       const startup = logs.filter((l) => l.level.startsWith("startup.")).map((l) => [l.level, ...l.args]);
@@ -715,11 +715,31 @@ describe("CLIHandler (in-process)", () => {
       fs.mkdirSync("default_contracts.paused");
       setOptions({ identity: "./missing-identity" });
       // checkConfig needs ./.identity to build a config; give it a config
-      fs.writeFileSync("config.json", JSON.stringify({}));
+      fs.writeFileSync("config.json", JSON.stringify({ chain: { id: 1 } }));
       const e = exits(() => C.normalStart());
       expect(e!.code).to.equal(1);
       const fail = logs.find((l) => l.level === "startup.fail")!;
       expect(fail.args).to.deep.equal(["./missing-identity not found", "identity"]);
+    });
+
+    it("exits 1 with a clear message when the config has no chain id", () => {
+      fs.mkdirSync("default_contracts.paused");
+      fs.writeFileSync("config.json", JSON.stringify({}));
+      const e = exits(() => C.normalStart());
+      expect(e!.code).to.equal(1);
+      const fail = logs.find((l) => l.level === "startup.fail")!;
+      expect(fail.args[0]).to.contain("chain.id is required");
+      expect(fail.args[1]).to.equal("config");
+    });
+
+    it("exits 1 when the chain id differs from the one this node recorded", () => {
+      fs.mkdirSync("default_contracts.paused");
+      fs.writeFileSync(".chain", "5\n");
+      fs.writeFileSync("config.json", JSON.stringify({ chain: { id: 1 } }));
+      const e = exits(() => C.normalStart());
+      expect(e!.code).to.equal(1);
+      const fail = logs.find((l) => l.level === "startup.fail")!;
+      expect(fail.args[0]).to.contain("started as chain 5");
     });
 
     it("skips the display for one-shot modes", () => {
@@ -823,6 +843,7 @@ describe("CLIHandler (in-process)", () => {
         fs.writeFileSync(
           "config.json",
           JSON.stringify({
+            chain: { id: 1 },
             db: { selfhost: { port: "5259", host: "127.0.0.1" }, database: "d", ...extra },
           })
         );
@@ -1014,6 +1035,7 @@ describe("CLIHandler (in-process)", () => {
     const config = (extra: any = {}) => ({
       host: "127.0.0.1:5260",
       configVersion: 1,
+      chain: { id: 1 },
       cpus: 1,
       neighbourhood: [
         {

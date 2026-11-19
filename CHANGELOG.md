@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Breaking: every node needs `chain.id` in `config.json`
+A node now refuses to start without a chain id: add `"chain": { "id": 1 }` to `config.json`. The id is a whole
+number from 1 up, fixed when the network is created. `1` means a test or local network that is not for
+production; a production chain uses any other number (a convention, not enforced; a node on `1` with peers
+outside its machine logs a warning). New installs get `1` from the default config. The first start records the
+id in a `.chain` file beside `.identity`, and a node whose configured id later differs from that file refuses to
+start, so a chain is never changed by editing the config. This is the first step towards one node taking part in
+more than one network. A stream's meta may carry `chain`; a meta without it belongs to the node's own chain, so
+existing data needs no change.
+
 ### Fixed
 - **The storage process removes its socket file when it exits.** It used to leave `ds-<port>.sock` behind in the
   node's socket folder. Harmless (a client falls back to HTTP and the next start replaces the file), but it is

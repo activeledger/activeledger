@@ -2822,7 +2822,12 @@ export class Host extends Home {
               gzipAccepted
             );
           case "/a/status": // Network Status Request
-            response = Endpoints.status(this, requester);
+            response = Endpoints.status(
+              this,
+              requester,
+              req.headers["x-activeledger-chain"] as string,
+              req.connection.remoteAddress
+            );
             break;
           case "/a/hybrid/status": // activeledger hybrid status
           case "/a/hybrid/list": // activeledger hybrid list

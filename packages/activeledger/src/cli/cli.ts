@@ -33,6 +33,7 @@ import {
   ActiveOptions,
   ActiveRequest,
   HybridConfig,
+  ActiveChain,
 } from "@activeledger/activeoptions";
 import { TestnetHandler } from "./testnet";
 import { Startup } from "./startup";
@@ -416,6 +417,27 @@ export class CLIHandler {
     }
 
     if (booting) {
+      // The chain id must be configured, and must not change under a node
+      try {
+        const chainId = ActiveChain.fromConfig({
+          chain: ActiveOptions.get<any>("chain", null),
+        });
+        ActiveChain.pin(
+          path.join(
+            path.dirname(ActiveOptions.get<string>("identity", "./.identity")),
+            ".chain"
+          ),
+          chainId
+        );
+        const note = ActiveChain.warning(
+          chainId,
+          ActiveOptions.get<any[]>("neighbourhood", [])
+        );
+        if (note) ActiveLogger.warn(note);
+      } catch (e: any) {
+        Startup.fail(e.message, "config");
+        process.exit(1);
+      }
       Startup.done("config");
       Startup.begin("identity");
       const identity = ActiveOptions.get<string>("identity", "./.identity");
