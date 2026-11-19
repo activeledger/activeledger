@@ -114,7 +114,14 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     ) {
       this.reference = Neighbourhood.remapedAddr[this.reference];
     }
+
+    // A frame the socket accepted but could not write: whoever sent it has to
+    // stop counting it as delivered
+    this.p2pClient?.on("dropped", () => Neighbour.onDropped?.(this.reference));
   }
+
+  /** Told which neighbour lost a frame after accepting it (set by the host) */
+  public static onDropped?: (reference: string) => void;
 
   /**
    * Expose Neighbours address

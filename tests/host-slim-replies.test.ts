@@ -83,6 +83,15 @@ describe("Host p2pSlimReplies (Activenetwork)", () => {
     expect(frame.$nodes).to.deep.equal({ [SELF]: { vote: true, commit: false } });
   });
 
+  it("is on when nothing is configured", async () => {
+    ActiveOptions.set("p2pSlimReplies", undefined);
+    const a = p2pPeer(7131);
+    await send([a], [false, true, [a.peer.reference]]);
+    const frame = await decode(a.sent[0]);
+    expect(frame.$tx).to.equal(undefined);
+    expect(frame.$$noreply).to.equal(true);
+  });
+
   it("is much smaller than the whole entry", async () => {
     const full = p2pPeer(7111), slim = p2pPeer(7112);
     ActiveOptions.set("p2pSlimReplies", false);
