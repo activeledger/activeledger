@@ -63,3 +63,13 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # Starts four real nodes and checks what unit tests cannot: that a
+      # restart keeps the recorded chain id, that a changed id will not start,
+      # and that a node on another chain is not paired. The 5.7.0 release
+      # shipped a pairing check that never ran on a real network because the
+      # unit tests called the handler directly; this is the test that finds
+      # it. Takes about a minute.
+      - name: Live check, chain id on a 4-node network
+        timeout-minutes: 10
+        run: npx tsx tests/network/chain-live.ts
