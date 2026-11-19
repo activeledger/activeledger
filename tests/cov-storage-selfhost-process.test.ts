@@ -489,97 +489,13 @@ describe("Storage process lifecycle (selfhost)", function () {
       }
     });
 
-    it("leaves the old /_utils page where it was", async () => {
-      expect((await s.req("GET", "/_utils/")).status).to.equal(200);
-    });
-  });
-
-  describe("Fauxton assets", () => {
-    let s: Storage;
-    before(async () => {
-      s = await startStorage(["level"]);
-    });
-    after(async () => {
-      await s?.stop();
-      s?.cleanup();
-    });
-
-    const indexHtml = fs.readFileSync(
-      path.join(__dirname, "../packages/storage/lib/fauxton/index.html"),
-      "utf8"
-    );
-    const assets = path.join(
-      __dirname,
-      "../packages/storage/lib/fauxton/dashboard.assets"
-    );
-
-    it("serves the app shell for /_utils and /_utils/", async () => {
-      for (const p of ["/_utils", "/_utils/"]) {
+    it("sends /_utils, and anything under it, to the explorer", async () => {
+      for (const p of ["/_utils", "/_utils/", "/_utils/dashboard.assets/js/x.js", "/_utils/../../package.json"]) {
         const r = await s.req("GET", p);
-        expect(r.status, p).to.equal(200);
-        expect(r.headers["content-type"], p).to.equal("text/html");
-        expect(r.text, p).to.equal(indexHtml);
+        expect(r.status, p).to.equal(302);
+        expect(r.headers["location"], p).to.equal("/_explorer");
       }
     });
-
-    it("serves an asset with the content type for its extension", async () => {
-      const css = fs.readdirSync(path.join(assets, "css"))[0];
-      const r = await s.req("GET", `/_utils/dashboard.assets/css/${css}`);
-      expect(r.status).to.equal(200);
-      expect(r.headers["content-type"]).to.equal("text/css");
-      expect(r.text).to.equal(fs.readFileSync(path.join(assets, "css", css), "utf8"));
-    });
-
-    it("maps other extensions to their types and unknown ones to text/plain", async () => {
-      const woff = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.woff");
-      expect(woff.headers["content-type"]).to.equal("font/woff");
-      const ttf = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.ttf");
-      expect(ttf.headers["content-type"]).to.equal("aplication/font-sfnt");
-      const png = await s.req("GET", "/_utils/dashboard.assets/img/activeledger.png");
-      expect(png.headers["content-type"]).to.equal("image/png");
-      const eot = await s.req("GET", "/_utils/dashboard.assets/fonts/fauxtonicon5.eot");
-      expect(eot.headers["content-type"]).to.equal("text/plain");
-    });
-
-    it("serves the same asset again from its cache", async () => {
-      const p = "/_utils/dashboard.assets/fonts/fauxtonicon5.woff";
-      const a = await s.req("GET", p);
-      const b = await s.req("GET", p);
-      expect(b.status).to.equal(200);
-      expect(b.text.length).to.equal(a.text.length);
-      expect(b.text.length).to.be.greaterThan(0);
-    });
-
-    it("a missing asset gets no app shell and the server carries on", async () => {
-      const http = require("http");
-      const got = await new Promise<string>((resolve) => {
-        const req = http.get(
-          { host: "127.0.0.1", port: s.port, path: "/_utils/dashboard.assets/js/missing.js", agent: false },
-          (res: any) => resolve(`response ${res.statusCode}`)
-        );
-        req.on("error", () => resolve("error"));
-        setTimeout(() => {
-          req.destroy();
-          resolve("none");
-        }, 600);
-      });
-      expect(got).to.not.equal("response 200");
-      expect((await s.req("GET", "/_utils/")).text).to.equal(indexHtml);
-    });
-
-    for (const p of [
-      "/_utils/../../../../../../../../etc/passwd",
-      "/_utils/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/passwd",
-      "/_utils/../../package.json",
-      "/_utils/../fauxton-sibling/x",
-    ]) {
-      it(`does not serve files outside the asset folder (${p})`, async () => {
-        const r = await s.req("GET", p);
-        expect(r.status).to.equal(200);
-        expect(r.text).to.equal(indexHtml);
-        expect(r.text).to.not.contain("root:");
-      });
-    }
   });
 });
 

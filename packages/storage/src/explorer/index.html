@@ -672,9 +672,13 @@ const selCell = (db, key, ids) => {
   box.addEventListener("change", () => { box.checked ? state.sel.set(key, ids) : state.sel.delete(key); drawBulk(); });
   return el("td", { class: "selcell" }, box);
 };
-const selAll = () => el("th", { class: "selcell" }, el("input", { type: "checkbox", "aria-label": "Select every row on this page", onchange: (e) => document.querySelectorAll("input.sel:not(:disabled)").forEach((b) => { if (b.checked !== e.target.checked) b.click(); }) }));
+/* On the activeledger database every row is consensus data, which cannot be selected until Danger mode is on, so there is nothing for this to select. */
+const selAll = (db) => {
+  const locked = role(db) === "ledger" && !state.danger;
+  return el("th", { class: "selcell" }, el("input", { type: "checkbox", "aria-label": "Select every row on this page", disabled: locked, title: locked ? "Consensus data: turn on Danger mode to select" : "Select every row on this page", onchange: (e) => document.querySelectorAll("input.sel:not(:disabled)").forEach((b) => { if (b.checked !== e.target.checked) b.click(); }) }));
+};
 const selTable = (db, cols, body) => [bulkBar(db), el("div", { class: "card" }, body.length
-  ? el("table", {}, el("thead", {}, el("tr", {}, selAll(), cols.map((c) => el("th", {}, c)))), el("tbody", {}, body))
+  ? el("table", {}, el("thead", {}, el("tr", {}, selAll(db), cols.map((c) => el("th", {}, c)))), el("tbody", {}, body))
   : el("div", { class: "empty" }, state.q.trim() ? "Nothing matches that search" : "0 " + state.noun))];
 async function deleteSelected(db) {
   const ids = [...state.sel.values()].flat(), n = state.sel.size;

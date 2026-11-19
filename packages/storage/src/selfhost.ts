@@ -40,9 +40,8 @@ import { ActiveLogger } from "@activeledger/activelogger";
 import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
 (function () {
-  const fauxtonCache: { [key: string]: { mime: string; data: Buffer } } = {};
-  // Fauxton Path
-  const FAUXTON_PATH = __dirname + "/fauxton/";
+  // The explorer page, read once
+  const pageCache: { [key: string]: { mime: string; data: Buffer } } = {};
   const EXPLORER_PATH = __dirname + "/explorer";
 
   // Directory Prefix
@@ -1078,86 +1077,32 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     return { error: "explain is deprecated" };
   });
 
-  // Fauxton
-  const fauxton = async (
-    incoming: IActiveHttpIncoming,
-    req: {
-      headers: {
-        [index: string]: string;
-      };
-      method: string;
-      url: string;
-      connection: {
-        remoteAddress: string;
-      };
-    },
-    res: IActiveHttpResponse
-  ) => {
-    // We want to force /_utils to /_utils/ as this is the CouchDB behavior
-    if (req.url === "/_utils") {
-      // res.writeHead(301, {
-      //   Location: "/_utils/",
-      // });
-      // return;
-      req.url = "/_utils/";
-    }
-
-    // File to send
-    let file = FAUXTON_PATH + "/index.html";
-
-    // If path is not default overwrite
-    if (req.url !== "/_utils/") {
-      // Resolved and contained, not concatenated. uWebSockets hands the
-      // path through as sent, so "../" segments arrive verbatim - and
-      // FAUXTON_PATH sits several levels inside the install, so a few of
-      // them reach the node's working directory, where config.json and the
-      // .identity private key live.
-      const requested = path.resolve(
-        FAUXTON_PATH,
-        "." + decodeURIComponent((req.url as string).replace("/_utils", ""))
-      );
-
-      if (!requested.startsWith(path.resolve(FAUXTON_PATH) + path.sep)) {
-        // Outside the asset directory. Serve the app shell rather than
-        // reporting whether the path existed.
-        return fauxtonCache[FAUXTON_PATH + "/index.html"] || null;
-      }
-
-      file = requested;
-    }
-
-    if (fauxtonCache[file]) {
-      return fauxtonCache[file];
-    }
-
-    try {
-      await fsPromises.access(file);
-      const data = await fsPromises.readFile(file);
-      const response = {
-        mime: `${ActiveHttpd.mimeType[path.parse(file).ext] || "text/plain"}`,
-        data: data as Buffer,
-      }
-      fauxtonCache[file] = response;
-      return response;
-    } catch {
-      // Not found, will result in a 404 from httpd
-    }
+  // The page that used to be served here was the CouchDB admin UI, which this
+  // store never was. Anything still pointing at /_utils goes to the explorer.
+  const toExplorer = async (_incoming: IActiveHttpIncoming, _req: unknown, res: any) => {
+    res.cork(() => {
+      res.writeStatus("302 Found");
+      res.writeHeader("Location", "/_explorer");
+      res.end();
+      res.writable = false;
+    });
+    return "handled";
   };
-  http.use("_utils", "GET", fauxton);
-  http.use("_utils/**", "GET", fauxton);
+  http.use("_utils", "GET", toExplorer);
+  http.use("_utils/**", "GET", toExplorer);
 
   // Explorer: one static page that reads this server's own API. Nothing is
   // resolved from the request path, so there is no file lookup to escape
   // from; every path under /_explorer answers with the same page.
   const explorer = async () => {
     const file = EXPLORER_PATH + "/index.html";
-    if (fauxtonCache[file]) return fauxtonCache[file];
+    if (pageCache[file]) return pageCache[file];
     try {
       const response = {
         mime: ActiveHttpd.mimeType[".html"] || "text/html",
         data: (await fsPromises.readFile(file)) as Buffer,
       };
-      fauxtonCache[file] = response;
+      pageCache[file] = response;
       return response;
     } catch {
       // Not found, will result in a 404 from httpd
