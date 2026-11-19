@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeoptions",
-  "version": "5.6.0",
+  "version": "5.7.0",
   "engines": {
     "node": ">=24.0.0"
   },
@@ -35,7 +35,7 @@
   "author": "Activeledger",
   "license": "MIT",
   "devDependencies": {
-    "@activeledger/activedefinitions": "5.6.0",
+    "@activeledger/activedefinitions": "5.7.0",
     "@types/minimist": "1.2.5",
     "@types/node": "24.19.2",
     "typescript": "7.0.2"
@@ -48,8 +48,8 @@
   "jsnext:main": "./es/index.js",
   "module": "./es/index.js",
   "dependencies": {
-    "@activeledger/activelogger": "5.6.0",
-    "@activeledger/activeutilities": "5.6.0",
+    "@activeledger/activelogger": "5.7.0",
+    "@activeledger/activeutilities": "5.7.0",
     "minimist": "1.2.8"
   }
 }
