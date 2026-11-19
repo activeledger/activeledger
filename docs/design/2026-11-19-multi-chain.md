@@ -173,6 +173,29 @@ The follower is the hybrid core run for a named chain inside the node process:
   not the home node's. A follower below a chain's required build is "outdated"
   for that chain only, as the hybrid is today (`minVersion`).
 
+### Keeping a foreign stream in step (SPI)
+
+The `_rev` check and the SPI repair work the same for a foreign stream as for
+a home one, because the revision scheme is the same. What changes is who is
+asked and what a repair means:
+
+- **Who is asked:** the foreign chain's supernodes, which are the `upstreams`
+  the follower already has. Home neighbours are an optional first stop only if
+  they follow the same chain, as hybrid peers are today. The hybrid's order
+  applies unchanged: up to 5 peers for `{id, rev}`, accept a majority that
+  matches the signed `revsOut` (rev and sha256), otherwise escalate to the
+  supernodes. A document matching a quorum-signed attestation can be accepted
+  from one source.
+- **What a repair is:** adopting the foreign chain's attested state and
+  writing a divergence record. It never re-runs a home contract.
+- **Home SPI must skip foreign keys.** SPI between home neighbours compares a
+  stream with the other home supernodes, which do not hold a foreign stream and
+  would report a mismatch. The `~` prefix lets SPI, restore and prune leave
+  foreign keys alone; a follower repairs them through its own path. This is one
+  line item of the database audit in phase 7.
+- The same repair serves a pinned-revision read (section 4): a node that is
+  behind fetches the revision and checks it against the attestation.
+
 ## 6. Roles and config
 
 Today: `chain: { id }`. Follower adds a list; the home entry can stay as is:
