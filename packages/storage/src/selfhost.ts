@@ -654,7 +654,19 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       let db = getDB(incoming.url[0]);
 
       const sse = new SSE(res);
-      const lastEventId = req.headers["Last-Event-ID"] as string | undefined;
+
+      // ?also=umid,fail asks for those rows as well as the events, live only
+      // (ids that are not event ids cannot be resumed, so Last-Event-ID is
+      // ignored). Only these prefixes can be asked for; without it the stream
+      // is the events alone, as it always was.
+      const also = new Set(
+        String(incoming.query?.["also"] ?? "")
+          .split(",")
+          .filter((kind) => ["umid", "fail", "resent"].includes(kind))
+      );
+      const lastEventId = also.size
+        ? undefined
+        : (req.headers["Last-Event-ID"] as string | undefined);
 
       // Ids the replay sent, so a live event that raced it is not sent twice.
       // Matched exactly: event ids do not sort by time as strings (the
@@ -676,7 +688,14 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
       // Listener Process event (to turn off)
       const listener = (change: any) => {
-        if (change.id.startsWith(EVENT_PREFIX)) {
+        if (also.size && also.has(String(change.id).split(":")[0])) {
+          // Sent with its whole id and _id, so the reader can tell what it is
+          const doc = { ...change.doc };
+          delete doc._rev;
+          if (!send(change.id, doc)) {
+            cancelChanges();
+          }
+        } else if (change.id.startsWith(EVENT_PREFIX)) {
           const id = change.id.slice(EVENT_PREFIX.length);
           delete change.doc._id;
           delete change.doc._rev;

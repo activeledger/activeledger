@@ -478,21 +478,65 @@ const pageEvents = async (db) => {
     el("td", { class: "mono" }, short(String(r.id), 18)), el("td", {}, r.doc?.contract ?? r.doc?.event ?? ""), el("td", { class: "muted mono" }, short(r.doc?.umid ?? "", 10)), rowDelete(db, r.doc)));
   return [table(["Event", "Name", "Transaction", ""], body), pager(hasNext, go)];
 };
+/* Rows of one kind in the events database, found by the prefix of their id (event:, umid:, fail:, resent:). */
+const msOf = (id) => { const m = /^[a-z]+:(\d{10,})/.exec(String(id)); return m ? +m[1] : null; };
+const details = (doc) => Object.entries(doc || {}).filter(([k]) => !k.startsWith("_")).slice(0, 3).map(([k, v]) => k + ": " + short(typeof v === "string" ? v : JSON.stringify(v), 12)).join("   ");
+const pagePrefix = (prefix) => async (db) => {
+  const { rows, hasNext } = await pagedRows(db, keyRange({ startkey: prefix, endkey: prefix.slice(0, -1) + ";" }, prefix));
+  const body = rows.map((r) => { const ms = msOf(r.id); return el("tr", { onclick: () => openDoc(db, r.doc) },
+    el("td", { class: "mono" }, short(String(r.id).replace(prefix, ""), 14)), el("td", { class: "muted" }, ms ? new Date(ms).toLocaleString() : ""), el("td", { class: "muted" }, details(r.doc)), rowDelete(db, r.doc)); });
+  return [table(["Id", "Time", "Details", ""], body), pager(hasNext, go)];
+};
+
+/* Live: what the node writes from now on, as it happens. The server sends events, and with ?also= the transaction and failed rows;
+   nothing is replayed. The connection is closed whenever the page moves on. */
+let liveSource = null;
+const closeLive = () => { liveSource?.close(); liveSource = null; };
+const KIND = { umid: ["Transaction", "ok"], fail: ["Failed", "bad"], resent: ["Resent", ""], event: ["Event", ""] };
+const pageLive = async (db) => {
+  const MAX = 300;
+  const status = el("span", { class: "tag" }, "Connecting…"), count = el("span", { class: "muted" }), tbody = el("tbody");
+  let n = 0, paused = false;
+  const add = (id, doc) => {
+    const kind = KIND[String(id).split(":")[0]] ? String(id).split(":")[0] : "event", [label, tone] = KIND[kind];
+    const when = msOf(id) ? new Date(msOf(id)) : new Date();
+    tbody.prepend(el("tr", { onclick: () => drawer.open(String(id), jsonView(doc)) },
+      el("td", { class: "muted" }, when.toLocaleTimeString()), el("td", {}, el("span", { class: "tag " + tone }, label)),
+      el("td", { class: "mono" }, short(String(id).replace(/^[a-z]+:/, ""), 14)), el("td", { class: "muted" }, details(doc))));
+    while (tbody.children.length > MAX) tbody.lastChild.remove();
+    count.textContent = ++n + " seen" + (n > MAX ? ", showing the latest " + MAX : "");
+  };
+  const connect = () => {
+    closeLive();
+    const es = new EventSource(state.base.replace(/\/$/, "") + "/" + encodeURIComponent(db) + "/events?also=umid,fail");
+    liveSource = es;
+    es.onopen = () => { status.textContent = "Live"; status.className = "tag ok"; };
+    es.onerror = () => { status.textContent = "Reconnecting…"; status.className = "tag warn"; };
+    es.onmessage = (e) => { try { add(e.lastEventId, JSON.parse(e.data)); } catch {} };
+  };
+  const toggle = el("button", { class: "btn ghost", onclick: () => { paused = !paused; if (paused) { closeLive(); status.textContent = "Paused"; status.className = "tag"; } else connect(); toggle.textContent = paused ? "Resume" : "Pause"; } }, "Pause");
+  connect();
+  return [el("div", { class: "bar" }, status, toggle, el("button", { class: "btn ghost", onclick: () => { tbody.replaceChildren(); n = 0; count.textContent = ""; } }, "Clear"), count),
+    el("div", { class: "note", style: "margin:0 0 10px" }, "From now on only. Events, transactions and failed transactions appear as the node writes them; nothing earlier is replayed, use the other tabs for that."),
+    el("div", { class: "card" }, el("table", {}, el("thead", {}, el("tr", {}, ["Time", "Kind", "Id", "Details"].map((c) => el("th", {}, c)))), tbody))];
+};
+
 const pageGeneral = async (db) => {
   const { rows, hasNext } = await pagedRows(db, keyRange());
   const body = rows.map((r) => el("tr", { onclick: () => openDoc(db, r.doc) }, el("td", { class: "mono" }, short(String(r.id), 24)), el("td", { class: "muted mono" }, r.doc?._rev ?? ""), el("td", { class: "muted" }, Object.keys(r.doc || {}).filter((k) => !k.startsWith("_")).slice(0, 5).join(", ")), rowDelete(db, r.doc)));
   if (!state.q && state.page === 0) { if (hasNext) delete state.exact[db]; else state.exact[db] = rows.length; refreshChips(); }
   return [table(["Id", "Revision", "Fields", ""], body), pager(hasNext, go, 1)];
 };
-const searchHint = { streams: "Search by stream id: type the start of it", umids: "Search by transaction id: type the start of it", events: "Search by event key, for example event:1795", docs: "Search by document id: type the start of it" };
+const searchHint = { live: "", streams: "Search by stream id: type the start of it", umids: "Search by transaction id: type the start of it", umidx: "Search by time: type the start of the milliseconds, e.g. 17950", fails: "Search by time: type the start of the milliseconds, e.g. 17950", resent: "Search by transaction id: type the start of it", events: "Search by event key, for example event:1795", docs: "Search by document id: type the start of it" };
 const tabsFor = (db) => {
   if (state.view === "general") return [["docs", "Documents", pageGeneral]];
   const r = role(db);
   if (r === "ledger") return [["streams", "Streams", pageStreams], ["umids", "Transactions", pageTransactions]];
-  if (r === "events") return [["events", "Events", pageEvents], ["docs", "All documents", pageGeneral]];
+  if (r === "events") return [["live", "Live", pageLive], ["events", "Events", pageEvents], ["umidx", "Umids", pagePrefix("umid:")], ["fails", "Failed", pagePrefix("fail:")], ["resent", "Resent", pagePrefix("resent:")], ["docs", "All documents", pageGeneral]];
   return [["docs", "Documents", pageGeneral]];
 };
 async function render() {
+  closeLive();
   renderNav();
   if (!state.db) return content.replaceChildren(el("div", { class: "empty" }, "Choose a database"));
   const tabs = tabsFor(state.db);
@@ -514,7 +558,7 @@ async function render() {
   const draw = async () => { try { body.replaceChildren(...(await tabs.find((t) => t[0] === state.tab)[2](state.db))); } catch (e) { body.replaceChildren(el("div", { class: "card" }, el("div", { class: "err" }, String(e.message || e)))); } refreshChips(); };
   refreshBody = draw;
   search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => { state.q = search.value; state.cursor = [null]; state.page = 0; draw(); }, 200); });
-  content.replaceChildren(head, bar, el("div", { class: "bar" }, search, (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
+  content.replaceChildren(head, bar, state.tab === "live" ? null : el("div", { class: "bar" }, search, (!isSystem(state.db) || state.danger) ? el("button", { class: "btn", onclick: () => drawer.open("New document", docPanel(state.db, { _id: "" }, afterWrite, true)) }, "New document") : null), body);
   refreshChips();
   try { history.replaceState(null, "", "#" + new URLSearchParams({ db: state.db, tab: state.tab })); } catch {}
   await draw();

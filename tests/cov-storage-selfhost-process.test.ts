@@ -620,6 +620,30 @@ describe("Storage process /events and longpoll feeds (selfhost)", function () {
       }
     });
 
+    it("sends transaction and failed rows live only when asked with ?also=", async () => {
+      const plain = await openStream(s.port, `/${db}/events`);
+      const asked = await openStream(s.port, `/${db}/events?also=umid,fail,notakind`);
+      try {
+        await plain.until((b) => b.length > 0);
+        await asked.until((b) => b.length > 0);
+        await s.req("POST", `/${db}`, { _id: "umid:1700000000000,abc", umid: "abc" });
+        await s.req("POST", `/${db}`, { _id: "fail:1700000000001,def", umid: "def" });
+        await s.req("POST", `/${db}`, { _id: "resent:ghi", until: 1 });
+        await s.req("POST", `/${db}`, { _id: "notakind:1", x: 1 });
+        await s.req("POST", `/${db}`, { _id: "event:also1", name: "e" });
+        const body = await asked.until((b) => b.includes("id:also1"));
+        expect(sseIds(body)).to.deep.equal(["umid:1700000000000,abc", "fail:1700000000001,def", "also1"]);
+        const m = body.match(/id:umid:1700000000000,abc\nevent: message\ndata:(.*)\n\n/);
+        expect(JSON.parse((m as RegExpMatchArray)[1])).to.deep.equal({ _id: "umid:1700000000000,abc", umid: "abc" });
+        // Without it the stream is the events alone
+        const old = await plain.until((b) => b.includes("id:also1"));
+        expect(sseIds(old)).to.deep.equal(["also1"]);
+      } finally {
+        plain.close();
+        asked.close();
+      }
+    });
+
     it("sends the events of a bulk write", async () => {
       const st = await openStream(s.port, `/${db}/events`);
       try {
