@@ -23,7 +23,10 @@ describe("Neighbour status and the chain id", () => {
 
   it("refuses a neighbour on another chain, even one it knows", async () => {
     ActiveOptions.set("chain", { id: 1 });
-    expect((await Endpoints.status(host, "peer", "5", "10.0.0.2")).statusCode).to.equal(403);
+    const res = await Endpoints.status(host, "peer", "5", "10.0.0.2");
+    expect(res.statusCode).to.equal(403);
+    // The asker reads only the body, so the refusal must be in it
+    expect(res.content).to.deep.equal({ chainMismatch: 1 });
   });
 
   it("lets through a neighbour that sends no chain (an older node)", async () => {

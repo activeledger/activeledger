@@ -1,5 +1,15 @@
 # Activeledger Changelog
 
+## [5.7.1] - 2026-11-19
+
+### Fixed
+- **A node on another chain is now refused at pairing.** 5.7.0 sent the chain id with the status knock, but the host's
+  own HTTP server never read it, so nodes configured with different `chain.id` values still paired. The check now runs:
+  a neighbour on another chain is not marked home, the receiving node logs `Neighbour ... is on chain N, this node is on
+  chain M. Not pairing.`, and the refused node logs the same once per neighbour, so it is told why it never becomes
+  ready. The startup requirement for `chain.id` and the `.chain` record were not affected. Nothing needs changing on
+  upgrade from 5.7.0.
+
 ## [5.7.0] - 2026-11-19
 
 Contracts can no longer reach the node's own storage or this machine, read locks arrive, and every node now says which

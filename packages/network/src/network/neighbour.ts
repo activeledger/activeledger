@@ -123,6 +123,9 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
   /** Told which neighbour lost a frame after accepting it (set by the host) */
   public static onDropped?: (reference: string) => void;
 
+  /** Neighbours already warned about for being on another chain */
+  private static chainWarned = new Set<string>();
+
   /**
    * Expose Neighbours address
    *
@@ -285,6 +288,20 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
             // Neighbour's own recovery poll use to decide a node is home.
             if (response?.data === null) {
               reject(new Error("Request Failed"));
+            } else if (
+              endpoint === "status" &&
+              response?.data?.chainMismatch !== undefined
+            ) {
+              // The neighbour is on another chain: it is never marked home.
+              // Said once per neighbour, so the node that is misconfigured
+              // is told why it never becomes ready.
+              if (!Neighbour.chainWarned.has(this.reference)) {
+                Neighbour.chainWarned.add(this.reference);
+                ActiveLogger.warn(
+                  `Neighbour ${this.host}:${this.port} is on chain ${response.data.chainMismatch}, this node is on chain ${ActiveChain.idOf(ActiveOptions.get<any>("chain", null))}. Not pairing.`
+                );
+              }
+              reject(new Error("Neighbour is on a different chain"));
             } else {
               resolve(response);
             }
