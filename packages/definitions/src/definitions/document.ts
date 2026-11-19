@@ -60,6 +60,8 @@ export interface IMeta extends IFullState {
   origin?: string;
   /** This stream's id was derived from a caller-supplied seed rather than from the transaction - `newActivityStream(name, deterministic)`. Set so streamUpdater can reject a collision with a stream that already exists; it used to infer this from `umid` holding the seed, which is no longer true because `umid` and `origin` must be real transactions. */
   deterministic?: boolean;
+  /** The chain this stream belongs to. Absent means the node's own chain (everything written before the field existed). A stream pulled from another chain always carries it. */
+  chain?: number;
   name?: string;
   public?: string;
   hash?: string;

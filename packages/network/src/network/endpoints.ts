@@ -26,6 +26,7 @@ import {
   ActiveDSConnect,
   ActiveGZip,
   ActiveCacheManager,
+  ActiveChain,
 } from "@activeledger/activeoptions";
 import { ActiveClone } from "@activeledger/activeutilities";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
@@ -1626,11 +1627,33 @@ export class Endpoints {
    * @param {string} requester
    * @returns {Promise<any>}
    */
-  public static status(host: Host, requester: string): Promise<any> {
+  /** Peers already warned about, so a mismatch is logged once per id */
+  private static chainRefused = new Map<string, number>();
+
+  public static status(
+    host: Host,
+    requester: string,
+    peerChain?: string,
+    peerAddress?: string
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
       // Everyone can see this endpoint, Other Nodes just need 200 for now
       let neighbour = host.neighbourhood.get(requester);
       if (requester != "NA") {
+        // A node on another chain is never paired. Nodes from before the
+        // chain id send no header and are let through.
+        const own = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
+        const mismatch = ActiveChain.mismatch(own, peerChain);
+        if (mismatch !== undefined) {
+          if (Endpoints.chainRefused.get(requester) !== mismatch) {
+            Endpoints.chainRefused.set(requester, mismatch);
+            ActiveLogger.warn(
+              `Neighbour ${peerAddress || requester} is on chain ${mismatch}, this node is on chain ${own}. Not pairing.`
+            );
+          }
+          resolve({ statusCode: 403 });
+          return;
+        }
         // Increase Count
         Endpoints.rebaseThrottle++;
 

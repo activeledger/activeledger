@@ -28,6 +28,7 @@ import { ActiveCache, ActiveCacheManager } from "./cache";
 import * as Cli from "./cli";
 import { StartupDisplay, isManaged } from "./startup";
 import { HybridConfig } from "./hybrid";
+import { ActiveChain } from "./chain";
 export {
   ActiveDSConnect,
   ActiveOptions,
@@ -39,5 +40,6 @@ export {
   Cli,
   StartupDisplay,
   isManaged,
-  HybridConfig
+  HybridConfig,
+  ActiveChain
 };

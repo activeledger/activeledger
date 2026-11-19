@@ -1,5 +1,8 @@
 {
   "configVersion": 1,
+  "chain": {
+    "id": 1
+  },
   "debug": false,
   "remote": false,
   "build": 50600,
