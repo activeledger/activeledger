@@ -80,17 +80,10 @@ describe("review pass 3", function () {
 
   // ---------------------------------------------------------------------------------------------
   describe("A2 scopedContract facade", () => {
-    it("results are returned unchanged on a hybrid (execution.supernode false) for the default namespace", () => {
+    it("results are copied to plain data inside a hybrid's sandbox too (its network block would not cover a toJSON run later)", () => {
       const vm = mkvm("default", { supernode: false });
       const o = { d: new Date(0) };
-      expect(vm.scopedContract(UMID, { f: () => o }).f()).to.equal(o);
-    });
-
-    it("results are returned unchanged on a hybrid below build 50600", () => {
-      ActiveOptions.set("build", 50000);
-      const vm = mkvm("somens", { supernode: false });
-      const o = { d: new Date(0) };
-      expect(vm.scopedContract(UMID, { f: () => o }).f()).to.equal(o);
+      expect(vm.scopedContract(UMID, { f: () => o }).f()).to.deep.equal({ d: new Date(0).toISOString() });
     });
 
     it("a method that returns this still returns the contract (chaining)", () => {

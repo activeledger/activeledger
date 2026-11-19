@@ -1195,9 +1195,9 @@ export class VirtualMachine
   private scopedContract(umid: string, instance: any): any {
     if (!instance || typeof instance !== "object") return instance;
     const plain = (value: any): any => {
-      // Only where the guard is on (a storage-mode context): a hybrid, the default namespace
-      // and builds below 50600 are handed what the contract returned, as before
-      if ((ContractScope.current() as any)?.mode !== "storage") return value;
+      // Inside any contract sandbox, the storage guard's or a hybrid's network block: what the
+      // host serialises later is plain data. Outside one (the default namespace) it is as returned
+      if (!ContractScope.current()) return value;
       if (value && typeof value === "object") {
         try {
           return JSON.parse(JSON.stringify(value));

@@ -71,7 +71,7 @@
 - **Review pass 3 fixes.** A raw `net.connect` (which hands the socket its arguments as one array) is now checked, so a
   bare socket to the storage or to a closed local port no longer opens unchecked, and its approval is spent once. A
   rejected promise or thenable rejection from a contract is made plain inside the sandbox like a resolved value. The
-  copy to plain data applies only where the guard is on (not a hybrid, the default namespace or builds below 50600),
+  copy to plain data applies inside any contract sandbox (not the default namespace),
   falls back to the original value for data JSON cannot hold (cycles, BigInt), and a method that returns the contract
   returns the facade. The sandbox wraps the network modules once per process. The deploy scan no longer refuses prose
   (`"Error: volatile data missing"`), string types, or database-looking paths on public hosts (a repository or docs link).
