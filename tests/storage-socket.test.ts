@@ -7,6 +7,7 @@ import { ActiveOptions } from "../packages/options/src/options";
 import { serveStorageSocket } from "../packages/storage/src/storagesocket";
 import { expect } from "chai";
 import "mocha";
+import * as cp from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as net from "net";
@@ -161,6 +162,62 @@ describe("Storage socket", () => {
       new ActiveDSConnect("http://127.0.0.1:5980/activeledger");
       expect(Built.for("http://10.0.0.5:5979")).to.equal(undefined);
       expect(Built.for("http://127.0.0.1:5980")).to.equal(undefined);
+    });
+  });
+
+  describe("the socket file", () => {
+    const SRC = path.join(__dirname, "../packages/storage/src/storagesocket");
+    const HTTPD = path.join(__dirname, "../packages/httpd/src/httpd");
+    let dir: string;
+    beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), "ssock-exit-")); });
+    afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+    // A storage process that binds, says so, waits to be told, then exits normally
+    const child = (sock: string) => {
+      const script = path.join(dir, "child.ts");
+      fs.writeFileSync(script, `
+        import { serveStorageSocket } from ${JSON.stringify(SRC)};
+        import { ActiveHttpd } from ${JSON.stringify(HTTPD)};
+        const s = serveStorageSocket(new ActiveHttpd(), ${JSON.stringify(sock)});
+        s.on("listening", () => console.log("up"));
+        process.stdin.on("data", () => process.exit(0));
+      `);
+      const proc = cp.spawn(process.execPath, ["--import", "tsx", script], { stdio: ["pipe", "pipe", "inherit"] });
+      const up = new Promise<void>((resolve, reject) => {
+        proc.stdout.on("data", (d) => String(d).includes("up") && resolve());
+        proc.on("exit", () => reject(new Error("child exited before it was listening")));
+      });
+      const exited = new Promise<void>((resolve) => proc.on("exit", () => resolve()));
+      return { proc, up, exited };
+    };
+
+    it("is removed when the storage process exits", async function () {
+      this.timeout(20000);
+      const sock = path.join(dir, "s.sock");
+      const c = child(sock);
+      await c.up;
+      expect(fs.existsSync(sock)).to.equal(true);
+      c.proc.stdin.write("go\n");
+      await c.exited;
+      expect(fs.existsSync(sock)).to.equal(false);
+    });
+
+    it("leaves alone a socket that a newer process has since bound at the same path", async function () {
+      this.timeout(20000);
+      const sock = path.join(dir, "s.sock");
+      const c = child(sock);
+      await c.up;
+      // A replacement takes the path over
+      fs.unlinkSync(sock);
+      const newer = net.createServer();
+      await new Promise<void>((r) => newer.listen(sock, r));
+      c.proc.stdin.write("go\n");
+      await c.exited;
+      try {
+        expect(fs.existsSync(sock)).to.equal(true);
+      } finally {
+        newer.close();
+      }
     });
   });
 });
