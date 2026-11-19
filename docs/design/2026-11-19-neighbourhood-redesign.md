@@ -280,10 +280,38 @@ protocol change.
 - How a node learns a neighbour's required build, so `outdated` is more than
   a local comparison.
 
+## Baseline (measured 2026-11-19, 5.7.1)
+
+Four nodes on one machine (the `tests/network` harness), status knocks
+counted at the receiving node over 60 s windows:
+
+| Situation | Status knocks received, per node, 60 s | Network total |
+|---|---|---|
+| All four up, discovery finished | 0, 0, 0, 0 | 0 |
+| One node never started (the other three restarted while it was down) | 600, 600, 600 | 1,800 (30 a second) |
+
+- With everything up, discovery already stops and steady state costs nothing.
+  Polling is only a cost while a neighbour is missing.
+- With one neighbour missing, each node receives 10 knocks a second. That is
+  three senders at 3.3 a second each, which is the 300 ms tick knocking every
+  entry in `neighbourOrder`: both other nodes, the node itself (it is in its
+  own order), and the missing node (those knocks fail and are not counted
+  here). It continued for the whole 65 s window; the code has no end to it
+  while a node is missing.
+- A restarted node reported ready (status 4) about 2.7 s after the process
+  started, with a neighbour still missing, so `Stable` does not wait for it.
+
+Not measured yet: CPU cost of that polling, time from start to `complete`
+for staggered starts, and the soak rates (first-transaction timeout about 5%,
+persistent lag 1-2% on the earlier 443-run soak). The counting needs a
+temporary log line in the status handler, so the script is not committed;
+a counter exposed in `/a/status` would make it repeatable and is a candidate
+for phase 1.
+
 ## Measurements to take first
 
-On a four-node network on one machine: status knocks per minute with all
-nodes up, and with one stopped; time from process start to ready (quorum) and
+On a four-node network on one machine: status knocks per minute (done, see
+above); time from process start to ready (quorum) and
 to complete, for staggered starts; and the soak (first-transaction timeouts
 about 5%, persistent lag 1-2% before). The same numbers after each phase show
 whether it helped.
