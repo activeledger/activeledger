@@ -45,6 +45,71 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
     expect(scan(wrap('return { volatile: 1 };'))).to.equal(null);
   });
 
+  it("leaves a stream id that ends in :volatile alone when it goes straight to getAnyStreamReadOnly", () => {
+    for (const body of [
+      "return this.getAnyStreamReadOnly(`${keyId}:volatile`);",
+      'return this.getAnyStreamReadOnly("abc:volatile");',
+      "return this.getAnyStreamReadOnly(id + ':volatile');",
+      "return this.getAnyStreamReadOnly((`${id}:volatile`));",
+      "return Promise.all(ids.map((i) => this.getAnyStreamReadOnly(`${i}:volatile`)));",
+    ]) expect(scan(wrap(body)), body).to.equal(null);
+  });
+
+  it("only exempts this.getAnyStreamReadOnly, and does not let the contract redefine the name", () => {
+    // another receiver, or a bare name, is not the engine's call: refused whatever it is given
+    for (const body of [
+      "return other.getAnyStreamReadOnly(`${id}:volatile`);",
+      "return getAnyStreamReadOnly(`${id}:volatile`);",
+      "return other.getAnyStreamReadOnly('abc');",
+    ]) expect(scan(wrap(body)), body).to.match(/cannot be redefined|volatile/);
+    for (const source of [
+      "export default class Foo { vote() { return 1; } getAnyStreamReadOnly(x: string) { return x; } }",
+      "export default class Foo { getAnyStreamReadOnly = (x: string) => x; vote() { return 1; } }",
+      "export default class Foo { vote() { const getAnyStreamReadOnly = (x: string) => x; return 1; } }",
+      "export default class Foo { vote() { function getAnyStreamReadOnly() { return 1; } return 1; } }",
+      "export default class Foo { vote() { return { getAnyStreamReadOnly: () => 1 }; } }",
+      "export default class Foo { vote() { const getAnyStreamReadOnly = 1; return { getAnyStreamReadOnly }; } }",
+      "export default class Foo { vote() { (this as any).getAnyStreamReadOnly = () => 1; return 1; } }",
+      "export default class Foo { vote() { (this as any)['getAnyStreamReadOnly'] = () => 1; return 1; } }",
+      "export default class Foo { vote(getAnyStreamReadOnly: any) { return 1; } }",
+      // compound assignments
+      "export default class Foo { vote() { (this as any).getAnyStreamReadOnly ||= () => 1; return 1; } }",
+      "export default class Foo { vote() { (this as any).getAnyStreamReadOnly ??= () => 1; return 1; } }",
+      "export default class Foo { vote() { (this as any).getAnyStreamReadOnly &&= () => 1; return 1; } }",
+      // a computed key that folds to the name
+      "export default class Foo { vote() { (this as any)['getAny' + 'StreamReadOnly'] = () => 1; return 1; } }",
+      "export default class Foo { vote() { (this as any)[`getAny${''}StreamReadOnly`] = () => 1; return 1; } }",
+      "export default class Foo { ['getAnyStreamReadOnly']() { return 1; } vote() { return 1; } }",
+      // a destructuring target, and reading it off to rebind or wrap it
+      "export default class Foo { vote() { let o: any = {}; ({ x: (this as any).getAnyStreamReadOnly } = o); return 1; } }",
+      "export default class Foo { vote() { const { getAnyStreamReadOnly } = this as any; return 1; } }",
+      "export default class Foo { vote() { const f = this.getAnyStreamReadOnly; return f; } }",
+    ]) expect(scan(source), source).to.include("cannot be redefined");
+    // call, apply, bind and defineProperty are refused by their own rules; the name does not get them past
+    for (const source of [
+      "export default class Foo { vote() { return this.getAnyStreamReadOnly.call(this, 'a:volatile'); } }",
+      "export default class Foo { vote() { return Object.defineProperty(this, 'getAnyStreamReadOnly', { value: 1 }); } }",
+    ]) expect(scan(source), source).to.not.equal(null);
+    // calling it is not redefining it
+    expect(scan(wrap("return this.getAnyStreamReadOnly(`${id}:volatile`);"))).to.equal(null);
+    // before build 50600 nothing here applies
+    ActiveOptions.set("build", 50500);
+    expect(scan("export default class Foo { vote() { return 1; } getAnyStreamReadOnly(x: string) { return x; } }")).to.equal(null);
+  });
+
+  it("still refuses volatile text anywhere else, including a request and a path", () => {
+    for (const body of [
+      "return HTTP.send(`${id}:volatile`);",
+      'return client.request({ url: "x:volatile" });',
+      "return client.get(`${base}/${id}:volatile`);",
+      'return HTTP.send(url, "POST", [], { _id: "abc:volatile", v: 1 });',
+      "return `/activeledger_w/${id}:volatile`;",
+      "return this.getAnyStreamReadOnly(`/db/${id}:volatile`);",
+      "return this.somethingElse(`${id}:volatile`);",
+      'return this.getAnyStreamReadOnly("abc:volatile", client.send("x:volatile"));',
+    ]) expect(scan(wrap(body)), body).to.include("volatile");
+  });
+
   it("refuses a URL to this machine unless the namespace has allowLocalhost", () => {
     for (const s of ["http://127.0.0.1:5259/x", "http://localhost:8080/", "http://[::1]:5259/x", "//localhost:1/x", "localhost:5290/p", "http://0.0.0.0:80/", "http://user@127.1.2.3/x"]) {
       expect(scan(wrap(`return "${s}";`)), s).to.include("allowLocalhost");
