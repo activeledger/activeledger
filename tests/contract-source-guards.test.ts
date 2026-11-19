@@ -72,6 +72,22 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
     expect(scan(wrap("const o = { agent: 1 }; return o;"))).to.equal(null);
   });
 
+  it("refuses a custom database path unless the namespace has allowDatabases, and the node's own always", () => {
+    for (const s of ["http://x:5259/activeledger_wallets/abc", "/activeledger_wallets/_all_docs", "https://h/activeledgerfoo"]) {
+      expect(scan(wrap(`return "${s}";`)), s).to.include("allowDatabases");
+    }
+    for (const s of ["http://x:5259/activeledger/abc", "/activeledgerevents/_all_docs", "http://h/activeledgererrors/x"]) {
+      expect(scan(wrap(`return "${s}";`)), s).to.include("own database");
+    }
+    ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: true } } } });
+    expect(scan(wrap('return "/activeledger_wallets/abc";'))).to.equal(null);
+    expect(scan(wrap('return "/activeledger/abc";'))).to.include("own database");
+    ActiveOptions.set("security", { namespace: { somenamespace: { policy: { allowDatabases: "yes" } } } });
+    expect(scan(wrap('return "/activeledger_wallets/abc";'))).to.include("allowDatabases");
+    // Words and short paths are not databases
+    for (const s of ["activeledger_wallets", "/activeledger", "see /docs/activeledger", "an activeledger/x note"]) expect(scan(wrap(`return "${s}";`)), s).to.equal(null);
+  });
+
   it("is off below build 50600, so a network that has not moved on votes as before", () => {
     ActiveOptions.set("build", 50599);
     expect(scan(wrap('return "http://127.0.0.1:5259/x:volatile";'))).to.equal(null);

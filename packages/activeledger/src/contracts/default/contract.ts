@@ -750,7 +750,9 @@ export default class Contract extends Standard {
         allowProcessNextTick: false,
         allowLocalLibs: false,
         // Contract code may name this machine (localhost, 127.x) in a URL
-        allowLocalhost: false
+        allowLocalhost: false,
+        // Contract code may use custom databases on the node's storage
+        allowDatabases: false
     };
 
     // Fetch dynamic security configuration
@@ -1177,6 +1179,25 @@ export default class Contract extends Standard {
             if (looksLikeDestination && hosts.some((h) => isLocalHost(h))) {
               report(node, `A URL to this machine needs allowLocalhost for the namespace`);
             }
+          }
+        }
+        // A storage database named in the source: the node's own are never a contract's; a custom
+        // one (activeledger plus more) needs allowDatabases for the namespace
+        if (text !== undefined) {
+          const candidate = text.replace(/[\t\r\n\u0000]/g, "").trim();
+          const pathOf = /^(?:[a-z][a-z0-9+.-]*:)?\/\/[^\/?#]*(\/[^?#]*)/i.exec(candidate)?.[1] ?? (/^\/[^\/]/.test(candidate) ? candidate.split(/[?#]/)[0] : "");
+          let database = "";
+          try {
+            database = decodeURIComponent(pathOf).split("/").filter(Boolean)[0]?.toLowerCase() ?? "";
+          } catch {
+            // not valid escapes
+          }
+          if (database === "activeledger" || database === "activeledgerevents" || database === "activeledgererrors" || database.startsWith("_")) {
+            if (pathOf.split("/").filter(Boolean).length >= 2) {
+              report(node, `The node's own database '${database}' is forbidden`);
+            }
+          } else if (/^activeledger[a-z0-9_-]+$/.test(database) && policy.allowDatabases !== true) {
+            report(node, `A custom database needs allowDatabases for the namespace`);
           }
         }
         // Options that change how a request connects, passed to a request call

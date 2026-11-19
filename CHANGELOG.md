@@ -48,6 +48,13 @@
   `request`, `get`, `post`, `put`, `send`, `connect`, `createConnection` or `fetch`. These rules read only the source and
   the namespace's own policy, so every node with the same config gives the same vote; they do not run below build
   `50600`. A destination built at run time cannot be seen by the scan: the run-time guard is what stops that.
+- **`allowDatabases`, a namespace flag for custom databases** (build `50600`). Rather than a list per database, a
+  namespace whose policy (`security.namespace.<namespace>.policy`) has `allowDatabases: true` may use custom
+  databases on the storage (GET and POST on the document routes), like the flags that allow libraries. The deploy
+  scan checks against it: source that names a custom database path (`.../activeledger_wallets/...`) is refused
+  unless the flag is set, and a path in one of the node's own databases is refused whatever the flag. Volatile and the
+  node's own databases stay refused at run time too. The node-wide `security.contractEgress.storage: "open"` still opens
+  custom databases for every namespace, and `security.contractEgress.allow` still lists exact destinations.
 - **Per-namespace request limits**: `requestTimeoutSeconds` and `maxResponseBytes` in `security.namespace.<namespace>.policy` replace the node-wide 5 s / 2 MB for that namespace. The limits apply to every request a contract makes, whatever timeout it passes; a request past a limit returns `data: null` to the contract.
 - **Contract code can no longer run outside its sandbox through the VM.** The event emitter a contract is given is now a
   facade whose listeners stay in the contract's context (an answer to `getVolatile` / `getStreamData` was emitted from
