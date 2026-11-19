@@ -296,8 +296,9 @@ export class VirtualMachine
           // What one contract call may use: how long a request may take and how much it may read.
           // security.contractEgress.timeoutSeconds (5) and .maxResponseBytes (2 MB)
           limits: {
-            timeoutSeconds: Number(policy.timeoutSeconds) > 0 ? Number(policy.timeoutSeconds) : 5,
-            maxResponseBytes: Number(policy.maxResponseBytes) > 0 ? Number(policy.maxResponseBytes) : 2 * 1024 * 1024,
+            // A namespace can have its own (security.namespace.<ns>.policy.requestTimeoutSeconds / .maxResponseBytes)
+            timeoutSeconds: Number(nsPolicy?.requestTimeoutSeconds) > 0 ? Number(nsPolicy.requestTimeoutSeconds) : Number(policy.timeoutSeconds) > 0 ? Number(policy.timeoutSeconds) : 5,
+            maxResponseBytes: Number(nsPolicy?.maxResponseBytes) > 0 ? Number(nsPolicy.maxResponseBytes) : Number(policy.maxResponseBytes) > 0 ? Number(policy.maxResponseBytes) : 2 * 1024 * 1024,
           },
           spent: { bytes: 0 },
           inflight: new Set<() => void>(),
