@@ -23,6 +23,7 @@
 
 import * as fs from "fs";
 import * as net from "net";
+import * as path from "path";
 import { ActiveFrame } from "@activeledger/activeutilities";
 import { ActiveHttpd } from "@activeledger/httpd";
 
@@ -36,11 +37,29 @@ import { ActiveHttpd } from "@activeledger/httpd";
  * is no wider than the loopback port it sits beside.
  */
 export function serveStorageSocket(http: ActiveHttpd, socketPath: string): net.Server {
-  // A stale file from a killed process would refuse the bind
+  // The socket lives in a folder only this user can write to, which is what
+  // keeps another local user from binding the path first (or swapping it) and
+  // receiving the node's storage traffic. A folder that is not ours, or that
+  // anyone else can write to, means no socket: the store carries on over HTTP
+  // and clients, which check the same thing, never connect.
+  const dir = path.dirname(socketPath);
   try {
-    fs.unlinkSync(socketPath);
-  } catch {
-    // not there
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const info = fs.lstatSync(dir);
+    const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+    if (!info.isDirectory() || info.uid !== uid || (info.mode & 0o022) !== 0) {
+      throw new Error(dir + " is not a private folder of this user");
+    }
+    // A stale socket from a killed process would refuse the bind. Only ours.
+    try {
+      const old = fs.lstatSync(socketPath);
+      if (old.isSocket() && old.uid === uid) fs.unlinkSync(socketPath);
+    } catch {
+      // not there
+    }
+  } catch (error: any) {
+    console.error("Storage socket unavailable, using HTTP only: " + error.message);
+    return net.createServer();
   }
 
   const server = net.createServer((socket) => {

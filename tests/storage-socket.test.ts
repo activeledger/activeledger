@@ -96,6 +96,38 @@ describe("Storage socket", () => {
       }
     });
 
+    it("does not connect to a socket in a folder others can write to, or one that is not a socket", async () => {
+      const web = http.createServer((_q, s) => s.end('{"via":"http"}'));
+      await new Promise<void>((r) => web.listen(59875, "127.0.0.1", r));
+      try {
+        const open = fs.mkdtempSync(path.join(os.tmpdir(), "ssock-open-"));
+        fs.chmodSync(open, 0o777);
+        const loose = path.join(open, "s.sock");
+        const srv = net.createServer((s) => s.end());
+        await new Promise<void>((r) => srv.listen(loose, r));
+        StorageSocket.register("http://127.0.0.1:59875", loose);
+        expect(StorageSocket.trusted(loose)).to.equal(false);
+        expect((await ActiveRequest.send("http://127.0.0.1:59875/x", "GET")).data).to.deep.equal({ via: "http" });
+        srv.close();
+        fs.rmSync(open, { recursive: true, force: true });
+        const plain = path.join(dir, "plain.sock");
+        fs.writeFileSync(plain, "");
+        expect(StorageSocket.trusted(plain)).to.equal(false);
+      } finally {
+        web.close();
+      }
+    });
+
+    it("the server will not bind in a folder that is not private to this user", () => {
+      const open = fs.mkdtempSync(path.join(os.tmpdir(), "ssock-open-"));
+      fs.chmodSync(open, 0o777);
+      const target = path.join(open, "s.sock");
+      const srv = serveStorageSocket(routes(), target);
+      expect(srv.listening).to.equal(false);
+      expect(fs.existsSync(target)).to.equal(false);
+      fs.rmSync(open, { recursive: true, force: true });
+    });
+
     it("fails, and does not replay, a request in flight when the connection drops", async () => {
       const dead = path.join(dir, "dead.sock");
       const silent = net.createServer((s) => s.once("data", () => s.destroy()));

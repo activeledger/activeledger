@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
 import * as path from "path";
@@ -51,9 +52,40 @@ export type StorageSocketReply = { status: number; body: Buffer } | null | undef
 export class StorageSocket {
   private static targets = new Map<string, StorageSocket>();
 
+  /**
+   * The private folder the sockets live in: one per user, in the runtime
+   * folder when the system has one, otherwise the temp folder. Never a path
+   * another local user could create first (see trusted()).
+   */
+  public static directory(): string {
+    const uid = typeof process.getuid === "function" ? process.getuid() : "";
+    return path.join(process.env.XDG_RUNTIME_DIR || os.tmpdir(), `activeledger-${uid}`);
+  }
+
   /** Where the storage process listens for a given HTTP port */
   public static defaultPath(port: number | string): string {
-    return path.join(os.tmpdir(), `activeledger-ds-${port}.sock`);
+    return path.join(this.directory(), `ds-${port}.sock`);
+  }
+
+  /**
+   * Whether a socket path may be connected to: the folder holding it and the
+   * socket itself belong to this user, and nobody else can write to the
+   * folder (so nobody else could have put a socket there, or swapped one).
+   * A client that skipped this would hand its requests, which carry ledger
+   * data, to whoever got there first. Where there are no user ids (Windows)
+   * the sockets are not used.
+   */
+  public static trusted(socketPath: string): boolean {
+    if (typeof process.getuid !== "function") return false;
+    const uid = process.getuid();
+    try {
+      const dir = fs.lstatSync(path.dirname(socketPath));
+      if (!dir.isDirectory() || dir.uid !== uid || (dir.mode & 0o022) !== 0) return false;
+      const file = fs.lstatSync(socketPath);
+      return file.isSocket() && file.uid === uid;
+    } catch {
+      return false;
+    }
   }
 
   /** Use the socket for requests to this origin (http://127.0.0.1:5260) */
@@ -95,6 +127,10 @@ export class StorageSocket {
   private connect(): Promise<boolean> {
     if (this.socket) return Promise.resolve(true);
     if (Date.now() < this.retryAt) return Promise.resolve(false);
+    if (!StorageSocket.trusted(this.socketPath)) {
+      this.retryAt = Date.now() + StorageSocket.RETRY_MS;
+      return Promise.resolve(false);
+    }
     if (this.connecting) return this.connecting;
 
     this.connecting = new Promise<boolean>((resolve) => {
