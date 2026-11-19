@@ -1,5 +1,22 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Changed
+- **Far fewer neighbour status requests while a node is missing.** While any neighbour had not been found yet, every
+  node asked every neighbour for its status four times a second, including itself and neighbours already found, for
+  as long as the node stayed down (about 30 requests a second across a four-node network, measured, with one node
+  never started). A node now asks only the neighbours it has not found yet, and never itself, so the same case sends
+  about 3 requests a second per node (to the missing one) and the others receive none. A network with every node up
+  was already silent and is unchanged. A neighbour that goes down after it was found is still noticed the way it was,
+  by the failed send or request that finds it.
+
+### Added
+- **A neighbour says why it is not home.** `GET /a/status` lists each neighbour with a `state` (`home`,
+  `unknown`, `unreachable` or `mismatch`), the `reason` when there is one (for example `chain 2`), and `since`, the
+  time the state last changed, next to the existing `isHome`. `neighbourhood.knocks` reports how many status requests
+  this node has sent and received since it started.
+
 ## [5.7.1] - 2026-11-19
 
 ### Fixed

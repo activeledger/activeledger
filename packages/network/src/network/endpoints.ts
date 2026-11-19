@@ -36,6 +36,7 @@ import * as Sync from "@activeledger/activesync";
 import { Host } from "./host";
 import { Home } from "./home";
 import { Maintain } from "./maintain";
+import { Neighbour } from "./neighbour";
 import { IStreams } from "@activeledger/activedefinitions/lib/definitions";
 import { Locker } from "./locker";
 
@@ -1630,12 +1631,15 @@ export class Endpoints {
   /** Peers already warned about, so a mismatch is logged once per id */
   private static chainRefused = new Map<string, number>();
 
+  public static statusKnocksReceived = 0;
+
   public static status(
     host: Host,
     requester: string,
     peerChain?: string,
     peerAddress?: string
   ): Promise<any> {
+    Endpoints.statusKnocksReceived++;
     return new Promise((resolve, reject) => {
       // Everyone can see this endpoint, Other Nodes just need 200 for now
       let neighbour = host.neighbourhood.get(requester);
@@ -1694,6 +1698,9 @@ export class Endpoints {
           if (!neighbour.graceStop) {
             neighbours[neighbour.reference] = {
               isHome: neighbour.isHome,
+              state: neighbour.state ?? (neighbour.isHome ? "home" : "unknown"),
+              ...(neighbour.reason ? { reason: neighbour.reason } : {}),
+              since: neighbour.since,
             };
           }
         }
@@ -1708,6 +1715,12 @@ export class Endpoints {
             right: Home.right.reference,
             neighbourhood: {
               neighbours: neighbours,
+              // Status knocks since this node started: how much of its
+              // traffic is neighbour discovery
+              knocks: {
+                sent: Neighbour.statusKnocksSent,
+                received: Endpoints.statusKnocksReceived,
+              },
             },
             pem: Home.publicPem,
           },

@@ -351,9 +351,20 @@ export class Maintain {
     // Set checking Flag
     Maintain.checking = true;
 
-    // Get All Status
+    // Ask only the neighbours not yet known to be home. This node is always
+    // home to itself (it used to knock itself to find that out), and a
+    // neighbour already home needs no polling: if it goes quiet, the failed
+    // send or knock that notices marks it down and starts its own recovery
+    // checks (Neighbour.markUnavailable).
     await Promise.all(
       Maintain.neighbourOrder.map((neighbour: Neighbour) => {
+        if (neighbour.reference === Home.reference) {
+          neighbour.setState("home");
+          return Promise.resolve();
+        }
+        if (neighbour.isHome) {
+          return Promise.resolve();
+        }
         return new Promise<void>(async (resolve, reject) => {
           neighbour
             .knock("status")
@@ -361,12 +372,16 @@ export class Maintain {
               // Still the same network?
               if (currentRef == Home.reference) {
                 // Node is Home
-                neighbour.isHome = true;
+                neighbour.setState("home");
               }
               // Resolve Promise to move on
               resolve();
             })
             .catch(() => {
+              // Never answered (or refused, see Neighbour.knock): say so, once
+              if (neighbour.state === "unknown") {
+                neighbour.setState("unreachable", "no answer yet");
+              }
               // Not home yet - nothing more to do here. allNeighboursDiscovered()
               // (above) keeps this fast (300ms) periodic check running until
               // every configured neighbour has been found, so a neighbour that

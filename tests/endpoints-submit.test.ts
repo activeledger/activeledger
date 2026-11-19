@@ -757,13 +757,21 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       };
       const reply = await Endpoints.status(host, "NA");
       expect(reply.statusCode).to.equal(200);
-      expect(reply.content).to.deep.equal({
+      const { knocks, ...rest } = reply.content.neighbourhood;
+      expect(reply.content.neighbourhood.knocks).to.have.all.keys("sent", "received");
+      expect(knocks.sent).to.be.a("number");
+      expect(knocks.received).to.be.a("number");
+      expect({ ...reply.content, neighbourhood: rest }).to.deep.equal({
         status: "STATUS",
         reference: "me",
         left: "L",
         right: "R",
         neighbourhood: {
-          neighbours: { a: { isHome: true }, b: { isHome: false } },
+          // A neighbour that carries no state yet reads as home or unknown
+          neighbours: {
+            a: { isHome: true, state: "home", since: undefined },
+            b: { isHome: false, state: "unknown", since: undefined },
+          },
         },
         pem: "PEM",
       });

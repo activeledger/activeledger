@@ -28,6 +28,12 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
     isHome,
     graceStop,
     knock,
+    setState(this: any, state: string, reason?: string) {
+      this.isHome = state === "home";
+      this.state = state;
+      this.reason = reason;
+      return true;
+    },
   });
 
   const makeHome = (self: string, neighbours: any[]): any => {

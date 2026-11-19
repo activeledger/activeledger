@@ -45,6 +45,8 @@ const RECOVERY_CHECK_INTERVAL = 3 * 1000;
  */
 const P2P_COMPRESSION_THRESHOLD = 16 * 1024;
 
+export type NeighbourState = "unknown" | "home" | "unreachable" | "mismatch";
+
 export class Neighbour implements ActiveDefinitions.INeighbourBase {
   /** See knock(). Profiling affordance, read once at startup. */
   public static simulatedRttMs: number = Number(
@@ -85,6 +87,43 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * @type {boolean}
    */
   private recovering: boolean = false;
+
+  /**
+   * What this node currently knows about the neighbour, and why. `isHome`
+   * stays the flag the rest of the code reads; setState() keeps the two in
+   * step so a neighbour that is not home can say why not.
+   *
+   * - unknown: never contacted yet
+   * - home: answered, usable
+   * - unreachable: asked and no answer (or it answered and then stopped)
+   * - mismatch: answered, but is on another chain
+   */
+  public state: NeighbourState = "unknown";
+
+  /** Why the neighbour is in its current state, when there is a reason */
+  public reason?: string;
+
+  /** When the state last changed (ms since the epoch) */
+  public since: number = Date.now();
+
+  /** Status knocks this node has sent to any neighbour since it started */
+  public static statusKnocksSent = 0;
+
+  /**
+   * Moves the neighbour to a state, keeping isHome in step. Returns true
+   * only when something changed, so a caller logs a change once and not on
+   * every poll.
+   */
+  public setState(state: NeighbourState, reason?: string): boolean {
+    this.isHome = state === "home";
+    if (this.state === state && this.reason === reason) {
+      return false;
+    }
+    this.state = state;
+    this.reason = reason;
+    this.since = Date.now();
+    return true;
+  }
 
   /**
    * Creates an instance of NodeNeighbour.
@@ -265,6 +304,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     // Legacy HTTP/2 Fallback
     if (!params) {
       // Not Params, Sent Get without signature
+      if (endpoint === "status") Neighbour.statusKnocksSent++;
       return new Promise((resolve, reject) => {
         ActiveRequest.send(
           `http://${this.host}:${this.port}/a/${endpoint}`,
@@ -295,6 +335,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
               // The neighbour is on another chain: it is never marked home.
               // Said once per neighbour, so the node that is misconfigured
               // is told why it never becomes ready.
+              this.setState("mismatch", `chain ${response.data.chainMismatch}`);
               if (!Neighbour.chainWarned.has(this.reference)) {
                 Neighbour.chainWarned.add(this.reference);
                 ActiveLogger.warn(
@@ -491,7 +532,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     if (!this.isHome || this.graceStop) {
       return;
     }
-    this.isHome = false;
+    this.setState("unreachable", "stopped answering");
     ActiveLogger.warn(
       `Neighbour unavailable, starting recovery checks: ${this.host}:${this.port}`
     );
@@ -532,7 +573,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       }
       this.knock("status")
         .then(() => {
-          this.isHome = true;
+          this.setState("home");
           this.recovering = false;
           ActiveLogger.info(
             `Neighbour recovered: ${this.host}:${this.port}`

@@ -190,6 +190,10 @@ describe("Network - neighbour, maintain and home edges (Activeprotocol)", () => 
       isHome: true,
       graceStop: false,
       knock,
+      setState(this: any, state: string) {
+        this.isHome = state === "home";
+        return true;
+      },
     });
     const makeHome = (self: string, neighbours: any[]): any => {
       const map: any = {};
@@ -230,6 +234,8 @@ describe("Network - neighbour, maintain and home edges (Activeprotocol)", () => 
         knocks++;
         return new Promise(() => undefined);
       });
+      // Not yet found, so it is the one a check asks
+      stuck.isHome = false;
       M.home = makeHome("a", [fake("a"), stuck]);
       M.createNetworkOrder();
       void M.checkNeighbourhood();

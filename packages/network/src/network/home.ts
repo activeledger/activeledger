@@ -334,7 +334,7 @@ export class Home extends Neighbour {
       // Still able to connect or shutdowning from the network?
       if (Home.right && !Home.right.graceStop) {
         // We know isHome
-        Home.right.isHome = true;
+        Home.right.setState("home");
       } else {
         Home.right = new Neighbour(this.host, this.port);
       }
@@ -381,7 +381,7 @@ export class Home extends Neighbour {
       // Still able to connect or shutdowning from the network?
       if (Home.left && !Home.left.graceStop) {
         // We know isHome
-        Home.left.isHome = true;
+        Home.left.setState("home");
       } else {
         Home.left = new Neighbour(this.host, this.port);
       }
