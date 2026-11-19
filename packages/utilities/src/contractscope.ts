@@ -179,7 +179,7 @@ export class ContractScope {
     let decoded = String(text);
     for (let round = 0; round < 8; round++) {
       let next: string;
-      try { next = decodeURIComponent(decoded); } catch { next = decoded; }
+      try { next = decodeURIComponent(decoded); } catch { next = decoded.replace(/%([0-9a-fA-F]{2})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16))); }
       next = next.replace(/\\u([0-9a-fA-F]{4})/g, (_m, hex) => String.fromCharCode(parseInt(hex, 16)));
       if (next === decoded) break;
       decoded = next;
@@ -216,14 +216,27 @@ export class ContractScope {
     if (first && never && never.has(first)) return true;
     // _all_dbs, _explorer, _utils: the storage's own pages and listings
     if (first && first.startsWith("_")) return true;
-    // The storage's own routes (backup, restore, prune, compact, raw, ...) take
-    // their target from the body or act on the whole database, so a contract
-    // gets documents, _all_docs and _bulk_docs and nothing else
+    // A contract reads (GET) and writes (POST), and only on the document routes:
+    //   GET  /<db>/<id>        read a document
+    //   GET  /<db>/_all_docs   list or look up documents
+    //   POST /<db>/_all_docs   look up documents by key
+    //   POST /<db>/_bulk_docs  write documents
+    //   POST /<db>             write one document
+    // Everything else is a strange endpoint and is refused: other verbs (PUT, DELETE,
+    // PATCH, HEAD, OPTIONS and any unknown one), the storage's own routes (_backup,
+    // _restore, _prune, _compact, _raw, _changes, _find, ...), a database's own page,
+    // creating or dropping a database, and anything deeper than <db>/<id>.
+    const verb = (method ?? "GET").toUpperCase();
+    if (verb !== "GET" && verb !== "POST") return true;
+    if (parts.length === 0 || parts.length > 2) return true;
+    if (parts.length === 1) return verb !== "POST";
     const second = parts[1];
-    if (second && second.startsWith("_") && second !== "_all_docs" && second !== "_bulk_docs") return true;
-    // Creating or dropping a database is not a contract's to do
-    if (parts.length <= 1 && method && !/^(GET|HEAD|OPTIONS)$/i.test(method)) return true;
-    return false;
+    if (second.startsWith("_")) {
+      if (second === "_all_docs") return false;
+      if (second === "_bulk_docs") return verb !== "POST";
+      return true;
+    }
+    return verb !== "GET";
   }
 
   /** The decision, shared by every route a contract has to the network */

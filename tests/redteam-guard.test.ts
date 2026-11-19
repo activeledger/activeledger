@@ -47,7 +47,8 @@ describe("redteam: contract storage guard", function () {
     if (texts.some((t) => /volatile/i.test(t))) return "volatile";
     if (seg.length && (NEVER.includes(seg[0]))) return "node db";
     if (seg[0]?.startsWith("_") ) return "root route " + seg[0];
-    if (seg.length === 1 && r.method !== "GET") return "db create/drop";
+    // POST /<db> inserts a document (the storage's POST route); creating or dropping a database is PUT or DELETE
+    if (seg.length === 1 && /^(PUT|DELETE)$/i.test(r.method)) return "db create/drop";
     if (seg[1]?.startsWith("_") && seg[1] !== "_all_docs" && seg[1] !== "_bulk_docs") return "admin " + seg[1];
     return null;
   };

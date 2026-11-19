@@ -121,6 +121,27 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
     expect(seen).to.deep.equal(["/activeledger_wallets/x"]);
   });
 
+  it("allows GET and POST on the document routes and nothing else", async () => {
+    const allowing = [`127.0.0.1:${storagePort}`];
+    const go = (method: string, path: string, body?: any) => runSandboxed({ mode: "storage", onBlocked: () => undefined, customDatabases: true, allow: (d) => ContractScope.listed(allowing, d) },
+      () => ActiveRequest.send(`http://127.0.0.1:${storagePort}${path}`, method, undefined, body));
+    const base = "/activeledger_wallets";
+    for (const [m, p, b] of [["GET", `${base}/doc1`], ["GET", `${base}/_all_docs`], ["POST", `${base}/_all_docs`, { keys: ["a"] }], ["POST", `${base}/_bulk_docs`, { docs: [{ _id: "a" }] }], ["POST", base, { a: 1 }]] as any) {
+      expect(((await go(m, p, b)) as any).data, `${m} ${p}`).to.deep.equal({ ok: true });
+    }
+    hits.storage = 0;
+    for (const [m, p] of [
+      ["PUT", `${base}/doc1`], ["DELETE", `${base}/doc1`], ["PATCH", `${base}/doc1`], ["HEAD", `${base}/doc1`], ["OPTIONS", `${base}/doc1`], ["PROPFIND", `${base}/doc1`],
+      ["GET", base], ["PUT", base], ["DELETE", base], ["POST", `${base}/doc1`], ["GET", `${base}/_bulk_docs`],
+      ["GET", `${base}/_changes`], ["POST", `${base}/_find`], ["GET", `${base}/_seq/1`], ["POST", `${base}/_backup`], ["POST", `${base}/_restore`],
+      ["POST", `${base}/_prune`], ["GET", `${base}/_compact`], ["GET", `${base}/_raw/x`], ["GET", `${base}/a/b`], ["GET", "/_all_dbs"], ["GET", "/"],
+      ["GET", `${base}/%76olatile%`], ["GET", `${base}/x?q=%76olatile%ZZ`],
+    ] as any) {
+      expect(await refused(() => go(m, p, m === "POST" ? { a: 1 } : undefined)), `${m} ${p}`).to.be.instanceOf(StorageAccessError);
+    }
+    expect(hits.storage).to.equal(0);
+  });
+
   it("keeps the older all-network block for a hybrid execution", async () => {
     const e = await refused(() => runSandboxed({ onBlocked: () => undefined }, () => http.get(`http://127.0.0.1:${otherPort}/`)));
     expect(e.name).to.equal("SupernodeOnly");
@@ -155,9 +176,9 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
 
     it("lets an entry with no path through for any path, and the node modules too", async () => {
       const whole = [`127.0.0.1:${storagePort}`];
-      const r: any = await inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledger_other/x`, "PUT", undefined, { a: 1 }));
+      const r: any = await inContractAllowing(whole, () => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledger_other`, "POST", undefined, { a: 1 }));
       expect(r.data).to.deep.equal({ ok: true });
-      await new Promise<void>((resolve, reject) => inContractAllowing(whole, () => http.get(`http://localhost:${storagePort}/z`, (res) => { res.resume(); res.on("end", resolve); }).on("error", reject)));
+      await new Promise<void>((resolve, reject) => inContractAllowing(whole, () => http.get(`http://localhost:${storagePort}/activeledger_other/z`, (res) => { res.resume(); res.on("end", resolve); }).on("error", reject)));
       expect(hits.storage).to.equal(2);
     });
 
