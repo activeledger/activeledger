@@ -286,19 +286,6 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
     });
   }
 
-  /**
-   * Query the data store
-   *
-   * @param {*} [options={}]
-   * @returns
-   */
-  public find(options: any = {}): Promise<any> {
-    return new Promise((resolve, reject) => {
-      ActiveRequest.send(`${this.location}/_find`, "POST", undefined, options)
-        .then((response: any) => resolve(response.data))
-        .catch(reject);
-    });
-  }
 
   /**
    * Create / Append multiple documents at the same time
@@ -434,6 +421,8 @@ export class ActiveDSConnect implements ActiveDefinitions.IActiveDSConnect {
       }
     });
   }
+
+
 
   /**
    * Delete a sequence file

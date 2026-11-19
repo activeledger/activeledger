@@ -41,47 +41,20 @@ describe("Storage process HTTP API (selfhost)", function () {
       });
     });
 
-    it("answers _session as an admin without a name", async () => {
-      const r = await s.req("GET", "/_session");
-      expect(r.status).to.equal(200);
-      expect(r.json).to.deep.equal({
-        ok: true,
-        userCtx: { name: null, roles: ["_admin"] },
-      });
-    });
-
     it("sets permissive CORS headers and a json content type", async () => {
-      const r = await s.req("GET", "/_session");
+      const r = await s.req("GET", "/_all_dbs");
       expect(r.headers["access-control-allow-origin"]).to.equal("*");
       expect(r.headers["content-type"]).to.equal("application/json");
     });
 
-    it("generates as many unique uuids as asked for", async () => {
-      const r = await s.req("GET", "/_uuids?count=4");
-      expect(r.status).to.equal(200);
-      expect(r.json.uuids).to.have.length(4);
-      for (const u of r.json.uuids) {
-        expect(u).to.match(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-        );
-      }
-      expect(new Set(r.json.uuids).size).to.equal(4);
-    });
-
-    it("generates none for count=0 or when no count is given", async () => {
-      expect((await s.req("GET", "/_uuids?count=0")).json).to.deep.equal({
-        uuids: [],
-      });
-      expect((await s.req("GET", "/_uuids")).json).to.deep.equal({ uuids: [] });
-    });
-
-    it("answers _find and _explain as deprecated", async () => {
-      const f = await s.req("POST", "/activeledger/_find", {});
-      expect(f.status).to.equal(200);
-      expect(f.json).to.deep.equal({ error: "find is deprecated" });
-      const e = await s.req("POST", "/activeledger/_explain", {});
-      expect(e.status).to.equal(200);
-      expect(e.json).to.deep.equal({ error: "explain is deprecated" });
+    it("no longer answers the routes that only the CouchDB tools used", async () => {
+      // None has a consumer: the explorer, the node and every SDK use _all_docs,
+      // _bulk_docs, documents, umids and the events feed.
+      expect((await s.req("GET", "/_session")).status).to.be.oneOf([404, 500]);
+      expect((await s.req("GET", "/_uuids?count=2")).status).to.be.oneOf([404, 500]);
+      expect((await s.req("POST", "/activeledger/_find", {})).status).to.equal(404);
+      expect((await s.req("POST", "/activeledger/_explain", {})).status).to.equal(404);
+      expect((await s.req("GET", "/activeledger/transactions?from=0")).status).to.be.oneOf([404, 500]);
     });
   });
 
@@ -449,8 +422,8 @@ describe("Storage process HTTP API (selfhost)", function () {
       expect(r.json.rows).to.deep.equal([{ umid: "ccc", timestamp: "300" }]);
     });
 
-    it("serves the same data on /transactions, honouring limit", async () => {
-      const r = await s.req("GET", `/${db}/transactions?from=100&limit=2`);
+    it("honours limit", async () => {
+      const r = await s.req("GET", `/${db}/umids?from=100&limit=2`);
       expect(r.json.rows).to.deep.equal([
         { umid: "aaa", timestamp: "100" },
         { umid: "bbb", timestamp: "200" },

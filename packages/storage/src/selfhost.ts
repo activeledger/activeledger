@@ -23,7 +23,6 @@
 import * as http from "http";
 import * as path from "path";
 import { promises as fsPromises } from "fs";
-import { randomUUID } from "crypto";
 import { ActiveHttpd, IActiveHttpIncoming } from "@activeledger/httpd";
 import { serveStorageSocket } from "./storagesocket";
 import { LevelMe } from "./levelme";
@@ -131,15 +130,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     return dbCache[name];
   };
 
-  /**
-   * Fast uuidV4 Generator
-   * Credit : https://gist.github.com/jed/982883
-   *
-   * @param {number} [a]
-   * @returns {number}
-   */
-  const uuidGenV4 = (): string => randomUUID();
-
   // Create Light Server
   let http = new ActiveHttpd();
 
@@ -184,11 +174,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
       adapters: ["levelme"],
       engine: DS_PROVIDER,
     };
-  });
-
-  // Standard Session
-  http.use("_session", "GET", () => {
-    return { ok: true, userCtx: { name: null, roles: ["_admin"] } };
   });
 
   // List all databases
@@ -266,18 +251,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     return { ok: true };
   });
 
-  // Get UUID
-  http.use("_uuids", "GET", async (incoming: IActiveHttpIncoming) => {
-    // uuid holder
-    let uuids = [];
-
-    // Loop for how many requested
-    for (let i = 0; i < incoming.query.count; i++) {
-      uuids.push(uuidGenV4());
-    }
-    return { uuids };
-  });
-
   // Get all docs from a database
   http.use("*/_all_docs", "GET", async (incoming: IActiveHttpIncoming) => {
     // Get Database
@@ -296,10 +269,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
 
   // Bit of a proxy call to focus on umids
   http.use("*/umids", "GET", async (incoming: IActiveHttpIncoming) => {
-    return getTransactionUmids(incoming);
-  });
-
-  http.use("*/transactions", "GET", async (incoming: IActiveHttpIncoming) => {
     return getTransactionUmids(incoming);
   });
 
@@ -410,23 +379,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     return await getDB(name).prune(checked.request);
   });
 
-  // Direct sequence get
-  http.use("*/_seq/*", "GET", async (incoming: IActiveHttpIncoming) => {
-    const db = getDB(incoming.url[0]);
-    return await db.getSeq(incoming.url[2]);
-  });
-
-  // Direct sequence delete
-  http.use("*/_seq/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
-    const db = getDB(incoming.url[0]);
-    try {
-      await db.delSeq([incoming.url[2]]);
-      return { success: "ok" };
-    } catch {
-      throw new Error("Seq Delete Failed");
-    }
-  });
-
   // filename comes straight from the request body here - without this
   // check it's an arbitrary file write/read primitive (LevelMe.backup()/
   // restore() pass it directly to createWriteStream()/createReadStream()
@@ -474,6 +426,23 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
     await runFileJob("Restore", () => getDB(incoming.url[0]).restore(filename));
     return { status: "started" };
+  });
+
+  // Direct sequence get
+  http.use("*/_seq/*", "GET", async (incoming: IActiveHttpIncoming) => {
+    const db = getDB(incoming.url[0]);
+    return await db.getSeq(incoming.url[2]);
+  });
+
+  // Direct sequence delete
+  http.use("*/_seq/*", "DELETE", async (incoming: IActiveHttpIncoming) => {
+    const db = getDB(incoming.url[0]);
+    try {
+      await db.delSeq([incoming.url[2]]);
+      return { success: "ok" };
+    } catch {
+      throw new Error("Seq Delete Failed");
+    }
   });
 
   // Get specific docs from a database
@@ -1061,16 +1030,6 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         }
       }
     }
-  });
-
-  // Find API
-  http.use("*/_find", "POST", async (incoming: IActiveHttpIncoming) => {
-    return { error: "find is deprecated" };
-  });
-
-  // Explain
-  http.use("*/_explain", "POST", async (incoming: IActiveHttpIncoming) => {
-    return { error: "explain is deprecated" };
   });
 
   // The page that used to be served here was the CouchDB admin UI, which this
