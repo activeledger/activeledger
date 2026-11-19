@@ -22,7 +22,7 @@
  */
 import { ActiveGZip } from "./gzip";
 import { StorageSocket } from "./storagesocket";
-import { ContractScope } from "./contractscope";
+import { ContractScope, StorageAccessError } from "./contractscope";
 import { Dispatcher, setGlobalDispatcher, getGlobalDispatcher, Agent } from "undici";
 
 /**
@@ -151,9 +151,30 @@ export class ActiveRequest {
     // A contract's HTTP is this class. It may call out, but not to the storage
     // (unless its namespace has been allowed that database).
     if (ContractScope.current()) {
-      // Serialised once, here: what is checked is exactly what is sent, whatever
-      // toJSON or a getter would answer the second time it was asked
-      if (data && typeof data === "object" && !Buffer.isBuffer(data)) data = JSON.stringify(data);
+      // Everything is turned into plain values once, here, and the check and the
+      // request both get these: whatever a toString, toJSON or getter would answer
+      // the second time it was asked cannot change what was approved.
+      reqUrl = String(reqUrl);
+      type = String(type ?? "GET").toUpperCase();
+      if (header !== undefined) {
+        if (!Array.isArray(header)) throw new StorageAccessError("Headers that are not a list");
+        header = header.map((h) => String(h));
+        // The storage decompresses what is declared encoded, so an encoded body
+        // is one the check cannot read
+        if (header.some((h) => /^\s*(content|transfer)-encoding\s*:/i.test(h))) {
+          throw new StorageAccessError("An encoded request");
+        }
+      }
+      if (data && typeof data === "object") {
+        if (Buffer.isBuffer(data) || ArrayBuffer.isView(data)) {
+          const bytes = Buffer.from(data as any);
+          // The storage also decompresses a gzip body without being told
+          if (bytes[0] === 0x1f && bytes[1] === 0x8b) throw new StorageAccessError("A compressed request");
+          data = bytes;
+        } else {
+          data = JSON.stringify(data);
+        }
+      }
       const approve = ContractScope.check(reqUrl, data, type);
       if (approve) {
         return approve(() => perform(reqUrl, type, header, data, enableGZip, timeout));

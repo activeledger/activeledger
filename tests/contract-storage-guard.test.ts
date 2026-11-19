@@ -102,6 +102,25 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
     expect(hits.storage).to.equal(0);
   });
 
+  it("is not fooled by an encoded body, an encoding header, or arguments that answer differently when asked again", async () => {
+    const zlib = require("zlib");
+    const allowing = [`127.0.0.1:${storagePort}`];
+    const inAllowed = <T>(fn: () => T) => runSandboxed({ mode: "storage", onBlocked: () => undefined, customDatabases: true, allow: (d) => ContractScope.listed(allowing, d) }, fn);
+    const url = `http://127.0.0.1:${storagePort}/activeledger_wallets/_bulk_docs`;
+    // A gzip body hides the word from the check; the storage would decompress it
+    const packed = zlib.gzipSync(Buffer.from('{"docs":[{"_id":"k:volatile"}]}'));
+    expect(await refused(() => inAllowed(() => ActiveRequest.send(url, "POST", undefined, packed)))).to.be.instanceOf(StorageAccessError);
+    expect(await refused(() => inAllowed(() => ActiveRequest.send(url, "POST", ["content-encoding:gzip"], '{"a":1}')))).to.be.instanceOf(StorageAccessError);
+    // A url that is a different string each time it is turned into one: asked once
+    let asked = 0;
+    const slippery: any = { toString: () => (++asked === 1 ? `http://127.0.0.1:${storagePort}/activeledger_wallets/x` : `http://127.0.0.1:${storagePort}/activeledger/x`) };
+    const seen: string[] = [];
+    storage.once("request", (q) => seen.push(q.url || ""));
+    await inAllowed(() => ActiveRequest.send(slippery, "GET"));
+    expect(asked).to.equal(1);
+    expect(seen).to.deep.equal(["/activeledger_wallets/x"]);
+  });
+
   it("keeps the older all-network block for a hybrid execution", async () => {
     const e = await refused(() => runSandboxed({ onBlocked: () => undefined }, () => http.get(`http://127.0.0.1:${otherPort}/`)));
     expect(e.name).to.equal("SupernodeOnly");
