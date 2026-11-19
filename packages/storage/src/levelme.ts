@@ -102,6 +102,14 @@ export class LevelMe {
   private static DOC_PREFIX = "ÿdocument-storeÿ";
 
   /**
+   * Field of a stored state record that carries the stream's `:stream` meta
+   * document with it (db.selfhost.merge). One key, one read and one write
+   * serve both; every read still hands back two documents.
+   */
+  private static MERGED = "ÿm";
+  private static STREAM_SUFFIX = ":stream";
+
+  /**
    * PouchDb Legacy Support
    * Database value key
    *
@@ -146,6 +154,9 @@ export class LevelMe {
 
   private openingPromise: Promise<void> | null = null;
 
+  /** State and `:stream` meta held as one record (the ledger database only) */
+  private merge = false;
+
   /**
    * @param location Data directory prefix
    * @param name Database name
@@ -162,6 +173,7 @@ export class LevelMe {
     cache = false
   ) {
     this.driver = new LevelDBDriver(location + name, provider, /(event|error)/i.test(name));
+    this.merge = process.env.ACTIVE_STORAGE_MERGE === "1" && !/(event|error)/i.test(name);
     if (cache) {
       this.cache = ActiveCacheManager.fetch(`streams:${this.name}`, 30000);
     }
@@ -420,7 +432,7 @@ export class LevelMe {
             }
 
             // Push the promise into the array to maintain order
-            const pending = ActiveClone.deserialize(data.value).then((doc: any) => {
+            const row = (doc: any) => {
               if (options.include_docs) {
                 return doc;
               } else {
@@ -433,6 +445,14 @@ export class LevelMe {
                   value: { rev: doc._rev },
                 };
               }
+            };
+            const pending = ActiveClone.deserialize(data.value).then((doc: any) => {
+              // A record holding state and meta is two rows
+              if (this.merge && doc && doc[LevelMe.MERGED] !== undefined) {
+                const { state, meta } = LevelMe.split(doc);
+                return [row(state), row(meta)];
+              }
+              return row(doc);
             });
             // The end handler reports a failure; this only stops a rejection
             // that lands before the stream ends counting as unhandled
@@ -448,7 +468,7 @@ export class LevelMe {
               // value rejects here, which must reach the caller - this is an
               // event handler, so nothing else would ever catch it.
               try {
-                const rows = await Promise.all(docPromises);
+                const rows = (await Promise.all(docPromises)).flat();
                 resolve({
                   total_rows: rows.length,
                   offset,
@@ -477,7 +497,7 @@ export class LevelMe {
       if (!this.cache.has(cacheKey)) {
         await this.open();
         // Allow errors to bubble up?
-        const doc = await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
+        const doc = (this.merge ? await this.getLogical(key) : await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key))) as any;
         if (raw) {
           this.cache.set(cacheKey, doc);
         } else {
@@ -488,13 +508,79 @@ export class LevelMe {
     } else {
       await this.open();
       // Allow errors to bubble up?
-      const doc = await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key)) as any;
+      const doc = (this.merge ? await this.getLogical(key) : await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key))) as any;
       if (raw) {
         return doc;
       } else {
         return await this.seqDocFromRoot(doc);
       }
     }
+  }
+
+
+  /**
+   * Splits a stored record into the two documents it holds.
+   */
+  private static split(rec: any): { state: any; meta?: any } {
+    if (rec && rec[LevelMe.MERGED] !== undefined) {
+      const { [LevelMe.MERGED]: meta, ...state } = rec;
+      return { state, meta };
+    }
+    return { state: rec };
+  }
+
+  /**
+   * One document as callers see it, from a store that may hold the state and
+   * meta together. A meta not found inside its state's record is looked for
+   * under its own key, which is where data from before the merge lives.
+   */
+  private async getLogical(key: string): Promise<any> {
+    if (key.endsWith(LevelMe.STREAM_SUFFIX)) {
+      const base = key.slice(0, -LevelMe.STREAM_SUFFIX.length);
+      const raw = await this.driver.getOrUndefined!(LevelMe.DOC_PREFIX + base);
+      if (raw !== undefined) {
+        const { meta } = LevelMe.split(await ActiveClone.deserialize(raw));
+        if (meta) return meta;
+      }
+    }
+    return LevelMe.split(await ActiveClone.deserialize(await this.driver.get(LevelMe.DOC_PREFIX + key))).state;
+  }
+
+  /**
+   * getMany() for a store holding state and meta together: reads each state
+   * record once for the pair.
+   */
+  private async getManyMerged(keys: string[]): Promise<any[]> {
+    const source = (key: string) => key.endsWith(LevelMe.STREAM_SUFFIX) ? key.slice(0, -LevelMe.STREAM_SUFFIX.length) : key;
+    const ids = [...new Set(keys.map(source))];
+    const result = await this.driver.getMany(ids.map((id) => LevelMe.DOC_PREFIX + id));
+    const recs = new Map<string, any>();
+    const decoded = await Promise.all(result.map((raw: any) => raw === undefined || raw === null ? undefined : (ActiveClone.deserialize(raw) as Promise<any>)));
+    ids.forEach((id, i) => { if (decoded[i]) recs.set(id, decoded[i]); });
+
+    // A meta the record does not carry may still sit under its own key
+    const legacy: string[] = [];
+    for (const key of keys) {
+      if (key.endsWith(LevelMe.STREAM_SUFFIX) && !recs.get(source(key))?.[LevelMe.MERGED]) legacy.push(key);
+    }
+    const old = new Map<string, any>();
+    if (legacy.length) {
+      const got = await this.driver.getMany(legacy.map((id) => LevelMe.DOC_PREFIX + id));
+      const dec = await Promise.all(got.map((raw: any) => raw === undefined || raw === null ? undefined : (ActiveClone.deserialize(raw) as Promise<any>)));
+      legacy.forEach((id, i) => { if (dec[i]) old.set(id, dec[i]); });
+    }
+
+    const docs: any[] = [];
+    for (const key of keys) {
+      const rec = recs.get(source(key));
+      let doc: any;
+      if (key.endsWith(LevelMe.STREAM_SUFFIX)) doc = rec?.[LevelMe.MERGED] ?? old.get(key);
+      else doc = rec ? LevelMe.split(rec).state : undefined;
+      if (!doc || !doc._id) continue;
+      if (this.cache) this.cache.set(doc._id, doc);
+      docs.push(doc);
+    }
+    return docs;
   }
 
   public async getMany(keys: string[]): Promise<any[]> {
@@ -527,6 +613,10 @@ export class LevelMe {
       // behaviour - Activity.getState() (contracts/stream.ts) deep-clones
       // before any contract sees state, so this was never load-bearing.
       return keys.map((key) => cache.get(key, 30000));
+    }
+
+    if (this.merge) {
+      return this.getManyMerged(keys);
     }
 
     const prefixed = keys.map((key) => LevelMe.DOC_PREFIX + key);
@@ -672,6 +762,15 @@ export class LevelMe {
 
     // For now just delete the document key (not sequence)
     // _local_doc_count need to reduce count
+    if (this.merge && key.endsWith(LevelMe.STREAM_SUFFIX)) {
+      // The meta may be inside its state's record: write the record back without it
+      const base = LevelMe.DOC_PREFIX + key.slice(0, -LevelMe.STREAM_SUFFIX.length);
+      const raw = await this.driver.getOrUndefined!(base);
+      if (raw !== undefined) {
+        const { state, meta } = LevelMe.split(await ActiveClone.deserialize(raw));
+        if (meta) batch.put(base, await ActiveClone.serialize(state, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+      }
+    }
     batch.del(LevelMe.DOC_PREFIX + key);
 
     if (this.cache) {
@@ -841,7 +940,28 @@ export class LevelMe {
       }
     };
     const distinct = new Set(docs.map((d) => d._id)).size === docs.length;
-    if (distinct && docs.length > 1) {
+    if (this.merge && distinct) {
+      // A state and its meta in one batch are one record: weigh them up together
+      await this.open();
+      const byId = new Map(docs.map((d) => [d._id, d]));
+      const groups: Array<[document | undefined, document | undefined]> = [];
+      for (const d of docs) {
+        if (d._id.endsWith(LevelMe.STREAM_SUFFIX)) {
+          if (!byId.has(d._id.slice(0, -LevelMe.STREAM_SUFFIX.length))) groups.push([undefined, d]);
+        } else {
+          groups.push([d, byId.get(d._id + LevelMe.STREAM_SUFFIX)]);
+        }
+      }
+      const settled = await Promise.allSettled(
+        groups.map(([state, meta]) => this.prepareGroup(state, meta, batch, options))
+      );
+      for (const result of settled) {
+        if (result.status === "rejected") throw result.reason;
+      }
+      for (const result of settled) {
+        for (const writer of (result as PromiseFulfilledResult<any[]>).value) collect(writer);
+      }
+    } else if (distinct && docs.length > 1) {
       // Each document's read of its current state is independent of the
       // others, so do them together instead of one threadpool round trip
       // after another. The puts go into the same batch (the writer chain is
@@ -960,14 +1080,17 @@ export class LevelMe {
   }> {
     await this.open();
 
-    // MD5 input to act as tree position
-    // Use a copy to avoid mutating the original object
-    //const docToWrite = { ...doc };
-    //delete docToWrite._rev;
-    //const incomingDoc = JSON.stringify(docToWrite);
-    // Not backwards compatiable
-    const md5 = createHash("md5").update(JSON.stringify({ ...doc, _rev: null })).digest("hex");
-    let newRev = "";
+    // A state record may carry its meta: both documents are weighed up
+    // together and written back as one record
+    if (this.merge) {
+      const out = await this.prepareGroup(
+        doc._id.endsWith(LevelMe.STREAM_SUFFIX) ? undefined : doc,
+        doc._id.endsWith(LevelMe.STREAM_SUFFIX) ? doc : undefined,
+        chain,
+        options
+      );
+      return out[0];
+    }
 
     // Does Document exist? A driver that can answer "no" without throwing does
     // (every new document and every event row is a miss, and a thrown Error
@@ -988,6 +1111,100 @@ export class LevelMe {
       }
     }
 
+    const verdict = this.evaluate(doc, currentDocRoot, options);
+    if (verdict.write) {
+      chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+    }
+    return { chain, ...verdict.result };
+  }
+
+  /**
+   * Reads one stored record and weighs up the writes of the state and meta it
+   * holds. At most one put results, carrying both. A write of only one of the
+   * two keeps the other as stored; a meta with no state record to ride on is
+   * stored under its own key, as it always was.
+   */
+  private async prepareGroup(
+    state: document | undefined,
+    meta: document | undefined,
+    chain: LevelUpChain<any, any>,
+    options: { new_edits: boolean; force_rev?: string }
+  ): Promise<any[]> {
+    const baseId = state ? state._id : meta!._id.slice(0, -LevelMe.STREAM_SUFFIX.length);
+    const key = LevelMe.DOC_PREFIX + baseId;
+    const metaKey = LevelMe.DOC_PREFIX + baseId + LevelMe.STREAM_SUFFIX;
+
+    const raw = await this.driver.getOrUndefined!(key);
+    let curState: any;
+    let curMeta: any;
+    if (raw !== undefined) {
+      ({ state: curState, meta: curMeta } = LevelMe.split(await ActiveClone.deserialize(raw)));
+    }
+
+    // Data from before the merge keeps its meta under its own key
+    let legacyMeta = false;
+    if (meta && curState && !curMeta) {
+      const old = await this.driver.getOrUndefined!(metaKey);
+      if (old !== undefined) {
+        curMeta = await ActiveClone.deserialize(old);
+        legacyMeta = true;
+      }
+    }
+
+    const results: any[] = [];
+    let stateWrite = false;
+    let metaWrite = false;
+    if (state) {
+      const v = this.evaluate(state, curState, options);
+      stateWrite = v.write;
+      results.push({ chain, ...v.result });
+    }
+    if (meta) {
+      const v = this.evaluate(meta, curMeta, options);
+      metaWrite = v.write;
+      results.push({ chain, ...v.result });
+    }
+
+    if (meta && !state && !curState) {
+      // Nothing to ride on: its own key
+      if (metaWrite) {
+        chain.put(metaKey, await ActiveClone.serialize(meta, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+      }
+      return results;
+    }
+
+    if (stateWrite || metaWrite || (legacyMeta && meta)) {
+      const outState = state && stateWrite ? state : curState;
+      const outMeta = meta && metaWrite ? meta : curMeta;
+      const record: any = { ...outState };
+      if (outMeta) record[LevelMe.MERGED] = outMeta;
+      chain.put(key, await ActiveClone.serialize(record, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+      if (legacyMeta) chain.del(metaKey);
+    }
+    return results;
+  }
+
+  /**
+   * Decides what writing a document does against what is stored for it:
+   * its new revision, whether anything has to be written, or why it cannot.
+   */
+  private evaluate(
+    doc: document,
+    currentDocRoot: schema | undefined,
+    options: { new_edits: boolean; force_rev?: string }
+  ): {
+    write: boolean;
+    result: {
+      rev: string;
+      unchanged?: boolean;
+      changes: { id: string; changes: { rev: string }[]; doc: document; seq: number };
+    };
+  } {
+    // MD5 input to act as tree position
+    const md5 = createHash("md5").update(JSON.stringify({ ...doc, _rev: null })).digest("hex");
+    let newRev = "";
+    let write = false;
+
     if (currentDocRoot) {
       // Document exists, handle update
 
@@ -1006,14 +1223,16 @@ export class LevelMe {
         const fromPos = doc._rev ? parseInt(doc._rev.split("-")[0]) : 0;
         if (storedMd5 === md5 && parseInt(storedPos) === fromPos + 1) {
           return {
-            chain,
-            rev: currentDocRoot._rev,
-            unchanged: true,
-            changes: {
-              id: doc._id,
-              changes: [{ rev: currentDocRoot._rev }],
-              doc: currentDocRoot as document,
-              seq: Date.now(),
+            write: false,
+            result: {
+              rev: currentDocRoot._rev,
+              unchanged: true,
+              changes: {
+                id: doc._id,
+                changes: [{ rev: currentDocRoot._rev }],
+                doc: currentDocRoot as document,
+                seq: Date.now(),
+              },
             },
           };
         }
@@ -1023,23 +1242,17 @@ export class LevelMe {
       if (options.force_rev) {
         newRev = options.force_rev;
       } else {
-
         const [p1, curmd5] = currentDocRoot._rev.split("-");
-        //const pos = parseInt(p1) + 1;
-        //newRev = `${pos}-${md5}`;
-
         // Md5s don't match we need to update rev, This will then get it written to disk
         if (md5 !== curmd5) {
           newRev = `${parseInt(p1) + 1}-${md5}`;
         }
-
       }
 
       if (newRev) {
         doc._rev = newRev;
-        chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+        write = true;
       }
-
     } else {
       // Document doesn't exist, handle creation
       if (!options.new_edits && doc._rev) {
@@ -1048,38 +1261,27 @@ export class LevelMe {
         newRev = `1-${md5}`;
       }
       doc._rev = newRev;
-      chain.put(LevelMe.DOC_PREFIX + doc._id, await ActiveClone.serialize(doc, { enableCompression: true, compressionThreshold: LevelMe.COMPRESS_ABOVE }));
+      write = true;
     }
 
     // Content the store already held writes nothing and keeps its revision
     newRev = newRev || currentDocRoot?._rev || "";
     return {
-      chain,
-      rev: newRev,
-      changes: {
-        id: doc._id,
-        changes: [{ rev: newRev }],
-        doc,
-        // No real sequence counter exists anywhere in this class - nothing
-        // ever writes a LevelMe.SEQ_PREFIX-keyed entry, despite
-        // changesFromSeq()'s whole design (a few lines below) assuming
-        // that range actually has data in it. That's a separate, deeper
-        // gap this doesn't attempt to fix (changesFromSeq() will keep
-        // returning an empty backfill regardless of `since`, for every
-        // caller, until real sequence tracking is implemented). This
-        // field exists only so the *live* change event this object feeds
-        // (selfhost.ts's _changes longpoll listener, `change.seq`) has
-        // something real to put in its response's "last_seq" field -
-        // without it, that field was the literal string "undefined"
-        // (JS's string-coercion of the missing property), which isn't
-        // valid JSON and broke every client trying to parse the response.
-        // Date.now() is monotonic enough for that one purpose; it is NOT
-        // a substitute for real backfill/replay support.
-        seq: Date.now(),
+      write,
+      result: {
+        rev: newRev,
+        changes: {
+          id: doc._id,
+          changes: [{ rev: newRev }],
+          doc,
+          // Date.now() is monotonic enough for the one purpose it serves:
+          // the live change event's last_seq. It is NOT a substitute for
+          // real backfill/replay support (none exists in this class).
+          seq: Date.now(),
+        },
       },
     };
   }
-
 
   /**
    * Provide real-time document insertion with starting point supported
