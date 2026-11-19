@@ -1,4 +1,3 @@
-import { EventEmitter } from "events";
 
 /**
  * Basice interface for Neighbours
@@ -84,22 +83,5 @@ export interface IActiveDSConnect {
    */
   put(doc: { _id: string; _rev?: string }): Promise<any>;
 
-  /**
-   * Fetch latest changes (not streaming)
-   *
-   * @param {{}} opts
-   * @returns {Promise<any>}
-   */
-  changes(opts: {
-    live?: boolean;
-    [opt: string]: any;
-  }): Promise<any> | IActiveDSChanges;
 }
 
-/**
- * @deprecated Legacy CouchDB-era changes feed (storage `_changes`), used only
- * by nano-gateway. Not for new code.
- */
-export interface IActiveDSChanges extends EventEmitter {
-  cancel(): void;
-}

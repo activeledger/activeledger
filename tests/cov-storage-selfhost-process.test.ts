@@ -143,28 +143,6 @@ describe("Storage process lifecycle (selfhost)", function () {
       }
     });
 
-    it("answers _changes on a freshly started process and closes the untouched database quietly", async () => {
-      const s = await startStorage(["level"]);
-      try {
-        // Nothing has opened this database yet
-        const r = await s.req("GET", "/activeledgerunopened/_changes?since=1");
-        expect(r.status).to.equal(200);
-        expect(r.json).to.deep.equal({ results: [], last_seq: 0 });
-        // since=now never needs the database, so it stays unopened
-        const n = await s.req("GET", "/activeledgeruntouched/_changes?since=now");
-        expect(n.status).to.equal(200);
-        await s.req("POST", "/activeledger", { _id: "a", v: 1 });
-        s.proc.kill("SIGTERM");
-        expect(await s.exit).to.deep.equal({ code: 0, signal: null });
-        expect(s.output()).to.not.contain("Error closing database");
-        expect(s.output()).to.contain("Closed database: activeledgerunopened");
-        expect(s.output()).to.contain("Closed database: activeledgeruntouched");
-        expect(s.output()).to.contain("Closed database: activeledger");
-      } finally {
-        await s.stop();
-        s.cleanup();
-      }
-    });
   });
 
   describe("a database another process holds", () => {
@@ -231,11 +209,6 @@ describe("Storage process lifecycle (selfhost)", function () {
       // and nothing of that reached the holder's data
       expect((await a.req("GET", "/activeledger/held")).json.v).to.equal(1);
       expect((await a.req("GET", "/activeledger/x")).status).to.equal(500);
-    });
-
-    it("a failed sequence delete says so", async () => {
-      const r = await b.req("DELETE", "/activeledger/_seq/0000000000000001");
-      expect(r.status).to.equal(500);
     });
 
     it("the other process still shuts down cleanly", async () => {
@@ -663,140 +636,4 @@ describe("Storage process /events and longpoll feeds (selfhost)", function () {
     });
   });
 
-  describe("_changes longpoll", () => {
-    const db = "activeledgerlongpoll";
-    const parse = (body: string) => JSON.parse(body);
-
-    it("holds open, streaming the start of the body, then returns the change", async () => {
-      const st = await openStream(s.port, `/${db}/_changes?feed=longpoll&since=now&heartbeat=60000`);
-      try {
-        expect(st.status).to.equal(200);
-        expect(st.headers["content-type"]).to.equal("application/json");
-        await st.until((b) => b.startsWith('{"results":[\n'));
-        expect(st.ended()).to.equal(false);
-        await s.req("POST", `/${db}`, { _id: "lp1", v: 1 });
-        await st.until(() => st.ended());
-        const parsed = parse(st.body());
-        expect(parsed.results).to.have.length(1);
-        expect(parsed.results[0].id).to.equal("lp1");
-        expect(parsed.results[0].doc).to.deep.include({ _id: "lp1", v: 1 });
-        expect(parsed.last_seq).to.equal(Number(parsed.results[0].seq));
-      } finally {
-        st.close();
-      }
-    });
-
-    it("returns every change of one multi document commit in a single round", async () => {
-      const st = await openStream(s.port, `/${db}/_changes?feed=longpoll&since=now&heartbeat=60000`);
-      try {
-        await st.until((b) => b.startsWith('{"results":[\n'));
-        await s.req("POST", `/${db}/_bulk_docs`, {
-          docs: [
-            { _id: "lpb1", v: 1 },
-            { _id: "lpb2", v: 2 },
-            { _id: "lpb3", v: 3 },
-          ],
-        });
-        await st.until(() => st.ended());
-        const parsed = parse(st.body());
-        expect(parsed.results.map((r: any) => r.id).sort()).to.deep.equal(["lpb1", "lpb2", "lpb3"]);
-        const maxSeq = Math.max(...parsed.results.map((r: any) => Number(r.seq)));
-        expect(parsed.last_seq).to.equal(maxSeq);
-      } finally {
-        st.close();
-      }
-    });
-
-    it("keeps bytes flowing with a heartbeat while nothing changes", async () => {
-      const st = await openStream(s.port, `/${db}/_changes?feed=longpoll&since=now&heartbeat=100`);
-      try {
-        await st.until((b) => b.startsWith('{"results":[\n'));
-        // opening line is "...[\n"; each heartbeat adds one more newline
-        const body = await st.until((b) => b.length >= '{"results":[\n'.length + 3, 5000);
-        expect(body).to.match(/^\{"results":\[\n\n+$/);
-        expect(st.ended()).to.equal(false);
-        // and the feed still completes with the change afterwards
-        await s.req("POST", `/${db}`, { _id: "lphb", v: 1 });
-        await st.until(() => st.ended());
-        expect(parse(st.body()).results[0].id).to.equal("lphb");
-      } finally {
-        st.close();
-      }
-    });
-
-    it("a continuous feed is not served but does not disturb the server", async () => {
-      const http = require("http");
-      const got = await new Promise<string>((resolve) => {
-        const req = http.get(
-          { host: "127.0.0.1", port: s.port, path: `/${db}/_changes?feed=continuous&since=now`, agent: false },
-          (res: any) => resolve(`response ${res.statusCode}`)
-        );
-        req.on("error", () => resolve("error"));
-        setTimeout(() => {
-          req.destroy();
-          resolve("none");
-        }, 400);
-      });
-      expect(got).to.not.equal("response 500");
-      expect((await s.req("GET", "/")).status).to.equal(200);
-    });
-
-    it("a client that goes away is cleaned up and the server keeps serving", async () => {
-      const st = await openStream(s.port, `/${db}/_changes?feed=longpoll&since=now&heartbeat=50`);
-      await st.until((b) => b.startsWith('{"results":[\n'));
-      st.close();
-      await sleep(300);
-      const w = await s.req("POST", `/${db}`, { _id: "after-abandon", v: 1 });
-      expect(w.status).to.equal(200);
-      expect((await s.req("GET", "/")).status).to.equal(200);
-    });
-
-    it("changes made before the poll started are not returned by it", async () => {
-      await s.req("POST", `/${db}`, { _id: "early", v: 1 });
-      const st = await openStream(s.port, `/${db}/_changes?feed=longpoll&since=now&heartbeat=60000`);
-      try {
-        await st.until((b) => b.startsWith('{"results":[\n'));
-        await s.req("POST", `/${db}`, { _id: "late", v: 1 });
-        await st.until(() => st.ended());
-        expect(parse(st.body()).results.map((r: any) => r.id)).to.deep.equal(["late"]);
-      } finally {
-        st.close();
-      }
-    });
-  });
-
-  describe("_changes longpoll with a damaged sequence entry", () => {
-    let bad: Storage;
-    before(async () => {
-      bad = await startStorage(["level"], "bdata", async (prefix) => {
-        const { LevelDBDriver } = require("../packages/storage/src/drivers/leveldb");
-        const d = new LevelDBDriver(prefix + "activeledger", "level");
-        await d.open();
-        await d.put("ÿby-sequenceÿ0000000000000005", Buffer.from("not a serialised document"));
-        await d.close();
-      });
-    });
-    after(async () => {
-      await bad?.stop();
-      bad?.cleanup();
-    });
-
-    it("answers a longpoll with a 500 carrying the error", async () => {
-      const st = await openStream(bad.port, "/activeledger/_changes?feed=longpoll&since=1");
-      try {
-        await st.until(() => st.ended());
-        expect(st.status).to.equal(500);
-        const body = JSON.parse(st.body());
-        expect(body).to.have.property("error").that.is.a("string");
-        expect(body.results).to.equal(undefined);
-      } finally {
-        st.close();
-      }
-    });
-
-    it("answers a plain _changes with a 500", async () => {
-      const r = await bad.req("GET", "/activeledger/_changes?since=1");
-      expect(r.status).to.equal(500);
-    });
-  });
 });

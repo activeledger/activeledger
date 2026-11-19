@@ -90,7 +90,7 @@ export const SERVER_IDLE_TIMEOUT_MS = 10_000;
 const CLIENT_IDLE_TIMEOUT_MS = 4_000;
 
 // Routes that hold the response open and stream it
-const STREAMING_PATH = /\/(_changes|events)(\?|$)/;
+const STREAMING_PATH = /\/events(\?|$)/;
 
 export const DISPATCHER_OPTIONS = {
   connect: {

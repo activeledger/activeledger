@@ -25,7 +25,6 @@ import { Helper } from "../helper/helper";
 import {
   ActiveOptions,
   ActiveDSConnect,
-  ActiveChanges,
 } from "@activeledger/activeoptions";
 import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";

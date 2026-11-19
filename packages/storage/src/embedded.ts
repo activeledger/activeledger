@@ -105,7 +105,7 @@ const requestBody = (data: any): any => JSON.parse(JSON.stringify(data));
 export class EmbeddedDSConnect implements IDSConnect {
   /**
    * The underlying store. Its changes() emitter is the live feed the
-   * storage process's /events and _changes handlers listen to.
+   * storage process's /events handler listens to.
    */
   public readonly level: LevelMe;
 

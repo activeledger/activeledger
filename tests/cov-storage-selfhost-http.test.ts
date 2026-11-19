@@ -41,47 +41,19 @@ describe("Storage process HTTP API (selfhost)", function () {
       });
     });
 
-    it("answers _session as an admin without a name", async () => {
-      const r = await s.req("GET", "/_session");
-      expect(r.status).to.equal(200);
-      expect(r.json).to.deep.equal({
-        ok: true,
-        userCtx: { name: null, roles: ["_admin"] },
-      });
-    });
-
     it("sets permissive CORS headers and a json content type", async () => {
-      const r = await s.req("GET", "/_session");
+      const r = await s.req("GET", "/_all_dbs");
       expect(r.headers["access-control-allow-origin"]).to.equal("*");
       expect(r.headers["content-type"]).to.equal("application/json");
     });
 
-    it("generates as many unique uuids as asked for", async () => {
-      const r = await s.req("GET", "/_uuids?count=4");
-      expect(r.status).to.equal(200);
-      expect(r.json.uuids).to.have.length(4);
-      for (const u of r.json.uuids) {
-        expect(u).to.match(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-        );
-      }
-      expect(new Set(r.json.uuids).size).to.equal(4);
-    });
-
-    it("generates none for count=0 or when no count is given", async () => {
-      expect((await s.req("GET", "/_uuids?count=0")).json).to.deep.equal({
-        uuids: [],
-      });
-      expect((await s.req("GET", "/_uuids")).json).to.deep.equal({ uuids: [] });
-    });
-
-    it("answers _find and _explain as deprecated", async () => {
-      const f = await s.req("POST", "/activeledger/_find", {});
-      expect(f.status).to.equal(200);
-      expect(f.json).to.deep.equal({ error: "find is deprecated" });
-      const e = await s.req("POST", "/activeledger/_explain", {});
-      expect(e.status).to.equal(200);
-      expect(e.json).to.deep.equal({ error: "explain is deprecated" });
+    it("no longer answers the routes that only the CouchDB tools used", async () => {
+      // None has a consumer: the explorer, the node and every SDK use _all_docs,
+      // _bulk_docs, documents, umids and the events feed.
+      expect((await s.req("GET", "/_session")).status).to.be.oneOf([404, 500]);
+      expect((await s.req("GET", "/_uuids?count=2")).status).to.be.oneOf([404, 500]);
+      expect((await s.req("POST", "/activeledger/_find", {})).status).to.equal(404);
+      expect((await s.req("POST", "/activeledger/_explain", {})).status).to.equal(404);
     });
   });
 
@@ -516,7 +488,7 @@ describe("Storage process HTTP API (selfhost)", function () {
     });
   });
 
-  describe("_seq and _compact on a legacy rev-tree database", () => {
+  describe("_compact on a legacy rev-tree database", () => {
     // Older versions stored a root document pointing at by-sequence entries.
     // Those are seeded straight into the database before it is opened by the
     // server, since nothing over HTTP writes them any more.
@@ -612,83 +584,6 @@ describe("Storage process HTTP API (selfhost)", function () {
     it("_raw with an @revision the root does not know fails", async () => {
       const r = await legacy.req("GET", "/activeledger/_raw/legacy1@9-zzz");
       expect(r.status).to.equal(500);
-    });
-
-    it("_seq returns a sequence entry and 500s when there is none", async () => {
-      const { ActiveClone } = require("../packages/utilities/src/clone");
-      const http = require("http");
-      const fetchRaw = (p: string) =>
-        new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
-          http.get(
-            { host: "127.0.0.1", port: legacy.port, path: p, agent: false },
-            (res: any) => {
-              const chunks: Buffer[] = [];
-              res.on("data", (c: Buffer) => chunks.push(c));
-              res.on("end", () =>
-                resolve({ status: res.statusCode, body: Buffer.concat(chunks) })
-              );
-            }
-          ).on("error", reject);
-        });
-      const hit = await fetchRaw(`/activeledger/_seq/${pad(3)}`);
-      expect(hit.status).to.equal(200);
-      expect(await ActiveClone.deserialize(hit.body)).to.deep.include({ _id: "legacy3" });
-      const miss = await fetchRaw(`/activeledger/_seq/${pad(99)}`);
-      expect(miss.status).to.equal(500);
-    });
-
-    it("_changes lists the sequence entries after `since`", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=1&limit=10");
-      expect(r.status).to.equal(200);
-      expect(r.json.results).to.deep.equal([
-        { id: "legacy1", seq: 2, changes: [{ rev: "2-bbb" }] },
-        { id: "legacy3", seq: 3, changes: [{ rev: "1-ccc" }] },
-      ]);
-      expect(r.json.last_seq).to.equal(0);
-    });
-
-    it("_changes defaults to five entries and honours limit", async () => {
-      const all = await legacy.req("GET", "/activeledger/_changes?since=0");
-      expect(all.json.results.map((x: any) => x.seq)).to.deep.equal([1, 2, 3]);
-      const one = await legacy.req("GET", "/activeledger/_changes?since=0&limit=1");
-      expect(one.json.results.map((x: any) => x.seq)).to.deep.equal([1]);
-    });
-
-    it("_changes treats a limit below 1 as 1", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=0&limit=0");
-      expect(r.json.results.map((x: any) => x.seq)).to.deep.equal([1]);
-    });
-
-    it("_changes can run descending and include docs", async () => {
-      const r = await legacy.req(
-        "GET",
-        "/activeledger/_changes?since=0&descending=true&include_docs=true&limit=2"
-      );
-      expect(r.json.results.map((x: any) => x.seq)).to.deep.equal([3, 2]);
-      expect(r.json.results[0].doc).to.deep.include({ _id: "legacy3", v: "three" });
-    });
-
-    it("_changes with since=now answers empty straight away", async () => {
-      const r = await legacy.req("GET", "/activeledger/_changes?since=now");
-      expect(r.status).to.equal(200);
-      expect(r.json).to.deep.equal({ results: [], last_seq: 0 });
-    });
-
-    it("a longpoll with changes already pending answers at once and completes", async () => {
-      const st = await openStream(legacy.port, "/activeledger/_changes?feed=longpoll&since=1&limit=10");
-      expect(st.status).to.equal(200);
-      expect(st.headers["content-type"]).to.equal("application/json");
-      await st.until(() => st.ended());
-      const parsed = JSON.parse(st.body());
-      expect(parsed.results.map((x: any) => x.seq)).to.deep.equal([2, 3]);
-    });
-
-    it("_seq DELETE removes the entry", async () => {
-      const del = await legacy.req("DELETE", `/activeledger/_seq/${pad(3)}`);
-      expect(del.status).to.equal(200);
-      expect(del.json).to.deep.equal({ success: "ok" });
-      const after = await legacy.req("GET", "/activeledger/_changes?since=0&limit=10");
-      expect(after.json.results.map((x: any) => x.seq)).to.deep.equal([1, 2]);
     });
 
     it("_compact is accepted and leaves the data readable", async () => {

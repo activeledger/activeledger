@@ -775,23 +775,6 @@ export class LevelMe {
   }
 
   /**
-   * Deletes sequences as a batch
-   *
-   * @param {string[]} keys
-   * @returns {Promise<void>}
-   */
-  public async delSeq(keys: string[]): Promise<void> {
-    await this.open();
-    const batch = await this.driver.batch();
-
-    for (let i = keys.length; i--;) {
-      batch.del(LevelMe.SEQ_PREFIX + keys[i]);
-    }
-
-    await batch.write();
-  }
-
-  /**
    * Provide real-time document insertion with starting point supported
    *
    * @param {string} options
@@ -1093,145 +1076,16 @@ export class LevelMe {
         id: doc._id,
         changes: [{ rev: newRev }],
         doc,
-        // No real sequence counter exists anywhere in this class - nothing
-        // ever writes a LevelMe.SEQ_PREFIX-keyed entry, despite
-        // changesFromSeq()'s whole design (a few lines below) assuming
-        // that range actually has data in it. That's a separate, deeper
-        // gap this doesn't attempt to fix (changesFromSeq() will keep
-        // returning an empty backfill regardless of `since`, for every
-        // caller, until real sequence tracking is implemented). This
-        // field exists only so the *live* change event this object feeds
-        // (selfhost.ts's _changes longpoll listener, `change.seq`) has
-        // something real to put in its response's "last_seq" field -
-        // without it, that field was the literal string "undefined"
-        // (JS's string-coercion of the missing property), which isn't
-        // valid JSON and broke every client trying to parse the response.
-        // Date.now() is monotonic enough for that one purpose; it is NOT
-        // a substitute for real backfill/replay support.
+        // There is no sequence counter in this class. This only keeps the
+        // shape of the change event that listeners (changes()) have always
+        // been given; Date.now() is monotonic enough for that and is not a
+        // sequence to replay from.
         seq: Date.now(),
       },
     };
   }
 
 
-  /**
-   * Provide real-time document insertion with starting point supported
-   *
-   * @param {string} options
-   * @returns {*}
-   */
-  public async changesFromSeq(options: changesOptions): Promise<{
-    results: {
-      id: string;
-      changes: { rev: string }[];
-      doc?: document;
-      seq: number;
-    }[];
-    last_seq: number;
-  }> {
-    // since="now" needs no data, so it must not open (create) a database
-    if (options.since !== "now") {
-      await this.open();
-    }
-    return new Promise((resolve, reject) => {
-      // since="now" (nano-gateway's ChangesWatcher default for a fresh
-      // subscription with no Last-Event-ID to resume from -
-      // packages/nano-gateway/src/changesWatcher.ts) means "nothing is
-      // pending as of this instant" - resolve that directly rather than
-      // falling through to the numeric-seq path below, which used to do
-      // "now".padStart(16, "0") = "0000000000000now" as a LevelDB range
-      // key. That's not a valid padded-numeric sequence key, and the
-      // underlying driver's createReadStream() throws on it - which,
-      // since selfhost.ts's _changes handler has no .catch() on this
-      // promise, surfaced as an opaque 500 with an empty {} body all the
-      // way up through nano-gateway's own client (live-confirmed: this is
-      // exactly what broke nano-gateway's very first subscribe attempt
-      // once the two other _changes bugs - unfinalised response, and the
-      // separate garbage-header-bytes bug - were fixed and this code path
-      // was reached for the first time).
-      if (options.since === "now") {
-        resolve({ results: [], last_seq: 0 });
-        return;
-      }
-
-      // get all sequenced documents with emitter, sequence "maybe up to date"
-      // Cache rows to be returned
-      const rows: any[] = [];
-
-      // For checking on end
-      const promises: Promise<document>[] = [];
-
-      // Filter for sequences metadata
-      const filter = {
-        gt: LevelMe.SEQ_PREFIX,
-        lt: LevelMe.DOC_PREFIX,
-        limit: parseInt((options.limit || 5).toString()),
-        reverse:
-          options.descending && options.descending.toString() === "true"
-            ? true
-            : false, // (array reverse maybe faster, but wont work with filter)
-      };
-
-      if (options.since) {
-        filter.gt =
-          LevelMe.SEQ_PREFIX + options.since.toString().padStart(16, "0");
-      }
-
-      // Read / Search the database as a stream
-      this.driver
-        .createReadStream(filter)
-        .on("data", (data: { key: string; value: Buffer }) => {
-          // Deserialising is asynchronous (compressed values), so track it:
-          // the stream's end must wait for every row, and a damaged value
-          // must reach the caller. Rows are kept in stream order.
-          const index = promises.length;
-          const pending = ActiveClone.deserialize(data.value).then(
-            (doc: any) => {
-              // Get sequence from keyname
-              const seq = parseInt(
-                data.key.toString().replace(LevelMe.SEQ_PREFIX, "")
-              );
-              const row: any = {
-                id: doc._id,
-                seq,
-                changes: [
-                  {
-                    rev: doc._rev,
-                  },
-                ],
-              };
-              if (
-                options.include_docs &&
-                JSON.parse(options.include_docs.toString())
-              ) {
-                row.doc = doc;
-              }
-              rows[index] = row;
-              return doc as document;
-            }
-          );
-          // The end handler is what reports a failure; without this a
-          // rejection landing before the stream ends is reported as unhandled
-          pending.catch(() => { });
-          promises.push(pending);
-        })
-        .on("error", (err: unknown) => {
-          reject(err);
-        })
-        .on("close", () => { })
-        .on("end", async () => {
-          try {
-            await Promise.all(promises);
-            resolve({
-              results: rows,
-              last_seq: 0,
-            });
-          } catch (e) {
-            reject(e);
-          }
-        });
-    });
-  }
 }
 
 
