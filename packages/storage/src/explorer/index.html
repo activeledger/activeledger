@@ -289,7 +289,9 @@ const ask = ({ title, body, expect, danger, field, check }) => new Promise((reso
   yes.className = danger ? "btn danger" : "btn"; yes.disabled = typed;
   input.oninput = () => {
     if (expect) return (yes.disabled = input.value !== expect);
-    const err = check ? check(input.value) : ""; msg.textContent = input.value ? err : ""; yes.disabled = !input.value || !!err;
+    const err = check ? check(input.value) : "";
+    msg.textContent = input.value ? err || (field.preview ? field.preview(input.value) : "") : ""; msg.style.color = err ? "" : "var(--muted)";
+    yes.disabled = !input.value || !!err;
   };
   const done = (v) => { d.close(); resolve(v); };
   yes.onclick = () => done(field ? input.value : true); $("#ask-no").onclick = () => done(field ? null : false); d.oncancel = () => resolve(field ? null : false);
@@ -549,7 +551,7 @@ async function render() {
     chips.replaceChildren(size ? el("span", { class: "tag" }, size + " on disk") : null,
       exact != null ? el("span", { class: "tag" }, exact.toLocaleString() + " documents") : est ? el("span", { class: "tag", title: "Estimated from the size on disk and the average document size" }, "about " + est.toLocaleString() + " documents") : null);
   };
-  const head = el("div", { class: "bar" }, el("h2", {}, state.db), state.view === "al" ? el("span", { class: "tag" }, role(state.db)) : null, chips);
+  const head = el("div", { class: "bar" }, el("h2", { title: state.db }, shown(state.db)), state.view === "al" ? el("span", { class: "tag" }, role(state.db)) : null, chips);
   const bar = el("div", { class: "tabs", role: "tablist" }, tabs.map(([id, label]) => el("button", { role: "tab", "aria-selected": String(id === state.tab), onclick: () => { state.tab = id; state.q = ""; state.cursor = [null]; state.page = 0; render(); } }, label)));
   const body = el("div");
   const search = el("input", { type: "search", class: "search", placeholder: searchHint[state.tab] || "Search by key: type the start of it", "aria-label": "Search by key", spellcheck: "false", autocomplete: "off" });
@@ -563,8 +565,11 @@ async function render() {
   try { history.replaceState(null, "", "#" + new URLSearchParams({ db: state.db, tab: state.tab })); } catch {}
   await draw();
 }
+const PREFIX = "activeledger";
+/* Every database name starts with activeledger, so a mistyped address cannot create one. It is left off what is shown, except for the ledger itself. */
+const shown = (d) => (d !== PREFIX && d.startsWith(PREFIX) ? d.slice(PREFIX.length) : d);
 const NAME = /^activeledger[A-Za-z0-9_-]{0,64}$/;
-const dbCheck = (name) => !NAME.test(name) ? "Start with activeledger, then letters, numbers, _ or - (up to 64 more)." : isSystem(name) ? "That name is used by the node itself." : state.dbs.includes(name) ? "That database already exists." : "";
+const dbCheck = (suffix) => { const full = PREFIX + suffix; return !NAME.test(full) ? "Use letters, numbers, _ or - (up to 64)." : isSystem(full) ? "That name is used by the node itself." : state.dbs.includes(full) ? "That database already exists." : ""; };
 async function loadSizes() {
   await Promise.all(state.dbs.map(async (d) => { try { state.sizes[d] = (await api("/" + encodeURIComponent(d))).data_size; } catch {} }));
   renderNav();
@@ -579,12 +584,13 @@ async function reloadDbs(select) {
   render(); loadSizes();
 }
 async function addDb() {
-  const name = await ask({ title: "New custom database", body: "Names start with activeledger, then letters, numbers, _ or -.", field: { start: "activeledger", hint: "activeledgermydata" }, check: dbCheck });
-  if (!name) return;
+  const suffix = await ask({ title: "New custom database", body: "Letters, numbers, _ or -. It is stored with the prefix " + PREFIX + ", which the server needs.", field: { start: "", hint: "inventory", preview: (v) => "Created as " + PREFIX + v }, check: dbCheck });
+  if (!suffix) return;
+  const name = PREFIX + suffix;
   try { await api(`/${encodeURIComponent(name)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }); await reloadDbs(name); } catch (e) { notify("Could not create the database", String(e.message || e)); }
 }
 async function dropDb(name) {
-  if (!(await ask({ title: "Delete database " + name + "?", body: "Every document in it is removed and cannot be recovered.", expect: name, danger: true }))) return;
+  if (!(await ask({ title: "Delete database " + shown(name) + "?", body: "Every document in " + name + " is removed and cannot be recovered.", expect: shown(name), danger: true }))) return;
   try { await api(`/${encodeURIComponent(name)}`, { method: "DELETE" }); await reloadDbs(null); } catch (e) { notify("Could not delete the database", String(e.message || e)); }
 }
 const select = (d) => { state.db = d; state.tab = tabsFor(d)[0][0]; state.q = ""; state.cursor = [null]; state.page = 0; render(); };
@@ -612,7 +618,8 @@ async function showInfo(name) {
   let info = {};
   try { info = await api("/" + encodeURIComponent(name)); state.sizes[name] = info.data_size; } catch (e) { return notify("Could not read the database", String(e.message || e)); }
   const est = estimateItems(name, 1), docs = state.exact[name] != null ? state.exact[name].toLocaleString() : est ? "about " + est.toLocaleString() + " (estimate)" : "—";
-  drawer.open(name, el("div", { class: "kv" },
+  drawer.open(shown(name), el("div", { class: "kv" },
+    el("div", {}, "Name"), el("div", { class: "mono" }, name),
     el("div", {}, "Group"), el("div", {}, isSystem(name) ? "Activeledger (" + role(name) + ")" : "Custom"),
     el("div", {}, "Data on disk"), el("div", {}, fmtBytes(info.data_size) || "—"),
     el("div", {}, "Documents"), el("div", {}, docs)),
@@ -622,7 +629,7 @@ async function showInfo(name) {
 }
 function renderNav() {
   const item = (d) => {
-    const open = el("button", { "aria-current": String(d === state.db), onclick: () => select(d) }, el("span", { class: "name" }, d), state.view === "al" && isSystem(d) ? el("span", { class: "tag" }, role(d)) : null);
+    const open = el("button", { "aria-current": String(d === state.db), onclick: () => select(d) }, el("span", { class: "name", title: d }, shown(d)), state.view === "al" && isSystem(d) ? el("span", { class: "tag" }, role(d)) : null);
     const items = [["Open in new tab", () => openInTab(d)], ["Info page", () => showInfo(d)], ...(isSystem(d) ? [] : [["Delete…", () => dropDb(d), true]])];
     return el("div", { class: "dbrow" }, open, el("button", { class: "kebab", title: "More", "aria-label": "Actions for " + d, "aria-haspopup": "menu", onclick: (e) => menu.open(e.currentTarget, items) }, "⋮"));
   };
