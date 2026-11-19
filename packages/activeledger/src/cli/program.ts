@@ -43,6 +43,7 @@ const CONFIG_KEYS = [
   "neighbourhood",
   "neighbourhoodRemap",
   "network",
+  "p2pSlimReplies",
   "p2pStream",
   "p2pStreamServer",
   "proxy",

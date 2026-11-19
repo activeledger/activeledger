@@ -1788,9 +1788,27 @@ export class Host extends Home {
         // Every peer gets the same data, so serialise it once (on the first
         // peer that takes the P2P path; HTTP peers never ask) and share the
         // buffer rather than encoding it per peer.
+        //
+        // A reply to the one node that just sent us this transaction goes
+        // out as the vote alone: that node holds the transaction, and for one
+        // it holds a peer's frame is only read for its $nodes, so the
+        // $tx / $revs / $sigs it would carry again are about 70% of the
+        // bytes. Only on the P2P path and only when asked for (the HTTP and
+        // secured paths send `data` as before).
+        const slim =
+          only &&
+          data.$$noreply &&
+          ActiveOptions.get<boolean>("p2pSlimReplies", false)
+            ? {
+                $umid: data.$umid,
+                $broadcast: data.$broadcast,
+                $nodes: data.$nodes,
+                $$noreply: data.$$noreply,
+              }
+            : undefined;
         let serialised: Promise<Buffer> | undefined;
         const serialiseOnce = () =>
-          serialised || (serialised = Neighbour.serialiseParams(data));
+          serialised || (serialised = Neighbour.serialiseParams(slim ?? data));
 
         // Loop them all and broadcast the transaction
         for (let i = nodes.length; i--;) {
