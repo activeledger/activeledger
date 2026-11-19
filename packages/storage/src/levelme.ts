@@ -239,16 +239,12 @@ export class LevelMe {
     try {
       await this.open();
       return {
-        doc_count: "----",
-        update_seq: 0,
         db_name: this.name,
         data_size: 0,
       };
     } catch (e) {
       // TODO Filter bad / unexpected creates such as favicon.ico
       return {
-        doc_count: "----",
-        update_seq: 0,
         db_name: this.name,
         data_size: 0,
       };

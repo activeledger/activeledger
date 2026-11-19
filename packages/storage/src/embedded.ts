@@ -28,6 +28,7 @@ import { LevelMe } from "./levelme";
 import { eventsSince } from "./events";
 import {
   checkDoc,
+  dataSize,
   filterPrefix,
   isValidDbName,
   prepareAllDocs,
@@ -138,16 +139,12 @@ export class EmbeddedDSConnect implements IDSConnect {
   }
 
   /**
-   * GET /:db - database info, with data_size summed from its files.
+   * GET /:db - database info, with data_size the bytes its data files hold.
    */
   public info(): Promise<any> {
     return this.answer(async () => {
       const info: any = await this.level.info();
-      const files = await fs.promises.readdir(this.dir);
-      const stats = await Promise.all(
-        files.map((source) => fs.promises.stat(this.dir + "/" + source))
-      );
-      info.data_size = stats.reduce((total, stat) => total + stat.size, 0);
+      info.data_size = await dataSize(this.dir);
       return info;
     });
   }

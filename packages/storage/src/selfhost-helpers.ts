@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 import { randomUUID } from "crypto";
+import { promises as fsPromises } from "fs";
 
 /*
  * Request preparation shared by the storage process's HTTP handlers
@@ -101,4 +102,33 @@ export const filterPrefix = (stream: string, db?: string): string => {
     // Return just the id
     return streamId;
   }
+};
+
+/**
+ * Whether a file in a database directory holds data: the tables (.ldb, or
+ * .sst under RocksDB), the write-ahead log (a numbered .log, which keeps the
+ * latest writes until they are flushed into a table) and the manifest. The
+ * text logs (LOG, LOG.old), CURRENT and LOCK hold none; the text logs grow
+ * with every compaction on a long-running node.
+ *
+ * @param {string} name
+ * @returns {boolean}
+ */
+export const isDataFile = (name: string): boolean =>
+  /\.(ldb|sst)$/.test(name) || /^\d+\.log$/.test(name) || /^MANIFEST-\d+$/.test(name);
+
+/**
+ * Bytes the database keeps its data in on disk. A file a compaction removes
+ * between the listing and the stat is not counted, instead of failing the
+ * call.
+ *
+ * @param {string} dir
+ * @returns {Promise<number>}
+ */
+export const dataSize = async (dir: string): Promise<number> => {
+  const files = (await fsPromises.readdir(dir)).filter(isDataFile);
+  const stats = await Promise.all(
+    files.map((file) => fsPromises.stat(dir + "/" + file).catch(() => undefined))
+  );
+  return stats.reduce((total, stat) => total + (stat?.size ?? 0), 0);
 };

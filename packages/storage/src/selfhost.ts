@@ -33,6 +33,7 @@ import { EVENT_PREFIX, eventsSince } from "./events";
 import { checkPruneRequest } from "./prune";
 import {
   checkDoc,
+  dataSize,
   filterPrefix,
   isValidDbName,
   prepareAllDocs,
@@ -218,14 +219,8 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     let db = getDB(incoming.url[0]);
     let info = await db.info();
 
-    // Now add data_size
-    const files = await fsPromises.readdir(DIR_PREFIX + incoming.url[0]);
-    const stats = await Promise.all(
-      files.map((source) =>
-        fsPromises.stat(DIR_PREFIX + incoming.url[0] + "/" + source)
-      )
-    );
-    info.data_size = stats.reduce((total, stat) => total + stat.size, 0);
+    // Now add data_size: the bytes the data is kept in (see dataSize)
+    info.data_size = await dataSize(DIR_PREFIX + incoming.url[0]);
     return info;
   });
 
