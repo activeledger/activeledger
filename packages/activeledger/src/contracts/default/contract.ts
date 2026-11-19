@@ -1123,6 +1123,35 @@ export default class Contract extends Standard {
         report(node, `Private identifiers are forbidden`);
       }
 
+      // 7a. The scan treats this.getAnyStreamReadOnly(...) as the engine's own call (see below), so
+      // the name cannot be declared, assigned or overridden by the contract (from build 50600).
+      if (guardsFromSource) {
+        const NAME = "getAnyStreamReadOnly";
+        const declared =
+          ((ts.isFunctionDeclaration(node) ||
+            ts.isMethodDeclaration(node) ||
+            ts.isPropertyDeclaration(node) ||
+            ts.isVariableDeclaration(node) ||
+            ts.isPropertyAssignment(node) ||
+            ts.isParameter(node) ||
+            ts.isBindingElement(node) ||
+            ts.isGetAccessorDeclaration(node) ||
+            ts.isSetAccessorDeclaration(node)) &&
+            !!node.name &&
+            (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name) || ts.isNoSubstitutionTemplateLiteral(node.name)) &&
+            node.name.text === NAME) ||
+          (ts.isShorthandPropertyAssignment(node) && node.name.text === NAME) ||
+          (ts.isBinaryExpression(node) &&
+            node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+            ((ts.isPropertyAccessExpression(node.left) && node.left.name.text === NAME) ||
+              (ts.isElementAccessExpression(node.left) &&
+                (ts.isStringLiteral(node.left.argumentExpression) || ts.isNoSubstitutionTemplateLiteral(node.left.argumentExpression)) &&
+                (node.left.argumentExpression as ts.StringLiteral).text === NAME)));
+        if (declared) {
+          report(node, `'${NAME}' cannot be redefined`);
+        }
+      }
+
       // 7. Storage and local-service access written out in the source (from build 50600).
       // Static and the same on every node: only literals and option names are read, never
       // the node's config (the deploy scan is part of the vote). A destination built at
@@ -1183,9 +1212,12 @@ export default class Contract extends Standard {
             if (!call || !ts.isCallExpression(call) || call.arguments.indexOf(arg as ts.Expression) === -1) return false;
             let callee: ts.Node = call.expression;
             while (ts.isParenthesizedExpression(callee) || ts.isAsExpression(callee) || ts.isNonNullExpression(callee)) callee = callee.expression;
+            // Exactly this.getAnyStreamReadOnly: another receiver, or a bare name, could be the
+            // contract's own function
             return (
-              (ts.isPropertyAccessExpression(callee) && callee.name.text === "getAnyStreamReadOnly") ||
-              (ts.isIdentifier(callee) && callee.text === "getAnyStreamReadOnly")
+              ts.isPropertyAccessExpression(callee) &&
+              callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
+              callee.name.text === "getAnyStreamReadOnly"
             );
           };
           if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed) && !(isStreamIdArgument() && !/[\/\\]/.test(squashed))) {

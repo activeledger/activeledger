@@ -51,9 +51,32 @@ describe("Contract.securityScan() - storage and local service rules (build 50600
       'return this.getAnyStreamReadOnly("abc:volatile");',
       "return this.getAnyStreamReadOnly(id + ':volatile');",
       "return this.getAnyStreamReadOnly((`${id}:volatile`));",
-      "return getAnyStreamReadOnly(`${id}:volatile`);",
       "return Promise.all(ids.map((i) => this.getAnyStreamReadOnly(`${i}:volatile`)));",
     ]) expect(scan(wrap(body)), body).to.equal(null);
+  });
+
+  it("only exempts this.getAnyStreamReadOnly, and does not let the contract redefine the name", () => {
+    // another receiver, or a bare name, is not the engine's call
+    for (const body of [
+      "return other.getAnyStreamReadOnly(`${id}:volatile`);",
+      "return getAnyStreamReadOnly(`${id}:volatile`);",
+    ]) expect(scan(wrap(body)), body).to.include("volatile");
+    for (const source of [
+      "export default class Foo { vote() { return 1; } getAnyStreamReadOnly(x: string) { return x; } }",
+      "export default class Foo { getAnyStreamReadOnly = (x: string) => x; vote() { return 1; } }",
+      "export default class Foo { vote() { const getAnyStreamReadOnly = (x: string) => x; return 1; } }",
+      "export default class Foo { vote() { function getAnyStreamReadOnly() { return 1; } return 1; } }",
+      "export default class Foo { vote() { return { getAnyStreamReadOnly: () => 1 }; } }",
+      "export default class Foo { vote() { const getAnyStreamReadOnly = 1; return { getAnyStreamReadOnly }; } }",
+      "export default class Foo { vote() { (this as any).getAnyStreamReadOnly = () => 1; return 1; } }",
+      "export default class Foo { vote() { (this as any)['getAnyStreamReadOnly'] = () => 1; return 1; } }",
+      "export default class Foo { vote(getAnyStreamReadOnly: any) { return 1; } }",
+    ]) expect(scan(source), source).to.include("cannot be redefined");
+    // calling it is not redefining it
+    expect(scan(wrap("return this.getAnyStreamReadOnly(`${id}:volatile`);"))).to.equal(null);
+    // before build 50600 nothing here applies
+    ActiveOptions.set("build", 50500);
+    expect(scan("export default class Foo { vote() { return 1; } getAnyStreamReadOnly(x: string) { return x; } }")).to.equal(null);
   });
 
   it("still refuses volatile text anywhere else, including a request and a path", () => {
