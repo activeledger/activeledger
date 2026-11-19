@@ -21,6 +21,12 @@ What a message means and what to do about it. Find the line you see in the log, 
 | `All known nodes must been online for assertion` from `--assert` | Every node in `neighbourhood` must be up and recognised before the settings move to the ledger. | Start the missing nodes, check `GET /a/status`, try again. |
 | `Network has already been asserted` | The file already has a `network` key. | Nothing; change settings with transactions instead: see [Nodes](nodes.md). |
 
+## A node will not start: chain.id
+
+- `chain.id is required`: the node has no chain id in `config.json`. Add `"chain": { "id": 1 }` (1 for a test or local network, another number for production), the same on every node. See [Chain id](configuration.md#chain-id).
+- `this node was started as chain N`: the id in `config.json` no longer matches the one recorded in `.chain`. Put the old id back. Remove `.chain` only if the node's data has been reset.
+- `Neighbour ... is on chain N, this node is on chain M. Not pairing.`: two nodes disagree about the chain. Fix the config of the node that is wrong; every node in a network has the same id.
+
 ## Transactions
 
 The reply to a transaction carries `$summary` with `total`, `vote`, `commit` and, when something failed, `errors`.

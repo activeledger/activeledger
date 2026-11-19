@@ -8,6 +8,7 @@ The node reads `./config.json` from the folder it is started in (or the file giv
 
 | Key | What it does | Default |
 |---|---|---|
+| `chain.id` | **Required.** The chain this node belongs to: a whole number from 1, the same on every node of a network and fixed when the network is created. `1` means a test or local network that is not for production; use another number for a production chain. A node without it will not start. The first start records the id in `.chain` beside `.identity`, and a node whose configured id later differs from that file will not start. Nodes on different chains are not paired. See [Chain id](#chain-id). | `1` for a new node |
 | `host` | The address and port the node listens on, as one string `ip:port`. | `"127.0.0.1:5260"` |
 | `db` | Where the node keeps its data. See [Storage](#storage). | embedded store on port 5259 |
 | `neighbourhood` | The list of every node in the network, including this one. See [Neighbourhood](#neighbourhood). | this node only |
@@ -27,6 +28,22 @@ The node reads `./config.json` from the folder it is started in (or the file giv
 | `configVersion` | Marks a file written by a current release. Set to `1` on a file you have checked. | `1` |
 
 A node with a `hybrid` section needs `"build": 40300` for it to take effect.
+
+## Chain id
+
+Every node states which chain it belongs to:
+
+```json
+"chain": { "id": 1 }
+```
+
+- The id is a whole number from 1 to 2147483647. Every node in a network has the same one, chosen when the network is created.
+- `1` is for testing and local networks. Use any other number for a production chain. Nothing enforces this, but a node on `1` that has neighbours outside its own machine logs a warning at start.
+- A node refuses to start without the key, with a message that says what to add. A new install gets `"chain": { "id": 1 }` from the default file.
+- The first start writes the id to `.chain` next to `.identity`. If the id in `config.json` is later changed, the node refuses to start, so a chain cannot be changed by editing a file. Remove `.chain` only after the node's data has been reset.
+- A node that is on a different chain from a neighbour does not pair with it, and both log which ids differ. A neighbour from a release before this key sends no id and is still paired, so a network can be upgraded one node at a time.
+
+**Upgrading an existing network:** add `"chain": { "id": 1 }` (or the id you choose for a production chain) to every node's `config.json` before starting the new release, and use the same value on every node. Do not mix ids in one network.
 
 ## Storage
 
