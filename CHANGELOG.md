@@ -14,10 +14,10 @@
   and the storage has no login, so a contract could read or write any document (another namespace's volatile data
   included) with `HTTP.send("http://127.0.0.1:5259/...")`. While a contract runs, a call to the storage port, by any
   host name, is now refused; the `http`, `net` and `fetch` modules are held to the same rule for a namespace that is
-  allowed them, and any unix socket is refused. Custom databases (a name starting `activeledger` with more after it)
-  stay open to contracts with no configuration; `security.contractEgress.storage: "deny"` closes the port to
-  everything `security.contractEgress.allow` does not name (`"<namespace>": ["127.0.0.1:5259/<database>"]`), and
-  `"allow"` turns the guard off. The `default` namespace is never restricted. Whatever a list
+  allowed them, and any unix socket is refused. The port is closed by default: a namespace
+  reaches only what `security.contractEgress.allow` names (`"<namespace>": ["127.0.0.1:5259/<database>"]`).
+  `security.contractEgress.storage: "open"` lets every contract use custom databases (a name starting `activeledger`
+  with more after it) with no list, and they are then shared by all namespaces; `"allow"` turns the guard off. The `default` namespace is never restricted. Whatever a list
   says, any request that mentions `volatile` (path, query or body, any case, however escaped) and anything in the
   node's own databases (ledger, events, errors and the error archive; taken from `db.database`, `db.event` and
   `db.error`, with the defaults always included) is refused. A contract may only GET and POST, and only on the
