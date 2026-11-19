@@ -73,6 +73,12 @@
 - **The stream lock check cannot be sidestepped by rewriting ids.** The commit guard now requires a stream's state and
   meta to name the same stream, and refuses an existing stream the transaction did not load.
 
+### Fixed
+- **The storage process removes its socket file when it exits.** It used to leave `ds-<port>.sock` behind in the
+  node's socket folder. Harmless (a client falls back to HTTP and the next start replaces the file), but it is
+  now tidied. Only the file that process made is removed, so a replacement that has already bound the same path
+  keeps its own.
+
 ## [5.6.0] - 2026-11-19
 
 Faster traffic between nodes and to the node's own storage, a database explorer, a fix for a contract running under

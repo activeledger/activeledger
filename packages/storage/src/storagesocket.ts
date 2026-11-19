@@ -118,6 +118,26 @@ export function serveStorageSocket(http: ActiveHttpd, socketPath: string): net.S
     } catch {
       // best effort
     }
+
+    // Take the file with us when the process ends. Only the one this process
+    // made: a storage process started in its place may already have bound the
+    // same path, and that one is not ours to remove.
+    let made = -1;
+    try {
+      made = fs.lstatSync(socketPath).ino;
+    } catch {
+      return;
+    }
+    const remove = () => {
+      try {
+        const now = fs.lstatSync(socketPath);
+        if (now.isSocket() && now.ino === made) fs.unlinkSync(socketPath);
+      } catch {
+        // already gone
+      }
+    };
+    process.once("exit", remove);
+    server.once("close", () => process.removeListener("exit", remove));
   });
   return server;
 }
