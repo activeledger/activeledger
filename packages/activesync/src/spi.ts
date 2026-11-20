@@ -175,7 +175,12 @@ export function spiConsensus(
         continue;
       }
 
-      if (streamDoc.locked) {
+      // The engine's marker for "could not report" is { _id, locked: true }
+      // and nothing else - it has no _rev. A stored document that happens
+      // to have a `locked` field of its own (a contract's business data,
+      // for instance a collateral amount) always has a _rev and is a real
+      // vote, whatever that field holds.
+      if (streamDoc.locked && !streamDoc._rev) {
         if (!voted[streamDoc._id]) {
           voted[streamDoc._id] = true;
           unreported[streamDoc._id] = (unreported[streamDoc._id] || 0) + 1;

@@ -121,19 +121,26 @@ describe("spiConsensus - malformed peer answers (Activesync)", () => {
     expect(abstained).to.deep.equal({});
   });
 
-  it("lets the locked marker win over a revision carried on the same entry", () => {
-    // A locked node must stay silent even if it also sent a revision
-    const stale = { _id: ID, _rev: "38-stale", locked: true };
-    const rev = at("39-aaaaaaaa");
-    const { winners, abstained } = spiConsensus(
-      [[stale], [stale], [rev], [rev]],
-      THRESHOLD
-    );
+  it("counts a stored document with its own locked field as a vote", () => {
+    // `locked` is also a plain business field (a contract holding an
+    // amount of collateral). Only the engine's placeholder, which has no
+    // _rev, means "could not report".
+    for (const value of [26400000, "0", true, "yes"]) {
+      const rev = { _id: ID, _rev: "39-aaaaaaaa", locked: value };
+      const { winners, abstained } = spiConsensus(
+        [[rev], [rev], [at("38-bbbbbbbb")], [rev]],
+        THRESHOLD
+      );
+      expect(winners[ID].rev, String(value)).to.equal("39-aaaaaaaa");
+      expect(winners[ID].votes).to.equal(3);
+      expect(abstained[ID]).to.equal(undefined);
+    }
+  });
 
-    // Two real votes, two silent: not enough to outnumber the silent
-    expect(winners[ID]).to.equal(undefined);
-    expect(abstained[ID]).to.contain("inconclusive");
-    expect(abstained[ID]).to.contain("2 node(s) could not report");
+  it("still reads the bare placeholder as silent next to documents that carry a locked field", () => {
+    const rev = { _id: ID, _rev: "39-aaaaaaaa", locked: 100 };
+    const { winners } = spiConsensus([[rev], [rev], [rev], [locked]], THRESHOLD);
+    expect(winners[ID].votes).to.equal(3);
   });
 
   it("keeps ids from one answer apart when a node reports several streams", () => {
