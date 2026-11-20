@@ -5,7 +5,7 @@ import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { ActiveRequest, ContractScope, StorageAccessError } from "@activeledger/activeutilities";
-import { runSandboxed, runUnsandboxed } from "../packages/protocol/src/protocol/sandbox";
+import { runSandboxed, runUnsandboxed, runAsNode } from "../packages/protocol/src/protocol/sandbox";
 
 // A contract's HTTP toolkit is ActiveRequest, the same client the engine uses
 // for storage, and the storage has no login. While a contract runs, a request
@@ -51,18 +51,18 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
 
   it("lets the node write the event rows a contract raises, from inside the contract's scope", async () => {
     // emit() runs on the contract's stack, so the write the node makes for
-    // it would be refused with the contract's own guard. ContractScope.outside
+    // it would be refused with the contract's own guard. runAsNode
     // runs it as the node.
     const e = await refused(() => inContract(() => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:1-1,x" })));
     expect(e).to.be.instanceOf(StorageAccessError);
     expect(hits.storage).to.equal(0);
 
-    await inContract(() => ContractScope.outside(() => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:1-1,x" })));
+    await inContract(() => runAsNode(() => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:1-1,x" })));
     expect(hits.storage).to.equal(1);
 
     // The contract's own scope is back once the node's write is done
     const after = await refused(() => inContract(async () => {
-      await ContractScope.outside(() => Promise.resolve());
+      await runAsNode(() => Promise.resolve());
       return ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:2-1,x" });
     }));
     expect(after).to.be.instanceOf(StorageAccessError);

@@ -111,17 +111,6 @@ export class ContractScope {
     return !!set && set.size > 0 && set.has(Number(port));
   }
 
-  /**
-   * Runs `run` as the node, not as the contract that is on the stack. For the
-   * node's own work that a contract triggers (writing the event rows it
-   * raised) - the contract chooses the event's name and data but never where
-   * or how it is stored, so nothing it controls reaches the storage.
-   */
-  public static outside<T>(run: () => T): T {
-    const als = (globalThis as any)[SCOPE];
-    return als && als.getStore() ? als.exit(run) : run();
-  }
-
   /** The running contract's context, or undefined outside a contract */
   public static current(): IContractScope | undefined {
     return (globalThis as any)[SCOPE]?.getStore();

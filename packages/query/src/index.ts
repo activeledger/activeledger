@@ -84,11 +84,23 @@ export class EventEngine {
    * @returns {Promise<any>}
    */
   public emit(name: string, data: any): void {
+    // Copied to plain JSON now, on the contract's own stack. The row is
+    // written (and the umid document serialised) by the node, outside the
+    // contract's scope, and a toJSON, getter or proxy the contract put in its
+    // data must not run there.
+    let plain: { name: string; data: any };
+    try {
+      plain = JSON.parse(JSON.stringify({ name, data }));
+    } catch (error) {
+      this.onFailure?.(`event:${this.umid}`, error);
+      return;
+    }
+
     // Event object to store
     let event: any = {
       _id: `event:${this.stamp ?? Date.now()}-${++this.counter},${this.umid}`,
-      name: name,
-      data: data,
+      name: plain.name,
+      data: plain.data,
       phase: this.phase,
       contract: this.contract,
     };

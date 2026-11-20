@@ -39,7 +39,7 @@ import {
   IVMExecution,
   IVMExecutionReport,
 } from "./interfaces/vm.interface";
-import { runSandboxed, runUnsandboxed, bindToContext, normalise } from "./sandbox";
+import { runSandboxed, runUnsandboxed, bindToContext, normalise, runAsNode } from "./sandbox";
 import { ReadLock } from "./readlock";
 import { Attestation } from "./attest";
 import { createInterface } from "readline";
@@ -211,7 +211,7 @@ export class VirtualMachine
    * @private
    */
   private readonly nodeEvents = {
-    post: (doc: any): Promise<any> => ContractScope.outside(() => this.dbev.post(doc)),
+    post: (doc: any): Promise<any> => runAsNode(() => this.dbev.post(doc)),
   };
 
   /**
