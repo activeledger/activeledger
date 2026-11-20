@@ -1123,6 +1123,47 @@ export default class Contract extends Standard {
         report(node, `Private identifiers are forbidden`);
       }
 
+      // 7a. The scan treats this.getAnyStreamReadOnly(...) as the engine's own call (see below), so
+      // the name may appear in the source only as exactly that call. Any other use is refused:
+      // declaring it, passing it, assigning to it (plain, compound or destructured), reading it off
+      // another object, or spelling it as a string or a computed key. Static and the same on every
+      // node. A key built at run time cannot be seen here; the run-time guard does not depend on
+      // this name, so nothing is weakened if one gets past.
+      if (guardsFromSource) {
+        const NAME = "getAnyStreamReadOnly";
+        let named = ts.isIdentifier(node) && node.text === NAME;
+        if (!named && (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node) || ts.isBinaryExpression(node))) {
+          // A string that spells it out, or pieces that fold to it ("getAny" + "StreamReadOnly")
+          const spelled = ((): string | undefined => {
+            const f = (n: ts.Node): string | undefined => {
+              if (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isNonNullExpression(n)) return f(n.expression);
+              if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text;
+              if (ts.isTemplateExpression(n)) return n.head.text + n.templateSpans.map((span) => (f(span.expression) ?? "") + span.literal.text).join("");
+              if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+                const l = f(n.left), r = f(n.right);
+                return l === undefined && r === undefined ? undefined : (l ?? "") + (r ?? "");
+              }
+              return undefined;
+            };
+            return f(node);
+          })();
+          named = spelled === NAME;
+        }
+        if (named) {
+          const access = node.parent;
+          const allowed =
+            ts.isIdentifier(node) &&
+            ts.isPropertyAccessExpression(access) &&
+            access.name === node &&
+            access.expression.kind === ts.SyntaxKind.ThisKeyword &&
+            ts.isCallExpression(access.parent) &&
+            access.parent.expression === access;
+          if (!allowed) {
+            report(node, `'${NAME}' cannot be redefined`);
+          }
+        }
+      }
+
       // 7. Storage and local-service access written out in the source (from build 50600).
       // Static and the same on every node: only literals and option names are read, never
       // the node's config (the deploy scan is part of the vote). A destination built at
@@ -1162,7 +1203,36 @@ export default class Contract extends Standard {
           // Only text shaped like a path or id (no spaces, or a leading slash, or a scheme) and
           // not a string type: prose such as "Error: volatile data missing" is not a path
           const pathish = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(seen) || /^\s*\//.test(seen) || !/\s/.test(seen.trim());
-          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed)) {
+          // The one use of `<id>:volatile` that is not a path: the stream id handed straight to
+          // the engine's own getAnyStreamReadOnly, which the stream's read lock decides. Only the
+          // argument itself counts (through a template, a "+" or brackets); text that reaches a
+          // request, or anything else, is still refused.
+          const isStreamIdArgument = (): boolean => {
+            let arg: ts.Node = node;
+            while (
+              arg.parent &&
+              (ts.isParenthesizedExpression(arg.parent) ||
+                ts.isAsExpression(arg.parent) ||
+                ts.isNonNullExpression(arg.parent) ||
+                ts.isTemplateSpan(arg.parent) ||
+                ts.isTemplateExpression(arg.parent) ||
+                (ts.isBinaryExpression(arg.parent) && arg.parent.operatorToken.kind === ts.SyntaxKind.PlusToken))
+            ) {
+              arg = arg.parent;
+            }
+            const call = arg.parent;
+            if (!call || !ts.isCallExpression(call) || call.arguments.indexOf(arg as ts.Expression) === -1) return false;
+            let callee: ts.Node = call.expression;
+            while (ts.isParenthesizedExpression(callee) || ts.isAsExpression(callee) || ts.isNonNullExpression(callee)) callee = callee.expression;
+            // Exactly this.getAnyStreamReadOnly: another receiver, or a bare name, could be the
+            // contract's own function
+            return (
+              ts.isPropertyAccessExpression(callee) &&
+              callee.expression.kind === ts.SyntaxKind.ThisKeyword &&
+              callee.name.text === "getAnyStreamReadOnly"
+            );
+          };
+          if (pathish && !ts.isLiteralTypeNode(node.parent) && /[:\/]volatile/i.test(squashed) && !(isStreamIdArgument() && !/[\/\\]/.test(squashed))) {
             report(node, `A path to volatile data is forbidden`);
           }
           // This machine, as a URL or a host:port, read the way a URL parser reads it
