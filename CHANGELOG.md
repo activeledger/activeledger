@@ -1,6 +1,13 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.8.0] - 2026-11-20
+
+Neighbour discovery, rewritten around less traffic and faster connection. A node that is not yet counted as home sees
+far fewer requests while a neighbour is down, finds a neighbour that starts late almost at once, and now sends the
+transactions it is holding to a neighbour that has only just been found. Nothing needs changing on upgrade, and nodes
+can be upgraded one at a time: the protocol between nodes is unchanged. `GET /a/status` gains fields, shown in full
+only to a caller on the node's own machine.
+
 
 ### Changed
 - **Far fewer neighbour status requests while a node is missing, and a late neighbour is found at once.** While any
