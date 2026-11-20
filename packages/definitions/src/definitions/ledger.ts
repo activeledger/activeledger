@@ -44,6 +44,8 @@ export interface LedgerEntry {
   $nodes: INodes;
   $streams: IStreams;
   $remoteAddr: string;
+  /** The chain this transaction belongs to. Set only by the entry node (from its own configuration, never from the client), from build 51000 */
+  $chain?: number;
   /** Set only by the entry node, after verifying it (build 40300) */
   $relay?: IRelay;
   $broadcast?: boolean;
