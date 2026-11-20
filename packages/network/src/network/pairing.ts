@@ -110,6 +110,15 @@ export class Pairing {
   /** A retry waiting to run for a neighbour that did not answer yet */
   public retrying: { [reference: string]: any } = {};
 
+  /**
+   * How long to wait before asking a neighbour again that did not answer, for
+   * each retry. A neighbour often knocks a moment before it can answer (it is
+   * listening but still loading), and until it answers the others do not
+   * count it home, so a transaction in that gap skips it. Short first, so the
+   * gap is tens of milliseconds and not a flat 300.
+   */
+  public static readonly RETRY_DELAYS_MS = [25, 50, 100, 200, 300, 300, 300, 300];
+
   constructor(private deps: PairingDeps) {}
 
   /**
@@ -438,7 +447,7 @@ export class Pairing {
    *
    * A sign of life often comes a moment before the neighbour can answer (its
    * server is up but it is still starting), so a request that gets no answer is
-   * tried again every 300 ms, up to eight times, instead of waiting for the poll.
+   * tried again after 25, 50, 100, 200 and then every 300 ms (eight times), instead of waiting for the poll.
    *
    * @public
    * @param {Neighbour} neighbour
@@ -467,11 +476,11 @@ export class Pairing {
         if (currentRef == this.deps.networkRef()) this.pairing();
         return;
       }
-      if (attempt < 8 && !neighbour.isHome && !neighbour.graceStop) {
+      if (attempt < Pairing.RETRY_DELAYS_MS.length && !neighbour.isHome && !neighbour.graceStop) {
         const timer: any = this.deps.setTimeout(() => {
           delete this.retrying[reference];
           this.checkNeighbour(neighbour, attempt + 1);
-        }, 300);
+        }, Pairing.RETRY_DELAYS_MS[attempt]);
         timer?.unref?.();
         this.retrying[reference] = timer;
       }
