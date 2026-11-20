@@ -85,3 +85,12 @@ jobs:
       - name: Live check, catch-up on a 4-node network
         timeout-minutes: 10
         run: npx tsx tests/network/catchup-live.ts
+
+      # The general live suite on 4 real nodes: transactions on every node,
+      # contract events reaching every node's event feed, the negative paths,
+      # SPI repair and node recovery. The event feed stopped for two releases
+      # because this suite failed on master and nothing ran it; a red result
+      # here is a real problem. Takes about a minute and a half.
+      - name: Live check, the network suite on a 4-node network
+        timeout-minutes: 15
+        run: npm run test:network
