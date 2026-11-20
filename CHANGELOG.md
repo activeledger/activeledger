@@ -45,7 +45,7 @@ old way.
   stable a few milliseconds after it starts listening, but another node's first request to it, made when it knocks,
   fails while it is still loading, and the retry waited a flat 300 ms, during which the others did not count it home. A
   transaction in that gap skipped it. Retries now wait 25, 50, 100 and 200 ms, then 300 ms. In the staggered soak a node
-  never got the stream in 12 of 60 runs on 5.8.0 and 0 of 100 on 5.7.2; now 0 of 100.
+  never got the stream in 8 of 60 runs on 5.8.0 and 0 of 100 on 5.7.2; with this fix 0 of 100.
 
 ### Changed
 - **The pairing logic is its own class (`Pairing`)** with an injected clock, tested without a network; no change in
