@@ -37,6 +37,8 @@ interface allDocOptions {
   skip?: number;
   keys?: string[];
   include_docs?: boolean;
+  /** Newest first (the range is still startkey to endkey) */
+  descending?: boolean;
 }
 
 /**
@@ -403,6 +405,8 @@ export class LevelMe {
               ? LevelMe.DOC_PREFIX + options.endkey
               : LevelMe.META_PREFIX,
             limit,
+            // Newest first, for a caller that wants the last row of a range
+            reverse: !!options.descending,
           });
 
           // Track pending deserialization promises in stream order
