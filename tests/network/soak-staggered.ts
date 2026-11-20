@@ -35,7 +35,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       readyTimeoutMs: 60000,
       discoveryTimeoutMs: 0,
       startOffsetsMs: offsets,
-      ...(process.env.SOAK_CATCHUP ? { config: { catchUp: true } } : {}),
+      ...(process.env.SOAK_NO_CATCHUP ? { config: { catchUp: false } } : {}),
     } as any);
     try {
       const nodes = await harness.start();

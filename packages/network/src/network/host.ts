@@ -421,13 +421,13 @@ export class Host extends Home {
   private catchupDriver?: CatchupDriver;
 
   /**
-   * Starts the catch-up (docs/design/2026-11-20-catch-up.md) when `catchUp` is
-   * set: every few seconds the driver looks at whether this node is in sync and,
+   * Starts the catch-up (docs/design/2026-11-20-catch-up.md) unless `catchUp` is
+   * set to false: every few seconds the driver looks at whether this node is in sync and,
    * after a start or a loss of the quorum, asks a neighbour what it committed
    * that this node did not.
    */
   private startCatchup(): void {
-    if (this.catchupDriver || !ActiveOptions.get<boolean>("catchUp", false)) return;
+    if (this.catchupDriver || ActiveOptions.get<boolean>("catchUp", true) === false) return;
     const events = this.dbEventConnection;
     const markerId = "catchup:since";
     const network = () => ActiveOptions.get<string>("network", "");
