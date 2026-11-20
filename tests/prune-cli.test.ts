@@ -6,7 +6,7 @@ const NOW = 1_800_000_000_000;
 const DAY = 86400e3;
 
 /** A storage server that answers from a table, and records every call */
-const fake = (over: Partial<{ dbs: unknown; pages: Record<string, any[]>; info: Record<string, any>; interactive: boolean; answers: boolean[]; selfhost: boolean; deleteAnswer: any }> = {}) => {
+const fake = (over: Partial<{ dbs: unknown; pages: Record<string, any[]>; info: Record<string, any>; interactive: boolean; answers: boolean[]; selfhost: boolean; deleteAnswer: any; failCompact: boolean }> = {}) => {
   const calls: { url: string; method: string; body?: any }[] = [];
   const logs: string[] = [];
   const errors: string[] = [];
@@ -23,7 +23,10 @@ const fake = (over: Partial<{ dbs: unknown; pages: Record<string, any[]>; info: 
         const queue = pages[`${path}:${body.kind}`] ?? pages[path];
         return queue && queue.length ? queue.shift() : { removed: 0, scanned: 0, kept: 0, done: true };
       }
-      if (path.endsWith("/_compact")) return { ok: true };
+      if (path.endsWith("/_compact")) {
+        if (over.failCompact) throw new Error("storage refused");
+        return { ok: true };
+      }
       if (method === "DELETE") return over.deleteAnswer ?? { ok: true };
       if (method === "GET") return (over.info ?? {})[path.slice(1)] ?? {};
       return undefined;
@@ -180,6 +183,12 @@ describe("activeledger prune (CLI)", () => {
     it("compacts a database it removed from, and only that one", async () => {
       const r = await run("30", {}, fake({ pages: removedSome }));
       expect(r.calls.filter((c) => c.url.endsWith("/_compact")).map((c) => c.url)).to.deep.equal(["http://127.0.0.1:5259/activeledgererrors/_compact"]);
+    });
+
+    it("says so when a compact fails, and does not list the database as compacted", async () => {
+      const r = await run("30", { json: true }, fake({ pages: { "/activeledgererrors/_prune": [{ removed: 3, scanned: 3, kept: 0, done: true }] }, failCompact: true }));
+expect(r.errors.join("\n")).to.contain("could not compact activeledgererrors");
+      expect(JSON.parse(r.logs[r.logs.length - 1]).compacted).to.deep.equal([]);
     });
 
     it("does not compact when nothing was removed", async () => {
