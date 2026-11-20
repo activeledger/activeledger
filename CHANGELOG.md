@@ -1,6 +1,8 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.9.2] - 2026-11-20
+
+A patch for contract events. Nothing needs changing on upgrade.
 
 ### Fixed
 - **Contract events were no longer written to the events database, so the event feed (SSE) went quiet.** The contract
