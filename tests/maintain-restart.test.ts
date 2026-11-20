@@ -18,16 +18,16 @@ describe("Maintain.restart after a neighbourhood reset (Activenetwork)", () => {
   };
 
   let checks: number;
-  const realCheck = M.checkNeighbourhood;
+  const realCheck = M.engine.checkNeighbourhood;
   beforeEach(() => {
     checks = 0;
     (global as any).setTimeout = () => 0 as any;
-    M.checkNeighbourhood = () => void checks++;
+    M.engine.checkNeighbourhood = () => void checks++;
     M.timerActive = false;
   });
   afterEach(() => {
     (global as any).setTimeout = realSetTimeout;
-    M.checkNeighbourhood = realCheck;
+    M.engine.checkNeighbourhood = realCheck;
     M.timerActive = false;
   });
 
