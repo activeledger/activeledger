@@ -79,3 +79,9 @@ jobs:
       - name: Live check, signed hello on a 4-node network
         timeout-minutes: 10
         run: npx tsx tests/network/hello-live.ts
+
+      # A node that was away catches up on a quiet network, and again after a
+      # crash during the catch-up.
+      - name: Live check, catch-up on a 4-node network
+        timeout-minutes: 10
+        run: npx tsx tests/network/catchup-live.ts

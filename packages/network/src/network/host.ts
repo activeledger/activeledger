@@ -44,6 +44,7 @@ import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
 import { Endpoints, Maintain } from "./index";
 import { Locker } from "./locker";
+import { Catchup, CatchupDriver, CatchupDriverDeps, CatchupMarker } from "./catchup";
 import { withJsonFallback } from "./ipc";
 import { PhysicalCores } from "./cpus";
 import { DEFAULT_WORKER_COUNT, workerCount } from "./workercount";
@@ -415,6 +416,154 @@ export class Host extends Home {
   private processPending: {
     [reference: string]: process;
   } = {};
+
+  /** The catch-up driver, once started (see startCatchup) */
+  private catchupDriver?: CatchupDriver;
+
+  /**
+   * Starts the catch-up (docs/design/2026-11-20-catch-up.md) when `catchUp` is
+   * set: every few seconds the driver looks at whether this node is in sync and,
+   * after a start or a loss of the quorum, asks a neighbour what it committed
+   * that this node did not.
+   */
+  private startCatchup(): void {
+    if (this.catchupDriver || !ActiveOptions.get<boolean>("catchUp", false)) return;
+    const events = this.dbEventConnection;
+    const markerId = "catchup:since";
+    const network = () => ActiveOptions.get<string>("network", "");
+    const others = () =>
+      Object.values(this.neighbourhood.get() as { [ref: string]: Neighbour }).filter(
+        (n) => n.reference !== this.reference && !n.graceStop
+      );
+
+    const newestRowIn = async (options: any): Promise<number> => {
+      try {
+        const response = await events.allDocs({ ...options, descending: true, limit: 1 });
+        const id: string = response?.rows?.[0]?.id ?? response?.rows?.[0]?._id ?? "";
+        const at = parseInt(id.replace("umid:", "").split(",")[0], 10);
+        return Number.isFinite(at) ? at : 0;
+      } catch {
+        return 0;
+      }
+    };
+
+    const catchup = new Catchup({
+      umidsSince: async (from, limit) => {
+        for (const neighbour of others()) {
+          if (!neighbour.isHome) continue;
+          try {
+            const answer = await neighbour.knock(`umids/${from}?limit=${limit}`);
+            const body = answer?.data;
+            if (body && Array.isArray(body.rows)) return { rows: body.rows, more: !!body.more };
+          } catch {
+            // An older node, or one that did not answer: the next
+          }
+        }
+        return null;
+      },
+      holds: async (umid) => !!(await this.dbConnection.exists(`${umid}:umid`)),
+      adopt: async (umid) => {
+        if (!(await Endpoints.backfillUmid(this, umid))) return null;
+        const doc: any = await this.dbConnection.get(`${umid}:umid`).catch(() => undefined);
+        const ids = [...(doc?.streams?.new || []), ...(doc?.streams?.updated || [])]
+          .map((entry: any) => entry?.id)
+          .filter((id: unknown): id is string => typeof id === "string" && !!id);
+        return [...new Set(ids)];
+      },
+      networkStreams: (streams, umid) =>
+        this.neighbourhood.knockAll("stream", { $streams: streams, $umid: umid }),
+      consensusNeeded: () =>
+        Math.max(
+          1,
+          Math.ceil(
+            (ActiveOptions.get<any>("consensus", {}).reached / 100) * this.neighbourhood.count() - 1
+          )
+        ),
+      local: async (id) => {
+        try {
+          const doc = await this.dbConnection.get(id);
+          return doc && doc._id ? doc : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      rewrite: async (doc) => {
+        try {
+          // As SPI does: the document at exactly its revision
+          const current = await this.dbConnection.get(doc._id);
+          if (!current) return false;
+          if (!current._rev) {
+            try {
+              await this.dbConnection.put(doc);
+            } catch {
+              // Created by the write below, or already there
+            }
+          }
+          const written = await this.dbConnection.bulkDocs([doc], {
+            new_edits: true,
+            force_rev: doc._rev,
+          });
+          return !Endpoints.bulkWriteFailed(written);
+        } catch (error) {
+          ActiveLogger.error(error, `Catch-up could not write ${doc?._id}`);
+          return false;
+        }
+      },
+      lock: (streams, owner) => Locker.hold(streams, owner),
+      unlock: (streams, owner) => void Locker.release(streams, owner),
+      repairHistory: (streamId) => Endpoints.repairHistoryNow(this, streamId, "catch-up"),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    });
+
+    const deps: CatchupDriverDeps = {
+      run: async (since) => {
+        const result = await catchup.run(since);
+        if (result && (result.missing || result.rewritten || result.undecided)) {
+          ActiveLogger.info(
+            `Catch-up: ${result.missing} umid(s) missing, ${result.streams} stream(s): ${result.rewritten} rewritten, ${result.current} current, ${result.undecided} undecided, ${result.forks} fork(s)${result.settled ? ", settled" : ""}`
+          );
+        }
+        return result;
+      },
+      readMarker: async () => {
+        try {
+          const doc: any = await events.get(markerId);
+          return doc && doc._id ? (doc as CatchupMarker) : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+      writeMarker: async (marker) => {
+        try {
+          const existing: any = await events.get(markerId).catch(() => undefined);
+          await events.put({ ...marker, _id: markerId, ...(existing?._rev ? { _rev: existing._rev } : {}) } as any);
+        } catch (error) {
+          ActiveLogger.warn(error, "Catch-up marker not written");
+        }
+      },
+      clearMarker: async () => {
+        try {
+          const existing: any = await events.get(markerId);
+          if (existing?._id && existing._rev) await events.purge({ _id: existing._id, _rev: existing._rev });
+        } catch {
+          // Nothing to clear
+        }
+      },
+      newestRowBefore: (before) => newestRowIn({ startkey: "umid:", endkey: `umid:${before}` }),
+      newestRow: () => newestRowIn({ startkey: "umid:", endkey: "umid;" }),
+      peers: () => others().length,
+      quorumReached: () => this.quorum().reached,
+      now: () => Date.now(),
+      identity: () => ({ chain: ActiveOptions.get<any>("chain", null), network: network() }),
+    };
+
+    this.catchupDriver = new CatchupDriver(deps);
+    const timer = setInterval(() => {
+      this.catchupDriver?.tick().catch((error) => ActiveLogger.error(error, "Catch-up tick failed"));
+    }, 5000);
+    timer.unref?.();
+    ActiveLogger.info("Catch-up on");
+  }
 
   /** Transactions the self repair check was already started for (umid, when), so each runs it once */
   private spiStarted = new Map<string, number>();
@@ -1636,6 +1785,7 @@ export class Host extends Home {
                     ActiveInterfaces.getBindingDetails("port")
                   );
                   Host.onListening?.();
+                  this.startCatchup();
                 }
               );
               Maintain.healthTimer(true);
@@ -3056,6 +3206,17 @@ export class Host extends Home {
             // All Stream Management with start point
             if (this.firewallCheck(requester, req.connection.remoteAddress)) {
               if (req.url) {
+                // The umid index for a neighbour catching up: /a/umids/<ms>?limit=<n>
+                if (req.url.startsWith("/a/umids/")) {
+                  const [fromPart, query = ""] = req.url.substr(9).split("?");
+                  const limit = new URLSearchParams(query).get("limit");
+                  response = Endpoints.umids(
+                    this.dbEventConnection,
+                    fromPart,
+                    limit ? Number(limit) : undefined
+                  );
+                  break;
+                }
                 let match = req.url.substr(0, 7);
                 switch (match) {
                   case "/a/all/":

@@ -70,7 +70,7 @@ async function converged(nodes: NetworkNode[], streamId: string, timeoutMs: numb
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  const harness = new NetworkHarness({ nodeCount: 4, ...(process.env.FAULT_DEBUG ? { config: { debug: true } } : {}) } as any);
+  const harness = new NetworkHarness({ nodeCount: 4, config: { ...(process.env.FAULT_DEBUG ? { debug: true } : {}), ...(process.env.FAULT_CATCHUP ? { catchUp: true } : {}) } } as any);
   let passed = true;
   const check = (ok: boolean, message: string) => {
     ok ? report.ok(message) : report.fail(message);

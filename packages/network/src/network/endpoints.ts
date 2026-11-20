@@ -2169,6 +2169,54 @@ export class Endpoints {
     });
   }
 
+  /** The most umid rows one `umids` answer carries */
+  public static readonly UMIDS_PAGE_MAX = 500;
+
+  /**
+   * This node's umid index after a time, for a neighbour that is catching up
+   * (see docs/design/2026-11-20-catch-up.md). Rows are `umid:<ms>,<umid>` in
+   * the events database, the time being when this node wrote the row, oldest
+   * first. `more` says a further page exists.
+   *
+   * @static
+   * @param {ActiveDSConnect} dbe The events database
+   * @param {string} from Milliseconds since the epoch
+   * @param {number} [limit] Capped at UMIDS_PAGE_MAX
+   * @returns {Promise<any>}
+   */
+  public static umids(
+    dbe: ActiveDSConnect,
+    from: string,
+    limit?: number
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const start = /^\d{1,15}$/.test(from) ? parseInt(from, 10) : NaN;
+      if (!Number.isFinite(start)) {
+        return reject({ statusCode: 400, content: "Bad time" });
+      }
+      const page = Math.min(
+        Endpoints.UMIDS_PAGE_MAX,
+        Math.max(1, Math.floor(Number(limit)) || Endpoints.UMIDS_PAGE_MAX)
+      );
+      // One more than asked for, to know whether there is another page
+      dbe
+        .allDocs({ startkey: `umid:${start}`, endkey: "umid;", limit: page + 1 })
+        .then((response: any) => {
+          const rows: { umid: string; timestamp: string }[] = [];
+          for (const row of response?.rows || []) {
+            const [stamp, umid] = String(row.id ?? row._id ?? "").split(",");
+            if (!umid) continue;
+            rows.push({ umid, timestamp: stamp.replace("umid:", "") });
+          }
+          resolve({
+            statusCode: 200,
+            content: { rows: rows.slice(0, page), more: rows.length > page },
+          });
+        })
+        .catch(() => reject({ statusCode: 500, content: "Could not read the index" }));
+    });
+  }
+
   /**
    * Fetch a transaction's umid document from the network and adopt it,
    * replaying the events it carried.
@@ -2632,7 +2680,24 @@ export class Endpoints {
     streamId: string,
     label: string
   ): void {
-    void (async () => {
+    void Endpoints.repairHistoryNow(host, streamId, label);
+  }
+
+  /**
+   * Fill in the umids behind a stream's current one (stops at one already
+   * held), recording what could not be recovered. Never throws.
+   *
+   * @static
+   * @param {Host} host
+   * @param {string} streamId
+   * @param {string} label Where it came from, for the log
+   */
+  public static async repairHistoryNow(
+    host: Host,
+    streamId: string,
+    label: string
+  ): Promise<void> {
+    {
       try {
         const adopted = await Endpoints.currentUmidFor(host, streamId);
         if (!adopted) {
@@ -2668,7 +2733,7 @@ export class Endpoints {
         // Must never surface into the transaction path it was detached from
         ActiveLogger.error(error, `SPI WALK ${label} ${streamId} failed`);
       }
-    })();
+    }
   }
 
   /**
