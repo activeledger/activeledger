@@ -106,6 +106,21 @@ export class Maintain {
   private static timerActive: boolean = false;
 
   /**
+   * How many discovery ticks have been scheduled since discovery (re)started.
+   * The poll is fast for the first ones, then backs off (see getInterval).
+   */
+  private static discoveryTicks: number = 0;
+
+  /** When each neighbour was last asked by checkNeighbour(), so a burst of signs is one request */
+  private static lastAsked: { [reference: string]: number } = {};
+
+  /** Neighbours checkNeighbour() has a request out to, so two never overlap */
+  private static asking: Set<string> = new Set();
+
+  /** A retry waiting to run for a neighbour that did not answer yet */
+  private static retrying: { [reference: string]: any } = {};
+
+  /**
    * Creates an instance of Maintain
    *
    * @param {Home} home
@@ -118,6 +133,7 @@ export class Maintain {
     Maintain.createNetworkOrder();
 
     // Start the timer
+    Maintain.discoveryTicks = 0;
     Maintain.healthTimer(true);
   }
 
@@ -136,6 +152,7 @@ export class Maintain {
     // Pair afresh, whatever was paired before
     Maintain.lastPairedLeft = null;
     Maintain.lastPairedRight = null;
+    Maintain.discoveryTicks = 0;
     Maintain.healthTimer(true);
     Maintain.checkNeighbourhood();
   }
@@ -233,11 +250,21 @@ export class Maintain {
    * @returns {number}
    */
   private static getInterval(): number {
-    if (!Maintain.allNeighboursDiscovered()) {
-      return 300;
-    } else {
+    if (Maintain.allNeighboursDiscovered()) {
       return Maintain.interval;
     }
+    // Fast while the node is booting (about ten seconds), then backing off to
+    // one request every ten seconds for a neighbour that is not there. A
+    // neighbour that starts later is not waited for on this timer: it knocks
+    // this node when it boots, and this node answers by knocking it
+    // (Maintain.checkNeighbour, called from the status handler and when its
+    // P2P socket connects).
+    Maintain.discoveryTicks++;
+    if (Maintain.discoveryTicks <= 30) {
+      return 300;
+    }
+    const step = Maintain.discoveryTicks - 30;
+    return Math.min(10000, 1000 * 2 ** Math.min(step - 1, 4));
   }
 
   /**
@@ -365,33 +392,11 @@ export class Maintain {
         if (neighbour.isHome) {
           return Promise.resolve();
         }
-        return new Promise<void>(async (resolve, reject) => {
-          neighbour
-            .knock("status")
-            .then(() => {
-              // Still the same network?
-              if (currentRef == Home.reference) {
-                // Node is Home
-                neighbour.setState("home");
-              }
-              // Resolve Promise to move on
-              resolve();
-            })
-            .catch(() => {
-              // Never answered (or refused, see Neighbour.knock): say so, once
-              if (neighbour.state === "unknown") {
-                neighbour.setState("unreachable", "no answer yet");
-              }
-              // Not home yet - nothing more to do here. allNeighboursDiscovered()
-              // (above) keeps this fast (300ms) periodic check running until
-              // every configured neighbour has been found, so a neighbour that
-              // simply hasn't started listening yet just gets retried on the
-              // next tick - no need for the separate, much slower (3s) per-
-              // neighbour recovery-poll loop to also chase it during boot.
-              // This isn't a failure so resolve to move on.
-              resolve();
-            });
-        });
+        // Not home yet - allNeighboursDiscovered() keeps this periodic check
+        // running until every configured neighbour has been found, so one that
+        // has not started listening is retried on the next tick; no need for
+        // the separate per-neighbour recovery poll to chase it during boot.
+        return Maintain.probe(neighbour, currentRef);
       })
     );
 
@@ -402,6 +407,88 @@ export class Maintain {
       Maintain.checking = false;
       Maintain.rebasing = false;
     }
+  }
+
+  /**
+   * Asks one neighbour for its status and records the answer. Never rejects:
+   * a neighbour that does not answer is just not home yet.
+   *
+   * @private
+   * @param {Neighbour} neighbour
+   * @param {string} currentRef The network reference when the check began
+   * @returns {Promise<boolean>} true if the neighbour answered
+   */
+  private static probe(neighbour: Neighbour, currentRef: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      neighbour
+        .knock("status")
+        .then(() => {
+          // Still the same network?
+          if (currentRef == Home.reference) {
+            // Node is Home
+            neighbour.setState("home");
+          }
+          resolve(true);
+        })
+        .catch(() => {
+          // Never answered (or refused, see Neighbour.knock): say so, once
+          if (neighbour.state === "unknown") {
+            neighbour.setState("unreachable", "no answer yet");
+          }
+          resolve(false);
+        });
+    });
+  }
+
+  /**
+   * Looks at one neighbour now, because there is a sign it is up: it just knocked
+   * this node, or its P2P socket just connected. Does nothing for a neighbour
+   * already home, leaving, or this node itself, never has two requests out to the
+   * same neighbour, and never throws. It asks the address in this node's own
+   * configuration, never one the sender gave, so a forged request can only
+   * cause a few requests to a neighbour this node already knows.
+   *
+   * A sign of life often comes a moment before the neighbour can answer (its
+   * server is up but it is still starting), so a request that gets no answer is
+   * tried again every 300 ms, up to eight times, instead of waiting for the poll.
+   *
+   * @public
+   * @static
+   * @param {Neighbour} neighbour
+   * @param {number} [attempt=0] Retries so far (internal)
+   */
+  public static checkNeighbour(neighbour: Neighbour, attempt: number = 0): void {
+    if (!Maintain.home || !neighbour || neighbour.isHome || neighbour.graceStop) return;
+    const reference = neighbour.reference;
+    if (reference === Maintain.home.reference) return;
+    if (Maintain.asking.has(reference)) return;
+    const now = Date.now();
+    // A burst of signs (an inbound knock and a socket connecting together) is one request
+    if (attempt === 0 && now - (Maintain.lastAsked[reference] || 0) < 250) return;
+    // A fresh sign replaces a retry that is still waiting
+    if (attempt === 0 && Maintain.retrying[reference]) {
+      clearTimeout(Maintain.retrying[reference]);
+      delete Maintain.retrying[reference];
+    }
+    Maintain.lastAsked[reference] = now;
+    Maintain.asking.add(reference);
+    const currentRef = Home.reference;
+    Maintain.probe(neighbour, currentRef).then((answered) => {
+      Maintain.asking.delete(reference);
+      if (answered) {
+        // Pair at once, so this node routes through it without waiting for a poll
+        if (currentRef == Home.reference) Maintain.pairing();
+        return;
+      }
+      if (attempt < 8 && !neighbour.isHome && !neighbour.graceStop) {
+        const timer: any = setTimeout(() => {
+          delete Maintain.retrying[reference];
+          Maintain.checkNeighbour(neighbour, attempt + 1);
+        }, 300);
+        timer?.unref?.();
+        Maintain.retrying[reference] = timer;
+      }
+    });
   }
 
   /**

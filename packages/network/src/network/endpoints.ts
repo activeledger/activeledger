@@ -1666,6 +1666,12 @@ export class Endpoints {
         // Increase Count
         Endpoints.rebaseThrottle++;
 
+        // A configured neighbour that is not home yet has just knocked: it is
+        // up, so look at it now instead of waiting for the next poll
+        if (neighbour && !neighbour.isHome && !neighbour.graceStop) {
+          Maintain.checkNeighbour(neighbour);
+        }
+
         // Is this a live request
         if (neighbour && !neighbour.graceStop) {
           resolve({
