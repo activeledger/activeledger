@@ -115,6 +115,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
    * every poll.
    */
   public setState(state: NeighbourState, reason?: string): boolean {
+    const wasHome = this.state === "home";
     this.isHome = state === "home";
     if (this.state === state && this.reason === reason) {
       return false;
@@ -122,6 +123,10 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     this.state = state;
     this.reason = reason;
     this.since = Date.now();
+    // Became usable just now (first found, or back after being down)
+    if (state === "home" && !wasHome) {
+      Neighbour.onHome?.(this.reference);
+    }
     return true;
   }
 
@@ -161,6 +166,13 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
   /** Told which neighbour lost a frame after accepting it (set by the host) */
   public static onDropped?: (reference: string) => void;
+
+  /**
+   * Called when a neighbour moves into home: first found, or back after being
+   * down. The host uses it to send the neighbour what it missed while it was
+   * not yet counted.
+   */
+  public static onHome?: (reference: string) => void;
 
   /** Neighbours already warned about for being on another chain */
   private static chainWarned = new Set<string>();
