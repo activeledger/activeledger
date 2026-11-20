@@ -1,6 +1,8 @@
 # Activeledger Changelog
 
-## [Unreleased]
+## [5.9.1] - 2026-11-20
+
+A patch for self repair. Nothing needs changing on upgrade.
 
 ### Fixed
 - **A stream document with its own `locked` field could never be repaired by SPI or catch-up.** Self repair read any
