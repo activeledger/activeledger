@@ -197,6 +197,24 @@ describe("HybridApi - edges the tests did not pin (Activenetwork)", () => {
       return { done, posted };
     };
 
+    it("logs a write that fails, and stays quiet when the row is already there", async () => {
+      const { ActiveLogger } = await import("@activeledger/activelogger");
+      const original = ActiveLogger.error;
+      const logged: any[] = [];
+      (ActiveLogger as any).error = (...a: any[]) => void logged.push(a);
+      try {
+        const call = (message: string) =>
+          recordFailed({ post: async () => { throw new Error(message); } }, { exists: async () => false }, entry(), 40300);
+        expect(await call("Revision Mismatch: failed:u1 @ undefined !== 1-abc")).to.equal(false);
+        expect(logged).to.have.length(0);
+        expect(await call("events database is down")).to.equal(false);
+        expect(logged).to.have.length(1);
+        expect(JSON.stringify(logged[0])).to.contain("Failed transaction record not written");
+      } finally {
+        (ActiveLogger as any).error = original;
+      }
+    });
+
     it("needs build 40300, a umid and votes, each one", async () => {
       expect((await run(entry(), 40299)).done).to.equal(false);
       expect((await run(entry({ $umid: undefined }))).done).to.equal(false);
