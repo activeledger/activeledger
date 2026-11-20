@@ -638,6 +638,11 @@ export class NetworkHarness {
   }
 
   public cleanup(): void {
+    // NETWORK_KEEP=1 leaves the nodes' folders (and their node.log) to read
+    if (process.env.NETWORK_KEEP) {
+      console.log(`Kept ${this.rootDir}`);
+      return;
+    }
     fs.rmSync(this.rootDir, { recursive: true, force: true });
   }
 }

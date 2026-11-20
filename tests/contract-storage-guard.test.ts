@@ -49,6 +49,26 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
     expect(blocked).to.have.length(8);
   });
 
+  it("lets the node write the event rows a contract raises, from inside the contract's scope", async () => {
+    // emit() runs on the contract's stack, so the write the node makes for
+    // it would be refused with the contract's own guard. ContractScope.outside
+    // runs it as the node.
+    const e = await refused(() => inContract(() => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:1-1,x" })));
+    expect(e).to.be.instanceOf(StorageAccessError);
+    expect(hits.storage).to.equal(0);
+
+    await inContract(() => ContractScope.outside(() => ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:1-1,x" })));
+    expect(hits.storage).to.equal(1);
+
+    // The contract's own scope is back once the node's write is done
+    const after = await refused(() => inContract(async () => {
+      await ContractScope.outside(() => Promise.resolve());
+      return ActiveRequest.send(`http://127.0.0.1:${storagePort}/activeledgerevents`, "POST", undefined, { _id: "event:2-1,x" });
+    }));
+    expect(after).to.be.instanceOf(StorageAccessError);
+    expect(hits.storage).to.equal(1);
+  });
+
   it("refuses the node modules and fetch aimed at the storage port", async () => {
     await refused(() => inContract(() => http.get(`http://127.0.0.1:${storagePort}/`)));
     await refused(() => inContract(() => http.request({ host: "127.0.0.1", port: storagePort, path: "/", method: "PUT" })));

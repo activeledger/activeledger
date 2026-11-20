@@ -203,6 +203,18 @@ export class VirtualMachine
   };
 
   /**
+   * The events database as the node uses it for the rows a contract raises.
+   * A contract calls emit() from inside its own scope, where the storage
+   * guard refuses the node's storage, so the write is made outside it. The
+   * contract only supplies the event's name and data.
+   *
+   * @private
+   */
+  private readonly nodeEvents = {
+    post: (doc: any): Promise<any> => ContractScope.outside(() => this.dbev.post(doc)),
+  };
+
+  /**
    * Creates an instance of VirtualMachine.
    * @param {string} contractPath
    * @param {string} selfHost
@@ -648,10 +660,12 @@ export class VirtualMachine
 
     // Setup Event Engine (a dry run keeps its events in memory only)
     this.events[payload.umid] = new EventEngine(
-      execution?.dryRun ? VirtualMachine.discardEvents : this.dbev,
+      execution?.dryRun ? VirtualMachine.discardEvents : this.nodeEvents,
       payload.transaction.$contract,
       payload.umid,
-      this.eventStamp(payload)
+      this.eventStamp(payload),
+      (id, error) =>
+        ActiveLogger.error({ umid: payload.umid, id, error }, "Event row not written")
     );
 
     return Promise.resolve()
