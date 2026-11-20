@@ -23,6 +23,7 @@
 
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
+import { ActiveLogger } from "@activeledger/activelogger";
 
 /** What the registry stream of one hybrid holds, as the API needs it */
 export interface RegisteredHybrid {
@@ -545,8 +546,13 @@ export async function recordFailed(
     });
     await events.post({ _id: `fail:${ms},${entry.$umid}` });
     return true;
-  } catch {
-    // Already recorded (same id), or the events database is unavailable
+  } catch (error) {
+    // Already recorded (same id) is normal and quiet. Anything else, such as
+    // the events database being unavailable, means a failed transaction is
+    // missing from the hybrid feed, so say so.
+    if (!/Revision Mismatch/.test(String((error as Error)?.message ?? error))) {
+      ActiveLogger.error({ umid: entry.$umid, error }, "Failed transaction record not written");
+    }
     return false;
   }
 }
