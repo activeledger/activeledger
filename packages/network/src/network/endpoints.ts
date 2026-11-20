@@ -1670,8 +1670,9 @@ export class Endpoints {
    *
    * `knows` is whether the asker is in this node's neighbourhood (what the
    * status answer says with 200 against 403). `ready` is whether this node has
-   * loaded its neighbourhood yet. Only a neighbour that is known is told the
-   * version, build and features; anyone else gets the minimum.
+   * loaded its neighbourhood yet. Only a neighbour that is known (the claimed
+   * reference sent from its configured address) is told the version, build
+   * and features; anyone else gets the minimum.
    */
   public static hello(
     host: Host,
@@ -1684,7 +1685,15 @@ export class Endpoints {
     const own = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
     const neighbour =
       requester !== "NA" ? host.neighbourhood.get(requester) : undefined;
-    const known = !!neighbour && !neighbour.graceStop;
+    // The reference is only a claim in a header, so it counts only from the
+    // address configured for that neighbour (the same check the other
+    // neighbour routes make). Anyone else is a stranger: told nothing, and
+    // nothing is triggered on this node by what they claim.
+    const known =
+      !!neighbour &&
+      !neighbour.graceStop &&
+      !!peerAddress &&
+      host.neighbourhood.checkFirewall(peerAddress, requester);
     const mismatch =
       requester !== "NA"
         ? Endpoints.refuseChain(requester, peerChain, peerAddress)

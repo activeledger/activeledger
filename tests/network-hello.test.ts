@@ -308,6 +308,8 @@ describe("Neighbour hello", () => {
         neighbourhood: {
           get: (ref?: string) => (ref ? neighbours[ref] : neighbours),
           keys: () => Object.keys(neighbours),
+          // Every neighbour sends from 10.0.0.2, bar the test that says otherwise
+          checkFirewall: (addr: string, ref: string) => addr === "10.0.0.2" && !!neighbours[ref],
         },
       }) as any;
     const verified = (content: any) => own.verify(JSON.stringify(content.hello), content.signature);
@@ -336,6 +338,18 @@ describe("Neighbour hello", () => {
       expect(other.content.hello).to.not.have.any.keys("version", "build");
     });
 
+    it("treats a claimed reference from some other address as a stranger, and triggers nothing", async () => {
+      const host = hostWith({ peer: { reference: "peer", graceStop: false, isHome: false } });
+      for (const addr of ["10.9.9.9", undefined]) {
+        const res = await Endpoints.hello(host, "peer", "1", "n", addr as any);
+        expect(res.content.hello.knows).to.equal(false);
+        expect(res.content.hello).to.not.have.any.keys("version", "build", "features");
+      }
+      for (let i = 0; i < 20; i++) await Endpoints.hello(host, "peer", "1", "n", "10.9.9.9");
+      expect(checked).to.deep.equal([]);
+      expect(rebased).to.equal(0);
+    });
+
     it("does not know a neighbour that is leaving", async () => {
       const res = await Endpoints.hello(hostWith({ peer: { graceStop: true } }), "peer", "1", "n");
       expect(res.content.hello.knows).to.equal(false);
@@ -347,22 +361,22 @@ describe("Neighbour hello", () => {
     });
 
     it("asks a neighbour that is not home back at once", async () => {
-      await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: false } }), "peer", "1", "n");
+      await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: false } }), "peer", "1", "n", "10.0.0.2");
       expect(checked).to.deep.equal(["peer"]);
       checked.length = 0;
-      await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: true } }), "peer", "1", "n");
+      await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: true } }), "peer", "1", "n", "10.0.0.2");
       expect(checked).to.deep.equal([]);
     });
 
     it("does not ask back a neighbour on another chain, and says its own chain", async () => {
-      const res = await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: false } }), "peer", "5", "n", "10.0.0.9");
+      const res = await Endpoints.hello(hostWith({ peer: { reference: "peer", graceStop: false, isHome: false } }), "peer", "5", "n", "10.0.0.2");
       expect(checked).to.deep.equal([]);
       expect(res.content.hello.chain).to.equal(1);
     });
 
     it("rebases like a status knock after enough knocks", async () => {
       const host = hostWith({ peer: { reference: "peer", graceStop: false, isHome: true } });
-      for (let i = 0; i < 10; i++) await Endpoints.hello(host, "peer", "1", "n");
+      for (let i = 0; i < 10; i++) await Endpoints.hello(host, "peer", "1", "n", "10.0.0.2");
       expect(rebased).to.equal(1);
     });
 
