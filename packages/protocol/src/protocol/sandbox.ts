@@ -88,6 +88,17 @@ export class SupernodeOnlyError extends Error {
 
 // One store for the process, shared (by symbol) with ActiveRequest
 const SCOPE = Symbol.for("activeledger.contractScope");
+/**
+ * Runs `run` as the node, not as the contract that is on the stack. For the
+ * node's own work that a contract triggers (writing the event rows it raised):
+ * the contract chooses the event's name and data, never where or how it is
+ * stored. It lives here, with the scope's owner, and not on ContractScope,
+ * which is in a package contract code can be handed.
+ */
+export function runAsNode<T>(run: () => T): T {
+  return context.getStore() ? context.exit(run) : run();
+}
+
 const context: AsyncLocalStorage<ISandboxContext> = ((globalThis as any)[SCOPE] ||=
   new AsyncLocalStorage<ISandboxContext>());
 let installed = false;

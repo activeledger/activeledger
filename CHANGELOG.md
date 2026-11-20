@@ -1,5 +1,16 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Contract events were no longer written to the events database, so the event feed (SSE) went quiet.** The contract
+  storage guard added in 5.7 refuses the node's storage to code running inside a contract, and a contract's `emit()`
+  made its write to the events database on the contract's own stack, so every write was refused. The events were still
+  in the transaction's umid document, but no `event:` row was written and nothing was logged. The node now writes the
+  row as itself (the contract only chooses the event's name and data), and a row that cannot be written is logged as
+  `Event row not written`. Events raised while the guard was refusing them are not rows; they can be rebuilt from the
+  umid documents.
+
 ## [5.9.1] - 2026-11-20
 
 A patch for self repair. Nothing needs changing on upgrade.
