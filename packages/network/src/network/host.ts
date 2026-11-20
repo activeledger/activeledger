@@ -416,6 +416,52 @@ export class Host extends Home {
     [reference: string]: process;
   } = {};
 
+  /** Transactions the self repair check was already started for (umid, when), so each runs it once */
+  private spiStarted = new Map<string, number>();
+
+  /**
+   * Starts the self repair check (SPI, in Endpoints.InternalInitalise) from this
+   * node's own failure, for a transaction another node originated that this
+   * node voted no on because it holds an older revision (or none).
+   *
+   * That check used to run only when a later frame from a peer for the same
+   * transaction arrived after this node's error was on the pending entry: the
+   * first frame is answered at once with { ok: true } (so the worker's own result
+   * is not delivered to it), and each later frame gets the entry as it is when it
+   * arrives. If every peer's frame came before this node finished failing, the
+   * check never ran and the stream stayed behind. This asks the same question once,
+   * when the failure is known, with the entry as a peer's frame would have found it.
+   *
+   * No reply is broadcast ($$noreply) and nothing is added to the entry.
+   */
+  public spiFromOwnFailure(entry: ActiveDefinitions.LedgerEntry): void {
+    if (!entry || !entry.$broadcast || !entry.$tx || entry.$origin === this.reference) return;
+    const error = entry.$nodes?.[this.reference]?.error;
+    if (
+      typeof error !== "string" ||
+      (error.indexOf("Position Incorrect") === -1 &&
+        error.indexOf("Stream(s) not found") === -1)
+    ) {
+      return;
+    }
+    const now = Date.now();
+    if (this.spiStarted.has(entry.$umid)) return;
+    if (this.spiStarted.size > 500) {
+      for (const [umid, at] of this.spiStarted) {
+        if (now - at > 60000) this.spiStarted.delete(umid);
+      }
+    }
+    this.spiStarted.set(entry.$umid, now);
+    ActiveLogger.debug(`SPI from own failure : ${entry.$umid}`);
+    Endpoints.InternalInitalise(
+      this,
+      { ...entry, $nodes: {}, $$noreply: true } as ActiveDefinitions.LedgerEntry,
+      this.host,
+      false,
+      true
+    ).catch((error) => ActiveLogger.warn(error, `SPI from own failure failed : ${entry.$umid}`));
+  }
+
   /** Home neighbours against what consensus needs, see Endpoints.quorum */
   public quorum(): { configured: number; home: number; needed: number; reached: boolean } {
     return Endpoints.quorum(this.neighbourhood.get(), this.neighbourhood.keys());
@@ -1522,6 +1568,8 @@ export class Host extends Home {
               : pending.entry,
           });
 
+          this.spiFromOwnFailure(pending.entry);
+
           // Keep it for hybrids when a supernode voted yes (build 40300)
           recordFailed(
             this.dbEventConnection,
@@ -1539,6 +1587,9 @@ export class Host extends Home {
           }
           if (!pending) return; // Fail safe, May happen when process being closed
           this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
+          // A node that voted no on a position error still reports "commited"
+          // here (Process.failed), with its error on its own entry
+          this.spiFromOwnFailure(pending.entry);
           // Process response back into entry for previous neighbours to know the results
           pending.resolve({
             status: 200,
