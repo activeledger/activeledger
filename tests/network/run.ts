@@ -53,7 +53,8 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ result: T; ms: number }
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  const harness = new NetworkHarness({ nodeCount: 4 });
+  // Build 51000 is where streams start to be stamped with their chain (every node together)
+  const harness = new NetworkHarness({ nodeCount: 4, config: { build: 51000 } });
 
   report.phase("Booting 4-node network");
   const nodes = await harness.start();
@@ -595,6 +596,19 @@ async function runMetaGrowthTest(
   } else {
     report.fail(`meta.umid did not match the latest transaction on at least one of ${ROUNDS} rounds`);
   }
+
+  // The entry node's chain, stamped by every node into the meta it wrote
+  const stamped: { port: number; chain: unknown }[] = [];
+  for (const node of nodes) {
+    const doc = await storageGet(node.storageUrl, `${identity.streamId}:stream`);
+    stamped.push({ port: node.port, chain: doc?.chain });
+  }
+  const metaRevs = await revisionsAcross(nodes, `${identity.streamId}:stream`);
+  const chainOk = stamped.every((s) => s.chain === 1) && metaRevs.converged;
+  report.record("meta-chain-stamped", chainOk, 0);
+  chainOk
+    ? report.ok(`Every node stamped chain 1 into the stream meta, at the same revision ${metaRevs.byNode[0].rev}`)
+    : report.fail(`Chain stamp or meta revision differs: ${JSON.stringify(stamped)} / ${JSON.stringify(metaRevs.byNode)}`);
 
   // A few bytes of wobble is expected (umid/_rev are hex/decimal strings
   // of slightly varying length round to round) - anything beyond that

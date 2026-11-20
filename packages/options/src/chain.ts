@@ -42,6 +42,14 @@ export class ActiveChain {
   /** The id used by test and local networks */
   public static readonly TEST = 1;
 
+  /**
+   * The build level from which a stream's meta is stamped with its chain.
+   * The stamp changes the meta document, so its revision and the hash a commit
+   * attestation signs: every node must stamp from the same level, so raise
+   * "build" on all of them together (as for every build-gated change).
+   */
+  public static readonly STAMP_BUILD = 51000;
+
   /** Largest id accepted (keeps it a safe integer and a short number) */
   public static readonly MAX = 2147483647;
 

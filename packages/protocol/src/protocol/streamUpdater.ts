@@ -27,7 +27,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { IReferenceStreams } from "./interfaces/process.interface";
 import { Shared } from "./shared";
 import { IVirtualMachine } from "./interfaces/vm.interface";
-import { ActiveOptions, ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveOptions, ActiveDSConnect, ActiveChain } from "@activeledger/activeoptions";
 import { EventEmitter } from "events";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 
@@ -354,6 +354,14 @@ export class StreamUpdater {
       ActiveOptions.get<number>("build", 0) >= Attestation.BUILD
         ? { $relay: this.entry.$relay }
         : {}),
+      // The chain the entry node gave it, kept so a hybrid, a restore or a
+      // replay that re-runs the transaction from this document stamps the
+      // same value. Absent below the stamping build, so those umid docs stay
+      // as they were.
+      ...(this.entry.$chain !== undefined &&
+      ActiveOptions.get<number>("build", 0) >= ActiveChain.STAMP_BUILD
+        ? { $chain: this.entry.$chain }
+        : {}),
     };
   }
 
@@ -485,6 +493,17 @@ export class StreamUpdater {
 
       // Meta (Stream Data) for internal usage
       if (this.streams[i].meta?._id) {
+        // Stamp the chain the entry node gave this transaction. Never over a
+        // chain already there (a stream from another chain keeps its own).
+        // From the build level that every node starts at together, since the
+        // stamp changes the meta revision and the hash a commit attests.
+        if (
+          this.entry.$chain !== undefined &&
+          this.streams[i].meta.chain === undefined &&
+          ActiveOptions.get<number>("build", 0) >= ActiveChain.STAMP_BUILD
+        ) {
+          this.streams[i].meta.chain = this.entry.$chain;
+        }
         this.docs.push(this.streams[i].meta);
       }
 

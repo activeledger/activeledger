@@ -229,6 +229,15 @@ export class Endpoints {
             // Set Origin
             tx.$origin = host.reference;
 
+            // Chain: set here by the entry node and nowhere else, like
+            // $origin. Whatever the client sent is dropped first. Every node
+            // then stamps the streams it writes from this one value.
+            delete tx.$chain;
+            if (ActiveOptions.get<number>("build", 0) >= ActiveChain.STAMP_BUILD) {
+              const chain = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
+              if (chain !== undefined) tx.$chain = chain;
+            }
+
             // Ip Address sending the transaction
             tx.$remoteAddr = ip;
 
