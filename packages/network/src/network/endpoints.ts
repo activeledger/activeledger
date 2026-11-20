@@ -1634,6 +1634,93 @@ export class Endpoints {
   /** Peers already warned about, so a mismatch is logged once per id */
   private static chainRefused = new Map<string, number>();
 
+  /**
+   * The chain id a neighbour sent when it is not this node's own, said once
+   * per neighbour and id so a misconfigured node is told why it is refused.
+   * Undefined when the neighbour is on this chain (or an older node that
+   * sends none).
+   */
+  private static refuseChain(
+    requester: string,
+    peerChain?: string,
+    peerAddress?: string
+  ): number | undefined {
+    const own = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
+    const mismatch = ActiveChain.mismatch(own, peerChain);
+    if (
+      mismatch !== undefined &&
+      Endpoints.chainRefused.get(requester) !== mismatch
+    ) {
+      Endpoints.chainRefused.set(requester, mismatch);
+      ActiveLogger.warn(
+        `Neighbour ${peerAddress || requester} is on chain ${mismatch}, this node is on chain ${own}. Not pairing.`
+      );
+    }
+    return mismatch;
+  }
+
+  public static helloReceived = 0;
+
+  /**
+   * The answer to GET /a/hello: who this node is, signed with its identity, so
+   * the asker knows the answer really is from the node it configured (the
+   * status answer is unsigned, and anyone who can reach the address can
+   * return one). The asker's nonce is inside the signature, so an answer
+   * recorded earlier cannot be replayed.
+   *
+   * `knows` is whether the asker is in this node's neighbourhood (what the
+   * status answer says with 200 against 403). `ready` is whether this node has
+   * loaded its neighbourhood yet. Only a neighbour that is known is told the
+   * version, build and features; anyone else gets the minimum.
+   */
+  public static hello(
+    host: Host,
+    requester: string,
+    peerChain?: string,
+    nonce?: string,
+    peerAddress?: string
+  ): Promise<any> {
+    Endpoints.helloReceived++;
+    const own = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
+    const neighbour =
+      requester !== "NA" ? host.neighbourhood.get(requester) : undefined;
+    const known = !!neighbour && !neighbour.graceStop;
+    const mismatch =
+      requester !== "NA"
+        ? Endpoints.refuseChain(requester, peerChain, peerAddress)
+        : undefined;
+    if (known && mismatch === undefined) {
+      // As a status knock does: a neighbour not home yet has just asked, so ask it back now
+      if (!neighbour.isHome) Maintain.checkNeighbour(neighbour);
+      Endpoints.rebaseThrottle++;
+      if (
+        Endpoints.rebaseThrottle > ActiveOptions.get<number>("rebaseThrottle", 8)
+      ) {
+        Maintain.rebaseNeighbourhood();
+        Endpoints.rebaseThrottle = 0;
+      }
+    }
+    const body: any = {
+      hello: 1,
+      nonce: typeof nonce === "string" ? nonce.slice(0, 64) : "",
+      reference: host.reference,
+      chain: own ?? null,
+      ready: Object.keys(host.neighbourhood.get() || {}).length > 0,
+      knows: known,
+    };
+    if (known) {
+      body.version = Endpoints.version() || null;
+      body.build = ActiveOptions.get<number>("build", 0);
+      body.features = ActiveOptions.get<boolean>("p2pStream", false)
+        ? ["p2pStream"]
+        : [];
+    }
+    return Promise.resolve({
+      statusCode: 200,
+      content: { hello: body, signature: Home.sign(JSON.stringify(body), true) },
+    });
+  }
+
   public static statusKnocksReceived = 0;
 
   public static status(
@@ -1650,14 +1737,8 @@ export class Endpoints {
         // A node on another chain is never paired. Nodes from before the
         // chain id send no header and are let through.
         const own = ActiveChain.idOf(ActiveOptions.get<any>("chain", null));
-        const mismatch = ActiveChain.mismatch(own, peerChain);
+        const mismatch = Endpoints.refuseChain(requester, peerChain, peerAddress);
         if (mismatch !== undefined) {
-          if (Endpoints.chainRefused.get(requester) !== mismatch) {
-            Endpoints.chainRefused.set(requester, mismatch);
-            ActiveLogger.warn(
-              `Neighbour ${peerAddress || requester} is on chain ${mismatch}, this node is on chain ${own}. Not pairing.`
-            );
-          }
           // The asker only sees the body (ActiveRequest.send resolves the
           // parsed body, never the status), so the refusal has to be in it
           resolve({ statusCode: 403, content: { chainMismatch: own } });
@@ -1714,6 +1795,8 @@ export class Endpoints {
               // route answers anyone who can reach the port
               ...(local && neighbour.reason ? { reason: neighbour.reason } : {}),
               ...(local ? { since: neighbour.since } : {}),
+              // What it said about itself in its last hello
+              ...(local && neighbour.peer ? { peer: neighbour.peer } : {}),
               // The P2P connection to it: up, down, or not used (p2pStream off)
               ...(local
                 ? { p2p: neighbour.p2pClient ? (neighbour.p2pClient.ready ? "connected" : "disconnected") : "off" }
@@ -1751,8 +1834,21 @@ export class Endpoints {
     });
   }
 
-  /** The package version, read once */
   private static packageVersion?: string;
+
+  /** The package version, read once */
+  private static version(): string {
+    if (Endpoints.packageVersion === undefined) {
+      try {
+        Endpoints.packageVersion = JSON.parse(
+          fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8")
+        ).version;
+      } catch {
+        Endpoints.packageVersion = "";
+      }
+    }
+    return Endpoints.packageVersion || "";
+  }
 
   /**
    * The votes consensus needs, worked out the way the commit phase does it:
@@ -1771,15 +1867,6 @@ export class Endpoints {
    * reach against how many consensus needs, and what it is holding.
    */
   private static localStatus(host: Host, neighbourhood: any, keys: string[]): object {
-    if (Endpoints.packageVersion === undefined) {
-      try {
-        Endpoints.packageVersion = JSON.parse(
-          fs.readFileSync(path.join(__dirname, "../../package.json"), "utf8")
-        ).version;
-      } catch {
-        Endpoints.packageVersion = "";
-      }
-    }
     const configured = keys.filter((key) => !neighbourhood[key].graceStop).length;
     const home = keys.filter((key) => !neighbourhood[key].graceStop && neighbourhood[key].isHome).length;
     const needed = Endpoints.votesNeeded(
@@ -1790,7 +1877,7 @@ export class Endpoints {
       node: {
         chain: ActiveChain.idOf(ActiveOptions.get<any>("chain", null)) ?? null,
         build: ActiveOptions.get<number>("build", 0),
-        version: Endpoints.packageVersion || null,
+        version: Endpoints.version() || null,
         uptimeSeconds: Math.floor(process.uptime()),
       },
       // This node counts itself, as consensus does

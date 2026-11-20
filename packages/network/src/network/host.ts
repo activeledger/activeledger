@@ -919,6 +919,7 @@ export class Host extends Home {
         "Accept-Encoding": req.getHeader("accept-encoding"),
         "X-Activeledger": req.getHeader("x-activeledger"),
         "x-activeledger-chain": req.getHeader("x-activeledger-chain"),
+        "x-activeledger-nonce": req.getHeader("x-activeledger-nonce"),
         "x-activeledger-encrypt": req.getHeader("x-activeledger-encrypt"),
         "content-encoding": req.getHeader("content-encoding"),
         "X-Bundle": req.getHeader("x-bundle"),
@@ -2878,6 +2879,19 @@ export class Host extends Home {
               this,
               requester,
               req.headers["x-activeledger-chain"] as string,
+              req.connection.remoteAddress
+            );
+            break;
+          case "/a/hello": // Signed neighbour hello
+            if (!Neighbour.helloEnabled) {
+              // Behaving as a node from before the hello (tests only)
+              return this.writeResponse(res, 404, "Not Found", gzipAccepted);
+            }
+            response = Endpoints.hello(
+              this,
+              requester,
+              req.headers["x-activeledger-chain"] as string,
+              req.headers["x-activeledger-nonce"] as string,
               req.connection.remoteAddress
             );
             break;

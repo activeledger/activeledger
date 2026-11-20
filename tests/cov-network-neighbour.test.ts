@@ -56,6 +56,8 @@ describe("Neighbour knock edge cases (cov)", () => {
   let realWarn: any;
   let realFatal: any;
   beforeEach(() => {
+    // These test the status knock itself, as an older neighbour is asked (the hello has its own tests)
+    process.env.AL_NO_HELLO = "1";
     requests = [];
     warnings = [];
     fatals = [];
@@ -69,6 +71,7 @@ describe("Neighbour knock edge cases (cov)", () => {
     (ActiveLogger as any).fatal = (...a: any[]) => (fatals.push(a), new Error("fatal"));
   });
   afterEach(() => {
+    delete process.env.AL_NO_HELLO;
     ActiveOptions.set("security", saved.security);
     ActiveOptions.set("network", saved.network);
     (ActiveLogger as any).warn = realWarn;

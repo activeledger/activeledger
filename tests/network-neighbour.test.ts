@@ -78,6 +78,8 @@ describe("Neighbour and Neighbourhood", () => {
   });
 
   beforeEach(() => {
+    // These test the status knock itself, as an older neighbour is asked (the hello has its own tests)
+    process.env.AL_NO_HELLO = "1";
     seen = [];
     saved.security = ActiveOptions.get("security", undefined);
     saved.network = ActiveOptions.get("network", undefined);
@@ -90,6 +92,7 @@ describe("Neighbour and Neighbourhood", () => {
   });
 
   afterEach(() => {
+    delete process.env.AL_NO_HELLO;
     ActiveOptions.set("security", saved.security);
     ActiveOptions.set("network", saved.network);
   });
