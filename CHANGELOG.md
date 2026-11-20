@@ -15,6 +15,17 @@
   backed off. A network with every node up was already silent and is unchanged. A neighbour that goes down after it
   was found is still noticed the way it was, by the failed send or request that finds it.
 
+### Fixed
+- **A transaction in flight is sent to a neighbour that becomes home while it is still running.** A broadcast only goes
+  to neighbours the node already counts as home, so a transaction voted on while a neighbour was up but not yet
+  noticed (the first moments after start-up, or just after the neighbour came back) never reached it, and nothing
+  sent it later: the resend timer only chases neighbours that were home and went quiet. The neighbour then answered
+  "Stream(s) not found" until SPI or restore repaired it. When a neighbour moves into home, the node now sends it every
+  transaction it is still holding, once. Measured on four nodes with the first transaction sent as soon as the nodes
+  were ready, without waiting for discovery: all four held the new stream within 137 ms in 12 of 12 runs, against 276
+  to 540 ms in 6 of 12 runs without it. Transactions already finished are not sent (the neighbour catches up on those
+  as a node that was down does).
+
 ### Added
 - **A neighbour says why it is not home, and the node says more about itself.** `GET /a/status` lists each neighbour
   with its `state` (`home`, `unknown`, `unreachable` or `mismatch`) next to the existing `isHome`. A caller on this
