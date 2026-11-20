@@ -1,5 +1,59 @@
 # Activeledger Changelog
 
+## [5.9.0] - 2026-11-20
+
+A node that missed commits now finds them itself, neighbours are checked with a signed hello, and a regression in
+5.8.0 that could leave a node that started late without the first transaction is fixed. Nothing needs changing on
+upgrade, and nodes can be upgraded one at a time: older neighbours answer the new requests with 404 and are asked the
+old way.
+
+### Added
+- **Catch-up: a node finds the commits it missed itself (`catchUp`, on by default).** A node that was down, frozen or
+  started late used to repair a stream only when a later transaction touched it, and a stream nothing touched again
+  stayed behind for ever. After a start, or when it regains the quorum, a node now asks one neighbour which
+  transactions it committed that this node does not hold (`GET /a/umids/<ms>?limit=<n>`, a read-only request to a
+  configured neighbour's address, at most 500 a page). For each stream those transactions touched it adopts the
+  majority revision once, under the stream lock, never moving a stream backwards and leaving a fork alone, and then
+  fills in the transactions behind it. It writes nothing while in sync; a small `catchup:since` marker exists in the
+  events database only while a catch-up is needed, so a crash during one resumes from the same point. A gap of more
+  than 5,000 transactions is left to a full restore. Set `catchUp` to `false` to turn it off. With a node killed, 12
+  streams moving on while it was away and no further transaction sent, all 12 converged on their own; with it off none
+  did. Design: `docs/design/2026-11-20-catch-up.md`.
+- **A signed hello between neighbours (`GET /a/hello`).** A neighbour answers who it is, the chain it is on, whether it
+  knows the asker and whether it has loaded its neighbourhood, signed with its identity key and carrying the asker's
+  nonce. The asker checks the signature against the public key in its own neighbourhood entry, so an answer from some
+  other machine at that address is refused (the status answer was unsigned), and a recorded answer cannot be replayed.
+  A neighbour is now `booting` (not ready yet), `refused` (does not know this node) or `mismatch` (another chain, or
+  not signed by its key), each with its reason in the local `/a/status`, which also shows the `version` and `build` a
+  neighbour reported as `peer`. A neighbour from before the hello is asked by status knock as before, and the hello is
+  tried again every ten minutes. A claimed neighbour is only told its version and build when the request comes from the
+  address configured for it.
+- **Start-up reports ready when the quorum is reached.** It used to report ready as soon as one neighbour was found. It
+  now waits until enough neighbours are home for consensus, or 30 seconds, and then reports ready with a warning that
+  says how many are home against how many are needed.
+- **`tests/network/soak-staggered.ts`**, a cold-start soak (four nodes started up to three seconds apart, the first
+  transaction sent at once), and failure diagnostics in `tests/network/faults.ts`.
+
+### Fixed
+- **A node that voted no because it holds an older revision now starts its own repair.** The self repair (SPI) on a node
+  that did not originate the transaction ran only if a later frame from another node for the same transaction arrived
+  after the node had recorded its failure. The first frame is answered at once and the node's own result never reached
+  the check, so when every peer's frame came first the stream stayed behind (after a crash and restart, 3 to 12 of 24
+  streams in the fault suite). The host now starts the check once, from the node's own failure report. The fault suite
+  failed in most runs before and passed 3 of 3 after.
+- **A node that started late no longer misses the first transaction (a regression in 5.8.0).** A node reports itself
+  stable a few milliseconds after it starts listening, but another node's first request to it, made when it knocks,
+  fails while it is still loading, and the retry waited a flat 300 ms, during which the others did not count it home. A
+  transaction in that gap skipped it. Retries now wait 25, 50, 100 and 200 ms, then 300 ms. In the staggered soak a node
+  never got the stream in 8 of 60 runs on 5.8.0 and 0 of 100 on 5.7.2; with this fix 0 of 100.
+
+### Changed
+- **The pairing logic is its own class (`Pairing`)** with an injected clock, tested without a network; no change in
+  behaviour.
+- **`ActiveRequest.send` also returns the HTTP `status`** (absent when the connection failed), so a neighbour that
+  answered 404 is told apart from one that did not answer.
+- **Storage `allDocs` honours `descending`** (newest first), used to read the newest row of the umid index.
+
 ## [5.8.0] - 2026-11-20
 
 Neighbour discovery, rewritten around less traffic and faster connection. A node that is not yet counted as home sees
