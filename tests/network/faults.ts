@@ -70,7 +70,7 @@ async function converged(nodes: NetworkNode[], streamId: string, timeoutMs: numb
 
 async function main(): Promise<boolean> {
   const report = new Report();
-  const harness = new NetworkHarness({ nodeCount: 4 });
+  const harness = new NetworkHarness({ nodeCount: 4, ...(process.env.FAULT_DEBUG ? { config: { debug: true } } : {}) } as any);
   let passed = true;
   const check = (ok: boolean, message: string) => {
     ok ? report.ok(message) : report.fail(message);
@@ -98,7 +98,17 @@ async function main(): Promise<boolean> {
     };
     const allConverge = async (list: Identity[]) => {
       let behind = 0;
-      for (const who of list) if (!(await converged(nodes, who.streamId, 40000))) behind++;
+      for (const who of list) {
+        if (await converged(nodes, who.streamId, 40000)) continue;
+        behind++;
+        // Which node is on a different revision, for working out why
+        const revs = await revisions(nodes, who.streamId);
+        report.info(`not converged ${who.streamId.slice(0, 8)}: ${revs.map((r, i) => `n${i}=${r.slice(0, 12)}`).join(" ")}`);
+      }
+      if (behind && process.env.FAULT_LOGS) {
+        fs.mkdirSync(process.env.FAULT_LOGS, { recursive: true });
+        nodes.forEach((n, i) => fs.copyFileSync(path.join(n.dataDir, "node.log"), path.join(process.env.FAULT_LOGS!, `node${i}-${Date.now()}.log`)));
+      }
       return behind;
     };
     const unindexed = async (done: any[]) => {
