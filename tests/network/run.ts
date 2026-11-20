@@ -274,8 +274,10 @@ async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId
     // Own fresh identity/namespace, same reasoning as every other phase in
     // this suite - avoids any cross-phase stream contention.
     const lockIdentity = await onboard(nodes[1].baseUrl);
-    const namespace = "negtest-lock";
-    await registerNamespace(nodes[1].baseUrl, lockIdentity, namespace);
+    // The namespace the contract was deployed to: a transaction is resolved
+    // against the contracts of its own namespace, so a namespace of its own
+    // would only ever say "Contract not found".
+    const namespace = NAMESPACE;
     // One normal run first, to establish the stream's :stream meta
     // document - it doesn't exist yet straight after onboarding.
     await runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "establish" });
@@ -304,28 +306,9 @@ async function runNegativeTests(report: Report, nodes: NetworkNode[], returnerId
     // tripped - found while first writing this test, now fixed (protocol
     // package) so the real, specific "Stream contract locked" reason
     // actually reaches the client.
-    //
-    // One retry on a specific, separate, pre-existing transient: under
-    // load, a transaction's contract-file resolution (setupLocation() in
-    // process.ts - runs before permission checking even starts) can
-    // itself intermittently fail with an unrelated "Contract not found",
-    // most likely a worker-process-pool contract-path-cache race. This
-    // isn't caused by the fix above and isn't specific to locked
-    // streams - it was always possible, just previously indistinguishable
-    // from every other failure once everything got masked to the same
-    // generic 950. Found while building this test; flagged, not chased
-    // further - touches worker-pool/contract-caching internals well
-    // outside what was asked for here. Retrying once keeps this test
-    // meaningful (still fails loudly if the lock genuinely isn't
-    // enforced) without being flaky on an unrelated, pre-existing race.
-    let { result, ms } = await timed(() =>
+    const { result, ms } = await timed(() =>
       runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "should-be-blocked" })
     );
-    if ((result.$summary?.errors || []).some((e: string) => e.includes("Contract not found"))) {
-      ({ result, ms } = await timed(() =>
-        runContract(nodes[1].baseUrl, lockIdentity, namespace, returnerId, { message: "should-be-blocked-retry" })
-      ));
-    }
     const rejected =
       result.$summary?.commit === 0 &&
       (result.$summary?.errors || []).some((e: string) => e.includes("Stream contract locked"));
@@ -957,12 +940,23 @@ async function runContractDivergenceTest(
   // response, which is not the same question as how many nodes actually
   // wrote. Read both, and judge on the stores.
   const reported = result.$summary?.commit ?? 0;
-  const immediately = await revisionsAcross(nodes, contractId);
-  // Only the three healthy nodes count. The desynced one was moved off the
-  // base revision by the injection itself, so including it would report a
-  // write that never happened.
-  const healthy = immediately.byNode.filter((n) => n.port !== desyncTarget.port);
-  const advanced = healthy.filter((n) => n.rev !== baseRev).length;
+  // Nodes commit after voting and the origin answers before their commits
+  // are visible, so the stores are read until the three healthy nodes have
+  // moved or a short deadline passes. Only those three count: the desynced one
+  // was moved off the base revision by the injection itself, so including it
+  // would report a write that never happened.
+  const countHealthyAdvanced = async () => {
+    const seen = await revisionsAcross(nodes, contractId);
+    const ok = seen.byNode.filter((n) => n.port !== desyncTarget.port);
+    return { immediately: seen, healthy: ok, advanced: ok.filter((n) => n.rev !== baseRev).length };
+  };
+  const deadline = Date.now() + 10000;
+  let counted = await countHealthyAdvanced();
+  while (counted.advanced < 3 && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 250));
+    counted = await countHealthyAdvanced();
+  }
+  const { immediately, healthy, advanced } = counted;
 
   report.info(`$summary reported commit: ${reported}, vote: ${result.$summary?.vote}`);
   report.info(
