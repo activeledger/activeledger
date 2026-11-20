@@ -26,22 +26,8 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { Neighbour } from "./neighbour";
 
-/**
- * The status within the neighbourhood
- * Unrecognised = No neighbours know who you are
- * Pairing = Some neighbours think they know you
- * Recognised = You're known to the neighbourhood
- *
- * @export
- * @enum {number}
- */
-export enum NeighbourStatus {
-  Unrecognised,
-  Pairing,
-  Recognised,
-  Unstable,
-  Stable,
-}
+export { NeighbourStatus } from "./neighbourstatus";
+import { NeighbourStatus } from "./neighbourstatus";
 
 /**
  * Maintains information about all other nodes in the network
