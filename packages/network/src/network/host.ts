@@ -416,6 +416,11 @@ export class Host extends Home {
     [reference: string]: process;
   } = {};
 
+  /** How many transactions this node is holding in flight (for the local status view) */
+  public pendingCount(): number {
+    return Object.keys(this.processPending).length;
+  }
+
   /**
    * How many cpu processors have said they're ready
    *

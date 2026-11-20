@@ -20,11 +20,14 @@ describe("Maintain.rebaseNeighbourhood retry (cov)", () => {
     };
     const fake = (reference: string, knock: () => Promise<any>): any => ({
       reference, host: "h-" + reference, port: 5260, isHome: true, graceStop: false, knock,
+      setState(this: any, state: string) { this.isHome = state === "home"; return true; },
     });
     const map: any = {
       a: fake("a", async () => ({})),
       b: fake("b", async () => { knocks++; }),
     };
+    // b has not been found yet, so a check asks it
+    map.b.isHome = false;
     M.home = {
       reference: "a",
       neighbourhood: { get: () => map, keys: () => Object.keys(map) },

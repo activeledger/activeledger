@@ -187,6 +187,36 @@ describe("Neighbour and Neighbourhood", () => {
         expect(failed?.message).to.equal("Neighbour is on a different chain");
       });
 
+      it("records a neighbour on another chain as mismatch, with the chain it is on", async () => {
+        answer = (_req, res) => {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ chainMismatch: 2 }));
+        };
+        const n = neighbour(undefined, true);
+        await n.knock("status").catch(() => undefined);
+        expect(n.state).to.equal("mismatch");
+        expect(n.reason).to.equal("chain 2");
+        expect(n.isHome).to.equal(false);
+      });
+
+      it("counts a status knock sent, and nothing else", async () => {
+        const before = Neighbour.statusKnocksSent;
+        await neighbour().knock("status");
+        expect(Neighbour.statusKnocksSent).to.equal(before + 1);
+        await neighbour().knock("init", { $umid: "u2", $tx: {} }).catch(() => undefined);
+        expect(Neighbour.statusKnocksSent).to.equal(before + 1);
+      });
+
+      it("a home neighbour that stops answering a send becomes unreachable, with the reason", async () => {
+        const n = neighbour(1, true);
+        n.setState("home");
+        await n.knock("init", { $umid: "u3", $tx: {} }).catch(() => undefined);
+        expect(n.state).to.equal("unreachable");
+        expect(n.reason).to.equal("stopped answering");
+        expect(n.isHome).to.equal(false);
+      });
+
       it("rejects a status knock when the neighbour cannot be reached", async () => {
         let failed = false;
         try {

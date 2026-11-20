@@ -1,5 +1,27 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Changed
+- **Far fewer neighbour status requests while a node is missing.** While any neighbour had not been found yet, every
+  node asked every neighbour for its status four times a second, including itself and neighbours already found, for
+  as long as the node stayed down (about 30 requests a second across a four-node network, measured, with one node
+  never started). A node now asks only the neighbours it has not found yet, and never itself, so the same case sends
+  about 3 requests a second per node (to the missing one) and the others receive none. A network with every node up
+  was already silent and is unchanged. A neighbour that goes down after it was found is still noticed the way it was,
+  by the failed send or request that finds it.
+
+### Added
+- **A neighbour says why it is not home, and the node says more about itself.** `GET /a/status` lists each neighbour
+  with its `state` (`home`, `unknown`, `unreachable` or `mismatch`) next to the existing `isHome`. A caller on this
+  machine (loopback) also gets, per neighbour, the `reason` when there is one (for example `chain 2`), `since` (when
+  the state last changed) and `p2p` (`connected`, `disconnected`, or `off` when `p2pStream` is off); `node` (`chain`,
+  `build`, `version`, `uptimeSeconds`); `quorum` (`configured` nodes, how many are `home` counting this node, the
+  votes `needed` for consensus, and whether it is `reached`; the percentage is taken over the configured
+  neighbourhood, as the commit phase does); `pending` (transactions this node is holding in flight); and
+  `neighbourhood.knocks`, how many status requests it has sent and received since it started. Anyone else gets only
+  `isHome` and `state`.
+
 ## [5.7.2] - 2026-11-19
 
 A fix to the deploy scan only. Nothing needs changing on upgrade from 5.7.1.

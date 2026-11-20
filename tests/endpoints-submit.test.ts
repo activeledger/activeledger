@@ -755,17 +755,38 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         getStatus: () => "STATUS",
         neighbourhood: { get: () => hood, keys: () => Object.keys(hood) },
       };
-      const reply = await Endpoints.status(host, "NA");
+      // A caller from this machine gets the detail: counts, and since
+      const reply = await Endpoints.status(host, "NA", undefined, "127.0.0.1");
       expect(reply.statusCode).to.equal(200);
-      expect(reply.content).to.deep.equal({
+      const { node, quorum, pending, ...content } = reply.content;
+      expect(node).to.have.all.keys("chain", "build", "version", "uptimeSeconds");
+      expect(quorum).to.have.all.keys("configured", "home", "needed", "reached");
+      expect(pending).to.equal(0);
+      const { knocks, ...rest } = content.neighbourhood;
+      expect(knocks).to.have.all.keys("sent", "received");
+      expect(knocks.sent).to.be.a("number");
+      expect(knocks.received).to.be.a("number");
+      expect({ ...content, neighbourhood: rest }).to.deep.equal({
         status: "STATUS",
         reference: "me",
         left: "L",
         right: "R",
         neighbourhood: {
-          neighbours: { a: { isHome: true }, b: { isHome: false } },
+          // A neighbour that carries no state yet reads as home or unknown
+          neighbours: {
+            a: { isHome: true, state: "home", since: undefined, p2p: "off" },
+            b: { isHome: false, state: "unknown", since: undefined, p2p: "off" },
+          },
         },
         pem: "PEM",
+      });
+      // Anyone else gets only whether each is home, and the state
+      const anon = await Endpoints.status(host, "NA", undefined, "203.0.113.9");
+      expect(anon.content.neighbourhood).to.deep.equal({
+        neighbours: {
+          a: { isHome: true, state: "home" },
+          b: { isHome: false, state: "unknown" },
+        },
       });
     });
   });
