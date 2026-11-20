@@ -576,7 +576,7 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
       expect(b.asked).to.equal(2);
     });
 
-    it("retries a request that got no answer every 300 ms, eight times, and stops once it is home", async () => {
+    it("retries a request that got no answer, sooner at first and then every 300 ms, eight times, and stops once it is home", async () => {
       const b = fake("b", false);
       answers(b, "fail");
       M.retrying = {};
@@ -585,13 +585,16 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
       timers.length = 0;
       Maintain.checkNeighbour(b);
       await settle();
-      expect(timers.map((t) => t.ms)).to.deep.equal([300]);
-      // Run the retries as they are scheduled
+      // Run the retries as they are scheduled, noting each wait
+      const waits: number[] = [];
       for (let i = 0; i < 8; i++) {
+        expect(timers).to.have.length(1);
         const next = timers.shift()!;
+        waits.push(next.ms);
         next.fn();
         await settle();
       }
+      expect(waits).to.deep.equal([25, 50, 100, 200, 300, 300, 300, 300]);
       expect(b.asked).to.equal(9);
       // The ninth failed too, and there is no tenth
       expect(timers).to.deep.equal([]);

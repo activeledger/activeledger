@@ -210,14 +210,22 @@ describe("Pairing (state machine with an injected clock)", () => {
       expect(b.knocks).to.equal(1);
     });
 
-    it("retries every 300 ms, eight times, then leaves it to the poll", async () => {
+    it("retries sooner at first, then every 300 ms, eight times in all, then leaves it to the poll", async () => {
       const b = peer("b");
       const p = make("a", [b]);
       timers = [];
       b.knocks = 0;
+      const askedAt: number[] = [];
+      const knock = b.knock;
+      b.knock = () => {
+        askedAt.push(nowMs);
+        return knock();
+      };
+      const start = nowMs;
       p.checkNeighbour(b);
       await tick(300 * 20);
       expect(b.knocks).to.equal(9); // the first ask plus eight retries
+      expect(askedAt.map((t) => t - start)).to.deep.equal([0, 25, 75, 175, 375, 675, 975, 1275, 1575]);
       expect(timers.length).to.equal(0);
     });
 
