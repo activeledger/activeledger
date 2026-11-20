@@ -1092,7 +1092,16 @@ describe("CLIHandler (in-process)", () => {
       intervals[0].fn();
       expect(intervals[0].cleared).to.equal(false);
       patch(ActiveNetwork.Host.prototype, "getStatus", () => ActiveNetwork.NeighbourStatus.Stable);
+      // Paired, but not enough of the neighbourhood home for consensus yet: not ready
+      const quorum = { configured: 4, home: 2, needed: 3, reached: false };
+      patch(ActiveNetwork.Host.prototype, "quorum", () => quorum);
       logs.length = 0;
+      intervals[0].fn();
+      expect(intervals[0].cleared).to.equal(false);
+      expect(logs).to.have.length(0);
+      // Enough home
+      quorum.home = 3;
+      quorum.reached = true;
       intervals[0].fn();
       expect(intervals[0].cleared).to.equal(true);
       expect(logs.map((l) => [l.level, l.args[0]])).to.deep.equal([
@@ -1101,6 +1110,29 @@ describe("CLIHandler (in-process)", () => {
         ["startup.done", "ready"],
         ["startup.finish", undefined],
       ]);
+    });
+
+    it("reports ready anyway, and says what is missing, when the neighbours do not come", async () => {
+      setOptions({}, config({ autostart: {} }));
+      await C.boot({} as any);
+      (ActiveNetwork.Host as any).onListening();
+      patch(ActiveNetwork.Host.prototype, "getStatus", () => ActiveNetwork.NeighbourStatus.Stable);
+      patch(ActiveNetwork.Host.prototype, "quorum", () => ({ configured: 4, home: 2, needed: 3, reached: false }));
+      const realNow = Date.now;
+      let now = realNow();
+      Date.now = () => now;
+      try {
+        logs.length = 0;
+        intervals[intervals.length - 1].fn();
+        expect(intervals[intervals.length - 1].cleared).to.equal(false);
+        now += C.QUORUM_WAIT_MS + 1;
+        intervals[intervals.length - 1].fn();
+      } finally {
+        Date.now = realNow;
+      }
+      expect(intervals[intervals.length - 1].cleared).to.equal(true);
+      expect(messages("warn").join(" ")).to.contain("Ready with 2 of 4 nodes home, 3 are needed");
+      expect(logs.map((l) => l.level)).to.include("startup.finish");
     });
 
     it("notes a config that predates configVersion, and stays quiet for one that has it", async () => {

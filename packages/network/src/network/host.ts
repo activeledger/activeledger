@@ -416,6 +416,11 @@ export class Host extends Home {
     [reference: string]: process;
   } = {};
 
+  /** Home neighbours against what consensus needs, see Endpoints.quorum */
+  public quorum(): { configured: number; home: number; needed: number; reached: boolean } {
+    return Endpoints.quorum(this.neighbourhood.get(), this.neighbourhood.keys());
+  }
+
   /** How many transactions this node is holding in flight (for the local status view) */
   public pendingCount(): number {
     return Object.keys(this.processPending).length;

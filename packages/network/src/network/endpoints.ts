@@ -1860,6 +1860,25 @@ export class Endpoints {
   }
 
   /**
+   * How many of the configured neighbourhood are home against how many
+   * consensus needs. This node counts itself, as consensus does. Reached
+   * means this node can get a transaction through now.
+   */
+  public static quorum(
+    neighbourhood: any,
+    keys: string[]
+  ): { configured: number; home: number; needed: number; reached: boolean } {
+    const active = keys.filter((key) => !neighbourhood[key].graceStop);
+    const configured = active.length;
+    const home = active.filter((key) => neighbourhood[key].isHome).length;
+    const needed = Endpoints.votesNeeded(
+      configured,
+      ActiveOptions.get<any>("consensus", {}).reached
+    );
+    return { configured, home, needed, reached: home >= needed };
+  }
+
+  /**
    * The votes consensus needs, worked out the way the commit phase does it:
    * the percentage is taken over the configured neighbourhood, not over the
    * nodes that happen to be up.
@@ -1876,12 +1895,7 @@ export class Endpoints {
    * reach against how many consensus needs, and what it is holding.
    */
   private static localStatus(host: Host, neighbourhood: any, keys: string[]): object {
-    const configured = keys.filter((key) => !neighbourhood[key].graceStop).length;
-    const home = keys.filter((key) => !neighbourhood[key].graceStop && neighbourhood[key].isHome).length;
-    const needed = Endpoints.votesNeeded(
-      configured,
-      ActiveOptions.get<any>("consensus", {}).reached
-    );
+    const quorum = Endpoints.quorum(neighbourhood, keys);
     return {
       node: {
         chain: ActiveChain.idOf(ActiveOptions.get<any>("chain", null)) ?? null,
@@ -1890,7 +1904,7 @@ export class Endpoints {
         uptimeSeconds: Math.floor(process.uptime()),
       },
       // This node counts itself, as consensus does
-      quorum: { configured, home, needed, reached: home >= needed },
+      quorum,
       pending: typeof (host as any).pendingCount === "function" ? (host as any).pendingCount() : 0,
     };
   }

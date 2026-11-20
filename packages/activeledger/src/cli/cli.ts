@@ -724,6 +724,9 @@ export class CLIHandler {
    * @private
    * @static
    */
+  /** How long start-up waits for enough neighbours for consensus before reporting ready anyway */
+  public static QUORUM_WAIT_MS = 30000;
+
   private static async boot(datastore?: ActiveDataStore): Promise<void> {
     try {
       // Set Base Path
@@ -737,13 +740,28 @@ export class CLIHandler {
       ActiveNetwork.Host.onListening = () => {
         Startup.done("network");
         Startup.begin("consensus");
+        // Ready means this node can get a transaction through: paired, and
+        // enough of the neighbourhood home for consensus. A neighbour that
+        // is simply not started must not hold this node back for ever, so
+        // after QUORUM_WAIT_MS it is ready anyway, and says what is missing.
+        const waitingSince = Date.now();
+        const finish = () => {
+          clearInterval(poll);
+          Startup.done("consensus");
+          Startup.begin("ready");
+          Startup.done("ready");
+          Startup.finish();
+        };
         const poll = setInterval(() => {
-          if (host.getStatus() === ActiveNetwork.NeighbourStatus.Stable) {
-            clearInterval(poll);
-            Startup.done("consensus");
-            Startup.begin("ready");
-            Startup.done("ready");
-            Startup.finish();
+          if (host.getStatus() !== ActiveNetwork.NeighbourStatus.Stable) return;
+          const quorum = host.quorum();
+          if (quorum.reached) {
+            finish();
+          } else if (Date.now() - waitingSince > CLIHandler.QUORUM_WAIT_MS) {
+            ActiveLogger.warn(
+              `Ready with ${quorum.home} of ${quorum.configured} nodes home, ${quorum.needed} are needed for consensus. Transactions will wait until more neighbours are found.`
+            );
+            finish();
           }
         }, 300);
         poll.unref();
