@@ -50,6 +50,7 @@ export class P2PClient extends EventEmitter {
       this.isConnected = true;
       this.hasEverConnected = true;
       ActiveLogger.info(`Connected to peer at ${this.host}:${this.port}`);
+      this.emit("connected");
     });
     
     this.chunks = [];

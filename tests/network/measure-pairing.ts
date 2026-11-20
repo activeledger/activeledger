@@ -46,6 +46,24 @@ const counts = async (n: any) => (await get(`${n.baseUrl}/a/status`)).neighbourh
     }
     await sleep(5000);
     await window("ONE NEVER STARTED", [0, 1, 2]);
+    // A late joiner, after the poll has backed off: how long after it is ready
+    // do the others count it home?
+    await sleep(40000);
+    const allHome = async (i: number) => {
+      try {
+        const n = Object.values((await get(`${nodes()[i].baseUrl}/a/status`)).neighbourhood.neighbours) as any[];
+        return n.length === 4 && n.every((x) => x.state === "home");
+      } catch { return false; }
+    };
+    const t0 = Date.now();
+    await harness.restartNode(3);
+    const ready = Date.now() - t0;
+    let seen = -1;
+    while (Date.now() - t0 < 30000) {
+      if ((await Promise.all([0, 1, 2].map(allHome))).every(Boolean)) { seen = Date.now() - t0; break; }
+      await sleep(50);
+    }
+    console.log(`LATE JOINER: node 4 ready after ${ready} ms; nodes 1-3 all count it home after ${seen} ms (${seen < 0 ? "never" : seen - ready + " ms after it was ready"})`);
     const st = await get(`${nodes()[0].baseUrl}/a/status`);
     console.log("node 1 sees:", JSON.stringify(Object.values(st.neighbourhood.neighbours).map((n: any) => `${n.state}${n.reason ? " (" + n.reason + ")" : ""}`)));
     console.log("node 1 p2p:", JSON.stringify(Object.values(st.neighbourhood.neighbours).map((n: any) => n.p2p)));

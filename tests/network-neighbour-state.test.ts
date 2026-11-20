@@ -6,6 +6,7 @@ import { ActiveOptions } from "@activeledger/activeoptions";
 import { Endpoints } from "../packages/network/src/network/endpoints";
 import { Neighbour } from "../packages/network/src/network/neighbour";
 import { Home } from "../packages/network/src/network/home";
+import { Maintain } from "../packages/network/src/network/maintain";
 
 describe("Neighbour state and reason", () => {
   let savedP2p: any;
@@ -197,5 +198,109 @@ describe("Neighbour state and reason", () => {
       for (const key of ["node", "quorum", "pending"]) expect(reply.content, key).to.not.have.property(key);
       for (const n of Object.values(reply.content.neighbourhood.neighbours) as any[]) expect(n).to.not.have.property("p2p");
     });
+  });
+
+  describe("looking at a neighbour at once when there is a sign it is up", () => {
+    let looked: any[];
+    let real: any;
+    beforeEach(() => {
+      looked = [];
+      real = Maintain.checkNeighbour;
+      Maintain.checkNeighbour = ((n: any) => looked.push(n.reference)) as any;
+    });
+    afterEach(() => {
+      Maintain.checkNeighbour = real;
+    });
+    const hostOf = (neighbours: Neighbour[]): any => {
+      const hood: any = {};
+      neighbours.forEach((n) => (hood[n.reference] = n));
+      return {
+        reference: "me",
+        getStatus: () => 4,
+        neighbourhood: { get: (ref?: string) => (ref ? hood[ref] ?? null : hood), keys: () => Object.keys(hood) },
+      };
+    };
+
+    it("when a configured neighbour that is not home knocks the status route", async () => {
+      const n = new Neighbour("10.0.0.2", 5260);
+      await Endpoints.status(hostOf([n]), n.reference, undefined, "10.0.0.2");
+      expect(looked).to.deep.equal([n.reference]);
+    });
+
+    it("but not for a neighbour already home, one leaving, a stranger, or an anonymous caller", async () => {
+      const home = new Neighbour("10.0.0.3", 5260);
+      home.setState("home");
+      const leaving = new Neighbour("10.0.0.4", 5260);
+      leaving.graceStop = true;
+      const host = hostOf([home, leaving]);
+      await Endpoints.status(host, home.reference, undefined, "10.0.0.3");
+      await Endpoints.status(host, leaving.reference, undefined, "10.0.0.4");
+      await Endpoints.status(host, "not-configured", undefined, "203.0.113.9");
+      await Endpoints.status(host, "NA", undefined, "127.0.0.1");
+      expect(looked).to.deep.equal([]);
+    });
+
+    it("and not for a neighbour on another chain, which the status route refuses first", async () => {
+      const n = new Neighbour("10.0.0.5", 5260);
+      const savedChain = ActiveOptions.get("chain", undefined);
+      ActiveOptions.set("chain", { id: 1 });
+      try {
+        await Endpoints.status(hostOf([n]), n.reference, "7", "10.0.0.5");
+      } finally {
+        ActiveOptions.set("chain", savedChain);
+      }
+      expect(looked).to.deep.equal([]);
+    });
+  });
+});
+
+describe("A neighbour's P2P socket connecting", () => {
+  let server: import("net").Server;
+  let port: number;
+  let savedP2p: any;
+  let real: any;
+  let looked: string[];
+
+  beforeEach(async () => {
+    looked = [];
+    savedP2p = ActiveOptions.get("p2pStream", undefined);
+    real = Maintain.checkNeighbour;
+    Maintain.checkNeighbour = ((n: any) => looked.push(n.reference)) as any;
+    server = (await import("net")).createServer((socket) => socket.on("error", () => undefined));
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    port = (server.address() as any).port;
+  });
+  afterEach(async () => {
+    Maintain.checkNeighbour = real;
+    ActiveOptions.set("p2pStream", savedP2p);
+    await new Promise<void>((r) => server.close(() => r()));
+  });
+  const until = async (cond: () => boolean) => {
+    for (let i = 0; i < 100 && !cond(); i++) await new Promise((r) => setTimeout(r, 20));
+  };
+
+  it("makes the node look at that neighbour at once", async () => {
+    ActiveOptions.set("p2pStream", true);
+    // The P2P port is the neighbour's port plus one
+    const n = new Neighbour("127.0.0.1", port - 1);
+    try {
+      await until(() => looked.length > 0);
+      expect(looked).to.deep.equal([n.reference]);
+    } finally {
+      n.p2pClient.stop();
+    }
+  });
+
+  it("does not, for a neighbour already home", async () => {
+    ActiveOptions.set("p2pStream", true);
+    const n = new Neighbour("127.0.0.1", port - 1);
+    n.setState("home");
+    try {
+      await until(() => n.p2pClient.ready);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(looked).to.deep.equal([]);
+    } finally {
+      n.p2pClient.stop();
+    }
   });
 });

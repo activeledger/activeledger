@@ -162,6 +162,11 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
     // A frame the socket accepted but could not write: whoever sent it has to
     // stop counting it as delivered
     this.p2pClient?.on("dropped", () => Neighbour.onDropped?.(this.reference));
+
+    // Its P2P socket just connected: it is up, so look at it now
+    this.p2pClient?.on("connected", () => {
+      if (!this.isHome && !this.graceStop) Maintain.checkNeighbour(this);
+    });
   }
 
   /** Told which neighbour lost a frame after accepting it (set by the host) */

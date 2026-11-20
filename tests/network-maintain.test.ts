@@ -459,4 +459,197 @@ describe("Maintain (neighbourhood pairing and health timer)", () => {
       expect(timers[0].ms).to.equal(2000);
     });
   });
+
+  describe("the discovery poll backs off", () => {
+    beforeEach(() => {
+      M.discoveryTicks = 0;
+      M.lastAsked = {};
+      setup("a", [fake("a"), fake("b", false)]);
+    });
+
+    it("is fast for the first thirty ticks, then backs off to every ten seconds", () => {
+      const seen: number[] = [];
+      for (let i = 0; i < 38; i++) seen.push(M.getInterval());
+      expect(seen.slice(0, 30)).to.deep.equal(new Array(30).fill(300));
+      expect(seen.slice(30)).to.deep.equal([1000, 2000, 4000, 8000, 10000, 10000, 10000, 10000]);
+    });
+
+    it("goes back to the routine interval once everyone is found", () => {
+      M.discoveryTicks = 500;
+      M.neighbourOrder.forEach((n: any) => (n.isHome = true));
+      expect(M.getInterval()).to.equal(M.interval);
+    });
+
+    it("starts again from fast when discovery is restarted", () => {
+      M.discoveryTicks = 500;
+      M.restart();
+      // Counting again from the first tick it just scheduled
+      expect(M.discoveryTicks).to.equal(1);
+      expect(timers[0].ms).to.equal(300);
+    });
+  });
+
+  describe("checkNeighbour (a sign the neighbour is up)", () => {
+    const answers = (n: any, outcome: "ok" | "fail") => {
+      n.asked = 0;
+      n.knock = async () => {
+        n.asked++;
+        if (outcome === "fail") throw new Error("down");
+        return {};
+      };
+    };
+    const settle = () => new Promise((r) => setImmediate(r));
+    beforeEach(() => {
+      M.lastAsked = {};
+      M.retrying = {};
+      M.asking = new Set();
+      Home.reference = "net-1";
+    });
+
+    it("asks a neighbour that is not home, and marks it home and pairs when it answers", async () => {
+      const b = fake("b", false);
+      answers(b, "ok");
+      setup("a", [fake("a"), b]);
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(1);
+      expect(b.state).to.equal("home");
+      expect(setCalls).to.deep.equal([["b", "b"]]);
+    });
+
+    it("marks a neighbour that does not answer unreachable, and does not throw", async () => {
+      const b = fake("b", false);
+      answers(b, "fail");
+      setup("a", [fake("a"), b]);
+      expect(() => Maintain.checkNeighbour(b)).to.not.throw();
+      await settle();
+      expect(b.state).to.equal("unreachable");
+      expect(setCalls).to.deep.equal([]);
+    });
+
+    it("leaves alone a neighbour already home, one leaving, this node itself, and nothing at all", async () => {
+      const home = fake("b", true);
+      const leaving = fake("c", false, true);
+      const self = fake("a", false);
+      for (const n of [home, leaving, self]) answers(n, "ok");
+      setup("a", [self, home, leaving]);
+      for (const n of [home, leaving, self, undefined, null]) Maintain.checkNeighbour(n as any);
+      await settle();
+      expect([home.asked, leaving.asked, self.asked]).to.deep.equal([0, 0, 0]);
+    });
+
+    it("makes a burst of signs one request, and never has two out at once", async () => {
+      const b = fake("b", false);
+      let release: () => void = () => undefined;
+      b.asked = 0;
+      b.knock = () => {
+        b.asked++;
+        return new Promise((resolve) => (release = () => resolve({})));
+      };
+      setup("a", [fake("a"), b]);
+      Maintain.checkNeighbour(b);
+      Maintain.checkNeighbour(b);
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(1);
+      release();
+      await settle();
+      expect(b.state).to.equal("home");
+    });
+
+    it("asks again after a short gap, when the first sign was a moment too early", async () => {
+      const b = fake("b", false);
+      answers(b, "fail");
+      M.retrying = {};
+      M.asking = new Set();
+      setup("a", [fake("a"), b]);
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(1);
+      // Inside 250 ms it is the same burst; after that a new sign is a new request
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(1);
+      M.lastAsked.b = Date.now() - 400;
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(2);
+    });
+
+    it("retries a request that got no answer every 300 ms, eight times, and stops once it is home", async () => {
+      const b = fake("b", false);
+      answers(b, "fail");
+      M.retrying = {};
+      M.asking = new Set();
+      setup("a", [fake("a"), b]);
+      timers.length = 0;
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(timers.map((t) => t.ms)).to.deep.equal([300]);
+      // Run the retries as they are scheduled
+      for (let i = 0; i < 8; i++) {
+        const next = timers.shift()!;
+        next.fn();
+        await settle();
+      }
+      expect(b.asked).to.equal(9);
+      // The ninth failed too, and there is no tenth
+      expect(timers).to.deep.equal([]);
+    });
+
+    it("stops retrying when the neighbour becomes home another way", async () => {
+      const b = fake("b", false);
+      answers(b, "fail");
+      M.retrying = {};
+      M.asking = new Set();
+      setup("a", [fake("a"), b]);
+      timers.length = 0;
+      Maintain.checkNeighbour(b);
+      await settle();
+      b.isHome = true;
+      timers.shift()!.fn();
+      await settle();
+      expect(b.asked).to.equal(1);
+      expect(timers).to.deep.equal([]);
+    });
+
+    it("lets a fresh sign replace a retry that is waiting", async () => {
+      const b = fake("b", false);
+      answers(b, "fail");
+      M.retrying = {};
+      M.asking = new Set();
+      setup("a", [fake("a"), b]);
+      timers.length = 0;
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(Object.keys(M.retrying)).to.deep.equal(["b"]);
+      M.lastAsked.b = Date.now() - 400;
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.asked).to.equal(2);
+      // still one waiting retry, not two
+      expect(Object.keys(M.retrying)).to.deep.equal(["b"]);
+    });
+
+    it("does nothing before the network is set up", () => {
+      M.home = undefined;
+      const b = fake("b", false);
+      answers(b, "ok");
+      expect(() => Maintain.checkNeighbour(b)).to.not.throw();
+      expect(b.asked).to.equal(0);
+    });
+
+    it("does not pair if the network was reset while it asked", async () => {
+      const b = fake("b", false);
+      b.knock = async () => {
+        Home.reference = "net-2";
+        return {};
+      };
+      setup("a", [fake("a"), b]);
+      Maintain.checkNeighbour(b);
+      await settle();
+      expect(b.isHome).to.equal(false);
+      expect(setCalls).to.deep.equal([]);
+    });
+  });
 });
