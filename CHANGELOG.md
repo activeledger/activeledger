@@ -1,5 +1,13 @@
 # Activeledger Changelog
 
+## [Unreleased]
+
+### Fixed
+- **A stream document with its own `locked` field could never be repaired by SPI or catch-up.** Self repair read any
+  neighbour's copy that had a truthy `locked` property as "this node could not report", so a contract whose state
+  holds a `locked` value of its own (a collateral amount, for example) had every copy counted as silent and logged
+  `SPI NOWINNER ... could not report`. Only the engine's own placeholder, which has no `_rev`, now means that.
+
 ## [5.9.0] - 2026-11-20
 
 A node that missed commits now finds them itself, neighbours are checked with a signed hello, and a regression in
