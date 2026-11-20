@@ -33,6 +33,8 @@ import { Dispatcher, setGlobalDispatcher, getGlobalDispatcher, Agent } from "und
 interface IHTTPResponse {
   //raw: string;
   data: unknown;
+  /** The HTTP status, when a response arrived at all (absent for a connection that failed) */
+  status?: number;
 }
 
 // Below this many bytes, gzip's cost outweighs the bandwidth it saves.
@@ -306,6 +308,7 @@ async function perform(
       const chunks: Buffer[] = [];
       let encoding: string | undefined;
       let settled = false;
+      let httpStatus: number | undefined;
 
       // Every exit resolves - callers rely on this never rejecting, even on
       // a genuine connection failure (neighbour.knock() and
@@ -314,6 +317,7 @@ async function perform(
         if (settled) return;
         settled = true;
         if (abortRequest) scope?.inflight?.delete(abortRequest);
+        if (httpStatus !== undefined) value.status = httpStatus;
         resolve(value);
       };
 
@@ -334,7 +338,8 @@ async function perform(
             // The call ended before this request got going: it does not go
             if (scope?.ended?.value) abort();
           },
-          onHeaders: (_statusCode: number, rawHeaders: Buffer[] | null) => {
+          onHeaders: (statusCode: number, rawHeaders: Buffer[] | null) => {
+            httpStatus = statusCode;
             encoding = rawHeader(rawHeaders, "content-encoding");
             // A contract never asks for compression, so an encoded answer is not read: it
             // could expand far past the byte budget the contract was given

@@ -21,6 +21,7 @@
  * SOFTWARE.
  */
 
+import { randomBytes } from "crypto";
 import { ActiveChain, ActiveOptions, ActiveRequest } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
@@ -45,7 +46,13 @@ const RECOVERY_CHECK_INTERVAL = 3 * 1000;
  */
 const P2P_COMPRESSION_THRESHOLD = 16 * 1024;
 
-export type NeighbourState = "unknown" | "home" | "unreachable" | "mismatch";
+export type NeighbourState =
+  | "unknown"
+  | "home"
+  | "unreachable"
+  | "mismatch"
+  | "booting"
+  | "refused";
 
 export class Neighbour implements ActiveDefinitions.INeighbourBase {
   /** See knock(). Profiling affordance, read once at startup. */
@@ -108,6 +115,34 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
   /** Status knocks this node has sent to any neighbour since it started */
   public static statusKnocksSent = 0;
+
+  /**
+   * Whether to ask for the signed hello. Off only for tests that need a node
+   * to behave like one from before it existed (AL_NO_HELLO=1, also read by the
+   * host, which then does not answer it).
+   */
+  public static get helloEnabled(): boolean {
+    return process.env.AL_NO_HELLO !== "1";
+  }
+
+  /**
+   * Whether this neighbour answers the hello. Unknown until asked; false after
+   * an answer that was not one (a node from before it existed), and then it is
+   * asked by status knock, with the hello tried again every ten minutes so a
+   * neighbour that is upgraded is noticed.
+   */
+  public helloSupport?: boolean;
+  private helloFallbackAt: number = 0;
+
+  /** What the neighbour said about itself in its last hello */
+  public peer?: { version: string | null; build: number | null; features: string[] };
+
+  private shouldHello(): boolean {
+    // Without the neighbour's key there is nothing to check the answer with
+    if (!Neighbour.helloEnabled || !this.identity) return false;
+    if (this.helloSupport !== false) return true;
+    return Date.now() - this.helloFallbackAt > 10 * 60 * 1000;
+  }
 
   /**
    * Moves the neighbour to a state, keeping isHome in step. Returns true
@@ -181,6 +216,7 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
   /** Neighbours already warned about for being on another chain */
   private static chainWarned = new Set<string>();
+  private static identityWarned = new Set<string>();
 
   /**
    * Expose Neighbours address
@@ -206,6 +242,150 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
       return this.identity.verify(data, signature);
     }
     return false;
+  }
+
+  /**
+   * The unsigned GET: the status knock (and any other parameterless endpoint)
+   * as nodes before the hello answer it.
+   */
+  private statusRequest(endpoint: string): Promise<any> {
+    if (endpoint === "status") Neighbour.statusKnocksSent++;
+    return new Promise((resolve, reject) => {
+      ActiveRequest.send(
+        `http://${this.host}:${this.port}/a/${endpoint}`,
+        "GET",
+        [
+          "X-Activeledger:" + Home.reference,
+          // Which chain this node belongs to, so a node on another chain is
+          // refused at pairing instead of voting against this one
+          ...(ActiveChain.idHeader(ActiveOptions.get<any>("chain", null))),
+        ],
+        null,
+        false,
+        60
+      )
+        .then((response: any) => {
+          // Same reasoning as the bundled branch below - ActiveRequest.send()
+          // never rejects, even on a genuine connection failure, resolving
+          // { data: null } instead. Without this check, knock("status")
+          // against a genuinely down neighbour would resolve "successfully"
+          // with null data - which is exactly what checkNeighbourhood() and
+          // Neighbour's own recovery poll use to decide a node is home.
+          if (response?.data === null) {
+            reject(new Error("Request Failed"));
+          } else if (
+            endpoint === "status" &&
+            response?.data?.chainMismatch !== undefined
+          ) {
+            // The neighbour is on another chain: it is never marked home.
+            // Said once per neighbour, so the node that is misconfigured
+            // is told why it never becomes ready.
+            this.refuseChain(response.data.chainMismatch);
+            reject(new Error("Neighbour is on a different chain"));
+          } else {
+            resolve(response);
+          }
+        })
+        .catch(reject);
+    });
+  }
+
+  /** The neighbour is on another chain: never home, and said once so the operator is told why */
+  private refuseChain(theirs: number | string): void {
+    this.setState("mismatch", `chain ${theirs}`);
+    if (!Neighbour.chainWarned.has(this.reference)) {
+      Neighbour.chainWarned.add(this.reference);
+      ActiveLogger.warn(
+        `Neighbour ${this.host}:${this.port} is on chain ${theirs}, this node is on chain ${ActiveChain.idOf(ActiveOptions.get<any>("chain", null))}. Not pairing.`
+      );
+    }
+  }
+
+  /**
+   * Asks the neighbour who it is (GET /a/hello) and checks the answer: signed
+   * by the key this node has for it, answering this request (nonce), on the
+   * same chain, knowing this node, and ready. Resolves only for a neighbour
+   * that is all of those; the state and reason say why otherwise.
+   *
+   * A neighbour from before the hello answers 404 or 403 or something that is
+   * not a hello: it is remembered as not having one and asked by status
+   * knock, so nodes can be upgraded one at a time. Only a connection that
+   * failed (no HTTP answer at all) is "not there".
+   */
+  private async hello(): Promise<any> {
+    Neighbour.statusKnocksSent++;
+    const nonce = randomBytes(8).toString("hex");
+    const response: any = await ActiveRequest.send(
+      `http://${this.host}:${this.port}/a/hello`,
+      "GET",
+      [
+        "X-Activeledger:" + Home.reference,
+        "X-Activeledger-Nonce:" + nonce,
+        ...ActiveChain.idHeader(ActiveOptions.get<any>("chain", null)),
+      ],
+      null,
+      false,
+      60
+    );
+    if (response?.data === null && response.status === undefined) {
+      // Nothing answered. A neighbour that was refusing or booting is now just gone
+      if (this.state === "booting" || this.state === "refused") {
+        this.setState("unreachable", "no answer");
+      }
+      throw new Error("Request Failed");
+    }
+    const reply = response?.data;
+    const hello = reply?.hello;
+    if (
+      !hello ||
+      typeof hello !== "object" ||
+      hello.hello !== 1 ||
+      typeof reply.signature !== "string"
+    ) {
+      // From before the hello (or no key to check it with): ask the old way
+      this.helloSupport = false;
+      this.helloFallbackAt = Date.now();
+      // What it said before is out of date if it was replaced by an older build
+      this.peer = undefined;
+      return this.statusRequest("status");
+    }
+    if (
+      hello.reference !== this.reference ||
+      hello.nonce !== nonce ||
+      !this.verifySignature(reply.signature, JSON.stringify(hello))
+    ) {
+      this.setState("mismatch", "answer not signed by its key");
+      if (!Neighbour.identityWarned.has(this.reference)) {
+        Neighbour.identityWarned.add(this.reference);
+        ActiveLogger.warn(
+          `Neighbour ${this.host}:${this.port} answered the hello but not as the node configured there (bad signature). Not pairing.`
+        );
+      }
+      throw new Error("Neighbour answer is not signed by its key");
+    }
+    this.helloSupport = true;
+    const mismatch = ActiveChain.mismatch(
+      ActiveChain.idOf(ActiveOptions.get<any>("chain", null)),
+      hello.chain === null || hello.chain === undefined ? undefined : String(hello.chain)
+    );
+    if (mismatch !== undefined) {
+      this.refuseChain(hello.chain);
+      throw new Error("Neighbour is on a different chain");
+    }
+    if (!hello.knows) {
+      this.setState("refused", "not in its neighbourhood");
+      throw new Error("Neighbour does not know this node");
+    }
+    if (!hello.ready) {
+      this.setState("booting", "its neighbourhood is not loaded yet");
+      throw new Error("Neighbour is not ready");
+    }
+    this.peer = {
+      version: typeof hello.version === "string" ? hello.version : null,
+      build: typeof hello.build === "number" ? hello.build : null,
+      features: Array.isArray(hello.features) ? hello.features.map(String) : [],
+    };
+    return { data: hello };
   }
 
   /**
@@ -320,52 +500,13 @@ export class Neighbour implements ActiveDefinitions.INeighbourBase {
 
     // Legacy HTTP/2 Fallback
     if (!params) {
-      // Not Params, Sent Get without signature
-      if (endpoint === "status") Neighbour.statusKnocksSent++;
-      return new Promise((resolve, reject) => {
-        ActiveRequest.send(
-          `http://${this.host}:${this.port}/a/${endpoint}`,
-          "GET",
-          [
-            "X-Activeledger:" + Home.reference,
-            // Which chain this node belongs to, so a node on another chain is
-            // refused at pairing instead of voting against this one
-            ...(ActiveChain.idHeader(ActiveOptions.get<any>("chain", null))),
-          ],
-          null,
-          false,
-          60
-        )
-          .then((response: any) => {
-            // Same reasoning as the bundled branch below - ActiveRequest.send()
-            // never rejects, even on a genuine connection failure, resolving
-            // { data: null } instead. Without this check, knock("status")
-            // against a genuinely down neighbour would resolve "successfully"
-            // with null data - which is exactly what checkNeighbourhood() and
-            // Neighbour's own recovery poll use to decide a node is home.
-            if (response?.data === null) {
-              reject(new Error("Request Failed"));
-            } else if (
-              endpoint === "status" &&
-              response?.data?.chainMismatch !== undefined
-            ) {
-              // The neighbour is on another chain: it is never marked home.
-              // Said once per neighbour, so the node that is misconfigured
-              // is told why it never becomes ready.
-              this.setState("mismatch", `chain ${response.data.chainMismatch}`);
-              if (!Neighbour.chainWarned.has(this.reference)) {
-                Neighbour.chainWarned.add(this.reference);
-                ActiveLogger.warn(
-                  `Neighbour ${this.host}:${this.port} is on chain ${response.data.chainMismatch}, this node is on chain ${ActiveChain.idOf(ActiveOptions.get<any>("chain", null))}. Not pairing.`
-                );
-              }
-              reject(new Error("Neighbour is on a different chain"));
-            } else {
-              resolve(response);
-            }
-          })
-          .catch(reject);
-      });
+      // Not Params, Sent Get without signature. A status knock asks for the
+      // signed hello first, and falls back to the old status answer for a
+      // neighbour that does not have it
+      if (endpoint === "status" && this.shouldHello()) {
+        return this.hello();
+      }
+      return this.statusRequest(endpoint);
     } else {
       // Default vars for request
       let url: string;

@@ -90,6 +90,21 @@ activeledger status
 
 You should see `ready (pid 12345)`. It exits 2 with `not running` when the node is down. Transactions the node missed while it was off are repaired by SPI as streams are next touched.
 
+### Why a neighbour is not home
+
+A node finds its neighbours by asking each one `GET /a/hello`. The answer says who the neighbour is, which chain it is on, whether it knows the asker, and whether it has loaded its own neighbourhood, and it is signed with the neighbour's identity key. The asker checks the signature against the public key in its own `neighbourhood` entry, so an answer from a different machine at the same address is not accepted. `GET /a/status` from the machine the node runs on lists each neighbour with a `state` and, when there is one, a `reason`:
+
+| State | Meaning |
+|---|---|
+| `home` | Answered and checked. Used for consensus. |
+| `unknown` | Not asked yet. |
+| `unreachable` | No answer (not started, or stopped). It is asked again. |
+| `booting` | Answered, but has not loaded its neighbourhood yet. It is asked again. |
+| `refused` | Answered, but does not have this node in its neighbourhood. Add this node there. |
+| `mismatch` | On a different chain, or its answer was not signed by the key configured for it. Not paired until the configuration is fixed. |
+
+A neighbour from before this check answers `/a/hello` with a 404, and is asked with the older status request instead, so nodes can be upgraded one at a time. A neighbour that answered the hello also reports its `version` and `build`, shown as `peer` in the same local status.
+
 ## Adding a node
 
 Once the network is [asserted](../first-network.md), the list of nodes lives on the ledger and is changed with a transaction to the `default/setup` contract. More than half of the existing nodes must sign it with their own node keys (the `.identity` file), and the signatures are named by each node's `host:port`.

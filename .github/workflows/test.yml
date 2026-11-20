@@ -73,3 +73,9 @@ jobs:
       - name: Live check, chain id on a 4-node network
         timeout-minutes: 10
         run: npx tsx tests/network/chain-live.ts
+
+      # Neighbours pair through the signed hello, an answer is signed by the
+      # node's key, and a node that does not say hello still pairs.
+      - name: Live check, signed hello on a 4-node network
+        timeout-minutes: 10
+        run: npx tsx tests/network/hello-live.ts
