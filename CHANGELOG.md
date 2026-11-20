@@ -33,6 +33,23 @@
   `neighbourhood.knocks`, how many status requests it has sent and received since it started. Anyone else gets only
   `isHome` and `state`.
 
+## [5.7.2] - 2026-11-19
+
+A fix to the deploy scan only. Nothing needs changing on upgrade from 5.7.1.
+
+### Fixed
+- **The deploy scan no longer refuses a stream id passed straight to `getAnyStreamReadOnly`.** From build `50600` the
+  scan read `` this.getAnyStreamReadOnly(`${id}:volatile`) `` as a path to volatile data and refused the contract
+  (`A path to volatile data is forbidden`), although it is the engine's own call and what it may read is decided by
+  the stream's read lock. The text that is the argument of `this.getAnyStreamReadOnly(...)` (through a template, a `+`
+  or brackets), with no slash in it, is now left alone. Only that exact call counts, and the name may appear in the
+  source only as that call: declaring it, assigning to it (plain, compound or destructured), reading it off another
+  object, binding or wrapping it, or spelling it as a string or a computed key is refused (`'getAnyStreamReadOnly'
+  cannot be redefined`), so the name cannot point at the contract's own code. Anything else that names volatile data is refused as before: a path, a URL, text
+  handed to a request, or the same text kept in a variable first (write the call with the id in it). Writing volatile
+  data over HTTP stays refused, so use `setVolatile` (it creates a missing volatile document). The run-time guard is
+  unchanged. A scan rule is part of the deploy vote, so upgrade every node before raising `build` to `50600`.
+
 ## [5.7.1] - 2026-11-19
 
 ### Fixed
