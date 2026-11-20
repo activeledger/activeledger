@@ -259,9 +259,13 @@ export const pruneCommand = async (
   const compacted: string[] = [];
   if (!flags.dryRun && !flags.noCompact) {
     for (const db of [...new Set(tallies.filter((t) => t.removed > 0).map((t) => t.db))]) {
-      await deps.request(`${base}/${db}/_compact`, "GET").catch(() => undefined);
-      compacted.push(db);
-      say(`  compacting ${db}`);
+      try {
+        await deps.request(`${base}/${db}/_compact`, "GET");
+        compacted.push(db);
+        say(`  compacting ${db}`);
+      } catch (error) {
+        out.error(`  could not compact ${db}, the space is not given back yet: ${(error as Error)?.message ?? error}`);
+      }
     }
   }
 
