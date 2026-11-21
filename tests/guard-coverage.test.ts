@@ -334,6 +334,27 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       } finally { real.checkServerIdentity = original; }
     });
 
+    it("cannot be got round from inside the contract: it rewrites tls.checkServerIdentity itself, then uses the rewrite", async () => {
+      const p = await closed();
+      const real = require("tls");
+      const original = real.checkServerIdentity;
+      try {
+        const e = await new Promise<any>((resolve) => {
+          try {
+            inContract(() => {
+              // All of this runs in the contract's context
+              const mine = () => undefined;
+              real.checkServerIdentity = mine;
+              expect(real.checkServerIdentity).to.equal(mine);
+              real.connect({ host: "127.0.0.1", port: p, checkServerIdentity: real.checkServerIdentity }).on("error", resolve);
+              return null;
+            });
+          } catch (x) { resolve(x); }
+        });
+        expect(e).to.be.instanceOf(StorageAccessError);
+      } finally { real.checkServerIdentity = original; }
+    });
+
     it("refuses the built-in when it is not plain data (a getter, a hidden property)", async () => {
       const p = await closed();
       const getter = { host: "127.0.0.1", port: p };
