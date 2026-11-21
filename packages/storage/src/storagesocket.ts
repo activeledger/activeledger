@@ -74,7 +74,8 @@ export function serveStorageSocket(http: ActiveHttpd, socketPath: string): net.S
         const item = frame.item;
         chunks = frame.remaining.length ? [frame.remaining] : [];
         buffered = frame.remaining.length;
-        handle(socket, item);
+        // A bad frame must not end the storage process: drop that client
+        handle(socket, item).catch(() => socket.destroy());
         frame = buffered ? ActiveFrame.read(chunks, buffered) : null;
       }
     });

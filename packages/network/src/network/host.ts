@@ -279,6 +279,11 @@ export class Host extends Home {
   /** Hybrid key hashes refused on this supernode only (`hybrid ban`) */
   public static hybridBans = new HybridBans();
 
+  /** The start-up check that the databases answer is not awaited, so a failure is logged here and not left unhandled */
+  public static dbUnreachable(error: unknown): void {
+    ActiveLogger.warn(`Database did not answer at start-up: ${(error as Error)?.message ?? error}`);
+  }
+
   /** The registry of hybrids, read from the ledger */
   public hybridRegistry: LedgerHybridRegistry;
 
@@ -1034,15 +1039,15 @@ export class Host extends Home {
 
     // Create connection string
     this.dbConnection = new ActiveDSConnect(db.url + "/" + db.database);
-    this.dbConnection.info();
+    this.dbConnection.info().catch(Host.dbUnreachable);
 
     // Create connection string
     this.dbErrorConnection = new ActiveDSConnect(db.url + "/" + db.error);
-    this.dbErrorConnection.info();
+    this.dbErrorConnection.info().catch(Host.dbUnreachable);
 
     // Create connection string
     this.dbEventConnection = new ActiveDSConnect(db.url + "/" + db.event);
-    this.dbEventConnection.info();
+    this.dbEventConnection.info().catch(Host.dbUnreachable);
     // A transaction resent before a restart can still be reposted
     void this.loadResentGuard();
     void this.loadStoredMarker();
