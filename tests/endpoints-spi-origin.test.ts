@@ -473,7 +473,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     Endpoints.backfillUmid = realBackfill;
   });
 
-  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number; busyAsks?: number; failedAsks?: number; scripted?: "lock" | "down" }) => {
+  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number; busyAsks?: number; failedAsks?: number; scripted?: "lock" | "down"; partial?: boolean }) => {
     Home.reference = "me";
     ActiveOptions.set("consensus", { reached: 66 });
     const repaired: string[] = [];
@@ -546,6 +546,11 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
           if (ask < (opts.silentAsks ?? 0)) return [];
           const marker = [{ _id: id, locked: true }];
           const failed = { error: true, from: "n" };
+          if (opts.partial) {
+            // The stream itself is reported by all three, its :stream meta by one only (the others hold it)
+            const metaId = `${id}:stream`;
+            return [[winner, { _id: metaId, _rev: "5-meta" }], [winner, { _id: metaId, locked: true }], [winner, { _id: metaId, locked: true }]];
+          }
           if (ask < (opts.busyAsks ?? 0)) return [[winner], marker, marker];
           if (ask < (opts.failedAsks ?? 0)) return [[winner], failed, failed];
           return [[winner], [winner], [winner]];
@@ -664,6 +669,22 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
       }
     });
   }
+
+  it("repairs the streams enough neighbours reported even when another stream is short: the gate counts entries, the tally decides each stream", async () => {
+    // A stricter gate (every stream needs enough reporters before any is looked at) would skip the
+    // stream below, which three neighbours agreed on, because its meta could be reported by one.
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 1;
+    try {
+      const r = await run({ stale: "4-old", knownRev: true, partial: true });
+      expect(r.asks()).to.equal(Endpoints.SPI_ASK_TRIES); // the short meta was worth asking about again
+      expect(r.bulk).to.have.length(1);
+      expect(r.bulk[0].docs.map((d: any) => d._id)).to.deep.equal([r.id]); // only the stream, not the meta
+      expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
+  });
 
   it("creates the stream first when this node had never seen it", async () => {
     const r = await run({ stale: "", knownRev: false });
