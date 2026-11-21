@@ -3,6 +3,11 @@ import "mocha";
 import * as http from "http";
 import * as net from "net";
 import * as tls from "tls";
+import * as https from "https";
+import * as cp from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { ActiveRequest, ContractScope, StorageAccessError } from "@activeledger/activeutilities";
 import { runSandboxed } from "../packages/protocol/src/protocol/sandbox";
 
@@ -290,6 +295,53 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: tls.checkServerIdentity }))).to.have.property("code", "ECONNREFUSED");
       expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: () => undefined }))).to.be.instanceOf(StorageAccessError);
       expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: undefined }))).to.be.instanceOf(StorageAccessError);
+    });
+
+    it("still checks the certificate's name over a real TLS connection", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tlsguard-"));
+      try {
+        cp.execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"], { stdio: "ignore" });
+        const cert = fs.readFileSync(path.join(dir, "c.pem"));
+        const web = https.createServer({ key: fs.readFileSync(path.join(dir, "k.pem")), cert }, (_q, s) => s.end("ok"));
+        await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+        const wp = (web.address() as net.AddressInfo).port;
+        // The test's own trust for its certificate: a contract may not pass a ca itself
+        const agentOptions: any = https.globalAgent.options;
+        const hadCa = agentOptions.ca;
+        agentOptions.ca = cert;
+        try {
+          const call = (servername: string) => new Promise<any>((resolve) => {
+            try {
+              inContract(() => https.get({ host: "127.0.0.1", port: wp, servername }, (res) => { res.resume(); resolve(res.statusCode); }).on("error", resolve));
+            } catch (e) { resolve(e); }
+          });
+          expect(await call("localhost")).to.equal(200);
+          const wrong = await call("other.example");
+          expect(wrong).to.not.be.instanceOf(StorageAccessError);
+          expect(wrong.code).to.equal("ERR_TLS_CERT_ALTNAME_INVALID");
+        } finally { web.close(); agentOptions.ca = hadCa; }
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    it("refuses a check that a contract swapped in as tls.checkServerIdentity before it asked", async () => {
+      const p = await closed();
+      const real = require("tls");
+      const original = real.checkServerIdentity;
+      const swapped = () => undefined;
+      try {
+        real.checkServerIdentity = swapped;
+        expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: swapped }))).to.be.instanceOf(StorageAccessError);
+      } finally { real.checkServerIdentity = original; }
+    });
+
+    it("refuses the built-in when it is not plain data (a getter, a hidden property)", async () => {
+      const p = await closed();
+      const getter = { host: "127.0.0.1", port: p };
+      Object.defineProperty(getter, "checkServerIdentity", { enumerable: true, get: () => tls.checkServerIdentity });
+      const hidden = { host: "127.0.0.1", port: p };
+      Object.defineProperty(hidden, "checkServerIdentity", { enumerable: false, value: tls.checkServerIdentity });
+      expect(await tried(() => tls.connect(getter as any))).to.be.instanceOf(StorageAccessError);
+      expect(await tried(() => tls.connect(hidden as any))).to.be.instanceOf(StorageAccessError);
     });
   });
 });
