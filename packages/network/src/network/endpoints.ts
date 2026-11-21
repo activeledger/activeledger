@@ -1932,6 +1932,21 @@ export class Endpoints {
     host?: Host
   ): Promise<any> {
     return new Promise((resolve, reject) => {
+      // Stream ids are strings. Anything else (an array, an object) would
+      // slip past the ":volatile" check below, which looks inside a string,
+      // and still be turned into a document id by the storage connector.
+      const bad = () =>
+        reject({ statusCode: 400, content: "Request not allowed" });
+      if (body.$streams !== undefined && body.$streams !== null && body.$streams !== false) {
+        if (!Array.isArray(body.$streams) || body.$streams.some((id: unknown) => typeof id !== "string")) {
+          return bad();
+        }
+      } else if (body.$stream !== undefined && typeof body.$stream !== "string") {
+        return bad();
+      } else if (body.$rev !== undefined && typeof body.$rev !== "string") {
+        return bad();
+      }
+
       if (body.$streams) {
         // Restrict Access to any volatile requests
         // Ids, not promises - they are read together in one call below.
