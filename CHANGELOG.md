@@ -1,5 +1,46 @@
 # Activeledger Changelog
 
+## [5.10.0] - 2026-11-21
+
+Contracts can make https calls again, transactions carry their chain, and self repair asks again when too few
+neighbours answer. Nothing needs changing on upgrade, except one thing for a network of several nodes: see
+**Upgrading** below.
+
+### Upgrading
+- **Chain stamping starts at build 51000, and every node of a network must move to it together.** The commit
+  attestation signs a hash of every output document including the stream's `:stream` meta, so a node that stamps and one
+  that does not would disagree on that meta. Raise `build` to 51000 on all nodes (as for other gated changes) once all
+  are running 5.10.0. Below that build nothing changes.
+
+### Added
+- **The chain is stamped into stream meta (build 51000).** The entry node sets `$chain` from its own `chain.id` (a
+  `$chain` sent by a client is dropped) and every node copies it into the stream's meta beside the umid, on creation and
+  update, never over a chain already there. It is kept in the `:umid` document, so a hybrid, restore or replay stamps the
+  same value. Streams written earlier gain it when next written; absent still means the node's own chain.
+
+### Fixed
+- **Contracts could not make any https call.** Node's https agent passes its own `tls.checkServerIdentity` to every TLS
+  connection, and the contract storage guard refused that option by name, so an outbound https request from a contract
+  (an RPC call, for example) failed with `The option 'checkServerIdentity' is not available to contracts`. The guard now
+  accepts the option only when it is Node's built-in function, taken when the module loads so a contract cannot replace
+  it; a custom function is still refused, and the certificate's name is still checked.
+- **SPI asks the neighbours again when too few can report a stream.** It used to give up at once when fewer than the
+  consensus answered. Where nobody is waiting (a non-origin node repairing in the background) it now asks once more after
+  300 ms. A neighbour that failed to answer, or that holds the stream under a transaction, is not counted as an answer,
+  per stream. The entry node, which holds a client, and `$unanimous` still ask once.
+- **`POST /a/stream` could be made to read a `:volatile` document with an array id.** `$stream`, `$rev` and every
+  `$streams` item must now be strings, else 400 before the database is touched.
+- **A failed-transaction record that could not be written is logged** (`Failed transaction record not written`) instead
+  of vanishing silently.
+- **`activeledger prune` says when a compact fails** instead of listing the database as compacted.
+- **Two floating promises that could end a process** are handled: the start-up database check (now a warning if the
+  database does not answer) and a bad frame on the storage socket (drops that client, not the process).
+
+### Changed
+- `mocha`'s `minimatch` is overridden to 11.0.9 (GHSA-g3hv-75wg-m249); development only.
+- The live network suite (`npm run test:network`) now runs in CI. Tests and comments only: the SPI entry gate counts
+  entries and the tally decides each stream (pinned by a test), and the reason for the `rewrote` cache window is noted.
+
 ## [5.9.2] - 2026-11-20
 
 A patch for contract events. Nothing needs changing on upgrade.
