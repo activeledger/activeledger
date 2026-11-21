@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/activeutilities",
-  "version": "5.9.2",
+  "version": "5.10.0",
   "engines": {
     "node": ">=24.0.0"
   },
