@@ -1540,6 +1540,17 @@ export class Process extends EventEmitter {
    * The delay here will only ever happen if the transaction doesn't reach consensus
    * but may require tweaking
    *
+   * The 10 s is only the worst case, for when the other nodes say nothing (a
+   * peer down or cut off). It is waited for only when the transaction was
+   * broadcast, votes are still outstanding (or a quorum could still commit)
+   * and no peer has reported its streams. Each peer broadcast that arrives
+   * ends it early (updatedFromBroadcast): when no votes are left and it
+   * cannot commit, or when any peer has reported streams. The wait is there
+   * so the client's error can carry the committing peer's $stream / $returns
+   * to resync with; answering sooner would give a bare failure and a retry.
+   * Reviewed 2026-11-21: not a bug. Shorten it only if clients are seen
+   * waiting on a failure while peers are known to be down.
+   *
    * @param {*} [data]
    */
   public emitFailed(
