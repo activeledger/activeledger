@@ -132,39 +132,16 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     expect(reply.content.$summary.commit).to.equal(1);
   });
 
-  it("asks the neighbours again when too few answer the first time, and then repairs", async () => {
+  it("asks once and does not wait for slow answers: the client is waiting for this reply", async () => {
     const originalWait = Endpoints.SPI_ASK_WAIT;
-    (Endpoints as any).SPI_ASK_WAIT = 1;
-    try {
-      let id = "";
-      let asks = 0;
-      const f = fixture("1-stale", async () => {
-        asks++;
-        const winner = { _id: id, _rev: "2-winner" };
-        // Nobody answers the first time (busy, or behind), all three the second
-        return asks === 1 ? [] : [[winner], [winner], [winner]];
-      });
-      id = f.streamId;
-
-      const reply = await submit(f.host);
-
-      expect(asks).to.equal(2);
-      expect(f.written).to.have.length(1);
-      expect(f.written[0].docs).to.deep.equal([{ _id: id, _rev: "2-winner" }]);
-      expect(reply.content.$umid).to.equal("second");
-    } finally {
-      (Endpoints as any).SPI_ASK_WAIT = originalWait;
-    }
-  });
-
-  it("gives up after the set number of asks when nobody answers, and still releases", async () => {
-    const originalWait = Endpoints.SPI_ASK_WAIT;
-    (Endpoints as any).SPI_ASK_WAIT = 1;
+    (Endpoints as any).SPI_ASK_WAIT = 5000;
     try {
       let asks = 0;
       const f = fixture("1-stale", async () => (asks++, []));
+      const started = Date.now();
       const reply = await submit(f.host);
-      expect(asks).to.equal(Endpoints.SPI_ASK_TRIES);
+      expect(asks).to.equal(1);
+      expect(Date.now() - started).to.be.lessThan(1000);
       expect(f.written).to.have.length(0);
       expect(f.released.length).to.be.greaterThan(0);
       expect(reply.statusCode).to.equal(200);
@@ -550,7 +527,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     expect(r.released.map((x: any) => x[0])).to.include(r.entry.$umid);
   });
 
-  it("asks again when nobody answers the first time, then rewrites", async () => {
+  it("when the neighbour has already been answered, asks again if nobody answers the first time, then rewrites", async () => {
     const originalWait = Endpoints.SPI_ASK_WAIT;
     (Endpoints as any).SPI_ASK_WAIT = 1;
     try {
@@ -558,6 +535,20 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
       expect(r.asks()).to.equal(2);
       expect(r.bulk).to.have.length(1);
       expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
+  });
+
+  it("asks once, without waiting, when the neighbour's reply is held for this repair", async () => {
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 5000;
+    try {
+      // Unanimous: the reply to the neighbour waits for the repair to finish
+      const started = Date.now();
+      const r = await run({ stale: "4-old", knownRev: true, unanimous: true, silentAsks: 5 });
+      expect(r.asks()).to.equal(1);
+      expect(Date.now() - started).to.be.lessThan(3000);
     } finally {
       (Endpoints as any).SPI_ASK_WAIT = originalWait;
     }
