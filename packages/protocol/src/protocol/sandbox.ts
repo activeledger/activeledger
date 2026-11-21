@@ -211,6 +211,10 @@ const snapshotArgs = (args: unknown[]): unknown[] =>
 // Options that change how a connection is made (resolver, socket, agent): never a contract's to set
 const REFUSED_OPTIONS = new Set(["lookup", "createConnection", "agent", "socket", "socketPath", "fd", "handle", "dispatcher", "setHost", "secureContext", "checkServerIdentity"]);
 
+// Node's own https agent passes tls.checkServerIdentity to every TLS connection, so only that
+// function is let through (taken now, before a contract could replace it); a custom one is refused
+const BUILTIN_CHECK_SERVER_IDENTITY = require("tls").checkServerIdentity;
+
 const lightCheck = (args: unknown[]): void => {
   const visit = (value: unknown, depth: number): void => {
     if (!value || typeof value !== "object" || value instanceof URL) return;
@@ -222,6 +226,7 @@ const lightCheck = (args: unknown[]): void => {
     for (const key of Reflect.ownKeys(value)) {
       const d: any = Object.getOwnPropertyDescriptor(value, key);
       if (typeof key === "symbol" || !d.enumerable || d.get || d.set) throw new StorageAccessError("An option that is not plain data");
+      if (key === "checkServerIdentity" && d.value === BUILTIN_CHECK_SERVER_IDENTITY) continue;
       if (REFUSED_OPTIONS.has(key)) throw new StorageAccessError(`The option '${key}'`);
     }
   };
