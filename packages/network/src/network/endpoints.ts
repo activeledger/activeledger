@@ -952,23 +952,50 @@ export class Endpoints {
   public static readonly SPI_ASK_WAIT = 300;
 
   /**
-   * Whether one neighbour's answer to a stream request can vote on all of it.
-   * Not an answer: a failed knock (`{ error: true }`, not a list) or a list
-   * with a stream the node could not report, which the engine marks
-   * `{ _id, locked: true }` with no `_rev` (a stored document with a `locked`
-   * field of its own always has a `_rev` and is a real answer). An empty list
-   * is an answer: the node holds none of them.
+   * Whether the answers to a stream request are too few to decide on, so
+   * asking again could help. It counts, stream by stream, the neighbours that
+   * were able to report it, and is short when any stream has fewer than
+   * `needed`.
+   *
+   * A neighbour does not report on a stream when:
+   * - its knock failed (`{ error: true }`, or anything that is not a list), so
+   *   it did not report on any stream, or
+   * - it holds that stream under a transaction and marks it `{ _id, locked:
+   *   true }` with no `_rev`. Only that stream is lost to it. A stored
+   *   document with a `locked` field of its own always has a `_rev` and is a
+   *   real answer.
+   *
+   * A neighbour that does not hold a stream at all just leaves it out of its
+   * list. That is an answer (it votes nothing) and never causes an ask.
+   *
+   * @static
+   * @param {any[]} answers one entry per neighbour, as knockAll gives them
+   * @param {number} needed votes wanted for a stream
+   * @returns {boolean}
    */
-  public static spiAnswerComplete(answer: any): boolean {
-    if (!Array.isArray(answer)) return false;
-    return !answer.some((doc: any) => doc && doc.locked && !doc._rev);
+  public static spiAnswersShort(answers: any[], needed: number): boolean {
+    const lists = answers.filter((a) => Array.isArray(a));
+    if (lists.length < needed) return true;
+
+    const marked = (list: any[], id: string) =>
+      list.some((d: any) => d && d._id === id && d.locked && !d._rev);
+
+    const lockedIds = new Set<string>();
+    for (const list of lists) {
+      for (const d of list) {
+        if (d && d._id && d.locked && !d._rev) lockedIds.add(d._id);
+      }
+    }
+    for (const id of lockedIds) {
+      if (lists.filter((list) => !marked(list, id)).length < needed) return true;
+    }
+    return false;
   }
 
   /**
    * Asks the neighbours for their copy of some streams, and asks again, up to
-   * `tries` times, while fewer than `needed` answer in full (see
-   * spiAnswerComplete: a failed knock or a node that could not report a
-   * stream because it is mid-transaction does not count). A node that is busy,
+   * `tries` times, while some stream has fewer than `needed` neighbours able
+   * to report it (see spiAnswersShort). A node that is busy,
    * holds the stream under a transaction or is a moment behind often answers
    * on the second ask, and giving up on the first used to leave the stream
    * as it was with nothing to try again later.
@@ -993,14 +1020,13 @@ export class Endpoints {
       new Promise((resolve) => setTimeout(resolve, ms))
   ): Promise<any[]> {
     let answers = await host.neighbourhood.knockAll("stream", body);
-    const complete = () => answers.filter(Endpoints.spiAnswerComplete).length;
     for (
       let asked = 1;
-      asked < tries && complete() < needed;
+      asked < tries && Endpoints.spiAnswersShort(answers, needed);
       asked++
     ) {
       ActiveLogger.warn(
-        `SPI only ${complete()}/${needed} answered in full for ${body?.$umid}, asking again (${asked}/${tries - 1})`
+        `SPI too few could report the streams for ${body?.$umid} (${needed} wanted), asking again (${asked}/${tries - 1})`
       );
       await sleep(Endpoints.SPI_ASK_WAIT * asked);
       answers = await host.neighbourhood.knockAll("stream", body);

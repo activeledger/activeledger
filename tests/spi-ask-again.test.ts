@@ -108,5 +108,60 @@ describe("SPI asks again when too few answer", () => {
       await Endpoints.knockStreamsForSpi(hostReturning([[busy, busy, busy]]), { $umid: "u" }, 2, 3, sleep);
       expect(asks).to.equal(3);
     });
+
+    it("one node locked on stream A and another on stream B can still decide both, so it does not ask again", async () => {
+      const a = (rev: string) => ({ _id: "A", _rev: rev });
+      const b = (rev: string) => ({ _id: "B", _rev: rev });
+      const n1 = [{ _id: "A", locked: true }, b("1-b")];
+      const n2 = [a("1-a"), { _id: "B", locked: true }];
+      const n3 = [a("1-a"), b("1-b")];
+      await Endpoints.knockStreamsForSpi(hostReturning([[n1, n2, n3]]), { $umid: "u" }, 2, 3, sleep);
+      expect(asks).to.equal(1);
+    });
+
+    it("asks again when one stream is short even though the other is fully reported", async () => {
+      const n1 = [{ _id: "A", locked: true }, { _id: "B", _rev: "1-b" }];
+      const n2 = [{ _id: "A", locked: true }, { _id: "B", _rev: "1-b" }];
+      const n3 = [{ _id: "A", _rev: "1-a" }, { _id: "B", _rev: "1-b" }];
+      await Endpoints.knockStreamsForSpi(hostReturning([[n1, n2, n3], [n3, n3, n3]]), { $umid: "u" }, 2, 2, sleep);
+      expect(asks).to.equal(2);
+    });
+  });
+
+  describe("Endpoints.spiAnswersShort", () => {
+    const doc = (id: string) => [{ _id: id, _rev: "1-x" }];
+    const lock = (id: string) => [{ _id: id, locked: true }];
+    it("is not short when enough lists came back and nothing is locked", () => {
+      expect(Endpoints.spiAnswersShort([doc("s"), doc("s"), []], 2)).to.equal(false);
+    });
+    it("is short when fewer lists than needed came back, and anything that is not a list is not one", () => {
+      expect(Endpoints.spiAnswersShort([doc("s"), { error: true, from: "n" }, null, undefined, "Request not allowed", { chainMismatch: 1 }], 2)).to.equal(true);
+      expect(Endpoints.spiAnswersShort([], 1)).to.equal(true);
+    });
+    it("is never short when nothing is needed", () => {
+      expect(Endpoints.spiAnswersShort([], 0)).to.equal(false);
+      expect(Endpoints.spiAnswersShort([lock("s")], 0)).to.equal(false);
+      expect(Endpoints.spiAnswersShort([{ error: true }], -1)).to.equal(false);
+    });
+    it("counts a locked marker against that stream only", () => {
+      expect(Endpoints.spiAnswersShort([lock("s"), doc("s"), doc("s")], 2)).to.equal(false);
+      expect(Endpoints.spiAnswersShort([lock("s"), lock("s"), doc("s")], 2)).to.equal(true);
+      expect(Endpoints.spiAnswersShort([lock("a").concat(doc("b")), doc("a").concat(lock("b")), doc("a").concat(doc("b"))], 2)).to.equal(false);
+    });
+    it("does not treat a stored document with its own locked field and a _rev as a marker", () => {
+      const real = [{ _id: "s", _rev: "2-y", locked: true }];
+      expect(Endpoints.spiAnswersShort([real, real], 2)).to.equal(false);
+    });
+    it("counts a node once however many times it marks the same stream", () => {
+      const twice = [...lock("s"), ...lock("s")];
+      expect(Endpoints.spiAnswersShort([twice, doc("s")], 2)).to.equal(true);
+      expect(Endpoints.spiAnswersShort([twice, doc("s"), doc("s")], 2)).to.equal(false);
+    });
+    it("a node that holds nothing (empty list) is an answer", () => {
+      expect(Endpoints.spiAnswersShort([[], [], []], 3)).to.equal(false);
+    });
+    it("ignores holes in a list", () => {
+      expect(Endpoints.spiAnswersShort([[null, undefined, ...doc("s")], doc("s")], 2)).to.equal(false);
+    });
   });
 });
