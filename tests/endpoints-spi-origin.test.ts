@@ -150,6 +150,25 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     }
   });
 
+  it("asks once and does not wait when neighbours hold the stream or failed to answer: the client is waiting", async () => {
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 5000;
+    try {
+      for (const bad of [[{ _id: "x", locked: true }], { error: true, from: "n" }]) {
+        let asks = 0;
+        const f = fixture("1-stale", async () => (asks++, [bad, bad, bad]));
+        const started = Date.now();
+        const reply = await submit(f.host);
+        expect(asks).to.equal(1);
+        expect(Date.now() - started).to.be.lessThan(1000);
+        expect(f.written).to.have.length(0);
+        expect(reply.statusCode).to.equal(200);
+      }
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
+  });
+
   it("leaves a document alone that already has the winning revision", async () => {
     let id = "";
     const f = fixture("2-winner", async () => {
@@ -453,7 +472,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     Endpoints.backfillUmid = realBackfill;
   });
 
-  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number }) => {
+  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number; busyAsks?: number; failedAsks?: number }) => {
     Home.reference = "me";
     ActiveOptions.set("consensus", { reached: 66 });
     const repaired: string[] = [];
@@ -496,7 +515,17 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
       neighbourhood: {
         count: () => 4,
         // `silentAsks` asks get no answer at all before the network answers
-        knockAll: async () => (asks++ < (opts.silentAsks ?? 0) ? [] : [[winner], [winner], [winner]]),
+        // `busyAsks` asks find two of the three neighbours holding the stream under a transaction
+        // (the locked marker), `failedAsks` find two knocks failed: three answers each, one able to vote
+        knockAll: async () => {
+          const ask = asks++;
+          if (ask < (opts.silentAsks ?? 0)) return [];
+          const marker = [{ _id: id, locked: true }];
+          const failed = { error: true, from: "n" };
+          if (ask < (opts.busyAsks ?? 0)) return [[winner], marker, marker];
+          if (ask < (opts.failedAsks ?? 0)) return [[winner], failed, failed];
+          return [[winner], [winner], [winner]];
+        },
       },
       dbConnection: {
         get: async () => (opts.knownRev ? { _id: id, _rev: opts.stale } : {}),
@@ -553,6 +582,48 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
       (Endpoints as any).SPI_ASK_WAIT = originalWait;
     }
   });
+
+  for (const [what, opt] of [["hold the stream under a transaction", "busyAsks"], ["failed to answer", "failedAsks"]] as const) {
+    it(`when the neighbour has already been answered, asks again if too many neighbours ${what}, then rewrites`, async () => {
+      const originalWait = Endpoints.SPI_ASK_WAIT;
+      (Endpoints as any).SPI_ASK_WAIT = 1;
+      try {
+        const r = await run({ stale: "4-old", knownRev: true, [opt]: 1 });
+        // Three answers came back the first time, so the old count was satisfied; only one could vote
+        expect(r.asks()).to.equal(2);
+        expect(r.bulk).to.have.length(1);
+        expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
+      } finally {
+        (Endpoints as any).SPI_ASK_WAIT = originalWait;
+      }
+    });
+
+    it(`asks once, without waiting, and does not rewrite on one vote when the neighbour's reply is held and neighbours ${what}`, async () => {
+      const originalWait = Endpoints.SPI_ASK_WAIT;
+      (Endpoints as any).SPI_ASK_WAIT = 5000;
+      try {
+        const started = Date.now();
+        const r = await run({ stale: "4-old", knownRev: true, unanimous: true, [opt]: 5 });
+        expect(r.asks()).to.equal(1);
+        expect(Date.now() - started).to.be.lessThan(3000);
+        expect(r.bulk).to.have.length(0);
+      } finally {
+        (Endpoints as any).SPI_ASK_WAIT = originalWait;
+      }
+    });
+
+    it(`keeps asking no more than the set number of times when neighbours ${what} every time`, async () => {
+      const originalWait = Endpoints.SPI_ASK_WAIT;
+      (Endpoints as any).SPI_ASK_WAIT = 1;
+      try {
+        const r = await run({ stale: "4-old", knownRev: true, [opt]: 99 });
+        expect(r.asks()).to.equal(Endpoints.SPI_ASK_TRIES);
+        expect(r.bulk).to.have.length(0);
+      } finally {
+        (Endpoints as any).SPI_ASK_WAIT = originalWait;
+      }
+    });
+  }
 
   it("creates the stream first when this node had never seen it", async () => {
     const r = await run({ stale: "", knownRev: false });
