@@ -398,6 +398,14 @@ export class Endpoints {
 
                             // Should probably still wait on locks with priority to hold
                             if (streams.length) {
+                              // One cache, shared with the non-origin path below, and
+                              // fetch() only uses the TTL of whichever call comes first:
+                              // 1500 ms here or 500 ms there, so the window in which a
+                              // doc id or umid is not looked at again depends on which
+                              // path a node ran first. Reviewed 2026-11-21: the effect is
+                              // bounded (a repeat repair of the same doc waits at most
+                              // that long, and a repeat finds the revision already
+                              // written), so left alone rather than guessed at.
                               const rewrote = ActiveCacheManager.fetch(
                                 "rewrote",
                                 1500
