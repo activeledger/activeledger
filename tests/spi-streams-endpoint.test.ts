@@ -53,6 +53,7 @@ describe("Endpoints.streams - the sampling endpoint (Activenetwork)", () => {
     Locker.release(STREAM, "holder-tx");
     Locker.release(OTHER, "holder-tx");
     Locker.release(STREAM, "other-tx");
+    Locker.release(OTHER, "other-tx");
   });
 
   describe("how the store is asked", () => {
@@ -268,5 +269,51 @@ describe("Locker.holder (Activenetwork)", () => {
   it("agrees with getLocks(), which is the slower way to the same answer", () => {
     Locker.hold(A, "tx-1");
     expect(Locker.holder(A)).to.equal(Locker.getLocks()[A]?.umid);
+  });
+});
+
+describe("what the sampling endpoint really sends, counted by spiAnswersShort", () => {
+  afterEach(() => {
+    Locker.release(STREAM, "holder-tx");
+    Locker.release(OTHER, "holder-tx");
+  });
+
+  /** One neighbour's real answer to a request for both streams */
+  const answerOf = async (locked: string[]) => {
+    for (const id of locked) Locker.hold(id, "holder-tx");
+    try {
+      return (await ask(makeDb().db, { $streams: [STREAM, OTHER] }, { willNotCommit: () => false })).content;
+    } finally {
+      for (const id of locked) Locker.release(id, "holder-tx");
+    }
+  };
+
+  it("a node holding a stream under a transaction does not count for it, the others do", async () => {
+    const busy = await answerOf([STREAM]);
+    const free = await answerOf([]);
+    expect(busy).to.deep.include({ _id: STREAM, locked: true });
+    expect(Endpoints.spiAnswersShort([busy, free, free], 2)).to.equal(false);
+    expect(Endpoints.spiAnswersShort([busy, busy, free], 2)).to.equal(true);
+  });
+
+  it("nodes busy on different streams still decide both", async () => {
+    const onA = await answerOf([STREAM]);
+    const onB = await answerOf([OTHER]);
+    const free = await answerOf([]);
+    expect(Endpoints.spiAnswersShort([onA, onB, free], 2)).to.equal(false);
+  });
+
+  it("a node that does not hold the stream is an answer, not a reason to ask again", async () => {
+    const none = (await ask(makeDb([]).db, { $streams: [STREAM, OTHER] })).content;
+    expect(none).to.deep.equal([]);
+    expect(Endpoints.spiAnswersShort([none, none, none], 3)).to.equal(false);
+  });
+
+  it("a refused request (volatile) is not a list, so it is not an answer", async () => {
+    const refused = await ask(makeDb().db, { $streams: [`${STREAM}:volatile`] }).then(
+      () => "answered",
+      (e: any) => e.content
+    );
+    expect(Endpoints.spiAnswersShort([refused, refused], 1)).to.equal(true);
   });
 });
