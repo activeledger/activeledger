@@ -650,6 +650,9 @@ describe("Endpoints transaction submission (Activeledger)", () => {
 
     it("asks the network about its streams, and gives up cleanly without enough answers, when a unanimous transaction hit a position error", async () => {
       ActiveOptions.set("consensus", { reached: 66 });
+      // It asks again when too few answer; keep the waits short
+      const originalWait = Endpoints.SPI_ASK_WAIT;
+      (Endpoints as any).SPI_ASK_WAIT = 1;
       const stream = "s".repeat(64);
       const asked: any[] = [];
       const { host } = makeHost(
@@ -681,7 +684,8 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           "10.0.0.2"
         );
         expect(reply.statusCode).to.equal(200);
-        expect(asked).to.have.length(1);
+        // Asked again (the same question) before it gave up
+        expect(asked).to.have.length(Endpoints.SPI_ASK_TRIES);
         expect(asked[0][0]).to.equal("stream");
         // Asked about the stream, its :stream doc and the contract data
         expect(asked[0][1].$streams).to.have.members([
@@ -691,6 +695,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         ]);
         expect(asked[0][1].$umid).to.equal("int-1");
       } finally {
+        (Endpoints as any).SPI_ASK_WAIT = originalWait;
         ActiveOptions.set("consensus", undefined);
       }
     });

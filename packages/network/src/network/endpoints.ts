@@ -427,15 +427,6 @@ export class Endpoints {
 
                               // Maybe all got spliced away?
                               if (streams.length) {
-                                const networkStreams =
-                                  await host.neighbourhood.knockAll("stream", {
-                                    $streams: streams,
-                                    // So a peer holding these under THIS
-                                    // transaction can answer properly if it
-                                    // has already voted against it
-                                    $umid: tx.$umid,
-                                  });
-
                                 // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
                                 const consensusReached = Math.ceil(
                                   (ActiveOptions.get<any>("consensus", {})
@@ -444,6 +435,19 @@ export class Endpoints {
                                   host.neighbourhood.count() -
                                   1 // -1 here if we want to exclude this node
                                 );
+
+                                const networkStreams =
+                                  await Endpoints.knockStreamsForSpi(
+                                    host,
+                                    {
+                                      $streams: streams,
+                                      // So a peer holding these under THIS
+                                      // transaction can answer properly if it
+                                      // has already voted against it
+                                      $umid: tx.$umid,
+                                    },
+                                    consensusReached
+                                  );
 
                                 if (networkStreams.length >= consensusReached) {
 
@@ -601,7 +605,7 @@ export class Endpoints {
                                   ActiveLogger.warn(
                                     `SPI Skipped not enough returned for consensus yet (${networkStreams.length}/${consensusReached})`
                                   );
-                                  // Maybe retry  somehow? They could be spi lock failures
+                                  // Already asked more than once (knockStreamsForSpi)
                                   //
                                   // Releasing as well as responding. The
                                   // sibling branch above does both; this one
@@ -932,6 +936,48 @@ export class Endpoints {
         firstSeen: new Date(seen.first).toISOString(),
       })
     );
+  }
+
+  /** Times SPI asks the network for streams before it decides "not enough answered" */
+  public static readonly SPI_ASK_TRIES = 3;
+
+  /** Wait before the next ask, milliseconds, times the number of asks made so far */
+  public static readonly SPI_ASK_WAIT = 500;
+
+  /**
+   * Asks the neighbours for their copy of some streams, and asks again, up to
+   * SPI_ASK_TRIES times, while fewer than `needed` answer. A node that is busy,
+   * holds the stream under a transaction or is a moment behind often answers
+   * on the second ask, and giving up on the first used to leave the stream
+   * as it was with nothing to try again later.
+   *
+   * @static
+   * @param {*} host
+   * @param {*} body what to ask ($streams, $umid)
+   * @param {number} needed answers wanted
+   * @param {(ms: number) => Promise<void>} [sleep]
+   * @returns {Promise<any[]>} the answers of the last ask
+   */
+  public static async knockStreamsForSpi(
+    host: any,
+    body: any,
+    needed: number,
+    sleep: (ms: number) => Promise<void> = (ms) =>
+      new Promise((resolve) => setTimeout(resolve, ms))
+  ): Promise<any[]> {
+    let answers = await host.neighbourhood.knockAll("stream", body);
+    for (
+      let asked = 1;
+      asked < Endpoints.SPI_ASK_TRIES && answers.length < needed;
+      asked++
+    ) {
+      ActiveLogger.warn(
+        `SPI only ${answers.length}/${needed} answered for ${body?.$umid}, asking again (${asked}/${Endpoints.SPI_ASK_TRIES - 1})`
+      );
+      await sleep(Endpoints.SPI_ASK_WAIT * asked);
+      answers = await host.neighbourhood.knockAll("stream", body);
+    }
+    return answers;
   }
 
   /**
@@ -1325,12 +1371,6 @@ export class Endpoints {
                       // we are also not locked at this point either.
 
                       const tmp = async () => {
-                        const networkStreams =
-                          await host.neighbourhood.knockAll("stream", {
-                            $streams: streams,
-                            $umid: tx.$umid,
-                          });
-
                         // Optimise this loop once we know we have 50+% (or config) (TODO - Make static calc)
                         const consensusReached = Math.ceil(
                           (ActiveOptions.get<any>("consensus", {}).reached /
@@ -1339,11 +1379,21 @@ export class Endpoints {
                           1 // -1 here if we want to exclude this node
                         );
 
+                        const networkStreams =
+                          await Endpoints.knockStreamsForSpi(
+                            host,
+                            {
+                              $streams: streams,
+                              $umid: tx.$umid,
+                            },
+                            consensusReached
+                          );
+
                         if (networkStreams.length < consensusReached) {
                           ActiveLogger.warn(
                             `SPI Skipped not enough returned for consensus yet (${networkStreams.length}/${consensusReached})`
                           );
-                          // Maybe retry tmp somehow? They could be spi lock failures
+                          // Already asked more than once (knockStreamsForSpi)
                           return;
                         }
 

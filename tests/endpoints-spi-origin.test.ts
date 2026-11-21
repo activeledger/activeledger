@@ -132,6 +132,47 @@ describe("Endpoints.ExternalInitalise - origin SPI repair (Activeledger)", () =>
     expect(reply.content.$summary.commit).to.equal(1);
   });
 
+  it("asks the neighbours again when too few answer the first time, and then repairs", async () => {
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 1;
+    try {
+      let id = "";
+      let asks = 0;
+      const f = fixture("1-stale", async () => {
+        asks++;
+        const winner = { _id: id, _rev: "2-winner" };
+        // Nobody answers the first time (busy, or behind), all three the second
+        return asks === 1 ? [] : [[winner], [winner], [winner]];
+      });
+      id = f.streamId;
+
+      const reply = await submit(f.host);
+
+      expect(asks).to.equal(2);
+      expect(f.written).to.have.length(1);
+      expect(f.written[0].docs).to.deep.equal([{ _id: id, _rev: "2-winner" }]);
+      expect(reply.content.$umid).to.equal("second");
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
+  });
+
+  it("gives up after the set number of asks when nobody answers, and still releases", async () => {
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 1;
+    try {
+      let asks = 0;
+      const f = fixture("1-stale", async () => (asks++, []));
+      const reply = await submit(f.host);
+      expect(asks).to.equal(Endpoints.SPI_ASK_TRIES);
+      expect(f.written).to.have.length(0);
+      expect(f.released.length).to.be.greaterThan(0);
+      expect(reply.statusCode).to.equal(200);
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
+  });
+
   it("leaves a document alone that already has the winning revision", async () => {
     let id = "";
     const f = fixture("2-winner", async () => {
@@ -435,7 +476,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     Endpoints.backfillUmid = realBackfill;
   });
 
-  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean }) => {
+  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number }) => {
     Home.reference = "me";
     ActiveOptions.set("consensus", { reached: 66 });
     const repaired: string[] = [];
@@ -449,6 +490,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
 
     const id = `${++n}`.padStart(64, "n");
     const winner = { _id: id, _rev: "5-winner" };
+    let asks = 0;
     const puts: any[] = [];
     const bulk: any[] = [];
     const errorDocs: any[] = [];
@@ -476,7 +518,8 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
       release: (...a: any[]) => released.push(a),
       neighbourhood: {
         count: () => 4,
-        knockAll: async () => [[winner], [winner], [winner]],
+        // `silentAsks` asks get no answer at all before the network answers
+        knockAll: async () => (asks++ < (opts.silentAsks ?? 0) ? [] : [[winner], [winner], [winner]]),
       },
       dbConnection: {
         get: async () => (opts.knownRev ? { _id: id, _rev: opts.stale } : {}),
@@ -488,7 +531,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     const reply = await Endpoints.InternalInitalise(host, entry, "10.0.0.2");
     // The repair runs a moment after the neighbour has been answered
     await new Promise((r) => setTimeout(r, 700));
-    return { reply, id, puts, bulk, errorDocs, released, repaired, backfilled, entry };
+    return { reply, id, puts, bulk, errorDocs, released, repaired, backfilled, entry, asks: () => asks };
   };
 
   it("answers the neighbour first, then rewrites the stream to the revision the network agreed", async () => {
@@ -505,6 +548,19 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     expect(r.errorDocs).to.have.length(1);
     expect(r.errorDocs[0]).to.include({ code: 950, processed: false, umid: r.entry.$umid });
     expect(r.released.map((x: any) => x[0])).to.include(r.entry.$umid);
+  });
+
+  it("asks again when nobody answers the first time, then rewrites", async () => {
+    const originalWait = Endpoints.SPI_ASK_WAIT;
+    (Endpoints as any).SPI_ASK_WAIT = 1;
+    try {
+      const r = await run({ stale: "4-old", knownRev: true, silentAsks: 1 });
+      expect(r.asks()).to.equal(2);
+      expect(r.bulk).to.have.length(1);
+      expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
+    } finally {
+      (Endpoints as any).SPI_ASK_WAIT = originalWait;
+    }
   });
 
   it("creates the stream first when this node had never seen it", async () => {
