@@ -119,6 +119,29 @@ describe("Storage socket", () => {
       }
     });
 
+    it("drops a client that sends a frame too short to be a request, and keeps serving", async () => {
+      const unhandled: unknown[] = [];
+      const seen = (e: unknown) => void unhandled.push(e);
+      process.on("unhandledRejection", seen);
+      try {
+        const bad = net.connect(sock);
+        await new Promise((r) => bad.once("connect", r));
+        const closed = new Promise((r) => bad.once("close", r));
+        bad.on("error", () => undefined);
+        const frame = Buffer.alloc(4 + 2);
+        frame.writeUInt32BE(2, 0); // a 2 byte item, a request needs at least 6
+        bad.write(frame);
+        await closed;
+        await new Promise((r) => setTimeout(r, 20));
+        expect(unhandled).to.have.length(0);
+        StorageSocket.register("http://127.0.0.1:59871", sock);
+        const r: any = await ActiveRequest.send("http://127.0.0.1:59871/echo", "POST", undefined, { n: 1 });
+        expect(r.data).to.deep.equal({ got: { n: 1 }, q: {} });
+      } finally {
+        process.off("unhandledRejection", seen);
+      }
+    });
+
     it("the server will not bind in a folder that is not private to this user", () => {
       const open = fs.mkdtempSync(path.join(os.tmpdir(), "ssock-open-"));
       fs.chmodSync(open, 0o777);
