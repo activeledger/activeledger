@@ -272,4 +272,24 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       expect(seen).to.deep.equal(["GET /activeledger_w/a"]);
     });
   });
+
+  describe("checkServerIdentity", () => {
+    // A port nothing listens on: getting past the guard shows as a connection error, not a refusal
+    const closed = async () => { const s = net.createServer(); await new Promise<void>((r) => s.listen(0, "127.0.0.1", r)); const p = (s.address() as net.AddressInfo).port; await new Promise((r) => s.close(r)); return p; };
+    const tried = (fn: () => any) => new Promise<any>((resolve) => { try { const s = inContract(fn); s.on("error", resolve); s.on("secureConnect", () => { s.destroy(); resolve(null); }); } catch (e) { resolve(e); } });
+
+    it("lets a plain https request through the guard: node's own agent passes the built-in", async () => {
+      const p = await closed();
+      const e = await new Promise<any>((resolve) => { try { inContract(() => require("https").get({ host: "127.0.0.1", port: p }).on("error", resolve)); } catch (x) { resolve(x); } });
+      expect(e).to.not.be.instanceOf(StorageAccessError);
+      expect(e.code).to.equal("ECONNREFUSED");
+    });
+
+    it("lets tls.connect carry the built-in check, and refuses a custom one", async () => {
+      const p = await closed();
+      expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: tls.checkServerIdentity }))).to.have.property("code", "ECONNREFUSED");
+      expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: () => undefined }))).to.be.instanceOf(StorageAccessError);
+      expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: undefined }))).to.be.instanceOf(StorageAccessError);
+    });
+  });
 });
