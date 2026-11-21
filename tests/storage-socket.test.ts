@@ -74,10 +74,11 @@ describe("Storage socket", () => {
 
     it("falls back to HTTP when nothing is listening on the socket", async () => {
       const web = http.createServer((_q, s) => s.end('{"via":"http"}'));
-      await new Promise<void>((r) => web.listen(59872, "127.0.0.1", r));
+      await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+      const port = (web.address() as net.AddressInfo).port;
       try {
-        StorageSocket.register("http://127.0.0.1:59872", path.join(dir, "absent.sock"));
-        expect((await ActiveRequest.send("http://127.0.0.1:59872/x", "GET")).data).to.deep.equal({ via: "http" });
+        StorageSocket.register(`http://127.0.0.1:${port}`, path.join(dir, "absent.sock"));
+        expect((await ActiveRequest.send(`http://127.0.0.1:${port}/x`, "GET")).data).to.deep.equal({ via: "http" });
       } finally {
         web.close();
       }
@@ -86,11 +87,12 @@ describe("Storage socket", () => {
     it("keeps feeds and custom headers on HTTP", async () => {
       const seen: string[] = [];
       const web = http.createServer((q, s) => { seen.push(q.url || ""); s.end('{"via":"http"}'); });
-      await new Promise<void>((r) => web.listen(59873, "127.0.0.1", r));
+      await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+      const port = (web.address() as net.AddressInfo).port;
       try {
-        StorageSocket.register("http://127.0.0.1:59873", sock);
-        await ActiveRequest.send("http://127.0.0.1:59873/db/events?x=1", "GET");
-        await ActiveRequest.send("http://127.0.0.1:59873/echo", "POST", ["X-Bundle:1"], { a: 1 });
+        StorageSocket.register(`http://127.0.0.1:${port}`, sock);
+        await ActiveRequest.send(`http://127.0.0.1:${port}/db/events?x=1`, "GET");
+        await ActiveRequest.send(`http://127.0.0.1:${port}/echo`, "POST", ["X-Bundle:1"], { a: 1 });
         expect(seen).to.deep.equal(["/db/events?x=1", "/echo"]);
       } finally {
         web.close();
@@ -99,16 +101,17 @@ describe("Storage socket", () => {
 
     it("does not connect to a socket in a folder others can write to, or one that is not a socket", async () => {
       const web = http.createServer((_q, s) => s.end('{"via":"http"}'));
-      await new Promise<void>((r) => web.listen(59875, "127.0.0.1", r));
+      await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+      const port = (web.address() as net.AddressInfo).port;
       try {
         const open = fs.mkdtempSync(path.join(os.tmpdir(), "ssock-open-"));
         fs.chmodSync(open, 0o777);
         const loose = path.join(open, "s.sock");
         const srv = net.createServer((s) => s.end());
         await new Promise<void>((r) => srv.listen(loose, r));
-        StorageSocket.register("http://127.0.0.1:59875", loose);
+        StorageSocket.register(`http://127.0.0.1:${port}`, loose);
         expect(StorageSocket.trusted(loose)).to.equal(false);
-        expect((await ActiveRequest.send("http://127.0.0.1:59875/x", "GET")).data).to.deep.equal({ via: "http" });
+        expect((await ActiveRequest.send(`http://127.0.0.1:${port}/x`, "GET")).data).to.deep.equal({ via: "http" });
         srv.close();
         fs.rmSync(open, { recursive: true, force: true });
         const plain = path.join(dir, "plain.sock");
