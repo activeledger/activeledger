@@ -3,6 +3,7 @@ import "mocha";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { Endpoints } from "../packages/network/src/network/endpoints";
 import { Home } from "../packages/network/src/network/home";
+import { Locker } from "../packages/network/src/network/locker";
 import { ActiveLogger } from "@activeledger/activelogger";
 
 // The origin node's stream-position self repair (SPI) inside
@@ -472,7 +473,7 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
     Endpoints.backfillUmid = realBackfill;
   });
 
-  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number; busyAsks?: number; failedAsks?: number }) => {
+  const run = async (opts: { stale: string; knownRev?: boolean; unanimous?: boolean; silentAsks?: number; busyAsks?: number; failedAsks?: number; scripted?: "lock" | "down" }) => {
     Home.reference = "me";
     ActiveOptions.set("consensus", { reached: 66 });
     const repaired: string[] = [];
@@ -517,8 +518,31 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
         // `silentAsks` asks get no answer at all before the network answers
         // `busyAsks` asks find two of the three neighbours holding the stream under a transaction
         // (the locked marker), `failedAsks` find two knocks failed: three answers each, one able to vote
-        knockAll: async () => {
+        knockAll: async (_endpoint: string, body: any) => {
           const ask = asks++;
+          if (opts.scripted) {
+            // The neighbours answer through the real stream endpoint. On the first ask the stream is held
+            // by a transaction on them ("lock") or two of them do not answer ("down"); it is let go
+            // before the second ask, so only an ask made again can see the network's revision.
+            const db: any = {
+              allDocs: async ({ keys }: { keys: string[] }) => ({
+                rows: keys.map((k) => ({ doc: k === id ? winner : undefined })),
+              }),
+            };
+            const neighbour: any = { willNotCommit: () => false };
+            if (ask === 0 && opts.scripted === "lock") Locker.hold(id, "scripted-holder");
+            try {
+              return await Promise.all(
+                [0, 1, 2].map(async (i) =>
+                  ask === 0 && opts.scripted === "down" && i > 0
+                    ? { error: true, from: `n${i}` }
+                    : ((await Endpoints.streams(db, body, neighbour)) as any).content
+                )
+              );
+            } finally {
+              if (ask === 0) Locker.release(id, "scripted-holder");
+            }
+          }
           if (ask < (opts.silentAsks ?? 0)) return [];
           const marker = [{ _id: id, locked: true }];
           const failed = { error: true, from: "n" };
@@ -619,6 +643,22 @@ describe("Endpoints.InternalInitalise - non-origin SPI repair (Activeledger)", (
         const r = await run({ stale: "4-old", knownRev: true, [opt]: 99 });
         expect(r.asks()).to.equal(Endpoints.SPI_ASK_TRIES);
         expect(r.bulk).to.have.length(0);
+      } finally {
+        (Endpoints as any).SPI_ASK_WAIT = originalWait;
+      }
+    });
+  }
+
+  for (const [script, what] of [["lock", "the neighbours hold the stream under a transaction"], ["down", "two neighbours do not answer"]] as const) {
+    it(`scripted, with the real stream endpoint: ${what} on the first ask and not on the second, so the repair has to ask again to heal`, async () => {
+      const originalWait = Endpoints.SPI_ASK_WAIT;
+      (Endpoints as any).SPI_ASK_WAIT = 1;
+      try {
+        const r = await run({ stale: "4-old", knownRev: true, scripted: script });
+        expect(r.asks()).to.equal(2);
+        expect(r.bulk).to.have.length(1);
+        expect(r.bulk[0].docs.map((d: any) => d._rev)).to.include("5-winner");
+        expect(r.bulk[0].o).to.deep.equal({ new_edits: true, force_rev: "5-winner" });
       } finally {
         (Endpoints as any).SPI_ASK_WAIT = originalWait;
       }
