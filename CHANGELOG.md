@@ -1,5 +1,21 @@
 # Activeledger Changelog
 
+## [5.10.2] - 2026-11-22
+
+A patch for contract HTTP calls. Nothing needs changing on upgrade, and nothing is build-gated.
+
+### Fixed
+- **A contract's `HTTP.send` / `ActiveRequest.send` with a `null` header threw `Headers that are not a list`.** `null` has
+  always meant no headers (and still does outside a contract). Inside a contract it is now treated the same way.
+- **Three refusals in a contract's `ActiveRequest.send` were silent.** A header that is not a list, an encoded request
+  and a compressed request threw, but did not tell the node, so only the contract's own catch saw them and nothing was
+  logged. They still throw, and now log `Contract refused access to ...` like the other guard refusals.
+
+### Tests
+- An ordinary-call matrix for contracts: every method, header form and body form through `ActiveRequest` over http,
+  https not refused, `fetch` and `http.request` with headers. Known and intended: an https request that sets
+  `rejectUnauthorized`, and a `fetch` that passes a `signal`, are still refused by the guard.
+
 ## [5.10.1] - 2026-11-22
 
 A patch for contract https calls. Nothing needs changing on upgrade, and nothing is build-gated.
