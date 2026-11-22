@@ -217,6 +217,8 @@ interface setup {
  */
 interface StoppableChildProcess extends ChildProcess {
   stop: boolean;
+  /** Has said it finished its setup (until then it holds what it is sent) */
+  ready?: boolean;
 }
 
 interface BusyLockQueue {
@@ -1773,6 +1775,7 @@ export class Host extends Home {
           this.reload();
           break;
         case "ready":
+          pFork.ready = true;
           // Check that we should be counting
           if (cpuTotal) {
             // Increase Ready Counter
@@ -2513,6 +2516,18 @@ export class Host extends Home {
 
     // Has this processor been told to stop
     if (robin.stop) {
+      return this.getRobin();
+    }
+
+    // One that is still setting up only holds what it is sent, so give the
+    // work to one that is ready, when there is one
+    if (
+      !(robin as StoppableChildProcess).ready &&
+      this.processors.some((p) => {
+        const worker = p as StoppableChildProcess;
+        return worker.ready && !worker.stop;
+      })
+    ) {
       return this.getRobin();
     }
 

@@ -156,6 +156,86 @@ describe("Network worker Processor (process.ts)", () => {
     ActiveOptions.parseConfig = originals.parseConfig;
   });
 
+  // The Processor is one object per process and is not set up until the host's setup message has been
+  // handled, so this comes first: what arrives before that is held, and the setup at the end of it is
+  // what makes the rest of this file (which drives a ready worker) valid.
+  describe("before its setup is done", () => {
+    const keys = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    const setupMsg = () => ({
+      type: "setup",
+      data: {
+        db: { url: "http://127.0.0.1:1", database: "d", error: "e", event: "v" },
+        __base: "/tmp/base",
+        reference: "ref-1",
+        self: "10.0.0.1:5260",
+        pubPem: keys.publicKey,
+        privPem: keys.privateKey,
+        right: { host: "10.0.0.2", port: 5260, isHome: false },
+        neighbours: {},
+      },
+    });
+    const finishSetup = async () => {
+      ActiveOptions.extendConfig = () => Promise.resolve({});
+      handler(setupMsg());
+      await new Promise((r) => setImmediate(r));
+    };
+
+    it("holds a transaction: no protocol process is built (it would get no database), nothing is sent or logged", () => {
+      handler({ type: "tx", entry: entryFor("early-1") });
+      expect(started).to.have.length(0);
+      expect(sent).to.deep.equal([]);
+      expect(logged.filter((l) => l.level === "fatal" || l.level === "error")).to.deep.equal([]);
+    });
+
+    it("holds every other message too, including a batch, an unknown type and a housekeeping update", () => {
+      handler({ type: "hk", data: { right: { host: "x", port: 1 }, neighbourhood: {} } });
+      handler({ type: "contractData", data: { contract: "c", data: 1 } });
+      handler({ type: "nonsense" });
+      handler({ type: "batch", data: { messages: [{ type: "tx", entry: entryFor("early-2") }] } });
+      expect(started).to.have.length(0);
+      expect(sent).to.deep.equal([]);
+      expect(logged.some((l) => l.msg === "Unknown Processor Call")).to.equal(false);
+    });
+
+    it("runs what it held, in the order it came, after it has said it is ready, with its connections in place", async () => {
+      const order: string[] = [];
+      const realSend = (process as any).send;
+      (process as any).send = (m: Msg) => { order.push(m.type); return realSend(m); };
+      const realStart = proto.start;
+      proto.start = function (...args: any[]) {
+        order.push("start:" + this.entry.$umid);
+        expect((this as any).db, "db").to.not.equal(undefined);
+        expect((this as any).dbev, "dbev").to.not.equal(undefined);
+        return realStart.apply(this, args);
+      };
+      try {
+        await finishSetup();
+      } finally {
+        proto.start = realStart;
+        (process as any).send = realSend;
+      }
+      expect(order[0]).to.equal("ready");
+      // The held transactions (early-1, early-2) run in the order they came
+      expect(order.filter((o) => o.startsWith("start:"))).to.deep.equal(["start:early-1", "start:early-2"]);
+      expect(order.indexOf("ready")).to.be.lessThan(order.indexOf("start:early-1"));
+      expect(logged.some((l) => /arrived before its setup was done/.test(String(l.obj)))).to.equal(true);
+      live.add("early-1");
+      live.add("early-2");
+    });
+
+    it("runs a message at once when the setup is done", async () => {
+      await finishSetup();
+      const before = started.length;
+      handler({ type: "tx", entry: entryFor("late-1") });
+      live.add("late-1");
+      expect(started.length).to.equal(before + 1);
+    });
+  });
+
   describe("lifecycle", () => {
     it("exits when the host disconnects, once pending event rows have been given their moment", async () => {
       let code: number | undefined;

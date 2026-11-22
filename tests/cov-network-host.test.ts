@@ -181,6 +181,13 @@ describe("Host with P2P and hybrid listeners (cov)", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  describe("workers setting up", () => {
+    it("marks a worker ready when it says so, and only that one", () => {
+      expect(children[0].ready).to.equal(true);
+      expect(children.slice(1).every((c: any) => !c.ready)).to.equal(true);
+    });
+  });
+
   describe("P2P stream server", () => {
     let seen: any[][];
     let realProcess: any;

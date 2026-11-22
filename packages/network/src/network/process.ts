@@ -67,6 +67,13 @@ interface IContractCaches {
  * @class Processor
  */
 class Processor {
+  /** Has the setup message been handled (the database and home exist) */
+  private isSetUp = false;
+  /** Messages that arrived before the setup was done, in the order they came */
+  private heldUntilSetup: any[] = [];
+  /** The message handler, so held messages can be run when the setup is done */
+  private handleMessage: (m: any) => void = () => undefined;
+
   /** A broadcast of this node's own commit, waiting for the commit message it travels with */
   private heldBroadcasts = new Map<string, { nodes: any; revs: any }>();
 
@@ -175,6 +182,15 @@ class Processor {
 
     // Listen for IPC (Interprocess Communication)
     const onMessage = (m: any): void => {
+      // Nothing but the setup can be run before the setup is done: a transaction
+      // would be built with no database, and the contract VM keeps the first
+      // one it is given for the life of this process. The host can send before
+      // we are ready (a peer's transaction arrives as the node starts), so hold
+      // it and run it, in order, once the setup has finished.
+      if (!this.isSetUp && m.type !== "setup" && m.type !== "batch") {
+        this.heldUntilSetup.push(m);
+        return;
+      }
       switch (m.type) {
         case "batch":
           // Messages the host held together for this turn, in the order sent
@@ -354,6 +370,7 @@ class Processor {
         this.send("memory", process.memoryUsage());
       }
     };
+    this.handleMessage = onMessage;
     process.on("message", onMessage);
   }
 
@@ -702,6 +719,15 @@ class Processor {
     this.send("ready", {
       pid: process.pid,
     });
+
+    // Run what came in before this was done, in order
+    this.isSetUp = true;
+    const held = this.heldUntilSetup;
+    this.heldUntilSetup = [];
+    if (held.length) {
+      ActiveLogger.info(`Processor running ${held.length} message(s) that arrived before its setup was done`);
+      for (const m of held) this.handleMessage(m);
+    }
   }
 
   /**
