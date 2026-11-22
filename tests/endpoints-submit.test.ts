@@ -447,6 +447,19 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         });
       });
 
+      it("is forwarded as the client sent it: the stamps this node added would make the owner refuse it", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "t" }), "1.2.3.4", db());
+        const sent = knocks[0][2];
+        for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$chain", "$relay"]) {
+          expect(sent, stamp).to.not.have.property(stamp);
+        }
+        expect(sent.$territoriality).to.equal("t");
+        expect(sent.$tx).to.be.an("object");
+        expect(sent.$sigs).to.be.an("object");
+      });
+
       it("passes the owning node's refusal back as a 200 rather than an HTTP error", async () => {
         const { host } = forwardingHost({ status: 403, data: { no: 1 } }, []);
         const reply = await Endpoints.ExternalInitalise(

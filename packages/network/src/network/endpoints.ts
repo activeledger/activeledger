@@ -1722,9 +1722,16 @@ export class Endpoints {
             ActiveLogger.info("Rebroadcasting to : " + sending);
             // We need to rebroadcast to sending node
             let rebroadcast = host.neighbourhood.get(sending);
+            // The owner is the entry node for this transaction: it stamps its
+            // own $umid, $datetime, $origin and the rest, and refuses a
+            // transaction that arrives already stamped. Send what the client sent.
+            const forwarded: any = { ...tx };
+            for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$chain", "$relay"]) {
+              delete forwarded[stamp];
+            }
             // Send and wait on their response
             rebroadcast
-              .knock("", tx, true, 0, false)
+              .knock("", forwarded, true, 0, false)
               .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;

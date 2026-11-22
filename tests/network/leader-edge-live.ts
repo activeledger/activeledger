@@ -50,7 +50,6 @@ async function followUp(w: Workload, nodes: NetworkNode[], tag: string): Promise
 async function territorial(w: Workload, nodes: NetworkNode[], rounds: number) {
   const refs: string[] = [];
   for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
-  let controlNotLast = 0;
   for (const leader of [false, true]) {
     const tag = leader ? "L" : "N";
     // A forwarded territorial transaction answers with what the commit node
@@ -81,15 +80,12 @@ async function territorial(w: Workload, nodes: NetworkNode[], rounds: number) {
       if (copies.some((d) => !d || d.message !== `t${tag}${last}c${c}`)) { notLast++; if (notLast <= 4) console.log(`  stream ${c} (entry node ${c % nodes.length}) ends at ${JSON.stringify(copies.map((d) => d && d.message))}, wanted t${tag}${last}c${c}`); }
     }
     console.log(`territorial ${leader ? "with $leader" : "without    "}: ${rounds * w.identities.length} sent, ${notLast} streams not at the last write on every node, ${s.differ} streams differ`);
-    // Territorial mode without $leader also loses some forwarded writes (seen
-    // on this harness, tracked separately), so that run is the baseline: leader
-    // must not lose more, and the nodes must never disagree
-    if (!leader) controlNotLast = notLast;
+    // Territorial: the named node writes first, and every write must land everywhere
     if (s.differ) {
       s.detail.slice(0, 3).forEach((d) => console.log("  " + d));
       fail(`territorial ${leader ? "leader" : "normal"}: ${s.differ} streams differ across nodes`);
     }
-    if (leader && notLast > controlNotLast) fail(`territorial leader lost ${notLast} streams' last write, the normal run ${controlNotLast}`);
+    if (notLast) fail(`territorial ${leader ? "leader" : "normal"}: ${notLast} streams missed their last write`);
     if (process.env.EDGE_LOGS && notLast) {
       const fs = require("fs");
       for (const n of nodes) {
