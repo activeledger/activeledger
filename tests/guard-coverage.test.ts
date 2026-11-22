@@ -294,7 +294,8 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       const p = await closed();
       expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: tls.checkServerIdentity }))).to.have.property("code", "ECONNREFUSED");
       expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: () => undefined }))).to.be.instanceOf(StorageAccessError);
-      expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: undefined }))).to.be.instanceOf(StorageAccessError);
+      // Undefined is not the guard's to refuse (node itself rejects it as the wrong type)
+      expect(await tried(() => tls.connect({ host: "127.0.0.1", port: p, checkServerIdentity: undefined }))).to.not.be.instanceOf(StorageAccessError);
     });
 
     it("still checks the certificate's name over a real TLS connection", async () => {
@@ -363,6 +364,29 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
       Object.defineProperty(hidden, "checkServerIdentity", { enumerable: false, value: tls.checkServerIdentity });
       expect(await tried(() => tls.connect(getter as any))).to.be.instanceOf(StorageAccessError);
       expect(await tried(() => tls.connect(hidden as any))).to.be.instanceOf(StorageAccessError);
+    });
+
+    it("ignores a refused option that is undefined (undici passes socket: undefined), and still refuses it once set", async () => {
+      const p = await closed();
+      const base = { host: "127.0.0.1", port: p };
+      expect(await tried(() => tls.connect({ ...base, socket: undefined } as any))).to.have.property("code", "ECONNREFUSED");
+      for (const key of ["lookup", "createConnection", "agent", "socketPath", "fd", "handle", "dispatcher", "setHost", "secureContext"]) {
+        expect(await tried(() => tls.connect({ ...base, [key]: undefined } as any)), key + " undefined").to.have.property("code", "ECONNREFUSED");
+      }
+      expect(await tried(() => tls.connect({ ...base, socket: new net.Socket() } as any))).to.be.instanceOf(StorageAccessError);
+      expect(await tried(() => tls.connect({ ...base, lookup: () => undefined } as any))).to.be.instanceOf(StorageAccessError);
+      expect(await tried(() => tls.connect({ ...base, socketPath: "/tmp/x.sock" } as any))).to.be.instanceOf(StorageAccessError);
+      expect(await tried(() => tls.connect({ ...base, secureContext: {} } as any))).to.be.instanceOf(StorageAccessError);
+    });
+
+    it("lets a contract's ActiveRequest to https through the guard, with or without a header", async () => {
+      const p = await closed();
+      for (const header of [undefined, []] as any[]) {
+        const blocked: string[] = [];
+        const r: any = await runSandboxed({ mode: "storage", customDatabases: false, onBlocked: (w: string) => blocked.push(w) }, () => ActiveRequest.send(`https://127.0.0.1:${p}/x`, "GET", header));
+        expect(blocked, JSON.stringify(header)).to.deep.equal([]);
+        expect(r.data).to.equal(null);
+      }
     });
   });
 });

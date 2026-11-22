@@ -227,7 +227,8 @@ const lightCheck = (args: unknown[]): void => {
       const d: any = Object.getOwnPropertyDescriptor(value, key);
       if (typeof key === "symbol" || !d.enumerable || d.get || d.set) throw new StorageAccessError("An option that is not plain data");
       if (key === "checkServerIdentity" && d.value === BUILTIN_CHECK_SERVER_IDENTITY) continue;
-      if (REFUSED_OPTIONS.has(key)) throw new StorageAccessError(`The option '${key}'`);
+      // A refused key holding undefined does nothing (undici passes socket: undefined to tls.connect)
+      if (REFUSED_OPTIONS.has(key) && d.value !== undefined) throw new StorageAccessError(`The option '${key}'`);
     }
   };
   args.forEach((a) => visit(a, 0));
