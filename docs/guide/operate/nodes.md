@@ -22,11 +22,14 @@ A transaction can skip the voting round by setting `"$leader": true` inside `$tx
 
 The node the client calls runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The client's response says `"$leader": true` when it was committed this way: it is that one node's answer, not network confirmation. `$leader` is ignored (the transaction runs as a normal one) with `$unanimous`, with `$territoriality` and with `$wait`, because only a broadcast transaction tells the other nodes about it.
 
+!!! warning
+    Leader mode has no agreement on order. If two clients write the **same stream** at the same moment through different nodes, each node can commit its own transaction at the same revision and the stream forks: the nodes hold different data at one revision number, and every later write to that stream fails with `Input Stream Position Incorrect`. Both clients were told they committed. Use leader mode only where one writer at a time owns a stream (for example a client's own stream, sent through one node), or send writes to shared streams without `$leader`. Normal voting handles concurrent writers correctly.
+
 ### Territorial mode
 
 Set `"$territoriality": "<node reference>"` on the transaction (next to `$tx`, not inside it) to name the node that writes first. The transaction is not broadcast. The node the client calls works out which node has to be entered so that the named node is the one that reaches the vote count first, and sends the transaction there as the client sent it. That node runs it, the votes pass along the ring to the named node, and the named node commits first (its contract sees `commit(true)` and `postProcess(true, ...)`). The client gets the committed response from the node that wrote.
 
-It cannot be combined with `$broadcast`. `$leader` is ignored, since nothing tells the other nodes in advance. It is not fault tolerant: if the named node is down, or a node before it in the ring votes no, the transaction fails rather than finding another route.
+Concurrent writers to the same stream through different nodes can leave the nodes on different revisions, because every node sees the transactions in a different order and votes no on the others. Give each stream one writer at a time. It cannot be combined with `$broadcast`. `$leader` is ignored, since nothing tells the other nodes in advance. It is not fault tolerant: if the named node is down, or a node before it in the ring votes no, the transaction fails rather than finding another route.
 
 With 5 nodes and `reached` at 60, three yes votes commit. With 4 nodes, three are needed, because two is 50%.
 

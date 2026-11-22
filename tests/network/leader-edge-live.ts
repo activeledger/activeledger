@@ -166,6 +166,87 @@ async function territorialShapes(w: Workload, nodes: NetworkNode[]) {
   }
 }
 
+const revNumber = (d: any): number => (d && typeof d._rev === "string" ? parseInt(d._rev.split("-")[0], 10) : NaN);
+
+/**
+ * Every entry node writes the SAME stream at the same moment (the real shape of
+ * #127: a stream that several leaders race for). Whatever the clients are told
+ * committed must be exactly what every node holds: the revision moves by the
+ * number of commits reported, identically on all four nodes, and the stream
+ * still takes a normal write afterwards.
+ */
+async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mode: "normal" | "leader" | "territorial", client: number, known = false) {
+  // `known`: a limit of the mode that is reported, not failed (see the summary line)
+  const bad = (m: string) => (known ? console.log(`KNOWN LIMIT ${m}`) : fail(m));
+  const id = w.identities[client];
+  const refs: string[] = [];
+  for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
+  const start = revNumber(await storageGet(nodes[0].storageUrl, id.streamId));
+  let told = 0, tried = 0;
+  for (let r = 0; r < rounds; r++) {
+    const results = await Promise.all(
+      nodes.map((n, k) => {
+        const tx: any = hotTransaction(w, client, `${mode}-${r}-${k}`, mode === "leader");
+        if (mode === "territorial") tx.$territoriality = refs[(k + r) % 4];
+        tried++;
+        return submit(n.baseUrl, tx).then(
+          (x: any) => !!(x && x.$streams && ((x.$streams.updated && x.$streams.updated.length) || (x.$streams.new && x.$streams.new.length))),
+          () => false
+        );
+      })
+    );
+    told += results.filter(Boolean).length;
+    if (mode === "territorial") await sleep(600); // a forwarded answer is not a committed one on every node yet
+  }
+  // Let it settle, then every node must be on one revision
+  const until = Date.now() + 25000;
+  let revs: number[] = [], msgs: string[] = [];
+  for (;;) {
+    const copies = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId).catch(() => null)));
+    revs = copies.map(revNumber);
+    msgs = copies.map((d) => (d ? d.message : ""));
+    if ((new Set(revs).size === 1 && new Set(msgs).size === 1) || Date.now() > until) break;
+    await sleep(400);
+  }
+  const moved = revs[0] - start;
+  console.log(`contention ${mode.padEnd(11)}: ${tried} writers at once on one stream, clients told ${told} committed; revision moved ${moved} on nodes [${revs.join(",")}]`);
+  if (new Set(revs).size > 1 || new Set(msgs).size > 1) bad(`contention ${mode}: nodes disagree: ${JSON.stringify(msgs)} ${JSON.stringify(revs)}`);
+  // Territorial answers are the owner's, which may be an error for a busy stream, so only count exactly for the others
+  if (mode !== "territorial" && moved !== told) bad(`contention ${mode}: clients were told ${told} committed but the stream moved ${moved}`);
+  if (mode === "territorial" && moved < 1) bad("contention territorial: nothing committed");
+  // A normal write to this stream afterwards
+  const after = await timedSubmit(nodes[1].baseUrl, hotTransaction(w, client, `after-${mode}`, false));
+  console.log(`  a normal write to that stream afterwards: ${after.committed ? "committed" : "FAILED: " + String(after.reason).slice(0, 120)}`);
+  if (!after.committed) bad(`contention ${mode}: the stream would not take a normal write afterwards`);
+}
+
+/** A leader transaction whose commit fails: the client is told, and no node moved. */
+async function failedCommit(w: Workload, nodes: NetworkNode[]) {
+  const id = w.identities[4];
+  const before = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId)));
+  const r: any = await submit(nodes[1].baseUrl, hotTransaction(w, 4, "commit-fail", true));
+  const said = !!(r && r.$streams && ((r.$streams.updated && r.$streams.updated.length) || (r.$streams.new && r.$streams.new.length)));
+  await sleep(2000);
+  const after = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId)));
+  const moved = after.some((d, i) => d._rev !== before[i]._rev);
+  console.log(`leader commit that fails: client told ${said ? "COMMITTED" : "failed"}, a stream moved: ${moved}${r && r.$leader ? ", response says $leader" : ""}`);
+  if (said) fail("a leader transaction whose commit failed was reported as committed");
+  if (moved) fail("a leader transaction whose commit failed still changed a stream");
+  const ok = await timedSubmit(nodes[2].baseUrl, hotTransaction(w, 4, "after-commit-fail", false));
+  if (!ok.committed) fail(`the stream would not take a write after a failed leader commit: ${ok.reason}`);
+}
+
+/** $leader with $unanimous is a normal transaction: committed, and not answered as leader. */
+async function unanimousLeader(w: Workload, nodes: NetworkNode[]) {
+  const tx: any = hotTransaction(w, 5, "unanimous", true);
+  tx.$unanimous = true;
+  const r: any = await submit(nodes[0].baseUrl, tx);
+  const ok = !!(r && r.$streams && r.$streams.updated && r.$streams.updated.length);
+  console.log(`$leader with $unanimous: committed ${ok}, response says $leader: ${r && r.$leader ? "yes" : "no"}`);
+  if (!ok) fail(`a unanimous transaction asking for leader did not commit: ${JSON.stringify(r).slice(0, 160)}`);
+  if (r && r.$leader) fail("a unanimous transaction was answered as a leader transaction");
+}
+
 async function commitConflict(w: Workload, nodes: NetworkNode[], rounds: number) {
   const victim = nodes[nodes.length - 1];
   for (const leader of [false, true]) {
@@ -215,6 +296,12 @@ async function main(): Promise<number> {
     await territorial(w, nodes, rounds);
     await territorialShapes(w, nodes);
     await commitConflict(w, nodes, rounds);
+    await contention(w, nodes, Math.max(4, rounds), "normal", 3);
+    await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
+    // Both of these are reported rather than failed: concurrent writers to one stream fork it in these modes (see the PR)
+    await contention(w, nodes, Math.max(4, rounds), "leader", 7, true);
+    await failedCommit(w, nodes);
+    await unanimousLeader(w, nodes);
   });
   console.log(failures ? `FAILED (${failures})` : "PASSED");
   return failures ? 1 : 0;
