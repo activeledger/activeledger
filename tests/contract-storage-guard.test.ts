@@ -288,4 +288,51 @@ describe("Contracts cannot reach the node's storage (Activeprotocol)", () => {
       expect(ContractScope.listed(["localhost:8080"], { host: "127.0.0.1", port: 5259, path: "/" })).to.equal(false);
     });
   });
+
+  describe("the header argument", () => {
+    const url = () => `http://127.0.0.1:${otherPort}/x`;
+    const send = (header: any, blocked: string[], data?: any) =>
+      runSandboxed({ mode: "storage", onBlocked: (w) => blocked.push(w) }, () => ActiveRequest.send(url(), "POST", header, data));
+
+    it("treats null like no header: the request goes out and nothing is logged as blocked", async () => {
+      for (const header of [null, undefined]) {
+        const blocked: string[] = [];
+        const r: any = await send(header, blocked, { a: 1 });
+        expect(r.data, String(header)).to.deep.equal({ ok: true });
+        expect(blocked).to.deep.equal([]);
+      }
+      expect(hits.other).to.equal(2);
+    });
+
+    it("still sends a list of headers", async () => {
+      const blocked: string[] = [];
+      expect(((await send(["X-A:1"], blocked)) as any).data).to.deep.equal({ ok: true });
+      expect(blocked).to.deep.equal([]);
+    });
+
+    it("refuses a header that is not a list, and tells the node (onBlocked) so it is logged", async () => {
+      for (const header of ["X-A:1", 5, {}, true]) {
+        const blocked: string[] = [];
+        expect(await refused(() => send(header, blocked)), String(header)).to.be.instanceOf(StorageAccessError);
+        expect(blocked, String(header)).to.deep.equal(["headers"]);
+      }
+      expect(hits.other).to.equal(0);
+    });
+
+    it("tells the node when it refuses an encoded or a compressed request", async () => {
+      const zlib = require("zlib");
+      let blocked: string[] = [];
+      expect(await refused(() => send(["Content-Encoding: gzip"], blocked, "x"))).to.be.instanceOf(StorageAccessError);
+      expect(blocked).to.deep.equal(["encoded-request"]);
+      blocked = [];
+      expect(await refused(() => send(undefined, blocked, zlib.gzipSync(Buffer.from("x"))))).to.be.instanceOf(StorageAccessError);
+      expect(blocked).to.deep.equal(["compressed-request"]);
+      expect(hits.other).to.equal(0);
+    });
+
+    it("outside a contract null and a list behave as before", async () => {
+      const r: any = await ActiveRequest.send(url(), "POST", null as any, { a: 1 });
+      expect(r.data).to.deep.equal({ ok: true });
+    });
+  });
 });

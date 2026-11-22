@@ -163,20 +163,27 @@ export class ActiveRequest {
       // No request outlives what a contract call is allowed
       const cap = ContractScope.current()?.limits?.timeoutSeconds;
       if (cap) timeout = Math.min(Number(timeout) || cap, cap);
+      // null has always meant no headers (and still does outside a contract)
+      if (header === null) header = undefined;
+      // Each refusal is reported to the scope so the node logs it, not only the contract's own catch
+      const refuse = (what: string, reason: string): never => {
+        ContractScope.current()?.onBlocked?.(what);
+        throw new StorageAccessError(reason);
+      };
       if (header !== undefined) {
-        if (!Array.isArray(header)) throw new StorageAccessError("Headers that are not a list");
+        if (!Array.isArray(header)) refuse("headers", "Headers that are not a list");
         header = header.map((h) => String(h));
         // The storage decompresses what is declared encoded, so an encoded body
         // is one the check cannot read
         if (header.some((h) => /^\s*(content|transfer)-encoding\s*:/i.test(h))) {
-          throw new StorageAccessError("An encoded request");
+          refuse("encoded-request", "An encoded request");
         }
       }
       if (data && typeof data === "object") {
         if (Buffer.isBuffer(data) || ArrayBuffer.isView(data)) {
           const bytes = Buffer.from(data as any);
           // The storage also decompresses a gzip body without being told
-          if (bytes[0] === 0x1f && bytes[1] === 0x8b) throw new StorageAccessError("A compressed request");
+          if (bytes[0] === 0x1f && bytes[1] === 0x8b) refuse("compressed-request", "A compressed request");
           data = bytes;
         } else {
           data = JSON.stringify(data);
