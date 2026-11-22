@@ -31,6 +31,8 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
   const refused = async (fn: () => unknown) => { try { await fn(); } catch (e: any) { return e; } return null; };
   const get = (opts: any, cb?: any) => new Promise<number>((resolve, reject) => inContract(() => http.request(opts, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode || 0)); cb?.(res); }).on("error", reject).end()));
   const base = () => ({ host: "127.0.0.1", port, method: "GET" });
+  // A port nothing listens on
+  const closed = async () => { const s = net.createServer(); await new Promise<void>((r) => s.listen(0, "127.0.0.1", r)); const p = (s.address() as net.AddressInfo).port; await new Promise((r) => s.close(r)); return p; };
 
   describe("http.request option objects", () => {
     it("allows a plain read of a custom database, and refuses the same options aimed anywhere else", async () => {
@@ -280,7 +282,6 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
 
   describe("checkServerIdentity", () => {
     // A port nothing listens on: getting past the guard shows as a connection error, not a refusal
-    const closed = async () => { const s = net.createServer(); await new Promise<void>((r) => s.listen(0, "127.0.0.1", r)); const p = (s.address() as net.AddressInfo).port; await new Promise((r) => s.close(r)); return p; };
     const tried = (fn: () => any) => new Promise<any>((resolve) => { try { const s = inContract(fn); s.on("error", resolve); s.on("secureConnect", () => { s.destroy(); resolve(null); }); } catch (e) { resolve(e); } });
 
     it("lets a plain https request through the guard: node's own agent passes the built-in", async () => {
@@ -387,6 +388,65 @@ describe("Storage guard: raw modules, fetch and approvals (Activeprotocol)", () 
         expect(blocked, JSON.stringify(header)).to.deep.equal([]);
         expect(r.data).to.equal(null);
       }
+    });
+  });
+
+  // What contracts really send: the guard must not get in the way of an ordinary call to another host
+  describe("ordinary outbound calls from a contract", () => {
+    let web: http.Server, wp = 0;
+    before(async () => {
+      web = http.createServer((q, s) => { let b = ""; q.on("data", (d) => (b += d)); q.on("end", () => { s.setHeader("content-type", "application/json"); s.end(JSON.stringify({ m: q.method })); }); });
+      await new Promise<void>((r) => web.listen(0, "127.0.0.1", r));
+      wp = (web.address() as net.AddressInfo).port;
+    });
+    after(() => web.close());
+    const run = <T>(fn: () => T, blocked: string[]) => runSandboxed({ mode: "storage", customDatabases: false, onBlocked: (w: string) => blocked.push(w) }, fn);
+
+    it("ActiveRequest: every method, header form and body form gets through over http", async () => {
+      const bodies: any[] = [undefined, null, "text", { a: 1 }, [1], Buffer.from("x"), new Uint8Array([1])];
+      const headers: any[] = [undefined, null, [], ["X-A:1"], ["Content-Type: application/json"]];
+      for (const method of ["GET", "POST", "PUT", "DELETE", "PATCH", "post"]) {
+        for (const header of headers) {
+          for (const body of bodies) {
+            const blocked: string[] = [];
+            const label = `${method} header=${JSON.stringify(header)} body=${body === null ? "null" : typeof body === "object" ? body.constructor.name : typeof body}`;
+            const r: any = await run(() => ActiveRequest.send(`http://127.0.0.1:${wp}/x`, method, header, body), blocked);
+            expect(blocked, label).to.deep.equal([]);
+            expect(r.data, label).to.deep.equal({ m: method.toUpperCase() });
+          }
+        }
+      }
+    });
+
+    it("ActiveRequest: https is not refused by the guard, with or without a header, on a GET or a POST", async () => {
+      const p = await closed();
+      for (const header of [undefined, null, [], ["X-A:1"]] as any[]) {
+        for (const method of ["GET", "POST"]) {
+          const blocked: string[] = [];
+          const r: any = await run(() => ActiveRequest.send(`https://127.0.0.1:${p}/x`, method, header, method === "POST" ? { a: 1 } : undefined), blocked);
+          expect(blocked, `${method} ${JSON.stringify(header)}`).to.deep.equal([]);
+          expect(r.data).to.equal(null);
+        }
+      }
+    });
+
+    it("fetch, and http.request with headers, a timeout and a servername, get through", async () => {
+      const blocked: string[] = [];
+      const got = await run(() => fetch(`http://127.0.0.1:${wp}/x`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ a: 1 }) }).then((r) => r.json()), blocked);
+      expect(got).to.deep.equal({ m: "POST" });
+      const viaRequest = await run(() => new Promise<number>((resolve, reject) => {
+        const q = http.request({ hostname: "127.0.0.1", port: wp, path: "/x", method: "POST", headers: { "content-type": "application/json", "content-length": 2 }, timeout: 2000 }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode || 0)); });
+        q.on("error", reject); q.write("{}"); q.end();
+      }), blocked);
+      expect(viaRequest).to.equal(200);
+      expect(blocked).to.deep.equal([]);
+    });
+
+    it("still refuses an https request that turns certificate checking off", async () => {
+      const p = await closed();
+      const blocked: string[] = [];
+      expect(await refused(() => run(() => https.get({ host: "127.0.0.1", port: p, rejectUnauthorized: false } as any), blocked))).to.be.instanceOf(StorageAccessError);
+      expect(blocked.length).to.equal(1);
     });
   });
 });
