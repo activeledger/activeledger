@@ -1225,8 +1225,15 @@ export class Process extends EventEmitter {
           if (typeof vote !== "boolean" && vote.leader) {
             this.nodeResponse.vote = this.nodeResponse.leader = true;
             Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
+            // The origin tells the other nodes its leader vote, so a node that
+            // verifies and votes yes can commit on it without waiting for the
+            // count (see canCommit). Only the origin: a node that decided
+            // leader for itself has nothing to wait for, and the rest would
+            // only add traffic.
+            if (this.entry.$origin === this.reference) {
+              this.emit("broadcast");
+            }
             // If leader we can run straight to the commit
-            // The data still gets sent on as part of a broadcast commit
             this.commit(virtualMachine);
             return;
           }
@@ -1669,6 +1676,21 @@ export class Process extends EventEmitter {
    * @returns {boolean}
    */
   private canCommit(): boolean {
+    // A leader vote from the origin is taken as the network's consensus, once
+    // this node has verified and voted yes itself. Only the origin's: the
+    // contract decided it on the node the client is talking to.
+    const origin = this.entry.$origin;
+    const leader = origin && origin !== this.reference ? this.entry.$nodes[origin] : undefined;
+    if (
+      leader &&
+      leader.leader &&
+      leader.vote &&
+      this.nodeResponse?.vote &&
+      !this.entry.$unanimous
+    ) {
+      return true;
+    }
+
     // Time to count the votes (Need to re-cache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);
     this.currentTrueVotes = 0;
