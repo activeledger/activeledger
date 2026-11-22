@@ -1131,6 +1131,14 @@ export class Endpoints {
       output.$responses = responses;
     }
 
+    // Committed by the entry node alone (leader mode), the others follow
+    if (
+      tx.$tx?.$leader === true &&
+      Object.values(tx.$nodes || {}).some((node) => node?.leader)
+    ) {
+      output.$leader = true;
+    }
+
     if (ActiveOptions.get<boolean>("debugToClient", false)) {
       output.$debug = tx;
     }

@@ -1230,13 +1230,14 @@ export class Process extends EventEmitter {
           ActiveLogger.debug(`Calling Contract Vote - ${payload.umid}`);
           const vote = await virtualMachine.vote(this.entry.$nodes, payload.umid);
 
-          if (typeof vote !== "boolean" && vote.leader) {
+          // Both have to ask for it: the transaction ($tx.$leader) and the contract (this).
+          // A contract that names a leader on a transaction that did not ask is a plain yes
+          if (typeof vote !== "boolean" && vote.leader && this.asksForLeader()) {
             this.nodeResponse.vote = this.nodeResponse.leader = true;
             Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
             // The transaction asked for leader mode and the contract accepted it:
             // this node's yes is enough, the rest of the network is told now (they
-            // verify and vote for themselves, a contract that names a leader makes
-            // each of them commit on its own vote)
+            // verify and vote for themselves, and each commits on its own leader vote)
             if (this.broadcastHeld) {
               this.broadcastHeld = false;
               this.emit("broadcast");

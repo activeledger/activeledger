@@ -72,8 +72,8 @@ describe("Process - VM phases (Activeprotocol)", () => {
       expect(postVoted).to.deep.equal([]);
     });
 
-    it("commits straight away when the contract names this node the leader", async () => {
-      const f = make();
+    it("commits straight away when the transaction asks for leader mode and the contract accepts", async () => {
+      const f = make({ $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
       const vm = vmStub({ vote: () => Promise.resolve({ leader: true }) });
 
       await f.proc.handleVM(vm, payload, "abc.js");
@@ -88,7 +88,7 @@ describe("Process - VM phases (Activeprotocol)", () => {
       const leaderVm = () => vmStub({ vote: () => Promise.resolve({ leader: true }) });
 
       it("sends the transaction on once the contract has accepted it, before the commit", async () => {
-        const f = make();
+        const f = make({ $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
         f.proc.broadcastHeld = true;
         const order: string[] = [];
         f.proc.emit = (event: string) => (order.push(event), true);
@@ -100,13 +100,15 @@ describe("Process - VM phases (Activeprotocol)", () => {
         expect(f.proc.broadcastHeld).to.equal(false);
       });
 
-      it("sends nothing on a leader vote when the transaction did not ask for it", async () => {
+      it("treats a contract's leader vote as a plain yes when the transaction did not ask for it", async () => {
         const f = make();
 
         await f.proc.handleVM(leaderVm(), payload, "abc.js");
 
         expect(f.events.map((e) => e.event)).to.not.include("broadcast");
-        expect(commits).to.have.length(1);
+        expect(f.proc.nodeResponse.leader).to.not.equal(true);
+        expect(commits).to.deep.equal([]);
+        expect(postVoted).to.have.length(1);
       });
     });
 

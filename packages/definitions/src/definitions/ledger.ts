@@ -64,6 +64,8 @@ export interface LedgerResponse {
   $streams: IStreams;
   $responses?: unknown[];
   $territoriality?: string;
+  /** The entry node committed this as a leader transaction on its own vote; the other nodes follow, it is not network confirmation */
+  $leader?: boolean;
   $debug?: LedgerEntry;
 }
 

@@ -13,7 +13,7 @@
  */
 
 import { hotTransaction, setupWorkload, timedSubmit, withNetwork, sleep } from "../stress/lib/workload";
-import { storageGet, storagePut } from "./http";
+import { storageGet, storagePut, submit } from "./http";
 
 async function main(): Promise<number> {
   const contract = process.argv[2] || "returner-leader";
@@ -38,13 +38,22 @@ async function main(): Promise<number> {
     console.log(`${rounds * clients} transactions sent, ${uncommitted} not committed`);
     if (uncommitted) fail(`${uncommitted} transactions did not commit`);
 
+    // The response says so when it was committed by the entry node alone
+    {
+      const accepted = leader && contract === "returner-leader";
+      const probe = await submit(nodes[0].baseUrl, hotTransaction(w, clients - 1, "probe", leader));
+      const said = probe.$leader === true;
+      console.log(`response $leader: ${probe.$leader} (expected ${accepted ? "true" : "absent"})`);
+      if (said !== accepted) fail(`the response should ${accepted ? "" : "not "}say $leader`);
+    }
+
     // Let every node settle, then compare their own copies
     const want = `r${rounds - 1}`;
     const deadline = Date.now() + 20000;
     let docs: any[][] = [];
     for (;;) {
       docs = await Promise.all(w.identities.map((id) => Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId).catch(() => null)))));
-      const settled = docs.every((perNode, c) => perNode.every((d) => d && d.message === `${want}c${c}`));
+      const settled = docs.every((perNode, c) => perNode.every((d) => d && (d.message === `${want}c${c}` || (c === clients - 1 && d.message === "probe"))));
       if (settled || Date.now() > deadline) break;
       await sleep(500);
     }
@@ -52,7 +61,7 @@ async function main(): Promise<number> {
     docs.forEach((perNode, c) => {
       const msgs = perNode.map((d) => d && d.message);
       const revs = perNode.map((d) => d && d._rev);
-      if (msgs.some((m) => m !== `${want}c${c}`)) { behind++; console.log(`stream ${c}: messages ${JSON.stringify(msgs)}`); }
+      if (msgs.some((m) => m !== `${want}c${c}` && !(c === clients - 1 && m === "probe"))) { behind++; console.log(`stream ${c}: messages ${JSON.stringify(msgs)}`); }
       else if (new Set(revs).size > 1) { revDiffer++; console.log(`stream ${c}: revisions ${JSON.stringify(revs)}`); }
     });
     if (behind) fail(`${behind} streams had a node behind or different`);
