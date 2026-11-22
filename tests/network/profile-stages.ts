@@ -76,8 +76,10 @@ function dedupe(marks: Mark[]): Mark[] {
     const id = await onboard(base);
     const ns = `st${Date.now().toString(36)}`;
     await registerNamespace(base, id, ns);
+    // --contract=returner-leader profiles a leader-voting contract instead
+    const which = (process.argv.find(a => a.startsWith("--contract=")) || "--contract=returner").split("=")[1];
     const contract = await deployContract(base, id, ns, "returner",
-      path.join(__dirname, "contracts", "returner-contract.ts"));
+      path.join(__dirname, "contracts", `${which}-contract.ts`));
     await runContract(base, id, ns, contract, { message: "warm" });
     await new Promise(r => setTimeout(r, 300));
 

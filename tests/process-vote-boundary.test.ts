@@ -67,43 +67,22 @@ describe("Process - the vote threshold and the commit it starts (Activeprotocol)
     });
   });
 
-  describe("canCommit with a leader vote", () => {
-    // n0 is this node; n1 is the origin
-    const withLeader = (spec: string, leader: Record<string, any>, response: any = {}, entry: any = {}) => {
-      const f = make(spec, response, { $origin: "n1", ...entry });
-      Object.assign(f.entry.$nodes.n1, leader);
-      return f;
-    };
+  describe("canCommit with another node's leader claim", () => {
+    // n0 is this node; n1 is the origin. A leader claim in a peer's vote must
+    // not stand in for the count: only this node's own contract decides to
+    // skip it (and then it commits without asking canCommit).
     beforeEach(() => ActiveOptions.set("consensus", { reached: 60 }));
 
-    it("takes the origin's leader vote as consensus once this node has voted yes", () => {
-      // 2 of 5 yes is well short of 60%
-      expect(canCommit(withLeader("yynnn", { leader: true }))).to.equal(true);
+    it("does not commit on the origin's leader vote, even when this node voted yes", () => {
+      const f = make("yynnn", {}, { $origin: "n1" });
+      f.entry.$nodes.n1.leader = true;
+      expect(canCommit(f)).to.equal(false);
     });
 
-    it("does not commit on it when this node voted no", () => {
-      expect(canCommit(withLeader("nynnn", { leader: true }))).to.equal(false);
-    });
-
-    it("does not commit on a leader vote from a node that is not the origin", () => {
-      expect(canCommit(withLeader("ynynn", { leader: true }, {}, { $origin: "n3" }))).to.equal(false);
-    });
-
-    it("does not commit on a leader vote that is a no", () => {
-      expect(canCommit(withLeader("ynnnn", { leader: true }))).to.equal(false);
-    });
-
-    it("does not skip the count for a unanimous transaction", () => {
-      expect(canCommit(withLeader("yynnn", { leader: true }, {}, { $unanimous: true }))).to.equal(false);
-    });
-
-    it("counts as usual when the origin's vote is not a leader vote", () => {
-      expect(canCommit(withLeader("yynnn", {}))).to.equal(false);
-      expect(canCommit(withLeader("yyynn", {}))).to.equal(true);
-    });
-
-    it("does not let this node's own leader flag stand in for the origin's", () => {
-      expect(canCommit(withLeader("yynnn", {}, { leader: true }, { $origin: "n0" }))).to.equal(false);
+    it("still counts the votes as usual when the origin's vote carries a leader flag", () => {
+      const f = make("yyynn", {}, { $origin: "n1" });
+      f.entry.$nodes.n1.leader = true;
+      expect(canCommit(f)).to.equal(true);
     });
   });
 
