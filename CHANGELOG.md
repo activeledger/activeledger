@@ -1,5 +1,20 @@
 # Activeledger Changelog
 
+## [5.10.3] - 2026-11-22
+
+A patch for a node restart race. Nothing needs changing on upgrade, and nothing is build-gated.
+
+### Fixed
+- **A transaction that reached a worker before its setup was done broke event writes for that worker's life.** The P2P
+  server listens as the node starts and hands transactions to workers with no check that a worker is ready. A worker
+  builds each transaction from its database connections, which only exist once its setup message has finished, so an
+  early transaction got none, and the contract VM (built once per worker) kept those missing connections: every
+  event-emitting contract in that worker then failed with `Cannot read properties of undefined (reading 'post')` before
+  any stream was written, and the node lagged a revision per transaction until SPI repaired it or the worker was
+  restarted. A worker now holds everything it is sent before its setup is done and runs it in order once it has said it
+  is ready, the host hands work to a ready worker while one is available, and the contract VM is never built from a
+  caller that has no database.
+
 ## [5.10.2] - 2026-11-22
 
 A patch for contract HTTP calls. Nothing needs changing on upgrade, and nothing is build-gated.
