@@ -84,6 +84,32 @@ describe("Process - VM phases (Activeprotocol)", () => {
       expect(postVoted).to.deep.equal([]);
     });
 
+    describe("leader mode ($tx.$leader)", () => {
+      const leaderVm = () => vmStub({ vote: () => Promise.resolve({ leader: true }) });
+
+      it("sends the transaction on once the contract has accepted it, before the commit", async () => {
+        const f = make();
+        f.proc.broadcastHeld = true;
+        const order: string[] = [];
+        f.proc.emit = (event: string) => (order.push(event), true);
+        f.proc.commit = () => order.push("commit");
+
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+
+        expect(order).to.deep.equal(["broadcast", "commit"]);
+        expect(f.proc.broadcastHeld).to.equal(false);
+      });
+
+      it("sends nothing on a leader vote when the transaction did not ask for it", async () => {
+        const f = make();
+
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+
+        expect(f.events.map((e) => e.event)).to.not.include("broadcast");
+        expect(commits).to.have.length(1);
+      });
+    });
+
     describe("a transaction with no inputs is a read", () => {
       const reading = (extra: any = {}) =>
         make({ $tx: { $namespace: "ns", $contract: "abc", $o: {}, ...extra } });

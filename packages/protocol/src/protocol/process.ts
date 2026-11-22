@@ -193,6 +193,14 @@ export class Process extends EventEmitter {
   private broadcastTimeout: NodeJS.Timeout;
 
   /**
+   * Leader mode, origin side: the transaction asked for it ($tx.$leader) and
+   * has not been sent to the other nodes yet. They are told only once this
+   * node has voted yes, so a no is a no in the client's response and nothing
+   * was broadcast.
+   */
+  private broadcastHeld = false;
+
+  /**
    * Current Voting Round
    *
    * @private
@@ -1225,6 +1233,14 @@ export class Process extends EventEmitter {
           if (typeof vote !== "boolean" && vote.leader) {
             this.nodeResponse.vote = this.nodeResponse.leader = true;
             Attestation.signVote(this.entry.$umid, this.entry.$revs, this.nodeResponse);
+            // The transaction asked for leader mode and the contract accepted it:
+            // this node's yes is enough, the rest of the network is told now (they
+            // verify and vote for themselves, a contract that names a leader makes
+            // each of them commit on its own vote)
+            if (this.broadcastHeld) {
+              this.broadcastHeld = false;
+              this.emit("broadcast");
+            }
             // If leader we can run straight to the commit
             // The data still gets sent on as part of a broadcast commit
             this.commit(virtualMachine);
@@ -1311,8 +1327,13 @@ export class Process extends EventEmitter {
         // Should only the origin send this?
         // Actually if only the origin sends it we will really reduce network traffic
         if (this.entry.$origin === this.reference) {
-          // Now we collect votes within the queue maybe we can just send with orign node?
-          this.emit("broadcast", true);
+          if (this.asksForLeader()) {
+            // Leader mode: held until this node's own vote is yes
+            this.broadcastHeld = true;
+          } else {
+            // Now we collect votes within the queue maybe we can just send with orign node?
+            this.emit("broadcast", true);
+          }
         }
         // The reason this should be fine is the orign is the entry node, It is sending this out
         // for all the other nodes to start processing it to get their vote response. So it is a global tx initiation.
@@ -1403,6 +1424,20 @@ export class Process extends EventEmitter {
         this.commit(virtualMachine);
       }
       return;
+    }
+
+    // Leader mode and nobody else knows of this transaction yet. A no ends it
+    // here, in the response. A yes the contract did not take as a leader vote
+    // carries on as a normal transaction (its first broadcast is the one below).
+    if (this.broadcastHeld) {
+      if (error) {
+        this.entry.$nodes[this.reference].error = error.reason
+          ? error.reason
+          : error;
+        this.shared.raiseLedgerError(error.code || 1000, error.reason || error, false, 0, true);
+        return;
+      }
+      this.broadcastHeld = false;
     }
 
     // Sign the vote (yes or no) so a hybrid can verify the tally
@@ -1560,7 +1595,8 @@ export class Process extends EventEmitter {
     noWait?: boolean
   ) {
     this.commiting = false;
-    if (this.willEmit || noWait) {
+    // Nothing waits on votes from a network that was never told (leader mode)
+    if (this.willEmit || noWait || this.broadcastHeld) {
       clearTimeout(this.willEmit);
       this.emit("failed", this.willEmitData || data);
     } else {
@@ -1668,6 +1704,19 @@ export class Process extends EventEmitter {
    * @param {boolean} [skipBoost=false]
    * @returns {boolean}
    */
+  /**
+   * Does the transaction ask to be a leader transaction? Only the signed
+   * body can ask ($tx.$leader), and not with $unanimous (which needs every
+   * vote). The contract still has to accept it, by voting { leader: true }.
+   */
+  private asksForLeader(): boolean {
+    return (
+      this.entry?.$tx?.$leader === true &&
+      !this.entry.$unanimous &&
+      !this.localOnly
+    );
+  }
+
   private canCommit(): boolean {
     // Time to count the votes (Need to re-cache keys)
     let networkNodes: string[] = Object.keys(this.entry.$nodes);

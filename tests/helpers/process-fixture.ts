@@ -6,6 +6,7 @@ export interface RaisedError {
   message: string;
   stop?: boolean;
   priority?: number;
+  noWait?: boolean;
 }
 
 export interface ProcessFixture {
@@ -72,13 +73,15 @@ export const buildProcess = (options: FixtureOptions = {}): ProcessFixture => {
     code: number,
     error: Error | string,
     stop?: boolean,
-    priority?: number
+    priority?: number,
+    noWait?: boolean
   ) => {
     raised.push({
       code,
       message: (error as Error)?.message ?? String(error),
       stop,
       priority,
+      ...(noWait !== undefined ? { noWait } : {}),
     });
     return Promise.resolve();
   };

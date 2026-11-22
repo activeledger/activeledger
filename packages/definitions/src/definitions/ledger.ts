@@ -127,6 +127,8 @@ export interface LedgerTransaction {
   $i: LedgerInputs;
   $o: LedgerIORputs;
   $r?: LedgerIORputs;
+  /** Ask for leader mode: the entry node decides, the others are told once it has voted yes. The contract must also accept it (vote() returns { leader: true }), otherwise it is a normal transaction */
+  $leader?: boolean;
 }
 
 /**

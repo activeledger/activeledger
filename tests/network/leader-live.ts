@@ -7,7 +7,9 @@
  *
  *   npx tsx tests/network/leader-live.ts [contract] [rounds] [clients]
  *
- * contract defaults to returner-leader, rounds to 5, clients to 8.
+ * contract defaults to returner-leader, rounds to 5, clients to 8; a fourth
+ * argument `leader` sends the transactions with $tx.$leader (the origin holds
+ * the broadcast until its own vote is yes).
  */
 
 import { hotTransaction, setupWorkload, timedSubmit, withNetwork, sleep } from "../stress/lib/workload";
@@ -17,6 +19,7 @@ async function main(): Promise<number> {
   const contract = process.argv[2] || "returner-leader";
   const rounds = Number(process.argv[3] || 5);
   const clients = Number(process.argv[4] || 8);
+  const leader = process.argv[5] === "leader";
   let failures = 0;
   const fail = (m: string) => {
     failures++;
@@ -28,7 +31,7 @@ async function main(): Promise<number> {
     let uncommitted = 0;
     for (let r = 0; r < rounds; r++) {
       const results = await Promise.all(
-        Array.from({ length: clients }, (_, c) => timedSubmit(nodes[c % nodes.length].baseUrl, hotTransaction(w, c, `r${r}c${c}`)))
+        Array.from({ length: clients }, (_, c) => timedSubmit(nodes[c % nodes.length].baseUrl, hotTransaction(w, c, `r${r}c${c}`, leader)))
       );
       for (const x of results) if (!x.committed) { uncommitted++; console.log(`round ${r}: not committed: ${x.reason}`); }
     }
@@ -62,7 +65,7 @@ async function main(): Promise<number> {
       const behindNode = nodes[0];
       const cur = await storageGet(behindNode.storageUrl, w.identities[0].streamId);
       await storagePut(behindNode.storageUrl, w.identities[0].streamId, { ...cur, desyncMarker: `d${Date.now()}` });
-      const t = await timedSubmit(nodes[1].baseUrl, hotTransaction(w, 0, "after-desync"));
+      const t = await timedSubmit(nodes[1].baseUrl, hotTransaction(w, 0, "after-desync", leader));
       console.log(`write while node ${behindNode.port} is desynced: ${t.committed ? "committed" : "not committed: " + t.reason}`);
       let healed = false;
       const until = Date.now() + 20000;
@@ -75,8 +78,23 @@ async function main(): Promise<number> {
       if (!healed) fail("desynced node did not catch up");
     }
 
+    // A no from the origin is the answer, straight away, and nothing was
+    // broadcast: no other node ever saw the transaction
+    if (leader && contract === "returner-leader") {
+      const before = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, w.identities[1].streamId)));
+      const began = Date.now();
+      const refused = await timedSubmit(nodes[0].baseUrl, hotTransaction(w, 1, "", true));
+      const took = Date.now() - began;
+      console.log(`a transaction the contract refuses: ${refused.committed ? "COMMITTED" : "failed"} in ${took} ms (${refused.reason})`);
+      if (refused.committed) fail("a refused leader transaction committed");
+      if (took > 3000) fail(`the refusal took ${took} ms, it should be immediate`);
+      await sleep(1500);
+      const after = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, w.identities[1].streamId)));
+      if (JSON.stringify(before.map((d) => d._rev)) !== JSON.stringify(after.map((d) => d._rev))) fail("a refused transaction changed a stream");
+    }
+
     // A later transaction on the same streams must still work
-    const again = await Promise.all(w.identities.map((_, c) => timedSubmit(nodes[(c + 1) % nodes.length].baseUrl, hotTransaction(w, c, `after${c}`))));
+    const again = await Promise.all(w.identities.map((_, c) => timedSubmit(nodes[(c + 1) % nodes.length].baseUrl, hotTransaction(w, c, `after${c}`, leader))));
     const bad = again.filter((x) => !x.committed);
     if (bad.length) fail(`${bad.length}/${again.length} follow-up transactions failed: ${bad[0].reason}`);
     else console.log("follow-up transactions on every stream committed");
