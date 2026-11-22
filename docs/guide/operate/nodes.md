@@ -22,6 +22,12 @@ A transaction can skip the voting round by setting `"$leader": true` inside `$tx
 
 The node the client calls runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The client's response says `"$leader": true` when it was committed this way: it is that one node's answer, not network confirmation. `$leader` is ignored (the transaction runs as a normal one) with `$unanimous`, with `$territoriality` and with `$wait`, because only a broadcast transaction tells the other nodes about it.
 
+### Territorial mode
+
+Set `"$territoriality": "<node reference>"` on the transaction (next to `$tx`, not inside it) to name the node that writes first. The transaction is not broadcast. The node the client calls works out which node has to be entered so that the named node is the one that reaches the vote count first, and sends the transaction there as the client sent it. That node runs it, the votes pass along the ring to the named node, and the named node commits first (its contract sees `commit(true)` and `postProcess(true, ...)`). The client gets the committed response from the node that wrote.
+
+It cannot be combined with `$broadcast`. `$leader` is ignored, since nothing tells the other nodes in advance. It is not fault tolerant: if the named node is down, or a node before it in the ring votes no, the transaction fails rather than finding another route.
+
 With 5 nodes and `reached` at 60, three yes votes commit. With 4 nodes, three are needed, because two is 50%.
 
 The same percentage decides repairs, but counted a little differently. When a node repairs a stream it asks the other nodes, so the bar is the percentage of all nodes, less one for the node asking, rounded up:

@@ -14,8 +14,8 @@
  *   npm run test:network:leader-edge   (or npx tsx tests/network/leader-edge-live.ts [rounds] [clients])
  */
 
-import { hotTransaction, setupWorkload, timedSubmit, withNetwork, sleep, Workload } from "../stress/lib/workload";
-import { requestJson, storageGet, storagePut } from "./http";
+import { hotTransaction, setupWorkload, timedSubmit, uniqueTransaction, withNetwork, sleep, Workload } from "../stress/lib/workload";
+import { requestJson, storageGet, storagePut, submit } from "./http";
 import { NetworkNode } from "./harness";
 
 let failures = 0;
@@ -102,6 +102,70 @@ async function territorial(w: Workload, nodes: NetworkNode[], rounds: number) {
   }
 }
 
+/** Territorial transactions of other shapes: with an $expire, creating a new stream, and with $leader asked for. */
+async function territorialShapes(w: Workload, nodes: NetworkNode[]) {
+  const refs: string[] = [];
+  for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
+  const landed = async (streamId: string, message?: string) => {
+    const until = Date.now() + 10000;
+    for (;;) {
+      const copies = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, streamId).catch(() => null)));
+      if (copies.every((d) => d && (message === undefined || d.message === message)) && new Set(copies.map((d) => d._rev)).size === 1) return true;
+      if (Date.now() > until) return false;
+      await sleep(100);
+    }
+  };
+
+  // The forwarded client answer is the owner's real one, not an empty summary
+  // (entry node and named node are never the same here: forwarded every time)
+  for (let i = 0; i < 4; i++) {
+    const tx: any = hotTransaction(w, 0, `answer${i}`, false);
+    tx.$territoriality = refs[(i + 2) % 4];
+    const r: any = await submit(nodes[i].baseUrl, tx);
+    const says = !!(r && r.$umid && r.$streams && r.$streams.updated && r.$streams.updated.length);
+    if (!says) fail(`territorial answer ${i} was not a committed response: ${JSON.stringify(r).slice(0, 160)}`);
+    if (!(await landed(w.identities[0].streamId, `answer${i}`))) fail(`territorial answer ${i} did not land on every node`);
+  }
+  console.log("territorial answers: the client is given the committed response from the node that wrote");
+
+  // $expire is part of the umid check on the entry node and again on the owner
+  {
+    const base: any = hotTransaction(w, 1, "expiring", false);
+    const body = { ...base.$tx, $expire: new Date(Date.now() + 120000).toISOString() };
+    const tx: any = { $tx: body, $sigs: { [w.identities[1].streamId]: w.identities[1].keyPair.sign(body) }, $territoriality: refs[3] };
+    const r: any = await submit(nodes[0].baseUrl, tx);
+    const ok = !!(r && r.$streams && r.$streams.updated && r.$streams.updated.length);
+    if (!ok) fail(`territorial transaction with $expire did not commit: ${JSON.stringify(r).slice(0, 160)}`);
+    if (!(await landed(w.identities[1].streamId, "expiring"))) fail("territorial $expire transaction did not land on every node");
+    // The same bytes again must be refused as already accepted, not run twice
+    const again: any = await submit(nodes[0].baseUrl, JSON.parse(JSON.stringify(tx)));
+    const refused = !(again && again.$streams && again.$streams.updated && again.$streams.updated.length);
+    console.log(`territorial with $expire: committed ${ok}, the same transaction sent again ${refused ? "refused" : "ACCEPTED"}`);
+    if (!refused) fail("an $expire transaction sent twice was accepted twice");
+  }
+
+  // A transaction that creates a stream
+  {
+    const tx: any = uniqueTransaction();
+    tx.$territoriality = refs[2];
+    const r: any = await submit(nodes[0].baseUrl, tx);
+    const id = r && r.$streams && r.$streams.new && r.$streams.new[0] && (r.$streams.new[0].id || r.$streams.new[0]);
+    if (!id) { fail(`territorial new stream was not created: ${JSON.stringify(r).slice(0, 160)}`); return; }
+    if (!(await landed(String(id)))) fail("territorial new stream is not the same on every node");
+    else console.log("territorial new stream exists, at the same revision, on every node");
+  }
+
+  // $leader asked for on a territorial transaction: runs as a normal territorial transaction
+  {
+    const tx: any = hotTransaction(w, 2, "terri-leader", true);
+    tx.$territoriality = refs[1];
+    const r: any = await submit(nodes[3].baseUrl, tx);
+    if (r && r.$leader) fail("a territorial transaction was answered as a leader transaction");
+    if (!(await landed(w.identities[2].streamId, "terri-leader"))) fail("territorial $leader transaction did not land on every node");
+    console.log(`territorial with $leader asked for: lands everywhere, response says $leader: ${r && r.$leader ? "yes" : "no"}`);
+  }
+}
+
 async function commitConflict(w: Workload, nodes: NetworkNode[], rounds: number) {
   const victim = nodes[nodes.length - 1];
   for (const leader of [false, true]) {
@@ -149,6 +213,7 @@ async function main(): Promise<number> {
   await withNetwork({ nodeCount: 4, basePort: 5730, readyTimeoutMs: 60000 }, async (_h, nodes) => {
     const w = await setupWorkload(nodes, "returner-leader", clients);
     await territorial(w, nodes, rounds);
+    await territorialShapes(w, nodes);
     await commitConflict(w, nodes, rounds);
   });
   console.log(failures ? `FAILED (${failures})` : "PASSED");

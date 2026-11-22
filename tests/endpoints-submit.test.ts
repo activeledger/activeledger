@@ -460,6 +460,64 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         expect(sent.$sigs).to.be.an("object");
       });
 
+      it("leaves the signed $tx and $sigs exactly as the client sent them, $leader and $expire included", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        const body = tx({
+          $territoriality: "t",
+          $unanimous: true,
+          $selfsign: true,
+          $tx: { $namespace: "default", $contract: "c", $i: { s: {} }, $o: { s: { a: 1 } }, $leader: true, $expire: new Date(Date.now() + 60000).toISOString() },
+        });
+        const original = JSON.parse(JSON.stringify(body));
+        await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
+        const sent = knocks[0][2];
+        expect(sent.$tx).to.deep.equal(original.$tx);
+        expect(sent.$sigs).to.deep.equal(original.$sigs);
+        expect(sent.$unanimous).to.equal(true);
+        expect(sent.$selfsign).to.equal(true);
+        expect(sent).to.not.have.property("$umid");
+        expect(sent).to.not.have.property("$datetime");
+      });
+
+      it("does not strip the stamps from this node's own copy when it forwards", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        const body = tx({ $territoriality: "t" });
+        await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
+        // The object the client handed in was stamped by this node; the forward is a copy
+        expect(body.$umid).to.be.a("string");
+        expect(body.$origin).to.equal("me");
+        expect(knocks[0][2]).to.not.equal(body);
+      });
+
+      it("is forwarded once, to the node terriMap names, as an external (client-style) request", async () => {
+        const knocks: any[] = [];
+        const asked: string[] = [];
+        const { host } = makeHost(
+          { replies: [] },
+          {
+            terriMap: (t: string) => (asked.push(t), "other"),
+            neighbourhood: { get: (ref: string) => ({ knock: async (...a: any[]) => (knocks.push([ref, ...a]), { status: 200, data: { $umid: "x", $nodes: {} } }) }) },
+          }
+        );
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "named" }), "1.2.3.4", db());
+        expect(asked).to.deep.equal(["named"]);
+        expect(knocks).to.have.length(1);
+        // (reference, endpoint, tx, external, resend, bundle)
+        expect([knocks[0][0], knocks[0][1], knocks[0][3], knocks[0][4], knocks[0][5]]).to.deep.equal(["other", "", true, 0, false]);
+      });
+
+      it("fails the client when the forward cannot be delivered", async () => {
+        const { host } = makeHost(
+          { replies: [] },
+          { terriMap: () => "other", neighbourhood: { get: () => ({ knock: async () => { throw "Network Communication Error"; } }) } }
+        );
+        let caught: any;
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "t" }), "1.2.3.4", db()).catch((e: any) => (caught = e));
+        expect(caught).to.exist;
+      });
+
       it("passes the owning node's refusal back as a 200 rather than an HTTP error", async () => {
         const { host } = forwardingHost({ status: 403, data: { no: 1 } }, []);
         const reply = await Endpoints.ExternalInitalise(

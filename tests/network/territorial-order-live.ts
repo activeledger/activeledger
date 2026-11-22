@@ -17,13 +17,18 @@ import * as fs from "fs";
     for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
     const marker = Date.now();
     const sent: { commitAt: number; entry: number }[] = [];
-    for (let r = 0; r < 8; r++) {
-      const commitAt = r % 4, entry = (r * 3) % 4;
+    // Every entry node against every named node, 16 pairs
+    const pairs: { commitAt: number; entry: number }[] = [];
+    for (let entry = 0; entry < 4; entry++) for (let commitAt = 0; commitAt < 4; commitAt++) pairs.push({ commitAt, entry });
+    let unanswered = 0;
+    for (let r = 0; r < pairs.length; r++) {
+      const { commitAt, entry } = pairs[r];
       const tx: any = hotTransaction(w, r % 4, `o${r}`, false);
       tx.$territoriality = refs[commitAt];
-      await timedSubmit(nodes[entry].baseUrl, tx);
+      const res = await timedSubmit(nodes[entry].baseUrl, tx);
+      if (!res.committed) { unanswered++; console.log(`  pair entry ${entry} named ${commitAt}: client not told committed: ${res.reason}`); }
       sent.push({ commitAt, entry });
-      await sleep(400);
+      await sleep(300);
     }
     await sleep(1500);
     const per: Record<string, Record<number, number>> = {};
@@ -32,7 +37,7 @@ import * as fs from "fs";
       if (m && Number(m[2]) > marker) (per[m[1]] ||= {})[n.index] = Number(m[2]);
     }));
     const umids = Object.keys(per).filter((u) => Object.keys(per[u]).length === 4).sort((a, b) => Math.min(...Object.values(per[a])) - Math.min(...Object.values(per[b])));
-    let failures = 0;
+    let failures = unanswered ? 1 : 0;
     console.log("transactions with a commit on all 4 nodes:", umids.length, "of", sent.length);
     if (umids.length < sent.length) { failures++; console.log("FAIL some transactions did not commit on every node"); }
     umids.slice(-sent.length).forEach((u, i) => {
