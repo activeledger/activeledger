@@ -52,6 +52,7 @@
     "test:network:hybrid-enable": "tsx tests/network/hybrid-enable.ts",
     "test:network:leader": "tsx tests/network/leader-live.ts",
     "test:network:leader-edge": "tsx tests/network/leader-edge-live.ts",
+    "test:network:territorial-order": "tsx tests/network/territorial-order-live.ts",
     "test:network:prune": "tsx tests/network/prune.ts",
     "test:network:resend-replay": "tsx tests/network/resend-replay.ts",
     "test:network:missed-umids": "tsx tests/network/missed-umids.ts",
