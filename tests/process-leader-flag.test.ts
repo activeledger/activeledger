@@ -32,6 +32,13 @@ describe("Process - leader mode (Activeprotocol)", () => {
     it("is false for a unanimous transaction, which needs every vote", () => {
       expect(asks(make({ $unanimous: true }, { $leader: true }))).to.equal(false);
     });
+    it("is false when the transaction is not broadcast (territorial), the other nodes would never hear of it", () => {
+      expect(asks(make({ $broadcast: false, $territoriality: "abc" }, { $leader: true }))).to.equal(false);
+      expect(asks(make({ $broadcast: undefined }, { $leader: true }))).to.equal(false);
+    });
+    it("is false for $wait, which skips the early broadcast", () => {
+      expect(asks(make({ $wait: true }, { $leader: true }))).to.equal(false);
+    });
     it("is false for a hybrid (local only) run", () => {
       expect(asks(make({}, { $leader: true }, { mode: "hybrid" }))).to.equal(false);
     });

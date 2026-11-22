@@ -73,7 +73,7 @@ describe("Process - VM phases (Activeprotocol)", () => {
     });
 
     it("commits straight away when the transaction asks for leader mode and the contract accepts", async () => {
-      const f = make({ $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
+      const f = make({ $broadcast: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
       const vm = vmStub({ vote: () => Promise.resolve({ leader: true }) });
 
       await f.proc.handleVM(vm, payload, "abc.js");
@@ -88,7 +88,7 @@ describe("Process - VM phases (Activeprotocol)", () => {
       const leaderVm = () => vmStub({ vote: () => Promise.resolve({ leader: true }) });
 
       it("sends the transaction on once the contract has accepted it, before the commit", async () => {
-        const f = make({ $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
+        const f = make({ $broadcast: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
         f.proc.broadcastHeld = true;
         const order: string[] = [];
         f.proc.emit = (event: string) => (order.push(event), true);

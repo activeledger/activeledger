@@ -1709,10 +1709,17 @@ export class Process extends EventEmitter {
    * Does the transaction ask to be a leader transaction? Only the signed
    * body can ask ($tx.$leader), and not with $unanimous (which needs every
    * vote). The contract still has to accept it, by voting { leader: true }.
+   *
+   * Only a broadcast transaction can be a leader transaction: the early
+   * broadcast is how the other nodes learn of it, so without one (territorial
+   * mode, $wait) a leader commit would leave this node alone on the new
+   * revision. Those run as normal transactions.
    */
   private asksForLeader(): boolean {
     return (
       this.entry?.$tx?.$leader === true &&
+      !!this.entry.$broadcast &&
+      !(this.entry as any).$wait &&
       !this.entry.$unanimous &&
       !this.localOnly
     );

@@ -20,7 +20,7 @@ Every node runs each transaction and votes yes or no. The transaction is committ
 
 A transaction can skip the voting round by setting `"$leader": true` inside `$tx` (the signed body). The contract must also accept it, by returning `{ leader: true }` from `vote()`. Without both, it is a normal transaction.
 
-The node the client calls runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The client's response says `"$leader": true` when it was committed this way: it is that one node's answer, not network confirmation. `$leader` is ignored with `$unanimous`.
+The node the client calls runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The client's response says `"$leader": true` when it was committed this way: it is that one node's answer, not network confirmation. `$leader` is ignored (the transaction runs as a normal one) with `$unanimous`, with `$territoriality` and with `$wait`, because only a broadcast transaction tells the other nodes about it.
 
 With 5 nodes and `reached` at 60, three yes votes commit. With 4 nodes, three are needed, because two is 50%.
 
