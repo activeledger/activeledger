@@ -312,8 +312,10 @@ export class Process extends EventEmitter {
     ).length;
 
     try {
-      // Initialise the general contract VM
-      if (!Process.generalContractVM) {
+      // Initialise the general contract VM. It keeps the connections it is made
+      // with for the life of the process, so never from a caller that has none
+      // (that would leave every later contract unable to write its events).
+      if (!Process.generalContractVM && this.db && this.dbev) {
         Process.generalContractVM = new VirtualMachine(
           this.selfHost,
           this.db,
