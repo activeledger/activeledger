@@ -1,5 +1,16 @@
 # Activeledger Changelog
 
+## [5.10.1] - 2026-11-22
+
+A patch for contract https calls. Nothing needs changing on upgrade, and nothing is build-gated.
+
+### Fixed
+- **A contract's `ActiveRequest` (`HTTP.send`) to an https address was refused (`Contract refused access to storage:tls`).**
+  The HTTP client (undici) passes `socket: undefined` to `tls.connect`, and the contract storage guard refused a listed
+  option by name whatever its value. 5.10.0 had fixed the same family for Node's own `checkServerIdentity`. A listed
+  option that holds `undefined` does nothing and is now ignored; any set value, a getter or a hidden property is still
+  refused.
+
 ## [5.10.0] - 2026-11-21
 
 Contracts can make https calls again, transactions carry their chain, and self repair asks again when too few
