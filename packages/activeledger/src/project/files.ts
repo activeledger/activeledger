@@ -121,7 +121,8 @@ const ownedByUser = (file: string, probe: Probe = realProbe): void => {
 };
 
 /**
- * Where a contract's source may be read from: a .ts or .js file inside the project's folder, and never the key file.
+ * Where a contract's source may be read from: a TypeScript (.ts) file inside the project's folder, and never the key file.
+ * Contracts are TypeScript: every node transpiles the source it is sent when the contract is deployed.
  * The project file can come from anyone (a clone, a pull request), so its paths are not trusted.
  */
 export const safeSource = (projectFile: string, source: string): string => {
@@ -134,7 +135,7 @@ export const safeSource = (projectFile: string, source: string): string => {
   }
   const rel = path.relative(base, abs);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) throw new ProjectError(`the contract source ${source} is outside the project folder, so it is not sent`);
-  if (!/\.(ts|js)$/.test(abs) || /-key$/.test(abs) || path.basename(abs).startsWith(".activeledger")) throw new ProjectError(`the contract source ${source} is not a .ts or .js contract file, so it is not sent`);
+  if (!/\.ts$/.test(abs) || /\.d\.ts$/.test(abs) || /-key$/.test(abs) || path.basename(abs).startsWith(".activeledger")) throw new ProjectError(`the contract source ${source} is not a TypeScript (.ts) contract file, so it is not sent`);
   return abs;
 };
 

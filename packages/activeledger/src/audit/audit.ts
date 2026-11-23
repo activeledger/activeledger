@@ -7,7 +7,9 @@ import { RULES } from "./rules";
 import { atLeast, band, countBySeverity, fileScore, overallScore } from "./score";
 import { FileReport, Finding, Report, Severity, SEVERITIES } from "./types";
 
-const EXTENSIONS = /\.(ts|js|mjs|cjs)$/;
+/** Contracts are TypeScript: the node transpiles the source it is sent */
+const EXTENSIONS = /\.ts$/;
+const JAVASCRIPT = /\.(js|mjs|cjs)$/;
 const SKIP_DIRS = new Set(["node_modules", ".git", "lib", "dist", "es", "build", "coverage"]);
 const MAX_BYTES = 1024 * 1024;
 
@@ -23,6 +25,7 @@ export interface AuditOptions {
 /** Contract files under a file or folder, in a stable order */
 export const collect = (target: string, notes: string[] = []): string[] => {
   const out: string[] = [];
+  let javascript = 0;
   const visit = (p: string) => {
     let st: fs.Stats;
     try {
@@ -33,12 +36,15 @@ export const collect = (target: string, notes: string[] = []): string[] => {
     }
     if (st.isDirectory()) {
       for (const name of fs.readdirSync(p).sort()) if (!SKIP_DIRS.has(name) && !name.startsWith(".")) visit(path.join(p, name));
+    } else if (JAVASCRIPT.test(p)) {
+      javascript++;
     } else if (EXTENSIONS.test(p) && !p.endsWith(".d.ts")) {
       if (st.size > MAX_BYTES) notes.push(`skipped ${p}: over ${MAX_BYTES} bytes`);
       else out.push(p);
     }
   };
   visit(target);
+  if (javascript) notes.push(`skipped ${javascript} JavaScript file${javascript === 1 ? "" : "s"}: contracts are TypeScript`);
   return out;
 };
 
@@ -183,7 +189,7 @@ export const auditCommand = async (target: string | undefined, flags: AuditFlags
   }
   const paths = collect(target, notes);
   if (!paths.length) {
-    out.error(`no .ts or .js files under ${target}`);
+    out.error(`no .ts files under ${target} (contracts are TypeScript)`);
     return 2;
   }
   const report = await auditFiles(paths, { offline: flags.offline, only: list(flags.only), skip: list(flags.skip), lookup });

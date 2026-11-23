@@ -10,7 +10,10 @@ import {
   addToGitignore, checkKeyFile, Git, keyPathOf, ProjectError, projectsIn, readKeys, resolveProject, safeSource, validateProject, writeAtomic, writeKeys,
 } from "../packages/activeledger/src/project/files";
 import { applySet, checkExpect, exampleTx, interpret, resolveRefs, sendToNetwork } from "../packages/activeledger/src/project/txs";
-import { projectCommand, ProjectDeps, ProjectFlags } from "../packages/activeledger/src/project/commands";
+import * as http from "http";
+import { PassThrough } from "stream";
+import { spawnSync } from "child_process";
+import { defaultDeps, projectCommand, ProjectDeps, ProjectFlags } from "../packages/activeledger/src/project/commands";
 
 const SID = "a".repeat(64);
 const CID = "c".repeat(64);
@@ -110,7 +113,7 @@ describe("project: files", () => {
     fs.symlinkSync(real, link);
     expect(checkKeyFile(link, fakeGit({ ignored: true })).problems.join(" ")).to.include("symbolic link");
   });
-  it("reads a contract's source only from inside the project folder, as .ts or .js, never the key file", () => {
+  it("reads a contract's source only from inside the project folder, as TypeScript, never the key file", () => {
     touch("project/.activeledger", "{}");
     touch("project/src/notebook.ts", "x");
     touch("project/src/notebook.js", "x");
@@ -119,16 +122,18 @@ describe("project: files", () => {
     touch("outside.ts", "o");
     const file = path.join(dir, "project", ".activeledger");
     expect(safeSource(file, "src/notebook.ts")).to.equal(fs.realpathSync(path.join(dir, "project", "src", "notebook.ts")));
-    expect(safeSource(file, "src/notebook.js")).to.include("notebook.js");
+    expect(() => safeSource(file, "src/notebook.js")).to.throw(ProjectError, /not a TypeScript/);
+    touch("project/src/types.d.ts", "x");
+    expect(() => safeSource(file, "src/types.d.ts")).to.throw(ProjectError, /not a TypeScript/);
     expect(() => safeSource(file, "../outside.ts")).to.throw(ProjectError, /outside the project folder/);
     expect(() => safeSource(file, path.join(dir, "outside.ts"))).to.throw(ProjectError, /outside the project folder/);
-    expect(() => safeSource(file, "secrets.txt")).to.throw(ProjectError, /not a .ts or .js/);
-    expect(() => safeSource(file, ".activeledger-key")).to.throw(ProjectError, /not a .ts or .js/);
+    expect(() => safeSource(file, "secrets.txt")).to.throw(ProjectError, /not a TypeScript/);
+    expect(() => safeSource(file, ".activeledger-key")).to.throw(ProjectError, /not a TypeScript/);
     expect(() => safeSource(file, "missing.ts")).to.throw(ProjectError, /cannot read/);
     fs.symlinkSync(path.join(dir, "outside.ts"), path.join(dir, "project", "link.ts"));
     expect(() => safeSource(file, "link.ts")).to.throw(ProjectError, /outside the project folder/);
     fs.symlinkSync(path.join(dir, "project", ".activeledger-key"), path.join(dir, "project", "keylink.ts"));
-    expect(() => safeSource(file, "keylink.ts")).to.throw(ProjectError, /not a .ts or .js/);
+    expect(() => safeSource(file, "keylink.ts")).to.throw(ProjectError, /not a TypeScript/);
   });
   it("writes through a random temp name with the final mode, never through a planted link", () => {
     const target = path.join(dir, "k-key");
@@ -420,7 +425,7 @@ describe("project: commands", () => {
     expect(errs.join("\n")).to.include("outside the project folder");
     errs.length = 0;
     expect(await run(["contract", "upload", "key"])).to.equal(2);
-    expect(errs.join("\n")).to.include("not a .ts or .js");
+    expect(errs.join("\n")).to.include("not a TypeScript");
     expect(sent).to.have.length(0);
   });
   it("contract upload records the id, version and hash; a second upload is refused; deploy then skips it", async () => {
@@ -553,6 +558,17 @@ describe("project: commands", () => {
     expect(sent[0].body.$sigs[SID]).to.be.a("string");
     expect(logs.join("\n")).to.include("committed");
   });
+  it("tx run shows the streams an example made and what the contract returned", async () => {
+    setup({ networks: { local: { nodes: ["http://127.0.0.1:5260"], contracts: { notebook: { id: CID, version: "0.0.1", hash: "h" } } } } });
+    answer = () => ({ ...reply({ newStreams: [{ id: "n".repeat(64) }, { id: "m".repeat(64) }] }), $responses: [{ count: 1 }] });
+    expect(await run(["tx", "run", "add-note"])).to.equal(0);
+    const text = logs.join("\n");
+    expect(text).to.include("new streams " + "n".repeat(64) + ", " + "m".repeat(64)).and.to.include('returned [{"count":1}]');
+    logs.length = 0;
+    answer = () => reply({ newStreams: [{ id: "n".repeat(64) }] });
+    await run(["tx", "run", "add-note"]);
+    expect(logs.join("\n")).to.include("new stream " + "n".repeat(64)).and.to.not.include("returned");
+  });
   it("tx run fails when expect is not met, and passes a refusal that was expected", async () => {
     const nets = { local: { nodes: ["http://127.0.0.1:5260"], contracts: { notebook: { id: CID, version: "0.0.1", hash: "h" } } } };
     setup({ networks: nets });
@@ -619,5 +635,153 @@ describe("project: commands", () => {
     logs.length = 0;
     expect(await run(["identity", "list"], { project: ".activeledger" })).to.equal(0);
     expect(logs.join("\n")).to.include("alice");
+  });
+});
+
+describe("project: the real dependencies and the error paths", () => {
+  let dir: string;
+  beforeEach(() => (dir = fs.mkdtempSync(path.join(os.tmpdir(), "proj-"))));
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const quiet = { log: () => undefined, error: () => undefined };
+
+  it("runs git for real: inside a repository, outside one, and the ignore check end to end", async () => {
+    const d = defaultDeps(quiet);
+    expect(d.git(["rev-parse", "--is-inside-work-tree"], dir).status).to.not.equal(0);
+    spawnSync("git", ["init", "-q"], { cwd: dir });
+    expect(d.git(["rev-parse", "--is-inside-work-tree"], dir)).to.deep.equal({ status: 0, stdout: "true\n" });
+    const logs: string[] = [];
+    const real = { ...defaultDeps({ log: (t) => logs.push(t), error: () => undefined }), cwd: dir, env: {}, tty: false };
+    expect(await projectCommand(["init"], { name: "x" }, real)).to.equal(0);
+    expect(d.git(["check-ignore", "-q", "--", ".activeledger-key"], dir).status).to.equal(0);
+    // Staging the key file by hand is a tracked key file: refused from then on
+    spawnSync("git", ["add", "-f", ".activeledger-key"], { cwd: dir });
+    expect(await projectCommand(["identity", "list"], {}, real)).to.equal(2);
+  });
+  it("audits a source file for real and reports the worst finding", async () => {
+    const d = defaultDeps(quiet);
+    const bad = path.join(dir, "bad.ts");
+    fs.writeFileSync(bad, 'import { Standard } from "@activeledger/activecontracts";\nexport default class C extends Standard { vote(){ return eval("1"); } }\n');
+    const r = await d.audit(bad, true);
+    expect(r.worst).to.equal("critical");
+    expect(r.lines.join(" ")).to.include("no-eval");
+    const good = path.join(dir, "good.ts");
+    fs.writeFileSync(good, 'import { Standard } from "@activeledger/activecontracts";\nexport default class C extends Standard { vote(){ return Promise.resolve(true); } }\n');
+    expect((await d.audit(good, true)).worst).to.equal(undefined);
+  });
+  it("posts and gets over HTTP for real", async () => {
+    let got = "";
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        got = `${req.method} ${req.url} ${body}`;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify(req.method === "GET" ? { reference: "abc" } : { $summary: { total: 1, vote: 1, commit: 1 } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
+    try {
+      const d = defaultDeps(quiet);
+      expect((await d.send(base + "/", { a: 1 })).$summary.commit).to.equal(1);
+      expect(got).to.equal('POST / {"a":1}');
+      expect((await d.get(base + "/a/status")).reference).to.equal("abc");
+      expect(got).to.equal("GET /a/status ");
+    } finally {
+      server.close();
+    }
+  });
+  it("asks for the network's name and only a matching answer goes ahead", async () => {
+    const original = Object.getOwnPropertyDescriptor(process, "stdin")!;
+    try {
+      for (const [typed, want] of [["local\n", true], ["nope\n", false]] as [string, boolean][]) {
+        const input = new PassThrough();
+        Object.defineProperty(process, "stdin", { value: input, configurable: true });
+        const answer = defaultDeps(quiet).confirmTyped("A protected network.", "local");
+        input.write(typed);
+        expect(await answer).to.equal(want);
+      }
+    } finally {
+      Object.defineProperty(process, "stdin", original);
+    }
+  });
+
+  const make = (extra: any = {}, keys: any = { version: 1, identities: {} }) => {
+    fs.writeFileSync(path.join(dir, ".activeledger"), JSON.stringify({ version: 1, namespace: "myorg", defaultNetwork: "local", networks: { local: { nodes: ["http://127.0.0.1:5260"] } }, contracts: {}, transactions: {}, ...extra }));
+    writeKeys(path.join(dir, ".activeledger-key"), keys);
+  };
+  const logs: string[] = [];
+  const errs: string[] = [];
+  const sent: any[] = [];
+  const d = (over: Partial<ProjectDeps> = {}): ProjectDeps => ({
+    cwd: dir, env: {}, git: fakeGit({ ignored: true }), send: async (_u, b) => (sent.push(b), { $umid: "u", $summary: { total: 1, vote: 1, commit: 1 }, $streams: { new: [{ id: SID }], updated: [] } }),
+    get: async () => ({}), tty: false, confirmTyped: async () => false, audit: async () => ({ lines: [] }), out: { log: (t) => logs.push(t), error: (t) => errs.push(t) }, ...over,
+  });
+  const run = (pos: string[], flags: ProjectFlags = {}, over: Partial<ProjectDeps> = {}) => projectCommand(pos, flags, d(over));
+  beforeEach(() => {
+    logs.length = 0;
+    errs.length = 0;
+    sent.length = 0;
+  });
+
+  it("identity import brings a key pair, with its type, and refuses missing arguments", async () => {
+    make();
+    fs.writeFileSync(path.join(dir, "me.key"), rsa.prv.pkcs8pem);
+    fs.writeFileSync(path.join(dir, "me.pub"), rsa.pub.pkcs8pem);
+    expect(await run(["identity", "import", "me"])).to.equal(2);
+    expect(errs.join(" ")).to.include("identity import <name>");
+    expect(await run(["identity", "import", "me", "me.key", "me.pub"], { dryRun: true })).to.equal(0);
+    expect(sent).to.have.length(0);
+    expect(await run(["identity", "import", "me", "me.key", "me.pub"])).to.equal(0);
+    const keys = readKeys(path.join(dir, ".activeledger-key"));
+    expect(keys.identities.me).to.deep.include({ type: "rsa", private: rsa.prv.pkcs8pem, public: rsa.pub.pkcs8pem });
+    expect(keys.identities.me.streams!.local).to.equal(SID);
+    expect(await run(["identity", "frob", "me"])).to.equal(2);
+    expect(await run(["identity", "new"])).to.equal(2);
+  });
+  it("identity new reports a key type it cannot make", async () => {
+    make();
+    expect(await run(["identity", "new", "z"], { type: "not-a-type" })).to.equal(2);
+    expect(errs.join(" ")).to.include("cannot make a not-a-type key");
+    expect(readKeys(path.join(dir, ".activeledger-key")).identities).to.deep.equal({});
+  });
+  it("tx run --dry-run prints the signed example and sends nothing", async () => {
+    make({ transactions: { say: { contract: "c", input: { "@alice": {} } } }, networks: { local: { nodes: ["http://127.0.0.1:5260"], contracts: { c: { id: CID, version: "1", hash: "h" } } } } }, { version: 1, identities: { alice: IDENTITY } });
+    expect(await run(["tx", "run", "say"], { dryRun: true })).to.equal(0);
+    expect(sent).to.have.length(0);
+    expect(logs.join("\n")).to.include("dry-run").and.to.include('"$sigs"');
+  });
+  it("tells a person what is wrong with a project file that is not JSON, not valid, or a key file that cannot be read", async () => {
+    make();
+    fs.writeFileSync(path.join(dir, ".activeledger"), "{ not json");
+    expect(await run(["status"])).to.equal(2);
+    expect(errs.join(" ")).to.include("cannot read");
+    fs.writeFileSync(path.join(dir, ".activeledger"), JSON.stringify({ version: 1, networks: {} }));
+    errs.length = 0;
+    expect(await run(["status"])).to.equal(2);
+    expect(errs.join(" ")).to.include("is not valid").and.to.include("at least one network");
+    make();
+    fs.rmSync(path.join(dir, ".activeledger-key"));
+    fs.mkdirSync(path.join(dir, ".activeledger-key"));
+    errs.length = 0;
+    expect(await run(["identity", "list"])).to.equal(2);
+  });
+  it("init names a project file given with its suffix, and projectsIn of a missing folder is empty", async () => {
+    expect(await run(["init"], { project: "prod.activeledger" })).to.equal(0);
+    expect(fs.existsSync(path.join(dir, "prod.activeledger"))).to.equal(true);
+    expect(projectsIn(path.join(dir, "nowhere"))).to.deep.equal([]);
+    expect(checkKeyFile(path.join(dir, "nothing-key"), fakeGit({ ignored: true })).ok).to.equal(true);
+  });
+  it("an unhandled error is reported with exit 2, and status needs no key file", async () => {
+    make();
+    expect(await run(["status"], {}, { get: async () => { throw new Error("boom"); } })).to.equal(1);
+    expect(await run(["contract", "frob"])).to.equal(2);
+    expect(await run(["tx", "frob"])).to.equal(2);
+    expect(await run(["namespace", "frob"])).to.equal(2);
+    const throwing = { ...d(), send: async () => { throw "plain string"; } } as ProjectDeps;
+    fs.writeFileSync(path.join(dir, ".activeledger"), JSON.stringify({ version: 1, namespace: "myorg", networks: { local: { nodes: ["http://127.0.0.1:5260"] } }, contracts: {}, transactions: {} }));
+    writeKeys(path.join(dir, ".activeledger-key"), { version: 1, identities: { alice: IDENTITY } });
+    expect(await projectCommand(["namespace", "register"], {}, throwing)).to.equal(2);
   });
 });

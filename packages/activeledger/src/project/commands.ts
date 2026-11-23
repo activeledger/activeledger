@@ -174,6 +174,16 @@ const auditGate = async (abs: string, flags: ProjectFlags, deps: ProjectDeps): P
   return undefined;
 };
 
+/** What a committed example tells you: its umid, the streams it made, and what the contract returned */
+const committedDetail = (o: Outcome): string => {
+  const parts = ["committed"];
+  if (o.umid) parts.push(`umid ${o.umid}`);
+  if (o.newStreams.length) parts.push(`new stream${o.newStreams.length === 1 ? "" : "s"} ${o.newStreams.map((s) => s.id).join(", ")}`);
+  const responses = o.raw && o.raw.$responses;
+  if (responses && (Array.isArray(responses) ? responses.length : Object.keys(responses).length)) parts.push(`returned ${JSON.stringify(responses)}`);
+  return parts.join(", ");
+};
+
 const failedStep = (step: string, outcome: Outcome): Step => ({ step, status: "failed", detail: outcome.errors.join("; ") || "no node committed it" });
 
 const print = (steps: Step[], flags: ProjectFlags, deps: ProjectDeps): number => {
@@ -390,7 +400,7 @@ const txCmd = async (args: string[], flags: ProjectFlags, deps: ProjectDeps): Pr
     await guard(l, flags, deps);
     const outcome = await submit(l, deps, tx);
     const diffs = checkExpect(outcome, ex.expect);
-    steps.push(diffs.length ? { step: `tx ${n}`, status: "failed", detail: diffs.join("; ") } : { step: `tx ${n}`, status: "ok", detail: outcome.errors.length ? `refused as expected (${outcome.errors[0]})` : `committed${outcome.umid ? `, umid ${outcome.umid}` : ""}` });
+    steps.push(diffs.length ? { step: `tx ${n}`, status: "failed", detail: diffs.join("; ") } : { step: `tx ${n}`, status: "ok", detail: outcome.errors.length ? `refused as expected (${outcome.errors[0]})` : committedDetail(outcome) });
     if (diffs.length) break;
   }
   return steps;

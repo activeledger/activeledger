@@ -13,9 +13,9 @@ export type AdvisoryLookup = (query: Record<string, string[]>) => Promise<Record
 
 const REGISTRY = "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk";
 
-/** Only package names and versions leave the machine, never source */
-export const registryLookup: AdvisoryLookup = async (query) => {
-  const res = await fetch(REGISTRY, {
+/** Ask an advisory endpoint about names and versions. Only package names and versions leave the machine, never source. */
+export const lookupAt = async (url: string, query: Record<string, string[]>): Promise<Record<string, any[]>> => {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(query),
@@ -24,6 +24,8 @@ export const registryLookup: AdvisoryLookup = async (query) => {
   if (!res.ok) throw new Error(`registry answered ${res.status}`);
   return (await res.json()) as Record<string, any[]>;
 };
+
+export const registryLookup: AdvisoryLookup = (query) => lookupAt(REGISTRY, query);
 
 /** "lodash/fp" -> "lodash", "@scope/pkg/sub" -> "@scope/pkg"; undefined for relative, node: and built-in modules and the toolkits */
 export const packageOf = (spec: string): string | undefined => {
