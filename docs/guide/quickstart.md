@@ -6,7 +6,7 @@ This page takes you from nothing to a contract deployed on a three-node network 
 
 *A contract's output, read back from a node's own database in the built-in explorer. It is the "hello" contract below.*
 
-You need **Node.js 24** (22 also works). Everything below was run exactly as written on a clean local network.
+You need **Node.js 24**, the version Activeledger is built and tested on. Everything below was run exactly as written on a clean local network.
 
 ## 1. Install
 

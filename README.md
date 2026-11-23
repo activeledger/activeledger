@@ -15,7 +15,7 @@ Activeledger is a distributed ledger technology. A network of permissioned nodes
 
 ## Try it in five minutes
 
-You need **Node.js 24** (22 also works). Everything below was run exactly as written on a clean local network.
+You need **Node.js 24**, the version Activeledger is built and tested on. Everything below was run exactly as written on a clean local network.
 
 ### 1. Install
 
@@ -168,7 +168,7 @@ The audit finds `eval`, hard-coded secrets, time and randomness inside a vote (w
 <details>
 <summary>Node.js versions</summary>
 
-**Node.js 24.x** (the current LTS line) is the recommended and actively-tested version: every workflow in `.github/workflows/` builds, tests and publishes on 24. The native HTTP and consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors at any given time; the pinned v20.67.0 carries ABI 127, 137 and 147, which is Node 22, 24 and 26, so 22.x also works today. If you hit an error like `This version of uWS.js (...) supports only Node.js versions ...` on a Node version you would expect to work, check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming the version genuinely is not supported.
+**Node.js 24.x** (the current LTS line) is the version Activeledger is built and tested on: every workflow in `.github/workflows/` builds, tests and publishes on 24, and the packages declare `"node": ">=24.0.0"`. Other versions are not tested. You can try one, but the native HTTP and consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors, and an unsupported version fails with an error like `This version of uWS.js (...) supports only Node.js versions ...`. Check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming a version genuinely is not supported.
 
 </details>
 
