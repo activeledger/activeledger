@@ -51,7 +51,8 @@ async function followUp(w: Workload, nodes: NetworkNode[], tag: string): Promise
 async function territorial(w: Workload, nodes: NetworkNode[], rounds: number) {
   const refs: string[] = [];
   for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
-  for (const leader of [false, true]) {
+  // $leader cannot be asked for on a territorial transaction (it is refused, see territorialShapes)
+  for (const leader of [false]) {
     const tag = leader ? "L" : "N";
     // A forwarded territorial transaction answers with what the commit node
     // returned (an empty summary), so the outcome is read from the streams
@@ -156,14 +157,19 @@ async function territorialShapes(w: Workload, nodes: NetworkNode[]) {
     else console.log("territorial new stream exists, at the same revision, on every node");
   }
 
-  // $leader asked for on a territorial transaction: runs as a normal territorial transaction
+  // $leader and $territoriality together are refused with a reason, and nothing is written
   {
+    const before = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, w.identities[2].streamId)));
     const tx: any = hotTransaction(w, 2, "terri-leader", true);
     tx.$territoriality = refs[1];
     const r: any = await submit(nodes[3].baseUrl, tx);
-    if (r && r.$leader) fail("a territorial transaction was answered as a leader transaction");
-    if (!(await landed(w.identities[2].streamId, "terri-leader"))) fail("territorial $leader transaction did not land on every node");
-    console.log(`territorial with $leader asked for: lands everywhere, response says $leader: ${r && r.$leader ? "yes" : "no"}`);
+    const said = JSON.stringify(r && r.$summary && r.$summary.errors);
+    await sleep(1500);
+    const after = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, w.identities[2].streamId)));
+    const moved = JSON.stringify(before.map((d) => d._rev)) !== JSON.stringify(after.map((d) => d._rev));
+    console.log(`territorial with $leader asked for: refused (${said.slice(0, 80)}), stream moved: ${moved}`);
+    if (!/cannot be combined/.test(said)) fail(`$leader with $territoriality was not refused: ${said}`);
+    if (moved) fail("a refused $leader+$territoriality transaction changed a stream");
   }
 }
 

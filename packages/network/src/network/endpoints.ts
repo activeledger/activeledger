@@ -233,6 +233,18 @@ export class Endpoints {
               return resolve(this.successfulFailure(`$sigs not found`));
             }
 
+            // Leader mode means the node that owns the stream commits and the
+            // rest follow; territorial mode names the node that must commit
+            // first. They ask for different nodes to lead, so they are not
+            // allowed together: refuse it rather than quietly pick one.
+            if (tx.$tx?.$leader === true && tx.$territoriality) {
+              return resolve(
+                this.successfulFailure(
+                  "$tx.$leader cannot be combined with $territoriality: leader mode is led by the node that owns the stream, territorial mode by the node it names"
+                )
+              );
+            }
+
             // Set Origin
             tx.$origin = host.reference;
 

@@ -473,14 +473,14 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         expect(sent.$sigs).to.be.an("object");
       });
 
-      it("leaves the signed $tx and $sigs exactly as the client sent them, $leader and $expire included", async () => {
+      it("leaves the signed $tx and $sigs exactly as the client sent them, $expire included", async () => {
         const knocks: any[] = [];
         const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
         const body = tx({
           $territoriality: "t",
           $unanimous: true,
           $selfsign: true,
-          $tx: { $namespace: "default", $contract: "c", $i: { s: {} }, $o: { s: { a: 1 } }, $leader: true, $expire: new Date(Date.now() + 60000).toISOString() },
+          $tx: { $namespace: "default", $contract: "c", $i: { s: {} }, $o: { s: { a: 1 } }, $expire: new Date(Date.now() + 60000).toISOString() },
         });
         const original = JSON.parse(JSON.stringify(body));
         await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
@@ -640,8 +640,23 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         }
       });
 
+      it("refuses $tx.$leader together with $territoriality, and says why, without forwarding or running it", async () => {
+        const knocks: any[] = [];
+        const asked: string[][] = [];
+        const { host, pendingCalls } = hostWith("other", knocks, asked);
+        const reply: any = await Endpoints.ExternalInitalise(host, leaderTx({ $territoriality: "t" }), "1.2.3.4", db());
+        expect(reply.content.$summary.errors[0]).to.include("$tx.$leader cannot be combined with $territoriality");
+        expect(reply.content.$summary.commit).to.equal(0);
+        expect(pendingCalls).to.have.length(0);
+        expect(asked).to.have.length(0);
+        expect(knocks).to.have.length(0);
+        // Leader alone is still accepted
+        await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db());
+        expect(asked).to.have.length(1);
+      });
+
       it("takes no part for a transaction that did not ask, or one that needs the votes", async () => {
-        for (const over of [{ $unanimous: true }, { $territoriality: "t" }, { $wait: true }]) {
+        for (const over of [{ $unanimous: true }, { $wait: true }]) {
           const asked: string[][] = [];
           const { host, pendingCalls } = hostWith("me", [], asked);
           await Endpoints.ExternalInitalise(host, leaderTx(over), "1.2.3.4", db()).catch(() => undefined);

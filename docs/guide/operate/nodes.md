@@ -33,7 +33,8 @@ Leader mode answers the client without waiting for the other nodes to vote. It i
 **Where it fits.** A stream written by one client at a time through any node, a counter, a log, a client's own state. A transaction that moves value between two accounts writes two streams, which are usually on different nodes (with 4 nodes about three in four are), so it is almost always a normal vote and gets no speed up. If your transactions mostly write more than one stream, leader mode will not help you.
 
 **What it does not do**
-- It is ignored (the transaction runs as a normal one) with `$unanimous`, `$territoriality` and `$wait`, because only a broadcast transaction tells the other nodes about it.
+- It is ignored (the transaction runs as a normal one) with `$unanimous` and `$wait`, because only a broadcast transaction tells the other nodes about it.
+- It cannot be combined with `$territoriality`. Leader mode lets the node that owns the stream commit first; territorial mode names the node that commits first. They ask for different nodes to lead, so a transaction with both is refused, with the reason in the reply, and nothing is written.
 - It does not order a leader write against a normal write to the same stream. If a normal write to a stream races a leader write, the owner can commit its leader transaction while the other nodes commit the normal one, and the client that was told `$leader` may lose its write. Do not mix the two on one stream.
 - If the owner node is down, a leader transaction for its streams fails. It does not move to another node.
 
@@ -41,7 +42,7 @@ Leader mode answers the client without waiting for the other nodes to vote. It i
 
 Set `"$territoriality": "<node reference>"` on the transaction (next to `$tx`, not inside it) to name the node that writes first. The transaction is not broadcast. The node the client calls works out which node has to be entered so that the named node is the one that reaches the vote count first, and sends the transaction there as the client sent it. That node runs it, the votes pass along the ring to the named node, and the named node commits first (its contract sees `commit(true)` and `postProcess(true, ...)`). The client gets the committed response from the node that wrote.
 
-Concurrent writers to the same stream through different nodes can leave the nodes on different revisions, because every node sees the transactions in a different order and votes no on the others. Give each stream one writer at a time. It cannot be combined with `$broadcast`. `$leader` is ignored, since nothing tells the other nodes in advance. It is not fault tolerant: if the named node is down, or a node before it in the ring votes no, the transaction fails rather than finding another route.
+Concurrent writers to the same stream through different nodes can leave the nodes on different revisions, because every node sees the transactions in a different order and votes no on the others. Give each stream one writer at a time. It cannot be combined with `$broadcast`, and it cannot be combined with `$tx.$leader`: a transaction with both is refused, with the reason in the reply, and nothing is written. It is not fault tolerant: if the named node is down, or a node before it in the ring votes no, the transaction fails rather than finding another route.
 
 With 5 nodes and `reached` at 60, three yes votes commit. With 4 nodes, three are needed, because two is 50%.
 

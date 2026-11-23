@@ -34,7 +34,7 @@ Every transaction is one JSON object posted to a node. The top level has three f
 | `$tx.$expire` | no | A date and time (ISO 8601). After it, nodes refuse the transaction. Setting it also stops the same transaction being accepted twice; see below. |
 | `$tx.$leader` | no | `true` asks for leader mode: the node that owns the stream runs the transaction alone and commits as soon as its own vote is yes, without waiting for the other nodes' votes. It only applies when the transaction writes one stream (or streams owned by one node), and the contract has to accept it too; otherwise it is a normal transaction. It is part of what you sign. See [Leader mode](operate/nodes.md#leader-mode). |
 | `$selfsign` | no | `true` only when onboarding, when the signer has no stream id yet. |
-| `$territoriality` | no | A node reference. That node writes first: the transaction is sent to the node that has to be entered for it, and is not broadcast. Not signed, and not compatible with `$broadcast`. See [Territorial mode](operate/nodes.md#territorial-mode). |
+| `$territoriality` | no | A node reference. That node writes first: the transaction is sent to the node that has to be entered for it, and is not broadcast. Not signed, and not compatible with `$broadcast` or with `$tx.$leader` (a transaction with both is refused). See [Territorial mode](operate/nodes.md#territorial-mode). |
 | `$sigs` | yes | One signature per key in `$i`, under the same key. |
 
 In `$i` and `$o` you can use a label instead of a stream id as the key, as long as the value has a `$stream` field holding the real id, for example `"sender": { "$stream": "…id…", "amount": 5 }`. `$sigs` still uses the stream id. If you mix the two, put the labelled entries first.
