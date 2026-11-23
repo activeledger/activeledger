@@ -1,5 +1,35 @@
 # Activeledger Changelog
 
+## [5.11.1] - 2026-11-23
+
+Fixes for a node that falls behind when many transactions write the same stream at once, a clearer message when the
+database refuses a write, and README work. Nothing is build-gated and nothing needs changing on upgrade.
+
+### Fixed
+- **A transaction no longer jumps ahead of one already waiting for the same stream.** When a stream's lock was busy,
+  later transactions for it queued. One that arrived just as the lock came free took it even though earlier ones were
+  still waiting, so that node ran revisions of the stream out of order, voted "position incorrect", and fell a revision
+  behind the other nodes; its repair could not catch up, and clients entering through it timed out after 20 s. A new
+  arrival for a stream that anyone is queued for now joins the back of the queue.
+- **A busy stream is served as fast as transactions commit, not one per scan.** The queue was scanned on a timer and
+  each scan served one transaction per stream, about 50 a second, below what clients send to a hot stream. Once a node
+  queued, the queue only grew until entries gave up after 7 s, and the node fell behind. When a transaction releases its
+  streams, the first one queued for them now takes them at once, in order; the timed scan stays as the backstop.
+  On four nodes with eight closed-loop clients on one stream, runs that lost 12 to 38 requests in 110 s now lose none.
+  Peak throughput on the write stress test is unchanged (about 1,170 tx/s at 1,200 offered with 0% failures).
+- **A refused database write says why.** A bulk write that threw (a revision mismatch, for example) was reported as a
+  bare failure. The store now logs `Bulk write failed: <reason>` and returns the reason, in the self-hosted and the
+  embedded store alike.
+
+### Added
+- **`tests/network/lost-tx-trace.ts`**, a tool that runs a multi-node load, finds the requests that were lost and, with
+  `ACTIVELEDGER_PROFILE=1`, prints the stage marks of each so the stall can be seen.
+
+### Docs
+- A README in the `packages` folder maps every package. The storage README shows the database explorer and how it
+  works, the other package READMEs are refreshed so npm shows current information, and the explorer is described as
+  editable, not read-only.
+
 ## [5.11.0] - 2026-11-23
 
 Leader mode is finished and safe for concurrent writers, there are two new commands (`activeledger audit` and
