@@ -1,4 +1,17 @@
-# `activeledger` project commands: spec (draft, for review)
+# `activeledger project` commands: spec
+
+**Status: built** (PR #327). The user-facing description is [Project commands](../guide/cli/project.md). This page is the design and the reasons. Where the build differs from what is written below:
+
+- The network flag is `--net`, not `--network`: `--network` is already a hidden node-config key. `init` takes `--net name=url[,url...]`.
+- The default `expect` is "at least one commit and no errors" (`{ "commit": 1 }`), not "every node": the reply is built when the vote is decided, so other nodes may still be committing. `"all"` and a number still work.
+- `identity onboard <name>` exists (retry, or onboard on a second network), and `identity import` takes the private and the public key file.
+- Contract sources must be TypeScript (`.ts`) inside the project's folder, never the key file: a node transpiles the source it is sent.
+- The upward search for a project file stops at the git repository's root, and a file found that way must be a real file the user owns.
+- `namespace register` records `namespaceRegistered` on the network in the project file, because the node answers `Namespace Reserved` for a taken name whoever holds it.
+- `tx run` prints the streams an example made and what the contract returned.
+- Lock and unlock are not in the first cut.
+
+
 
 ## Why
 
