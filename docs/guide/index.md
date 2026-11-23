@@ -31,7 +31,8 @@ Pick the task you have. Each list is in the order to do it.
 2. [Writing a contract](contracts/write.md)
 3. [The contract API you will use](contracts/reference.md)
 4. [Deploy, update, lock and unlock](contracts/deploy.md)
-5. [Running a contract](contracts/run.md)
+5. [Audit a contract before deploying](contracts/audit.md)
+6. [Running a contract](contracts/run.md)
 
 **Run a hybrid**
 
@@ -51,6 +52,7 @@ Pick the task you have. Each list is in the order to do it.
 - [The activehybrid command](cli/activehybrid.md)
 - [The activerestore command](cli/activerestore.md)
 - [Pruning old data](operate/prune.md)
+- [The database explorer](operate/explorer.md)
 - [Keeping it safe](operate/security.md)
 - [When something is wrong](operate/troubleshooting.md)
 

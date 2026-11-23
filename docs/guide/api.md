@@ -132,4 +132,4 @@ The storage service binds to `127.0.0.1` by default (`db.selfhost.host` in `conf
 
 ## The storage service is not an API
 
-Port 5259 (`db.selfhost.port`) is the node's own database. It answers HTTP, and an operator on the node's host can read a document from it directly (`GET http://127.0.0.1:5259/activeledger/<id>`) when troubleshooting, but it has no access control and writing to it bypasses consensus. Never expose it, and do not build on it: use the node's endpoints above.
+Port 5259 (`db.selfhost.port`) is the node's own database. It answers HTTP, and an operator on the node's host can read a document from it directly (`GET http://127.0.0.1:5259/activeledger/<id>`) when troubleshooting, but it has no access control and writing to it bypasses consensus. Never expose it, and do not build on it (to look at the data in a browser, use the [database explorer](operate/explorer.md) on that port): use the node's endpoints above.
