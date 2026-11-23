@@ -72,8 +72,8 @@ describe("Process - VM phases (Activeprotocol)", () => {
       expect(postVoted).to.deep.equal([]);
     });
 
-    it("commits straight away when the contract names this node the leader", async () => {
-      const f = make();
+    it("commits straight away when the transaction asks for leader mode and the contract accepts", async () => {
+      const f = make({ $broadcast: true, $leaderOk: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
       const vm = vmStub({ vote: () => Promise.resolve({ leader: true }) });
 
       await f.proc.handleVM(vm, payload, "abc.js");
@@ -82,6 +82,54 @@ describe("Process - VM phases (Activeprotocol)", () => {
       expect(f.proc.nodeResponse.leader).to.equal(true);
       expect(commits).to.deep.equal([[vm]]);
       expect(postVoted).to.deep.equal([]);
+    });
+
+    describe("leader mode ($tx.$leader)", () => {
+      const leaderVm = () => vmStub({ vote: () => Promise.resolve({ leader: true }) });
+
+      it("sends the transaction on once the contract has accepted it, before the commit", async () => {
+        const f = make({ $broadcast: true, $leaderOk: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
+        f.proc.broadcastHeld = true;
+        const order: string[] = [];
+        f.proc.emit = (event: string) => (order.push(event), true);
+        f.proc.commit = () => order.push("commit");
+
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+
+        expect(order).to.deep.equal(["broadcast", "commit"]);
+        expect(f.proc.broadcastHeld).to.equal(false);
+      });
+
+      it("on a node that is not the origin, commits on the leader vote and sends nothing on", async () => {
+        const f = make({ $broadcast: true, $leaderOk: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
+        // Only the origin holds a broadcast (broadcastHeld stays false here)
+        const order: string[] = [];
+        f.proc.emit = (event: string) => (order.push(event), true);
+        f.proc.commit = () => order.push("commit");
+
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+
+        expect(order).to.deep.equal(["commit"]);
+        expect(f.proc.nodeResponse.leader).to.equal(true);
+      });
+
+      it("is a plain yes with a unanimous transaction, which needs every vote", async () => {
+        const f = make({ $broadcast: true, $leaderOk: true, $unanimous: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, $leader: true } });
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+        expect(commits).to.deep.equal([]);
+        expect(postVoted).to.have.length(1);
+      });
+
+      it("treats a contract's leader vote as a plain yes when the transaction did not ask for it", async () => {
+        const f = make();
+
+        await f.proc.handleVM(leaderVm(), payload, "abc.js");
+
+        expect(f.events.map((e) => e.event)).to.not.include("broadcast");
+        expect(f.proc.nodeResponse.leader).to.not.equal(true);
+        expect(commits).to.deep.equal([]);
+        expect(postVoted).to.have.length(1);
+      });
     });
 
     describe("a transaction with no inputs is a read", () => {

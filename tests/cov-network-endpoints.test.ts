@@ -406,8 +406,9 @@ describe("Endpoints.DirectInternalInitalise rebroadcast (cov)", () => {
     const t = tx();
     const ledger = await E.DirectInternalInitalise(host, t);
     expect(asked).to.deep.equal(["other-node"]);
-    // (endpoint, tx, external, resend, bundle)
-    expect(knocked).to.deep.equal([["", t, true, 0, false]]);
+    // (endpoint, tx, external, resend, bundle): the client's fields, without this node's stamp
+    const { $umid, ...asSent } = t as any;
+    expect(knocked).to.deep.equal([["", asSent, true, 0, false]]);
     expect(ledger).to.deep.equal({ status: 200, data: { ok: 1 }, rebroadcasted: true });
   });
 

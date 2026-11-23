@@ -35,7 +35,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { Home } from "./home";
+import { Home, leaderMarkHolds } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
 import { startHybridP2P } from "./hybridP2P";
@@ -186,6 +186,8 @@ interface process {
   sentNodes?: { [reference: string]: string };
   /** signature of this node's own response as last handed to each neighbour (p2pQuietReplies) */
   sentVote?: { [reference: string]: string };
+  /** Leader transaction: nodes not marked home that it was also sent to (once each) */
+  leaderExtra?: Set<string>;
 }
 
 /**
@@ -693,6 +695,23 @@ export class Host extends Home {
       // An async executor turns a throw into an unhandled rejection, and an
       // unhandled rejection exits the host. Reject instead, callers catch it.
       try {
+        // The entry node marks a transaction it may lead ($leaderOk). Not taken
+        // on trust: this node works out the owner from its own list of nodes,
+        // and if it is not the entry node the mark is dropped and this node
+        // votes like any other
+        if (
+          entry.$leaderOk === true &&
+          entry.$origin !== this.reference &&
+          !leaderMarkHolds(entry, entry.$origin, this.tMap)
+        ) {
+          // This node does not agree the entry node owns these streams (a
+          // different view of which nodes are up, or a false claim). It votes
+          // as a normal transaction instead; say so, because the entry node
+          // has committed alone and this node will not follow.
+          ActiveLogger.warn(`${entry.$umid} leader mark dropped: this node does not see ${entry.$origin} as the owner of the streams it writes`);
+          delete entry.$leaderOk;
+        }
+
         // Who asked, worked out before the merge below edits entry.$nodes
         const replyRecipients =
           entry.$broadcast && !entry.$$noreply
@@ -2087,6 +2106,26 @@ export class Host extends Home {
                 return answer;
               })
             );
+          } else if (
+            !only &&
+            node.reference !== this.reference &&
+            this.processPending[umid].entry.$leaderOk === true &&
+            this.processPending[umid].entry.$origin === this.reference
+          ) {
+            // A leader transaction is committed here without waiting for the
+            // others, and nothing later asks whether a node got it. A node
+            // this one has marked unreachable (a link that stalled under load
+            // and is already answering again) would skip it for good and fall
+            // behind until its stream is next written. So it is also sent
+            // there, once, without waiting: a node that is really down fails
+            // the send and nothing else changes.
+            const held = this.processPending[umid];
+            const sent = (held.leaderExtra ||= new Set<string>());
+            if (!sent.has(node.reference)) {
+              sent.add(node.reference);
+              ActiveLogger.warn(`${umid} leader transaction also sent to ${node.reference}, which is not marked home`);
+              node.knock("init", data, false, 0, true, serialiseOnce).catch(() => undefined);
+            }
           }
         }
 

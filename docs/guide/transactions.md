@@ -32,7 +32,9 @@ Every transaction is one JSON object posted to a node. The top level has three f
 | `$tx.$o` | no | Outputs. Streams the contract may change but which do not have to sign. Keys are stream ids. |
 | `$tx.$r` | no | Read-only streams. Key is a name of your choosing, value is a stream id. The contract can read them but not change them. A missing id does not fail the transaction: the contract reads `{ "notFound": true, "code": "LEVEL_NOT_FOUND" }` under that name instead. |
 | `$tx.$expire` | no | A date and time (ISO 8601). After it, nodes refuse the transaction. Setting it also stops the same transaction being accepted twice; see below. |
+| `$tx.$leader` | no | `true` asks for leader mode: the node that owns the stream runs the transaction alone and commits as soon as its own vote is yes, without waiting for the other nodes' votes. It only applies when the transaction writes one stream (or streams owned by one node), and the contract has to accept it too; otherwise it is a normal transaction. It is part of what you sign. See [Leader mode](operate/nodes.md#leader-mode). |
 | `$selfsign` | no | `true` only when onboarding, when the signer has no stream id yet. |
+| `$territoriality` | no | A node reference. That node writes first: the transaction is sent to the node that has to be entered for it, and is not broadcast. Not signed, and not compatible with `$broadcast` or with `$tx.$leader` (a transaction with both is refused). See [Territorial mode](operate/nodes.md#territorial-mode). |
 | `$sigs` | yes | One signature per key in `$i`, under the same key. |
 
 In `$i` and `$o` you can use a label instead of a stream id as the key, as long as the value has a `$stream` field holding the real id, for example `"sender": { "$stream": "…id…", "amount": 5 }`. `$sigs` still uses the stream id. If you mix the two, put the labelled entries first.
@@ -110,6 +112,7 @@ The node you sent to replies as soon as consensus is reached, so the counts in `
 | `$streams.new` | Streams this transaction created: `id` and the `name` the contract gave each one. |
 | `$streams.updated` | Streams it changed: `id` and `prev`, the `$umid` of the previous transaction that changed that stream. |
 | `$responses` | Values the contract chose to return, one per node that returned something. Absent if none did. |
+| `$leader` | `true` only when leader mode was asked for and used. The reply is that one node's answer, committed before the rest of the network has voted. It is a strong sign, not network confirmation. Absent otherwise. |
 
 The HTTP status is 200 whether the transaction succeeded or failed; look at `$summary`. A status of 500 usually means the body was not a transaction at all (`Invalid Transaction`), and 413 means it was larger than the node allows (`security.maxRequestBytes`, 16 MB by default).
 

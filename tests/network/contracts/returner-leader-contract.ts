@@ -42,7 +42,12 @@ export default class ReturnerLeader extends Standard {
   }
 
   public commit(): Promise<any> {
-    return new Promise<any>((resolve) => {
+    return new Promise<any>((resolve, reject) => {
+      // A message of "commit-fail" makes the commit fail (on every node), for the live failure checks
+      if (this.message === "commit-fail") {
+        reject("Commit refused");
+        return;
+      }
       // Deliberately no wall-clock timestamp written into state here -
       // commit() runs independently on every node (see architecture.md),
       // so anything non-deterministic like new Date() written into
