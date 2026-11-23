@@ -33,6 +33,16 @@ The packages import each other by their published `@activeledger/*` names, so th
 
 A release is cut by dispatching the `Release` workflow with a version number. It bumps the root, every package, and every dependency range pointing at a sibling; commits; tags `vX.Y.Z`; and publishes in the same run, so the source tree at a tag, the tag itself and the published packages all report the same version. Tags cut before this existed do not — the manifests inside a v4.0.1 through v4.5.7 checkout report an older number than the tag (v4.5.7 reads 4.2.0), so do not identify one of those builds by its package version.
 
+## Package READMEs
+
+npm shows each package's own `README.md`. The one for `@activeledger/activeledger` is the root README made absolute (links to the docs site and GitHub, images from raw.githubusercontent.com), so after changing the root README run:
+
+```bash
+npm run readme:sync
+```
+
+The unit suite fails if `packages/activeledger/README.md` is out of date, and if any package README has a relative link or image (they would be broken on npm).
+
 ## Testing
 
 Two separate test suites, deliberately decoupled so the fast one stays fast:

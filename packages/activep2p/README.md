@@ -37,3 +37,7 @@ peer.close();
 Which keys are acceptable is the caller's decision (`isKnownPeer`), as is any
 rate limiting or banning; a connection exposes `peerKey`, `drop(reason)` and
 `close`/`error` events for that.
+
+Used by the hybrid node to follow a supernode, and by the nodes' own streaming links. Needs Node.js 24 or later; install with `npm install @activeledger/activep2p`.
+
+[Documentation](https://activeledger.github.io/activeledger/) · MIT licensed.

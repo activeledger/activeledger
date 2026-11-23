@@ -2,14 +2,28 @@
 
 # Activetoolkits
 
-This package manages the toolkits available to Smart Contract Developers
+The toolkits a smart contract may use to reach outside the ledger.
 
-#### Available Toolkits 
+This package is one part of [Activeledger](https://github.com/activeledger/activeledger). Most people want [`@activeledger/activeledger`](https://www.npmjs.com/package/@activeledger/activeledger), the node and its command line tools, which installs this package for you. Install this one directly only if you are building on it.
 
-1. HTTP - Safe export of [ActiveRequest](https://github.com/activeledger/activeledger/blob/master/packages/utilities/src/request.ts)
+```bash
+npm install @activeledger/activetoolkits
+```
 
-##### Coming Soon
+Needs Node.js 24 or later.
 
-New libraries will be created and added as a toolkit as they become available. These range from real-time integration with crypto currencies (Bitcoin, Ethereum, Ripple etc) to CRM / ERP systems. The purpose of these toolkits is to remove the need of Oracle services to interact with third party software.
+Only what is exported here is available to a contract, because the deploy scan refuses everything else (a namespace can be allowed more in `security.namespace.<name>`).
 
-[Documentation](https://activeledger.github.io/activeledger/)
+1. **HTTP**: a safe export of `ActiveRequest`. A contract's calls go through the node's guard: nothing on the storage port, nothing that reaches this machine unless the namespace allows it, and a time and size limit on each call.
+
+```ts
+import { HTTP } from "@activeledger/activetoolkits";
+```
+
+## Documentation
+
+- [The Activeledger guide](https://activeledger.github.io/activeledger/)
+- [Security](https://activeledger.github.io/activeledger/operate/security/)
+- [Source and issues](https://github.com/activeledger/activeledger/tree/master/packages/toolkits)
+
+MIT licensed.
