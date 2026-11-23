@@ -3,7 +3,8 @@
 ## [5.11.0] - 2026-11-23
 
 Leader mode is finished and safe for concurrent writers, there are two new commands (`activeledger audit` and
-`activeledger project`), and the README and guide have a quickstart with screenshots. Nothing is build-gated and nothing
+`activeledger project`), every command opens with a new banner and start-up is one live line, and the README and guide
+have a quickstart with screenshots. Nothing is build-gated and nothing
 needs changing on upgrade, with one thing to know for leader mode: see **Upgrading** below.
 
 ### Upgrading
@@ -48,10 +49,25 @@ needs changing on upgrade, with one thing to know for leader mode: see **Upgradi
   networks that need a typed confirmation; `--dry-run`; the audit runs before an upload; example transactions may use
   labelled inputs. Run `activeledger project` alone for the list, with the logo and the name in letters at a terminal.
   A contract source must be a TypeScript file inside the project's folder.
+- **One banner on every command.** The logo's A joined to the rest of the name in letters, then the program and its
+  version and a tagline, replaces the basic text banner on `--help`, on start-up and on every other command of
+  `activeledger`, `activehybrid` and `activerestore` (`version` excepted). It is drawn only for a person at a terminal:
+  never with `--json`, `--quiet` or `NO_COLOR`, and never when the output is piped, so scripts do not see it.
 - **Documentation.** A Quickstart on the docs site and in the README (a three-node testnet, a contract, `project`
   deploy, the explorer, the audit) with real screenshots; guide pages for `project`, `audit` and the database explorer
   (`/_explorer` on a node's storage port); developer material moves from the README to `DEVELOPING.md`. Node.js 24 is
   stated as the version that is built and tested.
+
+### Changed
+- **The start-up display is one live line, not a growing list.** On a terminal the chain (`[###]==[###]==[...]   consensus`)
+  is redrawn in place under the banner: one block fills per step, the running block cycles `[   ]` `[.  ]` `[.. ]`
+  `[...]`, a slow step shows its seconds, and the finished line stays with how long the start took (`ready  (3.4s)`).
+  Log lines raised while starting print above it and the line is drawn again beneath them. Not a terminal, `NO_COLOR`,
+  `--json`, `--quiet` and process managers (systemd, pm2) still get one plain line per step. Something other than the
+  node's own logger that writes to the terminal while it starts (a worker process) can leave one stale line above the
+  next redraw; nothing is lost.
+- **A transaction with both `$tx.$leader` and `$territoriality` is refused** with a reason, where before the leader flag
+  was silently ignored.
 
 ### Fixed
 - **A territorial transaction was dropped by the node it was forwarded to.** The forward carried the entry node's
