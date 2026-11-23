@@ -32,7 +32,7 @@ Pick the task you have. Each list is in the order to do it.
 3. [The contract API you will use](contracts/reference.md)
 4. [Deploy, update, lock and unlock](contracts/deploy.md)
 5. [Audit a contract before deploying](contracts/audit.md)
-5. [Running a contract](contracts/run.md)
+6. [Running a contract](contracts/run.md)
 
 **Run a hybrid**
 
