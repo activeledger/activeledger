@@ -78,6 +78,7 @@ nav:
       - Nodes, consensus and upgrades: operate/nodes.md
       - Restoring a node: operate/restore.md
       - Pruning old data: operate/prune.md
+      - The database explorer: operate/explorer.md
       - Security: operate/security.md
       - Troubleshooting: operate/troubleshooting.md
   - Stress tests:

@@ -52,6 +52,7 @@ Pick the task you have. Each list is in the order to do it.
 - [The activehybrid command](cli/activehybrid.md)
 - [The activerestore command](cli/activerestore.md)
 - [Pruning old data](operate/prune.md)
+- [The database explorer](operate/explorer.md)
 - [Keeping it safe](operate/security.md)
 - [When something is wrong](operate/troubleshooting.md)
 

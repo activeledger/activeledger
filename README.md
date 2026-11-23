@@ -120,6 +120,27 @@ activeledger prune 30 --include-umids --include-events   # also the umid index a
 
 Each choice has a cost, written up in [Pruning old data](docs/guide/operate/prune.md).
 
+## Auditing a contract
+
+`activeledger audit` reads contract source before you deploy it and prints a table per file of security,
+contract, best-practice, duplicate-code and dependency findings (known npm advisories for the packages it
+imports), then a 0-100 risk score. It changes nothing and needs no running node:
+
+```bash
+activeledger audit ./contracts                       # a table per file, then the summary and the risk score
+activeledger audit ./contracts --fail-on high        # exit 1 on any high or critical finding, for CI
+activeledger audit contract.ts --offline --json      # no registry lookup, machine-readable
+```
+
+See [Auditing a contract](docs/guide/contracts/audit.md).
+
+## Looking at a node's data
+
+Each node's embedded store serves a browser page for its own databases at `http://127.0.0.1:5259/_explorer`:
+browse and look up documents, see a stream's state, meta, volatile data and history, export, compact, back up and prune.
+It has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See
+[The database explorer](docs/guide/operate/explorer.md).
+
 ## Installing from GitHub Packages
 
 Releases go to npmjs.com and are mirrored to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages), so the quickstart above installs without any authentication. The one gap is the start of the 4.x line: v4.0.0 through v4.3.2 were published to GitHub Packages only, and every release from v4.3.3 onward is on both.
