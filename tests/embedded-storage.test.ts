@@ -136,10 +136,10 @@ describe("EmbeddedDSConnect (Activestorage)", () => {
 
     it("new_edits false at a stale revision fails the way the HTTP path does", async () => {
       await db.bulkDocs([{ _id: "s1", v: 1 }], { new_edits: true });
-      // LevelMe rejects; over HTTP that is a 500 whose body is the
-      // serialised Error, which has no enumerable properties.
+      // LevelMe rejects; over HTTP that is a 500 whose body says ok: false and why
       const res = await db.bulkDocs([{ _id: "s1", v: 2, _rev: "1-stale" }], { new_edits: false });
-      expect(res).to.deep.equal({});
+      expect(res).to.include({ status: 500, ok: false });
+      expect(res.error).to.match(/^Revision Mismatch: s1 @ 1-stale !== 1-/);
       expect((await db.get("s1")).v).to.equal(1);
     });
 

@@ -537,9 +537,10 @@ export class StreamUpdater {
    *
    * Only { ok: true } is a save. The store answers { ok: false } when its
    * batch write fails, a transport fault arrives as null, and an exception
-   * inside the store arrives as {} - httpd serialises the Error, and
-   * ActiveRequest does not look at the 500 status. That last one used to
-   * pass as a commit with nothing written.
+   * inside the store arrives as { status: 500, ok: false, error: <why> } (it
+   * used to arrive as {}, which said nothing), and ActiveRequest does not
+   * look at the 500 status. That last one used to pass as a commit with
+   * nothing written.
    *
    * Resending is safe because the batch is one atomic write, and a document
    * the store already holds with identical content is accepted as written
