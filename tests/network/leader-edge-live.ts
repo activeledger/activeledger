@@ -244,6 +244,12 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
     if ((new Set(revs).size === 1 && new Set(msgs).size === 1) || Date.now() > until) break;
     await sleep(400);
   }
+  if (mode === "leader") {
+    const fs = require("fs");
+    const extra = nodes.map((n, k) => String(fs.readFileSync(n.logPath).subarray(offsets[k])).split("\n").filter((l: string) => /leader transaction also sent to/.test(l)).length);
+    const dropped = nodes.map((n, k) => String(fs.readFileSync(n.logPath).subarray(offsets[k])).split("\n").filter((l: string) => /leader mark dropped/.test(l)).length);
+    console.log(`  sent also to nodes marked unreachable (per node): [${extra.join(",")}]; leader mark dropped by a peer: [${dropped.join(",")}]`);
+  }
   const moved = revs[0] - start;
   const disagree = new Set(revs).size > 1 || new Set(msgs).size > 1;
   if (disagree && (mode === "leader" || mode === "mixed")) {

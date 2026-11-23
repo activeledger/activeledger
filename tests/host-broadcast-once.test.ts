@@ -108,6 +108,46 @@ describe("Host broadcast serialises once", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   };
 
+  describe("a leader transaction also goes to a neighbour marked unreachable", () => {
+    const down = (port: number) => {
+      const p = p2pPeer(port);
+      (p.peer as any).setState("unreachable", "test");
+      expect(p.peer.isHome).to.equal(false);
+      return p;
+    };
+
+    it("sends it there once, however often it is broadcast, and still sends to the home peers", async () => {
+      const home = p2pPeer(7101);
+      const away = down(7102);
+      const host = fakeHost([home.peer, away.peer], entryOf({ $leaderOk: true, $origin: SELF }));
+      await run(host);
+      await run(host);
+      expect(away.sent).to.have.length(1);
+      expect(home.sent.length).to.be.at.least(1);
+      expect(host.processPending.u1).to.have.property("leaderExtra");
+    });
+
+    it("does nothing extra for a normal transaction, or a leader one this node did not originate", async () => {
+      for (const extra of [{}, { $leaderOk: true, $origin: "someone-else" }, { $leaderOk: false, $origin: SELF }]) {
+        const away = down(7111);
+        await run(fakeHost([away.peer], entryOf(extra)));
+        expect(away.sent, JSON.stringify(extra)).to.have.length(0);
+      }
+    });
+
+    it("is best effort: a failing send there changes nothing and does not stop the others", async () => {
+      const home = p2pPeer(7121);
+      const away = down(7122);
+      (away.peer as any).p2pClient.send = () => {
+        throw new Error("down");
+      };
+      const host = fakeHost([home.peer, away.peer], entryOf({ $leaderOk: true, $origin: SELF }));
+      await run(host);
+      expect(home.sent.length).to.be.at.least(1);
+      expect(host.processPending.u1.broadcasting).to.not.equal(true);
+    });
+  });
+
   it("encodes once for any number of peers, and every peer gets the same bytes", async () => {
     const peers = [p2pPeer(7001), p2pPeer(7002), p2pPeer(7003), p2pPeer(7004)];
     await run(fakeHost(peers.map((p) => p.peer), entryOf()));
