@@ -760,6 +760,20 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
     }
   });
 
+  // The page that used to be served here was the CouchDB admin UI, which this
+  // store never was. Anything still pointing at /_utils goes to the explorer.
+  const toExplorer = async (_incoming: IActiveHttpIncoming, _req: unknown, res: any) => {
+    res.cork(() => {
+      res.writeStatus("302 Found");
+      res.writeHeader("Location", "/_explorer");
+      res.end();
+      res.writable = false;
+    });
+    return "handled";
+  };
+  http.use("_utils", "GET", toExplorer);
+  http.use("_utils/**", "GET", toExplorer);
+
   // Explorer: one static page that reads this server's own API. Nothing is
   // resolved from the request path, so there is no file lookup to escape
   // from; every path under /_explorer answers with the same page.

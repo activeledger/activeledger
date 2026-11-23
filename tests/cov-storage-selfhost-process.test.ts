@@ -462,11 +462,11 @@ describe("Storage process lifecycle (selfhost)", function () {
       }
     });
 
-    it("no longer serves /_utils (the old admin address); the explorer is at /_explorer", async () => {
-      for (const p of ["/_utils", "/_utils/", "/_utils/dashboard.assets/js/x.js"]) {
+    it("sends /_utils, and anything under it, to the explorer", async () => {
+      for (const p of ["/_utils", "/_utils/", "/_utils/dashboard.assets/js/x.js", "/_utils/../../package.json"]) {
         const r = await s.req("GET", p);
-        expect(r.status, p).to.be.at.least(400); // an unknown database name now, like any other
-        expect(r.headers["location"], p).to.equal(undefined);
+        expect(r.status, p).to.equal(302);
+        expect(r.headers["location"], p).to.equal("/_explorer");
       }
     });
   });
