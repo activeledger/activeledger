@@ -59,6 +59,8 @@ export interface CliCommand {
   usage?: string;
   // Flags only this command accepts
   flags?: CliFlag[];
+  // The command draws the banner itself (with its own line under it), so the shared layer does not
+  ownBanner?: boolean;
 }
 
 export interface CliProgram {
@@ -349,6 +351,13 @@ export const runCli = (
   if (command === "version") {
     write(flags.json ? JSON.stringify({ version: program.version }) + "\n" : `v${program.version}\n`);
     return { ...base, exit: ExitCode.OK };
+  }
+  // Every other command opens with the banner for a person at a terminal. `start` and `restart` draw it as the
+  // start-up display begins, and a command that says it draws its own does so.
+  const def = program.commands.find((c) => c.name === command);
+  if (command !== program.defaultCommand && command !== "start" && command !== "restart" && !def?.ownBanner) {
+    const art = banner(program, { json: !!flags.json, quiet: !!flags.quiet }, env);
+    if (art) write(art);
   }
   return base;
 };

@@ -75,6 +75,8 @@ Every Activeledger program uses the same three.
 
 A mistyped command or flag exits 1 and suggests the nearest name, for example `Unknown command "stauts". Did you mean "status"?`.
 
+Every command except `version` opens with the banner when you run it at a terminal: the logo's A joined to the rest of the name, then `activeledger` and its version, then a line of text. It is left out with `--json`, `--quiet` and `NO_COLOR`, and whenever the output is not a terminal, so a script never sees it.
+
 ## Start a node
 
 ```

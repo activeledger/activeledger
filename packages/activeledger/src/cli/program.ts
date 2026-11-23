@@ -66,7 +66,7 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     ...Cli.COMMON_COMMANDS,
     { name: "reload", description: "Make the running node re-read config.json (needs \"remote\": true)" },
     { name: "prune", usage: "[days]", description: "Remove old errors (and, if asked, old events and umids) from this node's stores, keeping the last [days] days (default 30). Never touches the ledger" },
-    { name: "project", usage: "init|identity|namespace|contract|tx|deploy|status|help", description: "Set up a project from the command line: register a namespace, upload and update contracts, run example transactions, all kept in a .activeledger file. Run `activeledger project` for the list" },
+    { name: "project", ownBanner: true, usage: "init|identity|namespace|contract|tx|deploy|status|help", description: "Set up a project from the command line: register a namespace, upload and update contracts, run example transactions, all kept in a .activeledger file. Run `activeledger project` for the list" },
     { name: "audit", usage: "<file|folder>", description: "Check contract source for security problems, bad practice, duplicate code and risky dependencies, and print a risk score. Changes nothing" },
     { name: "hybrid", usage: "status|enable [open|allowlist]|list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
   ],

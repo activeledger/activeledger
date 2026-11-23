@@ -442,7 +442,7 @@ export const projectCommand = async (positionals: string[], flags: ProjectFlags,
       lines.forEach((l) => deps.out.log(l));
       return 0;
     }
-    if (art && ["init", "deploy"].includes(sub)) banner(deps.version).forEach((l) => deps.out.log(l));
+    if (art) banner(deps.version).forEach((l) => deps.out.log(l));
     let steps: Step[];
     switch (sub) {
       case "init":

@@ -91,8 +91,26 @@ describe("Shared CLI layer (options)", () => {
     it("prints help for the program and for one command", () => {
       expect(run(["--help"]).out).to.contain("Commands:");
       const one = run(["help", "status"]);
-      expect(one.out).to.contain("--max-lag").and.not.contain("[###]");
+      expect(one.out).to.contain("--max-lag").and.not.contain("#####");
       expect(one.r.exit).to.equal(0);
+    });
+
+    it("opens every other command with the banner for a person at a terminal, and not start, restart or a command that draws its own", () => {
+      for (const c of ["status", "stop", "check-config"]) {
+        const { out } = run([c]);
+        expect(out, c).to.include("/_/    \\_\\").and.to.include("activeledger 5.1.0");
+      }
+      expect(run([]).out).to.equal("");
+      expect(run(["start"]).out).to.equal("");
+      expect(run(["restart"]).out).to.equal("");
+      expect(run(["status", "--json"]).out).to.equal("");
+      expect(run(["status", "--quiet"]).out).to.equal("");
+      let out = "";
+      runCli({ ...program, commands: [...COMMON_COMMANDS, { name: "own", description: "x", ownBanner: true }] }, ["own"], tty, (s) => (out += s));
+      expect(out).to.equal("");
+      let plain = "";
+      runCli(program, ["status"], { ...tty, isTTY: false }, (s) => (plain += s));
+      expect(plain).to.equal("");
     });
 
     it("prints the version, as JSON on request", () => {
