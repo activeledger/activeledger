@@ -22,6 +22,7 @@
  */
 
 import minimist from "minimist";
+import { bannerLines } from "./banner";
 
 /**
  * Stable exit codes, the same in every Activeledger program
@@ -58,12 +59,14 @@ export interface CliCommand {
   usage?: string;
   // Flags only this command accepts
   flags?: CliFlag[];
+  // The command draws the banner itself (with its own line under it), so the shared layer does not
+  ownBanner?: boolean;
 }
 
 export interface CliProgram {
   name: string;
   version: string;
-  // Hollow last block in the banner, a hybrid is the link that follows
+  // Was a hollow last block in the old chain banner. Kept so programs that set it still compile; the banner no longer uses it
   hollow?: boolean;
   defaultCommand: string;
   commands: CliCommand[];
@@ -250,12 +253,11 @@ export const banner = (
   env: CliEnv = currentEnv()
 ): string => {
   if (!env.isTTY || env.noColor || flags.json || flags.quiet) return "";
+  // The rare roll swaps the tagline for a joke one
   const broken = env.random() < 1 / 50;
   const list = broken ? BROKEN_TAGLINES : TAGLINES;
   const tagline = list[Math.floor(env.random() * list.length) % list.length];
-  const last = program.hollow ? "[   ]" : "[###]";
-  const chain = broken ? `[###]==[###]=/=${last}` : `[###]==[###]==${last}`;
-  return ` ${chain}\n   ${program.name} ${program.version}\n   ${tagline}\n\n`;
+  return bannerLines(program.name, program.version, tagline).join("\n") + "\n";
 };
 
 const flagLine = (f: CliFlag): string => {
@@ -349,6 +351,13 @@ export const runCli = (
   if (command === "version") {
     write(flags.json ? JSON.stringify({ version: program.version }) + "\n" : `v${program.version}\n`);
     return { ...base, exit: ExitCode.OK };
+  }
+  // Every other command opens with the banner for a person at a terminal. `start` and `restart` draw it as the
+  // start-up display begins, and a command that says it draws its own does so.
+  const def = program.commands.find((c) => c.name === command);
+  if (command !== program.defaultCommand && command !== "start" && command !== "restart" && !def?.ownBanner) {
+    const art = banner(program, { json: !!flags.json, quiet: !!flags.quiet }, env);
+    if (art) write(art);
   }
   return base;
 };

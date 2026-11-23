@@ -34,7 +34,7 @@ import { hybridCommand } from "./cli/hybrid";
 import { reloadCommand } from "./cli/reload";
 import { pruneCommand } from "./cli/prune";
 import { auditCommand } from "./audit/audit";
-import { projectCommand } from "./project/commands";
+import { defaultDeps as defaultProjectDeps, projectCommand } from "./project/commands";
 import { PIDHandler } from "./cli/pid";
 import { ensureAttestKey, withAttestKey } from "./cli/identity";
 
@@ -100,7 +100,7 @@ if (cli.command === "project") {
     noAudit: !!f["no-audit"],
     auditFailOn: f["audit-fail-on"] as string | undefined,
     offline: !!f.offline,
-  }).then((code) => process.exit(code));
+  }, { ...defaultProjectDeps(), version }).then((code) => process.exit(code));
 }
 if (cli.command === "audit") {
   auditCommand(cli.positionals[1], {

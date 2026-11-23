@@ -23,6 +23,10 @@
 
 import { banner, CliEnv, CliProgram, currentEnv } from "./cli";
 
+const CLEAR_LINE = "\r\u001b[2K";
+// A running step cycles through these, filling like the done block does
+const FRAMES = ["[   ]", "[.  ]", "[.. ]", "[...]"];
+
 export interface StartupOut {
   write(s: string): unknown;
 }
@@ -34,8 +38,14 @@ export interface StartupOptions {
   quiet?: boolean;
   // Started by systemd, pm2 and the like: one plain line per step
   managed?: boolean;
-  // A step still running after this long says so, once
+  // Kept for callers that set it; a running step now shows its seconds on the live line instead
   slowAfterMs?: number;
+  // How often the live line is repainted while a step runs (ms)
+  tickMs?: number;
+  // How wide the terminal is (columns), so the live line never wraps
+  columns?: number;
+  // The clock, for tests
+  now?: () => number;
 }
 
 export const isManaged = (env: NodeJS.ProcessEnv = process.env): boolean =>
@@ -43,33 +53,46 @@ export const isManaged = (env: NodeJS.ProcessEnv = process.env): boolean =>
 
 type State = "wait" | "run" | "done" | "fail";
 
-// Progress inside a step is printed at most this often
-const PROGRESS_EVERY_MS = 2000;
+// Progress detail is repainted at most this often
+const PROGRESS_EVERY_MS = 100;
+// A step that has run this long shows its seconds
+const SHOW_SECONDS_AFTER_MS = 2000;
 
 /**
  * The start-up display. It reports real progress and never adds delay:
  * every call is driven by the start-up code, and its timer is unref'd.
  *
- * It only ever appends whole lines, and never redraws one in place. The node
- * is not the only thing writing to the terminal while it starts (the logger,
- * and the worker processes that share its output), and a line rewritten with
- * a carriage return ends up with their text on it. Each line is the chain as
- * far as the node has got:
+ * On a terminal the progress is one live line under the banner: the chain as
+ * far as the node has got, the running block cycling `[   ]` `[.  ]` `[.. ]`
+ * `[...]`, the step's name and, once a step is slow, how long it has run:
  *
- *     [###]==[###]   identity
- *     [###]==[###]==[###]   database
+ *     [###]==[###]==[...]   consensus  (4s)
+ *
+ * The line is rewritten in place (clear the line, draw it again). Log lines
+ * raised during start-up come through `log()`, which clears the live line,
+ * prints the log line whole, and draws the live line again beneath it, so the
+ * logger never ends up on the line. Anything else that writes to the terminal
+ * (a worker process) just leaves the stale line above it and the next repaint
+ * draws a fresh one. When output is not a terminal, or under NO_COLOR, --json,
+ * --quiet or a process manager, there is no live line: one plain line per step.
  */
 export class StartupDisplay {
   public readonly chain: boolean;
   private readonly out: StartupOut;
   private readonly env: CliEnv;
-  private readonly slowAfterMs: number;
+  private readonly tickMs: number;
+  private readonly columns: number;
+  private readonly now: () => number;
   private states: State[];
   private current = -1;
   private broken = false;
   private detail = "";
   private lastProgress = 0;
-  private slow?: NodeJS.Timeout;
+  private stepStartedAt = 0;
+  private startedAt: number;
+  private frame = 0;
+  private live = false;
+  private ticker?: NodeJS.Timeout;
   private stopped = false;
 
   constructor(
@@ -79,7 +102,10 @@ export class StartupDisplay {
   ) {
     this.out = opts.out || process.stdout;
     this.env = opts.env || currentEnv();
-    this.slowAfterMs = opts.slowAfterMs ?? 1000;
+    this.tickMs = opts.tickMs ?? 250;
+    this.columns = opts.columns ?? (process.stdout.columns || 80);
+    this.now = opts.now || Date.now;
+    this.startedAt = this.now();
     this.chain =
       this.env.isTTY &&
       !this.env.noColor &&
@@ -101,17 +127,12 @@ export class StartupDisplay {
     this.current = i;
     this.states[i] = "run";
     this.detail = "";
-    this.clearSlow();
+    this.stepStartedAt = this.now();
     if (!this.chain) return;
     // The rare break is drawn on the line of the step that rolls it
     this.broken = i > 0 && this.env.random() < 1 / 50;
-    // Say so once if the step takes a while (waiting for the other nodes, say)
-    this.slow = setTimeout(() => {
-      if (this.states[i] === "run" && !this.stopped) {
-        this.out.write(`${this.render()}  ...\n`);
-      }
-    }, this.slowAfterMs);
-    this.slow.unref();
+    this.paint();
+    this.startTicker();
   }
 
   /** The current step finished */
@@ -120,8 +141,11 @@ export class StartupDisplay {
     if (i < 0 || this.stopped) return;
     this.states[i] = "done";
     this.detail = "";
-    this.clearSlow();
-    this.out.write(this.chain ? `${this.render()}\n` : `ok  ${this.steps[i]}\n`);
+    if (this.chain) {
+      this.paint();
+    } else {
+      this.out.write(`ok  ${this.steps[i]}\n`);
+    }
     this.broken = false;
   }
 
@@ -132,20 +156,21 @@ export class StartupDisplay {
     this.states[i] = "fail";
     this.halt();
     if (this.chain) {
-      this.out.write(`${this.render()}\n${reason}\n`);
+      this.out.write(`${this.clear()}${this.render()}\n${reason}\n`);
+      this.live = false;
     } else {
       this.out.write(`FAIL  ${this.steps[i]}: ${reason}\n`);
     }
   }
 
-  /** Progress inside a step, e.g. a hybrid catching up. Throttled. */
+  /** Progress inside a step, e.g. a hybrid catching up. Repainted at most every 100ms. */
   public progress(detail: string): void {
     if (this.stopped) return;
     this.detail = detail;
-    const now = Date.now();
+    const now = this.now();
     if (this.chain && now - this.lastProgress >= PROGRESS_EVERY_MS) {
       this.lastProgress = now;
-      this.out.write(`${this.render()}\n`);
+      this.paint();
     }
   }
 
@@ -154,27 +179,38 @@ export class StartupDisplay {
     this.progress(`${Math.max(0, Math.round(lagSeconds))}s behind  ${cursor}`);
   }
 
-  /** The node is ready: stop, ordinary logs take over */
+  /** The node is ready: the line is filled in, it stays, and ordinary logs take over */
   public finish(): void {
     if (this.stopped) return;
     this.states = this.states.map((s) => (s === "fail" ? s : "done"));
     this.current = this.steps.length - 1;
     this.broken = false;
+    this.detail = "";
     this.halt();
-    if (this.chain) this.out.write("\n");
+    if (this.chain) {
+      const seconds = ((this.now() - this.startedAt) / 1000).toFixed(1);
+      this.out.write(`${this.clear()}${this.fit(`${this.render()}  (${seconds}s)`)}\n\n`);
+      this.live = false;
+    }
   }
 
-  /** A log line raised during start-up */
+  /** A log line raised during start-up: whole, on its own line, with the live line drawn again beneath it */
   public log(line: string): void {
-    this.out.write(`${line}\n`);
+    if (this.chain && this.live) {
+      this.out.write(`${this.clear()}${line}\n`);
+      this.live = false;
+      this.paint();
+    } else {
+      this.out.write(`${line}\n`);
+    }
   }
 
-  /** What the chain line looks like now */
-  public render(): string {
+  /** What the chain line looks like now (the running block is `[   ]`; the live line animates it) */
+  public render(frame = FRAMES[0]): string {
     const blocks = this.states.map((s, i) => {
       if (s === "done") return "[###]";
       if (s === "fail") return "[ X ]";
-      if (s === "run" && i === this.current) return "[   ]";
+      if (s === "run" && i === this.current) return frame;
       return null;
     });
     let line = "";
@@ -189,13 +225,44 @@ export class StartupDisplay {
     return `${line}   ${label}${this.detail ? "  " + this.detail : ""}`;
   }
 
-  private clearSlow(): void {
-    if (this.slow) clearTimeout(this.slow);
-    this.slow = undefined;
+  /** The live line: the running block animated, and the seconds once the step is slow */
+  private renderLive(): string {
+    let text = this.render(FRAMES[this.frame % FRAMES.length]);
+    const running = this.now() - this.stepStartedAt;
+    if (this.states[this.current] === "run" && running >= SHOW_SECONDS_AFTER_MS) {
+      text += `  (${Math.floor(running / 1000)}s)`;
+    }
+    return this.fit(text);
+  }
+
+  /** Never wider than the terminal, or the clear would miss the wrapped part */
+  private fit(text: string): string {
+    return text.length >= this.columns ? text.slice(0, Math.max(1, this.columns - 1)) : text;
+  }
+
+  private clear(): string {
+    return this.live ? CLEAR_LINE : "";
+  }
+
+  private paint(): void {
+    if (this.stopped) return;
+    this.out.write(`${CLEAR_LINE}${this.renderLive()}`);
+    this.live = true;
+  }
+
+  private startTicker(): void {
+    if (this.ticker) return;
+    this.ticker = setInterval(() => {
+      if (this.stopped) return;
+      this.frame++;
+      if (this.states[this.current] === "run") this.paint();
+    }, this.tickMs);
+    this.ticker.unref();
   }
 
   private halt(): void {
     this.stopped = true;
-    this.clearSlow();
+    if (this.ticker) clearInterval(this.ticker);
+    this.ticker = undefined;
   }
 }

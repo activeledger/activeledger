@@ -47,6 +47,10 @@ describe("project: banner and help", () => {
     expect(rows.join("\n")).to.include("Contracts, namespaces");
     expect(NAME_AFTER_LOGO).to.have.length(5);
   });
+  it("shows the program and its version under the name", () => {
+    expect(banner("5.11.0").join("\n")).to.include("  activeledger 5.11.0\n");
+    expect(overview(true, "5.11.0").join("\n")).to.include("activeledger 5.11.0");
+  });
   it("is drawn only for a person at a terminal", () => {
     expect(wantBanner(true, {}, {})).to.equal(true);
     expect(wantBanner(false, {}, {})).to.equal(false);
@@ -352,6 +356,19 @@ describe("project: commands", () => {
     expect(errs.join("\n")).to.include("unknown project command");
   });
 
+  it("every project command opens with the banner at a terminal, and none with --json, --quiet or off a terminal", async () => {
+    setup();
+    for (const pos of [["status"], ["tx", "list"], ["identity", "list"], ["contract", "status"]]) {
+      logs.length = 0;
+      await run(pos, {}, { tty: true });
+      expect(logs.join("\n"), pos.join(" ")).to.include("#####").and.to.include("activeledger ");
+    }
+    for (const [flags, over] of [[{ json: true }, { tty: true }], [{ quiet: true }, { tty: true }], [{}, { tty: false }]] as [ProjectFlags, Partial<ProjectDeps>][]) {
+      logs.length = 0;
+      await run(["status"], flags, over);
+      expect(logs.join("\n")).to.not.include("#####");
+    }
+  });
   it("init creates both files, a private key file, and ignores the key file; never overwrites", async () => {
     expect(await run(["init"], { name: "MyOrg", net: ["testnet=http://127.0.0.1:5260,http://127.0.0.1:5261"] }, { git: fakeGit({ ignored: true }) })).to.equal(0);
     const p = project();

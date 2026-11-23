@@ -101,17 +101,18 @@ Prints `./hybrid.json is valid`, or lists each reason it is not and exits 2.
 activehybrid
 ```
 
-The node detaches and keeps running after you close the terminal. It writes `.activehybrid.pid` and appends its log to `activehybrid.log` in the current directory. Your terminal follows the start-up: on a terminal it shows progress lines (`catching up  42s behind ...`) and may not print a final `ready` line; when the output is piped it prints one plain line per step, ending `ok  ready`. Use `activehybrid status` to see when it is ready.
+The node detaches and keeps running after you close the terminal. It writes `.activehybrid.pid` and appends its log to `activehybrid.log` in the current directory. Your terminal follows the start-up: on a terminal it shows the live line (`catching up  42s behind ...`) and may not print a final `ready` line; when the output is piped it prints one plain line per step, ending `ok  ready`. Use `activehybrid status` to see when it is ready.
 
-Start it with `--foreground` to keep it attached instead; then you see all six start-up steps, and Ctrl+C stops it:
+Start it with `--foreground` to keep it attached instead; then you see the banner and one live line through all six start-up steps, and Ctrl+C stops it. The line is redrawn in place, and the catching-up step shows how far behind it is:
 
 ```
-[###]   config
-[###]==[###]   identity
-[###]==[###]==[###]   store
-[###]==[###]==[###]==[###]   bootstrap
 [###]==[###]==[###]==[###]==[   ]   catching up  42s behind  00000000000001a7
-[###]==[###]==[###]==[###]==[###]==[###]   ready
+```
+
+When it is ready the line stays filled in:
+
+```
+[###]==[###]==[###]==[###]==[###]==[###]   ready  (6.1s)
 ```
 
 A second `start` while one is running says `already running (pid 12345)` and exits 1.

@@ -56,9 +56,9 @@ export const COMMON_FLAGS: [string, string][] = [
 const pad = (s: string, n: number) => s + " ".repeat(Math.max(1, n - s.length));
 
 /** What `activeledger project` prints on its own */
-export const overview = (withBanner: boolean): string[] => {
+export const overview = (withBanner: boolean, version = ""): string[] => {
   const out: string[] = [];
-  if (withBanner) out.push(...banner());
+  if (withBanner) out.push(...banner(version));
   out.push("Usage: activeledger project <command> [options]", "", "Commands");
   const width = Math.max(...Object.keys(COMMANDS).map((k) => k.length)) + 2;
   for (const [name, c] of Object.entries(COMMANDS)) out.push(`  ${pad(name, width)}${c.about}`);

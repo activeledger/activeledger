@@ -8,6 +8,8 @@ import {
   banner,
   helpText,
   parseCli,
+  TAGLINES,
+  BROKEN_TAGLINES,
   runCli,
 } from "../packages/options/src/cli";
 
@@ -89,8 +91,26 @@ describe("Shared CLI layer (options)", () => {
     it("prints help for the program and for one command", () => {
       expect(run(["--help"]).out).to.contain("Commands:");
       const one = run(["help", "status"]);
-      expect(one.out).to.contain("--max-lag").and.not.contain("[###]");
+      expect(one.out).to.contain("--max-lag").and.not.contain("#####");
       expect(one.r.exit).to.equal(0);
+    });
+
+    it("opens every other command with the banner for a person at a terminal, and not start, restart or a command that draws its own", () => {
+      for (const c of ["status", "stop", "check-config"]) {
+        const { out } = run([c]);
+        expect(out, c).to.include("/_/    \\_\\").and.to.include("activeledger 5.1.0");
+      }
+      expect(run([]).out).to.equal("");
+      expect(run(["start"]).out).to.equal("");
+      expect(run(["restart"]).out).to.equal("");
+      expect(run(["status", "--json"]).out).to.equal("");
+      expect(run(["status", "--quiet"]).out).to.equal("");
+      let out = "";
+      runCli({ ...program, commands: [...COMMON_COMMANDS, { name: "own", description: "x", ownBanner: true }] }, ["own"], tty, (s) => (out += s));
+      expect(out).to.equal("");
+      let plain = "";
+      runCli(program, ["status"], { ...tty, isTTY: false }, (s) => (plain += s));
+      expect(plain).to.equal("");
     });
 
     it("prints the version, as JSON on request", () => {
@@ -100,16 +120,24 @@ describe("Shared CLI layer (options)", () => {
   });
 
   describe("banner", () => {
-    it("draws the chain on a terminal", () => {
-      expect(banner(program, {}, tty)).to.contain("[###]==[###]==[###]");
+    it("draws the logo's A joined to the rest of the name, then the program and its version", () => {
+      const out = banner(program, {}, tty);
+      const lines = out.split("\n");
+      expect(lines.slice(0, 5)).to.have.length(5);
+      expect(lines[4]).to.include("/_/    \\_\\");
+      for (const l of lines.slice(0, 5)) expect(l).to.match(/#/);
+      expect(out).to.include(`  ${program.name} ${program.version}\n`);
     });
 
-    it("draws a hollow last block for a hybrid", () => {
-      expect(banner({ ...program, hollow: true }, {}, tty)).to.contain("[###]==[###]==[   ]");
+    it("draws the hybrid's and the restore's names the same way", () => {
+      expect(banner({ ...program, name: "activehybrid" }, {}, tty)).to.include("activehybrid");
+      expect(banner({ ...program, name: "activerestore" }, {}, tty).split("\n")[4]).to.include("/_/");
     });
 
-    it("breaks the chain on the rare roll", () => {
-      expect(banner(program, {}, { ...tty, random: () => 0.01 })).to.contain("=/=");
+    it("swaps the tagline for a joke one on the rare roll", () => {
+      const out = banner(program, {}, { ...tty, random: () => 0.01 });
+      expect(BROKEN_TAGLINES.some((t) => out.includes(t))).to.equal(true);
+      expect(TAGLINES.some((t) => out.includes(t))).to.equal(false);
     });
 
     it("is empty off a terminal, with NO_COLOR, --json or --quiet", () => {
@@ -120,7 +148,7 @@ describe("Shared CLI layer (options)", () => {
     });
 
     it("keeps escape codes out of help", () => {
-      expect(helpText(program, undefined, {}, { ...tty, isTTY: false })).to.not.match(/\u001b|\[###\]/);
+      expect(helpText(program, undefined, {}, { ...tty, isTTY: false })).to.not.match(/\u001b|#####/);
     });
   });
 });
