@@ -81,22 +81,28 @@ A mistyped command or flag exits 1 and suggests the nearest name, for example `U
 activeledger
 ```
 
-The first run in an empty directory creates `.identity` (the node's key pair) and `config.json`, then starts. You see a chain that grows one block per start-up step:
+The first run in an empty directory creates `.identity` (the node's key pair) and `config.json`, then starts. On a terminal you see the banner, then one live line that is redrawn in place as the node starts:
 
 ```
- [###]==[###]==[###]
-   activeledger 5.1.1
-   Every link holds.
+    /\      #### ##### ### #   # ##### #     ##### ####   #### ##### ####
+   /  \    #       #    #  #   # #     #     #     #   # #     #     #   #
+  / /\ \   #       #    #  #   # ####  #     ####  #   # #  ## ####  ####
+ / /__\ \  #       #    #   # #  #     #     #     #   # #   # #     #  #
+/_/    \_\  ####   #   ###   #   ##### ##### ##### ####   #### ##### #   #
 
-[###]   config
-[###]==[###]   identity
-[###]==[###]==[###]   database
-[###]==[###]==[###]==[###]   network
-[###]==[###]==[###]==[###]==[###]   consensus
-[###]==[###]==[###]==[###]==[###]==[###]   ready
+  activeledger 5.11.0
+  Every link holds.
+
+[###]==[###]==[...]   consensus  (4s)
 ```
 
-A step that stops the node is drawn as `[ X ]` with the reason under it. Under systemd or pm2, or with `--quiet`, each step is one plain line such as `ok  config`. Log lines carry on after the chain.
+The chain gains a `[###]` block for each start-up step that finishes (`config`, `identity`, `database`, `network`, `consensus`, `ready`). The step that is running is drawn `[   ]`, `[.  ]`, `[.. ]`, `[...]` in turn, and shows how many seconds it has taken once it is slow (a node waiting for its neighbours, say). Log lines that appear while it starts print above the line, which is then drawn again beneath them. When the node is ready the line stays filled in with how long the start took:
+
+```
+[###]==[###]==[###]==[###]==[###]==[###]   ready  (3.4s)
+```
+
+A step that stops the node is drawn as `[ X ]` with the reason under it. Under systemd or pm2, with `--quiet`, `--json`, `NO_COLOR` or when the output is not a terminal, there is no banner and no live line: each step is one plain line such as `ok  config`. Log lines carry on after the line.
 
 To put the node on another port, give it on the first run and the new config is written with it:
 

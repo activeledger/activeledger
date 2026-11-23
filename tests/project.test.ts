@@ -47,6 +47,10 @@ describe("project: banner and help", () => {
     expect(rows.join("\n")).to.include("Contracts, namespaces");
     expect(NAME_AFTER_LOGO).to.have.length(5);
   });
+  it("shows the program and its version under the name", () => {
+    expect(banner("5.11.0").join("\n")).to.include("  activeledger 5.11.0\n");
+    expect(overview(true, "5.11.0").join("\n")).to.include("activeledger 5.11.0");
+  });
   it("is drawn only for a person at a terminal", () => {
     expect(wantBanner(true, {}, {})).to.equal(true);
     expect(wantBanner(false, {}, {})).to.equal(false);

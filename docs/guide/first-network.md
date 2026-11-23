@@ -36,12 +36,13 @@ activeledger
 ```
 
 The node generates its identity, writes `config.json`, starts its data store and
-then itself. On a terminal it prints a banner and then one line per start-up step:
-`config`, `identity`, `database`, `network`, `consensus`, `ready`. When the last
-line reads
+then itself. On a terminal it prints a banner (the logo's A joined to the rest
+of the name, then the program and its version) and then one live line that shows
+the start-up steps as they happen: `config`, `identity`, `database`, `network`,
+`consensus`, `ready`. When the line has filled in and ends
 
 ```
-[###]==[###]==[###]==[###]==[###]==[###]   ready
+[###]==[###]==[###]==[###]==[###]==[###]   ready  (3.4s)
 ```
 
 the node is up. Ordinary log lines follow. By default the node also starts

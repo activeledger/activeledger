@@ -50,33 +50,59 @@ describe("Start-up display", () => {
     expect(d.render()).to.not.contain("database");
   });
 
-  it("says once that a step is slow, and never redraws a line", async () => {
-    const { d, out } = make({ slowAfterMs: 20 });
+  it("draws one live line, rewritten in place: the running block animates and the seconds show once a step is slow", async () => {
+    let t = 1000;
+    const { d, out } = make({ tickMs: 15, now: () => t });
     d.begin("config");
-    await new Promise((r) => setTimeout(r, 120));
+    expect(out()).to.include("\r\u001b[2K[   ]   config");
+    await new Promise((r) => setTimeout(r, 90));
+    expect(out()).to.include("[.  ]   config").and.to.include("[.. ]   config");
+    expect(out()).to.not.include("(");
+    t += 4500;
+    await new Promise((r) => setTimeout(r, 60));
+    expect(out()).to.include("[...]   config  (4s)");
+    // Only the live line moves: no newline was written for any repaint
+    expect(out().replace(/^[\s\S]*\n\n/, "")).to.not.include("\n");
     d.done();
-    expect(out()).to.contain("[   ]   config  ...\n[###]   config\n");
-    expect(out()).to.not.match(/\r|\u001b/);
+    expect(out().endsWith("\r\u001b[2K[###]   config")).to.equal(true);
     d.finish();
   });
 
-  it("does not mention a step that finishes quickly while it runs", () => {
-    const { d, out } = make({ slowAfterMs: 60000 });
+  it("paints a step when it starts and again when it ends, and writes nothing between on a quick step", () => {
+    const { d, out } = make({ tickMs: 60000 });
+    const before = out().length;
     d.begin("config");
     d.done();
-    expect(out()).to.not.contain("...");
+    const painted = out().slice(before);
+    expect(painted.match(/\r\u001b\[2K/g)).to.have.length(2);
+    expect(painted).to.not.include("\n");
     d.finish();
   });
 
-  it("shows lag and cursor while catching up, a line at most every couple of seconds", () => {
-    const { d, out } = make();
+  it("shows lag and cursor while catching up, repainted at most every 100ms", () => {
+    let t = 0;
+    const { d, out } = make({ now: () => t, tickMs: 60000 });
     d.begin("config");
+    t += 200;
     d.catchUp(12.4, "umid:100,abc");
+    t += 10;
     d.catchUp(11.9, "umid:101,abd");
-    // The second call only updates what the next line will say
+    // The second call came too soon to paint; it only changes what the next paint says
     expect(d.render()).to.contain("12s behind  umid:101,abd");
     expect(out()).to.contain("12s behind  umid:100,abc");
     expect(out().match(/s behind/g)).to.have.length(1);
+    t += 200;
+    d.catchUp(11.5, "umid:102,abe");
+    expect(out()).to.contain("12s behind  umid:102,abe");
+    d.finish();
+  });
+
+  it("keeps the live line inside the terminal's width", () => {
+    const { d, out } = make({ columns: 20, tickMs: 60000 });
+    d.begin("config");
+    d.progress("a very long piece of detail that would wrap the line");
+    d.progress("another very long piece of detail that would wrap the line");
+    for (const painted of out().split("\r\u001b[2K").slice(1)) expect(painted.length).to.be.lessThan(20);
     d.finish();
   });
 
@@ -91,12 +117,36 @@ describe("Start-up display", () => {
     expect(out().length).to.equal(len);
   });
 
-  it("writes log lines as they are, whole, on their own line", () => {
-    const { d, out } = make();
+  it("a log line clears the live line, prints whole on its own line, and the live line is drawn again beneath it", () => {
+    const { d, out } = make({ tickMs: 60000 });
     d.begin("config");
     d.log("INFO hello");
-    expect(out().endsWith("INFO hello\n")).to.equal(true);
+    expect(out()).to.include("\r\u001b[2KINFO hello\n\r\u001b[2K[   ]   config");
+    expect(out().endsWith("[   ]   config")).to.equal(true);
     d.finish();
+    // With nothing live yet, a log line is just a line
+    const quiet = make({ tickMs: 60000 });
+    quiet.d.log("INFO early");
+    expect(quiet.out().endsWith("INFO early\n")).to.equal(true);
+    quiet.d.finish();
+  });
+
+  it("finish leaves the filled-in line, with how long it took, and a blank line", () => {
+    let t = 0;
+    const { d, out } = make({ now: () => t, tickMs: 60000 });
+    d.begin("config");
+    t = 3400;
+    d.finish();
+    expect(out().endsWith("\r\u001b[2K[###]==[###]==[###]==[###]   ready  (3.4s)\n\n")).to.equal(true);
+  });
+
+  it("a failure clears the live line and leaves the broken chain and the reason", () => {
+    const { d, out } = make({ tickMs: 60000 });
+    d.begin("config");
+    d.done();
+    d.begin("identity");
+    d.fail("no identity file");
+    expect(out().endsWith("\r\u001b[2K[###]==[ X ]   identity\nno identity file\n")).to.equal(true);
   });
 
   it("breaks the chain on the rare roll, on that step's line only", () => {
@@ -137,8 +187,8 @@ describe("Start-up display", () => {
     });
   }
 
-  it("opens with the banner: the linked blocks, name and version, and a tagline", () => {
+  it("opens with the banner: the logo joined to the name in letters, the version, and a tagline", () => {
     const { out } = make();
-    expect(out()).to.match(/^ \[###\]==\[###\]==\[###\]\n   activeledger 5\.1\.0\n   .+\n\n/);
+    expect(out()).to.match(/^ {4}\/\\ {6}#### [^\n]*\n[^\n]*\n[^\n]*\n[^\n]*\n\/_\/ {4}\\_\\ [^\n]*\n\n {2}activeledger 5\.1\.0\n {2}.+\n\n/);
   });
 });

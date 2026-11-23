@@ -34,6 +34,8 @@ export interface ProjectFlags {
 }
 
 export interface ProjectDeps {
+  /** The program's version, shown under the name in the banner */
+  version?: string;
   cwd: string;
   env: { [k: string]: string | undefined };
   git: Git;
@@ -431,16 +433,16 @@ export const projectCommand = async (positionals: string[], flags: ProjectFlags,
   const art = wantBanner(deps.tty, deps.env, flags);
   try {
     if (!sub) {
-      overview(art).forEach((l) => deps.out.log(l));
+      overview(art, deps.version).forEach((l) => deps.out.log(l));
       return 0;
     }
     if (sub === "help") {
-      const lines = rest[0] ? commandHelp(rest[0]) : overview(art);
+      const lines = rest[0] ? commandHelp(rest[0]) : overview(art, deps.version);
       if (!lines) throw new ProjectError(`no project command "${rest[0]}"`);
       lines.forEach((l) => deps.out.log(l));
       return 0;
     }
-    if (art && ["init", "deploy"].includes(sub)) banner().forEach((l) => deps.out.log(l));
+    if (art && ["init", "deploy"].includes(sub)) banner(deps.version).forEach((l) => deps.out.log(l));
     let steps: Step[];
     switch (sub) {
       case "init":

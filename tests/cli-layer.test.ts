@@ -8,6 +8,8 @@ import {
   banner,
   helpText,
   parseCli,
+  TAGLINES,
+  BROKEN_TAGLINES,
   runCli,
 } from "../packages/options/src/cli";
 
@@ -100,16 +102,24 @@ describe("Shared CLI layer (options)", () => {
   });
 
   describe("banner", () => {
-    it("draws the chain on a terminal", () => {
-      expect(banner(program, {}, tty)).to.contain("[###]==[###]==[###]");
+    it("draws the logo's A joined to the rest of the name, then the program and its version", () => {
+      const out = banner(program, {}, tty);
+      const lines = out.split("\n");
+      expect(lines.slice(0, 5)).to.have.length(5);
+      expect(lines[4]).to.include("/_/    \\_\\");
+      for (const l of lines.slice(0, 5)) expect(l).to.match(/#/);
+      expect(out).to.include(`  ${program.name} ${program.version}\n`);
     });
 
-    it("draws a hollow last block for a hybrid", () => {
-      expect(banner({ ...program, hollow: true }, {}, tty)).to.contain("[###]==[###]==[   ]");
+    it("draws the hybrid's and the restore's names the same way", () => {
+      expect(banner({ ...program, name: "activehybrid" }, {}, tty)).to.include("activehybrid");
+      expect(banner({ ...program, name: "activerestore" }, {}, tty).split("\n")[4]).to.include("/_/");
     });
 
-    it("breaks the chain on the rare roll", () => {
-      expect(banner(program, {}, { ...tty, random: () => 0.01 })).to.contain("=/=");
+    it("swaps the tagline for a joke one on the rare roll", () => {
+      const out = banner(program, {}, { ...tty, random: () => 0.01 });
+      expect(BROKEN_TAGLINES.some((t) => out.includes(t))).to.equal(true);
+      expect(TAGLINES.some((t) => out.includes(t))).to.equal(false);
     });
 
     it("is empty off a terminal, with NO_COLOR, --json or --quiet", () => {
@@ -120,7 +130,7 @@ describe("Shared CLI layer (options)", () => {
     });
 
     it("keeps escape codes out of help", () => {
-      expect(helpText(program, undefined, {}, { ...tty, isTTY: false })).to.not.match(/\u001b|\[###\]/);
+      expect(helpText(program, undefined, {}, { ...tty, isTTY: false })).to.not.match(/\u001b|#####/);
     });
   });
 });
