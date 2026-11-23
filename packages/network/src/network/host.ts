@@ -35,7 +35,7 @@ import { ActiveProtocol } from "@activeledger/activeprotocol";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger, ActiveTiming } from "@activeledger/activelogger";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import { Home } from "./home";
+import { Home, leaderMarkHolds } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
 import { startHybridP2P } from "./hybridP2P";
@@ -693,6 +693,18 @@ export class Host extends Home {
       // An async executor turns a throw into an unhandled rejection, and an
       // unhandled rejection exits the host. Reject instead, callers catch it.
       try {
+        // The entry node marks a transaction it may lead ($leaderOk). Not taken
+        // on trust: this node works out the owner from its own list of nodes,
+        // and if it is not the entry node the mark is dropped and this node
+        // votes like any other
+        if (
+          entry.$leaderOk === true &&
+          entry.$origin !== this.reference &&
+          !leaderMarkHolds(entry, entry.$origin, this.tMap)
+        ) {
+          delete entry.$leaderOk;
+        }
+
         // Who asked, worked out before the merge below edits entry.$nodes
         const replyRecipients =
           entry.$broadcast && !entry.$$noreply

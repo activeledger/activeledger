@@ -39,6 +39,57 @@ export function ownerOf(streamId: string, refs: string[]): string | undefined {
   return refs[parseInt(ActiveCrypto.Hash.getHash(streamId).slice(0, 8), 16) % refs.length];
 }
 
+const STREAM_ID = /^[0-9a-f]{64}$/;
+
+/**
+ * Every stream a transaction could be writing, under every reading of its
+ * $i and $o that the host's locking and the protocol use: a label standing in
+ * for the stream in its $stream (the protocol only does this when the FIRST
+ * entry is labelled, the host does it per entry), ids longer than 64 trimmed
+ * from the front. A transaction is only a leader candidate if the whole set is
+ * well formed; anything odd (not a 64 character id, a $stream that is not a
+ * string, an entry that is not an object) returns undefined, and it is a
+ * normal transaction. Taking the union means a transaction cannot be read one
+ * way for ownership and another for the write.
+ */
+export function leaderStreams(tx: any): string[] | undefined {
+  const found = new Set<string>();
+  const add = (id: unknown): boolean => {
+    if (typeof id !== "string") return false;
+    const trimmed = id.length > 64 ? id.slice(-64) : id;
+    if (!STREAM_ID.test(trimmed)) return false;
+    found.add(trimmed);
+    return true;
+  };
+  for (const io of [tx?.$tx?.$i, tx?.$tx?.$o]) {
+    if (io === undefined || io === null) continue;
+    if (typeof io !== "object") return undefined;
+    const keys = Object.keys(io);
+    let firstLabelled = false;
+    for (let i = 0; i < keys.length; i++) {
+      const value = io[keys[i]];
+      if (!value || typeof value !== "object") return undefined;
+      if (value.$stream && typeof value.$stream !== "string") return undefined;
+      const labelled = !!value.$stream;
+      if (i === 0) firstLabelled = labelled;
+      // The host's reading: the label when there is one
+      if (!add(labelled ? value.$stream : keys[i])) return undefined;
+      // The protocol's reading: labels only count when the first entry has one
+      if (!firstLabelled && !add(keys[i])) return undefined;
+    }
+  }
+  return found.size ? [...found] : undefined;
+}
+
+/**
+ * Should a node honour the entry node's leader mark? Only if this node, from
+ * its own list of nodes, agrees that the entry node owns everything written.
+ */
+export function leaderMarkHolds(tx: any, origin: string | undefined, refs: string[]): boolean {
+  const streams = leaderStreams(tx);
+  return !!streams && !!origin && leaderOwnerOf(streams, refs) === origin;
+}
+
 /** The one node that owns all of the streams, or undefined if there is none */
 export function leaderOwnerOf(streamIds: string[], refs: string[]): string | undefined {
   if (!streamIds || !streamIds.length) return undefined;
@@ -121,7 +172,7 @@ export class Home extends Neighbour {
    * @private
    * @type {string[]}
    */
-  private tMap: string[];
+  protected tMap: string[];
 
   /**
    * Holds the Transactions Processors

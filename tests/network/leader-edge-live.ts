@@ -167,6 +167,16 @@ async function territorialShapes(w: Workload, nodes: NetworkNode[]) {
   }
 }
 
+/** What each node's log says about errors and positions, for a failing scenario */
+function dumpLogs(nodes: NetworkNode[], pattern = /error|fail|position|busy|spi|leader|lock|vote/i, last = 14) {
+  const fs = require("fs");
+  for (const n of nodes) {
+    const lines = String(fs.readFileSync(n.logPath)).split("\n").filter((l: string) => pattern.test(l)).map((l: string) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+    console.log(`--- node ${n.index} log: ${lines.length} matching lines, last ${last}`);
+    lines.slice(-last).forEach((l: string) => console.log("   " + l.slice(0, 230)));
+  }
+}
+
 const revNumber = (d: any): number => (d && typeof d._rev === "string" ? parseInt(d._rev.split("-")[0], 10) : NaN);
 
 /**
@@ -210,6 +220,8 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
     await sleep(400);
   }
   const moved = revs[0] - start;
+  const disagree = new Set(revs).size > 1 || new Set(msgs).size > 1;
+  if (disagree && mode === "leader") dumpLogs(nodes);
   console.log(`contention ${mode.padEnd(11)}: ${tried} writers at once on one stream, clients told ${told} committed; revision moved ${moved} on nodes [${revs.join(",")}]`);
   if (new Set(revs).size > 1 || new Set(msgs).size > 1) bad(`contention ${mode}: nodes disagree: ${JSON.stringify(msgs)} ${JSON.stringify(revs)}`);
   // Territorial answers are the owner's, which may be an error for a busy stream, so only count exactly for the others
@@ -270,12 +282,15 @@ async function leaderRouting(w: Workload, nodes: NetworkNode[]) {
 /** A leader transaction whose commit fails: the client is told, and no node moved. */
 async function failedCommit(w: Workload, nodes: NetworkNode[]) {
   const id = w.identities[4];
+  // The conflict scenario before this rewrote copies on one node; let that heal first, or a repair reads as the commit moving a stream
+  await settle(w, nodes, 20000);
   const before = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId)));
   const r: any = await submit(nodes[1].baseUrl, hotTransaction(w, 4, "commit-fail", true));
   const said = !!(r && r.$streams && ((r.$streams.updated && r.$streams.updated.length) || (r.$streams.new && r.$streams.new.length)));
   await sleep(2000);
   const after = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId)));
   const moved = after.some((d, i) => d._rev !== before[i]._rev);
+  if (moved) console.log(`  before ${JSON.stringify(before.map((d) => [d._rev, d.message]))}\n  after  ${JSON.stringify(after.map((d) => [d._rev, d.message]))}`);
   console.log(`leader commit that fails: client told ${said ? "COMMITTED" : "failed"}, a stream moved: ${moved}${r && r.$leader ? ", response says $leader" : ""}`);
   if (said) fail("a leader transaction whose commit failed was reported as committed");
   if (moved) fail("a leader transaction whose commit failed still changed a stream");
@@ -340,6 +355,10 @@ async function main(): Promise<number> {
   const clients = Number(process.argv[3] || 8);
   await withNetwork({ nodeCount: 4, basePort: 5730, readyTimeoutMs: 60000 }, async (_h, nodes) => {
     const w = await setupWorkload(nodes, "returner-leader", clients);
+    if (process.env.EDGE_ONLY === "leader-contention") {
+      for (let i = 0; i < Number(process.env.EDGE_REPEAT || 5); i++) await contention(w, nodes, Math.max(4, rounds), "leader", i % clients);
+      return;
+    }
     await territorial(w, nodes, rounds);
     await territorialShapes(w, nodes);
     await commitConflict(w, nodes, rounds);

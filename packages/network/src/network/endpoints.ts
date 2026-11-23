@@ -36,7 +36,7 @@ import { ActiveDefinitions } from "@activeledger/activedefinitions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import * as Sync from "@activeledger/activesync";
 import { Host } from "./host";
-import { Home } from "./home";
+import { Home, leaderStreams } from "./home";
 import { Maintain } from "./maintain";
 import { Neighbour } from "./neighbour";
 import { isLoopback } from "./hybridAdmin";
@@ -279,7 +279,8 @@ export class Endpoints {
               !tx.$territoriality &&
               !(tx as any).$wait
             ) {
-              const owner = host.leaderOwner(Endpoints.writtenStreams(tx));
+              const streams = leaderStreams(tx);
+              const owner = streams ? host.leaderOwner(streams) : undefined;
               if (owner === host.reference) {
                 tx.$leaderOk = true;
               } else if (owner && !leaderForwarded) {
@@ -1718,22 +1719,6 @@ export class Endpoints {
           });
         });
     });
-  }
-
-  /**
-   * The streams a transaction writes (its inputs and outputs, a label
-   * standing in for the stream named by its $stream)
-   */
-  public static writtenStreams(tx: ActiveDefinitions.LedgerEntry): string[] {
-    const ids: string[] = [];
-    for (const io of [tx.$tx?.$i, tx.$tx?.$o]) {
-      if (!io || typeof io !== "object") continue;
-      for (const key of Object.keys(io)) {
-        const value: any = (io as any)[key];
-        ids.push(value && typeof value === "object" && typeof value.$stream === "string" ? value.$stream : key);
-      }
-    }
-    return ids;
   }
 
   /**

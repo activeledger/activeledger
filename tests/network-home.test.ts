@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { Home, ownerOf, leaderOwnerOf } from "../packages/network/src/network/home";
+import { Home, ownerOf, leaderOwnerOf, leaderStreams, leaderMarkHolds } from "../packages/network/src/network/home";
 import { Neighbour } from "../packages/network/src/network/neighbour";
 import {
   Neighbourhood,
@@ -298,6 +298,71 @@ describe("Home (this node within the neighbourhood)", () => {
       const left = all.filter((r) => r !== stopping);
       ids.forEach((id) => expect(home.leaderOwner([id])).to.equal(ownerOf(id, left)));
       ids.forEach((id) => expect(home.leaderOwner([id])).to.not.equal(stopping));
+    });
+  });
+
+  describe("leader streams", () => {
+    const A = "a".repeat(64), B = "b".repeat(64), C = "c".repeat(64);
+    const txOf = (i: any, o: any = {}): any => ({ $tx: { $i: i, $o: o } });
+    const sorted = (x: string[] | undefined) => (x ? [...x].sort() : x);
+
+    it("lists the streams in $i and $o", () => {
+      expect(sorted(leaderStreams(txOf({ [A]: {} }, { [B]: {} })))).to.deep.equal([A, B]);
+    });
+
+    it("uses the stream a label names, and drops the label itself when the first entry is labelled", () => {
+      expect(sorted(leaderStreams(txOf({ me: { $stream: A }, you: { $stream: B } })))).to.deep.equal([A, B]);
+    });
+
+    it("keeps the key as well when only a later entry is labelled, the protocol would read it as written", () => {
+      // the protocol only reads labels when the first entry has one
+      expect(sorted(leaderStreams(txOf({ [A]: {}, [B]: { $stream: C } })))).to.deep.equal([A, B, C].sort());
+    });
+
+    it("trims an id with a prefix to its last 64 characters", () => {
+      expect(leaderStreams(txOf({ ["prefix:" + A]: {} }))).to.deep.equal([A]);
+      expect(leaderStreams(txOf({ me: { $stream: "x".repeat(10) + B } }))).to.deep.equal([B]);
+    });
+
+    it("refuses anything that is not well formed", () => {
+      for (const t of [
+        txOf({ plain: {} }),
+        txOf({ [A]: { $stream: 5 } }),
+        txOf({ [A]: { $stream: {} } }),
+        txOf({ [A]: null }),
+        txOf({ [A]: "text" }),
+        txOf({ [A]: {} }, "text"),
+        txOf({ [A.toUpperCase()]: {} }),
+        txOf({}),
+        { $tx: {} },
+        {},
+        undefined,
+      ]) {
+        expect(leaderStreams(t), JSON.stringify(t)).to.equal(undefined);
+      }
+    });
+  });
+
+  describe("leader mark held by a node that was not the entry node", () => {
+    const refs = ["a", "b", "c", "d"];
+    const A = "a".repeat(64);
+    const t: any = { $tx: { $i: { [A]: {} }, $o: {} } };
+    const owner = ownerOf(A, refs) as string;
+
+    it("holds when this node's own list agrees the entry node owns the stream", () => {
+      expect(leaderMarkHolds(t, owner, refs)).to.equal(true);
+    });
+
+    it("does not hold when another node is the entry node, or this node's list gives a different owner", () => {
+      expect(leaderMarkHolds(t, refs.find((r) => r !== owner), refs)).to.equal(false);
+      expect(leaderMarkHolds(t, owner, refs.filter((r) => r !== owner))).to.equal(false);
+      expect(leaderMarkHolds(t, undefined, refs)).to.equal(false);
+    });
+
+    it("does not hold when the streams are not well formed or have several owners", () => {
+      expect(leaderMarkHolds({ $tx: { $i: { plain: {} } } }, owner, refs)).to.equal(false);
+      const other = Array.from({ length: 200 }, (_, i) => i.toString(16).padStart(64, "0")).find((id) => ownerOf(id, refs) !== owner) as string;
+      expect(leaderMarkHolds({ $tx: { $i: { [A]: {}, [other]: {} } } }, owner, refs)).to.equal(false);
     });
   });
 

@@ -559,8 +559,9 @@ describe("Endpoints transaction submission (Activeledger)", () => {
     });
 
     describe("leader mode routing ($tx.$leader)", () => {
+      const S1 = "a".repeat(64), S2 = "b".repeat(64), O1 = "c".repeat(64), REAL = "d".repeat(64);
       const leaderTx = (over: any = {}, io: any = {}): any =>
-        tx({ $tx: { $namespace: "default", $contract: "c", $i: { s1: {} }, $o: {}, $leader: true, ...io }, ...over });
+        tx({ $tx: { $namespace: "default", $contract: "c", $i: { [S1]: {} }, $o: {}, $leader: true, ...io }, ...over });
       const answer = { status: 200, data: { $umid: "fwd", $nodes: {} } };
 
       const hostWith = (owner: string | undefined, knocks: any[] = [], asked: string[][] = []) =>
@@ -578,7 +579,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db());
         expect(pendingCalls).to.have.length(1);
         expect(pendingCalls[0].entry.$leaderOk).to.equal(true);
-        expect(asked).to.deep.equal([["s1"]]);
+        expect(asked).to.deep.equal([[S1]]);
       });
 
       it("sends it to the node that owns the stream, as the client sent it, and answers with that node's reply", async () => {
@@ -609,7 +610,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       it("runs as a normal transaction when the streams have different owners", async () => {
         const knocks: any[] = [];
         const { host, pendingCalls } = hostWith(undefined, knocks);
-        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { s1: {}, s2: {} } }), "1.2.3.4", db());
+        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { [S1]: {}, [S2]: {} } }), "1.2.3.4", db());
         expect(knocks).to.have.length(0);
         expect(pendingCalls[0].entry).to.not.have.property("$leaderOk");
       });
@@ -617,8 +618,26 @@ describe("Endpoints transaction submission (Activeledger)", () => {
       it("asks about every stream written, inputs and outputs, a label meaning the stream it names", async () => {
         const asked: string[][] = [];
         const { host } = hostWith("me", [], asked);
-        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { a: {}, labelled: { $stream: "real" } }, $o: { o1: {} } }), "1.2.3.4", db());
-        expect(asked).to.deep.equal([["a", "real", "o1"]]);
+        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { first: { $stream: S1 }, second: { $stream: REAL } }, $o: { [O1]: {} } }), "1.2.3.4", db());
+        expect(asked).to.have.length(1);
+        expect(asked[0].sort()).to.deep.equal([S1, REAL, O1].sort());
+      });
+
+      it("does not lead a transaction whose streams cannot be read the same way everywhere", async () => {
+        const odd: any[] = [
+          { $i: { plain: {} } },                           // not a 64 character stream id
+          { $i: { [S1]: { $stream: 7 } } },                // a $stream that is not a string
+          { $i: { [S1]: null } },                          // an entry that is not an object
+          { $i: { [S1]: {}, nolabel: { $stream: "short" } } }, // a label naming no stream
+          { $i: { [S1]: {}, mixed: { $stream: REAL } } },     // first entry plain, a later one labelled: read two ways
+        ];
+        for (const io of odd) {
+          const asked: string[][] = [];
+          const { host, pendingCalls } = hostWith("me", [], asked);
+          await Endpoints.ExternalInitalise(host, leaderTx({}, io), "1.2.3.4", db()).catch(() => undefined);
+          expect(asked, JSON.stringify(io)).to.have.length(0);
+          if (pendingCalls[0]) expect(pendingCalls[0].entry, JSON.stringify(io)).to.not.have.property("$leaderOk");
+        }
       });
 
       it("takes no part for a transaction that did not ask, or one that needs the votes", async () => {
@@ -637,7 +656,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
 
       it("never takes $leaderOk from the client", async () => {
         const { host, pendingCalls } = hostWith(undefined);
-        await Endpoints.ExternalInitalise(host, leaderTx({ $leaderOk: true }, { $i: { s1: {}, s2: {} } }), "1.2.3.4", db());
+        await Endpoints.ExternalInitalise(host, leaderTx({ $leaderOk: true }, { $i: { [S1]: {}, [S2]: {} } }), "1.2.3.4", db());
         expect(pendingCalls[0].entry).to.not.have.property("$leaderOk");
         const second = hostWith("me");
         await Endpoints.ExternalInitalise(second.host, tx({ $leaderOk: true }), "1.2.3.4", db());
