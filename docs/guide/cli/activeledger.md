@@ -15,6 +15,7 @@ Run it from the directory that holds the node's `config.json` and `.identity`. E
 | `check-config` | Validate the config file. Exit 2 with the reason if it is wrong. |
 | `version` | Print the version. |
 | `help [command]` | Show usage for the program or one command. |
+| `project <command>` | Set up and deploy from a project file: identities, namespaces, contracts and example transactions. Run it on its own for the list. See [Project commands](project.md). |
 | `audit <file\|folder>` | Check contract source for security problems, bad practice, duplicate code and risky dependencies, and print a risk score. See [Auditing a contract](../contracts/audit.md). |
 | `prune [days]` | Remove old errors, and with flags old events and umids, from this node's stores, keeping the last `days` days (default 30). See below. |
 | `hybrid <subcommand>` | Manage the hybrids that follow this node. See below. |

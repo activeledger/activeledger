@@ -34,6 +34,7 @@ import { hybridCommand } from "./cli/hybrid";
 import { reloadCommand } from "./cli/reload";
 import { pruneCommand } from "./cli/prune";
 import { auditCommand } from "./audit/audit";
+import { projectCommand } from "./project/commands";
 import { PIDHandler } from "./cli/pid";
 import { ensureAttestKey, withAttestKey } from "./cli/identity";
 
@@ -81,6 +82,26 @@ if (cli.command === "prune") {
     json: !!cli.flags.json,
   }).then((code) => process.exit(code));
 }
+if (cli.command === "project") {
+  const f = cli.flags;
+  projectCommand(cli.positionals.slice(1), {
+    project: f.project as string | undefined,
+    net: f.net as string | string[] | undefined,
+    dryRun: !!f["dry-run"],
+    json: !!f.json,
+    yes: !!f.yes,
+    quiet: !!f.quiet,
+    name: f.name as string | undefined,
+    type: f.type as string | undefined,
+    fixIgnore: !!f["fix-ignore"],
+    allowUnignoredKey: !!f["allow-unignored-key"],
+    all: !!f.all,
+    set: f.set as string | string[] | undefined,
+    noAudit: !!f["no-audit"],
+    auditFailOn: f["audit-fail-on"] as string | undefined,
+    offline: !!f.offline,
+  }).then((code) => process.exit(code));
+}
 if (cli.command === "audit") {
   auditCommand(cli.positionals[1], {
     json: !!cli.flags.json,
@@ -96,7 +117,7 @@ if (cli.command === "status") {
 }
 
 // Do we have an identity (Will always need, Can be shared)
-if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune" && cli.command !== "audit" && !fs.existsSync("./.identity")) {
+if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune" && cli.command !== "audit" && cli.command !== "project" && !fs.existsSync("./.identity")) {
   ActiveLogger.info("No Identity found. Generating Identity");
   let identity: ActiveCrypto.KeyPair = new ActiveCrypto.KeyPair();
   // 0600: this file contains the node's RSA PRIVATE key - KeyPair.pem is a
@@ -114,7 +135,7 @@ if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "pru
 
 // An identity from before attestation keys gets one added. It does nothing
 // until the node's neighbourhood entry lists the public key as `attest`.
-if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune" && cli.command !== "audit") {
+if (cli.command !== "status" && cli.command !== "hybrid" && cli.command !== "prune" && cli.command !== "audit" && cli.command !== "project") {
   const added = ensureAttestKey("./.identity");
   if (added?.created) {
     ActiveLogger.info(
@@ -136,6 +157,7 @@ if (ActiveOptions.get<boolean>("testnet", false)) {
   cli.command === "reload" ||
   cli.command === "prune" ||
   cli.command === "audit" ||
+  cli.command === "project" ||
   cli.command === "hybrid"
 ) {
   // Handled above

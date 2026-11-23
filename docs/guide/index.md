@@ -49,6 +49,7 @@ Pick the task you have. Each list is in the order to do it.
 ## Reference
 
 - [The activeledger command](cli/activeledger.md)
+- [Project commands: set up and deploy from the terminal](cli/project.md)
 - [The activehybrid command](cli/activehybrid.md)
 - [The activerestore command](cli/activerestore.md)
 - [Pruning old data](operate/prune.md)

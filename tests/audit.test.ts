@@ -5,7 +5,8 @@ import * as os from "os";
 import * as path from "path";
 import { auditCommand, auditFiles, auditSource, collect, render } from "../packages/activeledger/src/audit/audit";
 import { findDuplicates } from "../packages/activeledger/src/audit/duplicates";
-import { checkDependencies, packageOf } from "../packages/activeledger/src/audit/deps";
+import * as http from "http";
+import { checkDependencies, lookupAt, packageOf, registryLookup } from "../packages/activeledger/src/audit/deps";
 import { band, fileScore, overallScore } from "../packages/activeledger/src/audit/score";
 import { RULES } from "../packages/activeledger/src/audit/rules";
 
@@ -114,7 +115,7 @@ describe("audit: rules fire on the pattern and stay quiet on the clean form", ()
     expect(auditSource("c.ts", src, { only: ["no-eval"] }).findings.map((f) => f.rule)).to.deep.equal(["no-eval"]);
     expect(auditSource("c.ts", src, { skip: ["no-eval"] }).findings.map((f) => f.rule)).to.not.include("no-eval");
   });
-  it("plain JavaScript is read too", () => {
+  it("auditSource reads JavaScript text when given it directly", () => {
     expect(rules("class A extends Standard { vote(){ return eval(x); } }", "c.js")).to.include("no-eval");
   });
 });
@@ -204,8 +205,10 @@ describe("audit: files, report and command", () => {
   const put = (rel: string, content: string) => (fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }), fs.writeFileSync(path.join(dir, rel), content));
 
   it("collects source files in order, skipping node_modules, hidden, build output and declarations", () => {
-    put("b.ts", ""); put("a.js", ""); put("sub/c.ts", ""); put("node_modules/x/i.js", ""); put(".git/h.js", ""); put("lib/o.js", ""); put("t.d.ts", ""); put("readme.md", "");
-    expect(collect(dir).map((p) => path.relative(dir, p))).to.deep.equal(["a.js", "b.ts", path.join("sub", "c.ts")]);
+    put("b.ts", ""); put("a.ts", ""); put("sub/c.ts", ""); put("legacy.js", ""); put("m.mjs", ""); put("node_modules/x/i.js", ""); put(".git/h.js", ""); put("lib/o.js", ""); put("t.d.ts", ""); put("readme.md", "");
+    const skipped: string[] = [];
+    expect(collect(dir, skipped).map((p) => path.relative(dir, p))).to.deep.equal(["a.ts", "b.ts", path.join("sub", "c.ts")]);
+    expect(skipped).to.deep.equal(["skipped 2 JavaScript files: contracts are TypeScript"]);
     expect(collect(path.join(dir, "b.ts"))).to.have.length(1);
     const notes: string[] = [];
     expect(collect(path.join(dir, "missing"), notes)).to.deep.equal([]);
@@ -237,7 +240,7 @@ describe("audit: files, report and command", () => {
     expect(await auditCommand(dir, {}, out)).to.equal(2); // no source files
     put("a.ts", "");
     expect(await auditCommand(dir, { failOn: "urgent" }, out)).to.equal(2);
-    expect(errs.join("\n")).to.include("usage").and.to.include("does not exist").and.to.include("no .ts or .js").and.to.include("--fail-on");
+    expect(errs.join("\n")).to.include("usage").and.to.include("does not exist").and.to.include("no .ts files").and.to.include("--fail-on");
   });
   it("--rules lists every rule", async () => {
     expect(await auditCommand(undefined, { rules: true }, out)).to.equal(0);
@@ -249,5 +252,60 @@ describe("audit: files, report and command", () => {
     let called = false;
     await auditCommand(dir, {}, out, async () => ((called = true), {}));
     expect(called).to.equal(true);
+  });
+});
+
+describe("audit: duplicates in a report, unreadable files and the registry call", () => {
+  let dir: string;
+  beforeEach(() => (dir = fs.mkdtempSync(path.join(os.tmpdir(), "audit-"))));
+  afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const block = Array.from({ length: 10 }, (_, i) => `const shared${i} = compute(${i}, "same");`).join("\n");
+
+  it("reports a block repeated between two files on both files and in the duplicate list", async () => {
+    fs.writeFileSync(path.join(dir, "a.ts"), wrap(block));
+    fs.writeFileSync(path.join(dir, "b.ts"), wrap("// other\n" + block));
+    const report = await auditFiles(collect(dir), { offline: true });
+    expect(report.duplicates).to.have.length(1);
+    expect(report.files.every((f) => f.findings.some((x) => x.rule === "duplicate-code"))).to.equal(true);
+    const text = render(report, dir);
+    expect(text).to.include("Duplicate code").and.to.include("a.ts").and.to.match(/\(\d+ lines\)/);
+  });
+  it("notes a file it cannot read and carries on", async () => {
+    fs.writeFileSync(path.join(dir, "a.ts"), wrap(""));
+    const report = await auditFiles([path.join(dir, "a.ts"), path.join(dir, "gone.ts")], { offline: true });
+    expect(report.files).to.have.length(1);
+    expect(report.notes.join(" ")).to.include("cannot read").and.to.include("gone.ts");
+  });
+  it("skips a source file over the size limit with a note", () => {
+    fs.writeFileSync(path.join(dir, "big.ts"), "x".repeat(1024 * 1024 + 1));
+    const notes: string[] = [];
+    expect(collect(dir, notes)).to.deep.equal([]);
+    expect(notes[0]).to.include("over");
+  });
+  it("posts the names and versions to the registry and reads the answer, and fails on an error status", async () => {
+    let seen = "";
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        seen = body;
+        if (req.url === "/bad") {
+          res.statusCode = 500;
+          return res.end("no");
+        }
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ lodash: [{ id: 1, severity: "high" }] }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
+    try {
+      expect(await lookupAt(base + "/ok", { lodash: ["4.17.15"] })).to.deep.equal({ lodash: [{ id: 1, severity: "high" }] });
+      expect(JSON.parse(seen)).to.deep.equal({ lodash: ["4.17.15"] });
+      await lookupAt(base + "/bad", {}).then(() => expect.fail("should fail"), (e) => expect(e.message).to.include("500"));
+      expect(registryLookup).to.be.a("function");
+    } finally {
+      server.close();
+    }
   });
 });

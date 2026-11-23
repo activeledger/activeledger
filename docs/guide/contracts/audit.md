@@ -7,7 +7,7 @@ activeledger audit <file|folder> [--json] [--offline] [--fail-on <severity>]
                                  [--only <rules>] [--skip <rules>] [--rules]
 ```
 
-It reads every `.ts`, `.js`, `.mjs` and `.cjs` file under the path, skipping `node_modules`, hidden folders, build output (`lib`, `dist`, `es`, `build`) and `.d.ts` files.
+Contracts are TypeScript (a node transpiles the source it is sent), so it reads every `.ts` file under the path. A JavaScript file is skipped, and the run says how many were. It skips `node_modules`, hidden folders, build output (`lib`, `dist`, `es`, `build`) and `.d.ts` files.
 
 ## What you get
 
