@@ -601,6 +601,141 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
     });
   });
 
+  describe("handOff", () => {
+    const onStream = (umid: string, streams: string[], over: any = {}) =>
+      entry(umid, { $tx: { $i: Object.fromEntries(streams.map((x) => [x, {}])), $o: {} }, ...over });
+    const queued = (host: any) => host.busyLocksQueue.external.map((q: any) => q.entry.$umid);
+
+    it("gives a freed stream to the first one queued for it at once, with no scan", () => {
+      const host = makeHost();
+      const stream = S("hand-1");
+      Locker.hold([stream], "holder");
+      claimed.push("holder");
+      for (const u of ["h1", "h2", "h3"]) {
+        addPending(host, onStream(u, [stream]));
+        expect(host.hold(host.processPending[u].entry)).to.equal(false);
+      }
+      Locker.release(stream, "holder");
+      host.handOff([stream]);
+      expect(host.processPending["h1"].pid).to.equal(4242);
+      expect(queued(host)).to.deep.equal(["h2", "h3"]);
+      expect(host.queuedStreams.get(stream)).to.equal(2);
+      // It holds the stream now, so a second hand off for it waits for the next release
+      host.handOff([stream]);
+      expect(queued(host)).to.deep.equal(["h2", "h3"]);
+      // Next release, next in line
+      Locker.release(stream, "h1");
+      host.handOff([stream]);
+      expect(host.processPending["h2"].pid).to.equal(4242);
+      expect(queued(host)).to.deep.equal(["h3"]);
+    });
+
+    it("leaves alone what is queued for other streams", () => {
+      const host = makeHost();
+      const a = S("hand-a");
+      const b = S("hand-b");
+      Locker.hold([a, b], "holder");
+      claimed.push("holder");
+      addPending(host, onStream("ha", [a]));
+      addPending(host, onStream("hb", [b]));
+      host.hold(host.processPending["ha"].entry);
+      host.hold(host.processPending["hb"].entry);
+      Locker.release(a, "holder");
+      host.handOff([a]);
+      expect(host.processPending["ha"].pid).to.equal(4242);
+      expect(queued(host)).to.deep.equal(["hb"]);
+    });
+
+    it("does not let a later entry pass one ahead of it that wants the same stream", () => {
+      const host = makeHost();
+      const a = S("hand-order-a");
+      const b = S("hand-order-b");
+      Locker.hold([b], "holder");
+      claimed.push("holder");
+      // Ahead of it, waiting on a stream that is still busy
+      addPending(host, onStream("first", [a, b]));
+      addPending(host, onStream("later", [a]));
+      host.hold(host.processPending["first"].entry);
+      host.hold(host.processPending["later"].entry);
+      host.handOff([a]);
+      expect(queued(host)).to.deep.equal(["first", "later"]);
+      expect(Locker.has(a)).to.equal(false);
+    });
+
+    it("keeps going to the next freed stream when the first entry could not take its streams", () => {
+      const host = makeHost();
+      const a = S("hand-multi-a");
+      const b = S("hand-multi-b");
+      const c = S("hand-multi-c");
+      Locker.hold([a, b, c], "holder");
+      claimed.push("holder");
+      addPending(host, onStream("m1", [a, c]));
+      addPending(host, onStream("m2", [b]));
+      host.hold(host.processPending["m1"].entry);
+      host.hold(host.processPending["m2"].entry);
+      Locker.release([a, b], "holder");
+      host.handOff([a, b]);
+      expect(host.processPending["m2"].pid).to.equal(4242);
+      expect(queued(host)).to.deep.equal(["m1"]);
+    });
+
+    it("serves internal entries before external ones", () => {
+      const host = makeHost();
+      const stream = S("hand-int");
+      Locker.hold([stream], "holder");
+      claimed.push("holder");
+      addPending(host, onStream("ext", [stream]));
+      addPending(host, onStream("int", [stream], { $revs: {} }));
+      host.hold(host.processPending["ext"].entry);
+      host.hold(host.processPending["int"].entry);
+      Locker.release(stream, "holder");
+      host.handOff([stream]);
+      expect(host.processPending["int"].pid).to.equal(4242);
+      expect(queued(host)).to.deep.equal(["ext"]);
+    });
+
+    it("does nothing while a scan is running", () => {
+      const host = makeHost();
+      const stream = S("hand-busy");
+      Locker.hold([stream], "holder");
+      claimed.push("holder");
+      addPending(host, onStream("hb1", [stream]));
+      host.hold(host.processPending["hb1"].entry);
+      Locker.release(stream, "holder");
+      host.processingBLQ = true;
+      host.handOff([stream]);
+      expect(queued(host)).to.deep.equal(["hb1"]);
+      expect(host.processingBLQ).to.equal(true);
+    });
+
+    it("is started by a release when someone is queued for what it frees, and not when nobody is", () => {
+      const host = makeHost();
+      const immediates: (() => void)[] = [];
+      (global as any).setImmediate = (fn: () => void) => immediates.push(fn);
+      const stream = S("hand-rel");
+      Locker.hold([stream], "rel-a");
+      claimed.push("rel-a");
+      const a = onStream("rel-a", [stream]);
+      a.$$labelOrKey = [stream];
+      addPending(host, a);
+      host.destroy = () => undefined;
+      host.processQueue = () => undefined;
+      addPending(host, onStream("rel-b", [stream]));
+      host.hold(host.processPending["rel-b"].entry);
+      host.release("rel-a");
+      expect(immediates).to.have.length(1);
+      immediates[0]();
+      expect(host.processPending["rel-b"].pid).to.equal(4242);
+      // Nobody queued now
+      const other = onStream("rel-c", [S("hand-rel-other")]);
+      other.$$labelOrKey = other.$tx.$i && Object.keys(other.$tx.$i);
+      addPending(host, other);
+      claimed.push("rel-c");
+      host.release("rel-c");
+      expect(immediates).to.have.length(1);
+    });
+  });
+
   describe("timerQueue", () => {
     it("re-checks the queue every two seconds, forever", () => {
       const host = makeHost();
