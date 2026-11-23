@@ -120,6 +120,21 @@ activeledger prune 30 --include-umids --include-events   # also the umid index a
 
 Each choice has a cost, written up in [Pruning old data](docs/guide/operate/prune.md).
 
+## Setting up a project from the command line
+
+`activeledger project` registers a namespace, uploads and updates contracts and runs example transactions, all
+from a `.activeledger` file you commit, with the keys kept in a `.activeledger-key` file the CLI makes sure git
+ignores. Run it on its own for the list of commands:
+
+```bash
+activeledger project init --name myorg --net testnet=http://127.0.0.1:5260
+activeledger project identity new alice
+activeledger project deploy            # registers the namespace, uploads or updates each contract
+activeledger project tx run add-note   # runs an example transaction and checks the reply
+```
+
+See [Project commands](docs/guide/cli/project.md).
+
 ## Auditing a contract
 
 `activeledger audit` reads contract source before you deploy it and prints a table per file of security,

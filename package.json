@@ -50,6 +50,7 @@
     "version:set": "node scripts/set-version.mjs",
     "test:network:hybrid": "tsx tests/network/hybrid.ts",
     "test:network:hybrid-enable": "tsx tests/network/hybrid-enable.ts",
+    "test:network:project": "tsx tests/network/project-live.ts",
     "test:network:prune": "tsx tests/network/prune.ts",
     "test:network:resend-replay": "tsx tests/network/resend-replay.ts",
     "test:network:missed-umids": "tsx tests/network/missed-umids.ts",

@@ -70,6 +70,7 @@ nav:
       - Operate hybrids: hybrid/operate.md
   - Command line:
       - activeledger: cli/activeledger.md
+      - Project commands: cli/project.md
       - activehybrid: cli/activehybrid.md
       - activerestore: cli/activerestore.md
   - Running a network:

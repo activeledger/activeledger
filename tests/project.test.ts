@@ -85,10 +85,30 @@ describe("project: files", () => {
   it("only uses a project file it finds upward when the user owns it", function () {
     if (typeof process.getuid !== "function") this.skip();
     touch(".activeledger");
-    expect(() => resolveProject(dir, undefined, {}, () => process.getuid!() + 1)).to.throw(ProjectError, /owned by another user/);
-    expect(resolveProject(dir, undefined, {}, () => process.getuid!())).to.equal(path.join(dir, ".activeledger"));
+    const me = process.getuid!();
+    const probe = (over: { [suffix: string]: { uid?: number; isLink?: boolean } }) => (f: string) => {
+      const hit = Object.keys(over).find((k) => f.endsWith(k));
+      return { uid: me, isLink: false, ...(hit ? over[hit] : {}) };
+    };
+    expect(resolveProject(dir, undefined, {}, probe({}))).to.equal(path.join(dir, ".activeledger"));
+    expect(() => resolveProject(dir, undefined, {}, probe({ ".activeledger": { uid: me + 1 } }))).to.throw(ProjectError, /owned by another user/);
+    expect(() => resolveProject(dir, undefined, {}, probe({ [path.basename(dir)]: { uid: me + 1 } }))).to.throw(ProjectError, /owned by another user/);
+    expect(() => resolveProject(dir, undefined, {}, probe({ ".activeledger": { isLink: true } }))).to.throw(ProjectError, /symbolic link/);
     // A file named on purpose is the user's own choice
-    expect(resolveProject(dir, ".activeledger", {}, () => process.getuid!() + 1)).to.equal(path.join(dir, ".activeledger"));
+    expect(resolveProject(dir, ".activeledger", {}, probe({ ".activeledger": { uid: me + 1 } }))).to.equal(path.join(dir, ".activeledger"));
+  });
+  it("a project file that is a link to somewhere else is not picked up by the search", () => {
+    touch("real/.activeledger");
+    fs.mkdirSync(path.join(dir, "work"));
+    fs.symlinkSync(path.join(dir, "real", ".activeledger"), path.join(dir, "work", ".activeledger"));
+    expect(() => resolveProject(path.join(dir, "work"))).to.throw(ProjectError, /symbolic link/);
+  });
+  it("refuses a key file that is a symbolic link", () => {
+    const real = path.join(dir, "real-key");
+    writeKeys(real, { version: 1, identities: {} });
+    const link = path.join(dir, ".activeledger-key");
+    fs.symlinkSync(real, link);
+    expect(checkKeyFile(link, fakeGit({ ignored: true })).problems.join(" ")).to.include("symbolic link");
   });
   it("reads a contract's source only from inside the project folder, as .ts or .js, never the key file", () => {
     touch("project/.activeledger", "{}");

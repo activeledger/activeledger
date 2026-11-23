@@ -77,7 +77,7 @@ export const projectsIn = (dir: string): string[] => {
  * Which project file: --project (a name or a path), then ACTIVELEDGER_PROJECT, then the only one in this folder or the nearest parent
  * that has any. Several and none named is an error that lists them.
  */
-export const resolveProject = (cwd: string, project?: string, env: { [k: string]: string | undefined } = {}, ownerOf?: (file: string) => number): string => {
+export const resolveProject = (cwd: string, project?: string, env: { [k: string]: string | undefined } = {}, probe?: Probe): string => {
   const wanted = project || env.ACTIVELEDGER_PROJECT;
   if (wanted) {
     const candidates = [path.resolve(cwd, wanted), path.resolve(cwd, wanted + SUFFIX), path.resolve(cwd, wanted === "default" ? PROJECT_FILE : "\0")];
@@ -91,7 +91,7 @@ export const resolveProject = (cwd: string, project?: string, env: { [k: string]
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
     const here = projectsIn(dir);
     if (here.length === 1) {
-      ownedByUser(here[0], ownerOf);
+      ownedByUser(here[0], probe);
       return here[0];
     }
     if (here.length > 1) throw new ProjectError(`more than one project file in ${dir}: ${here.map((p) => path.basename(p)).join(", ")}. Choose one with --project <name>.`);
@@ -100,11 +100,24 @@ export const resolveProject = (cwd: string, project?: string, env: { [k: string]
   throw new ProjectError("no project file found. Run `activeledger project init` first.");
 };
 
-/** A project file found by looking upward must belong to the user running the command */
-const ownedByUser = (file: string, ownerOf: (f: string) => number = (f) => fs.statSync(f).uid): void => {
+/** Who owns a path itself (not what a link points at), and whether it is a link */
+export type Probe = (file: string) => { uid: number; isLink: boolean };
+const realProbe: Probe = (f) => {
+  const st = fs.lstatSync(f);
+  return { uid: st.uid, isLink: st.isSymbolicLink() };
+};
+
+/**
+ * A project file found by looking upward must be a real file (not a link) owned by the user running the command, in a
+ * folder the user owns: otherwise someone else could have put it there.
+ */
+const ownedByUser = (file: string, probe: Probe = realProbe): void => {
   const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
   if (uid === undefined) return;
-  if (ownerOf(file) !== uid) throw new ProjectError(`${file} is owned by another user, so it is not used. Name it with --project if you trust it.`);
+  const f = probe(file);
+  const d = probe(path.dirname(file));
+  if (f.isLink) throw new ProjectError(`${file} is a symbolic link, so it is not used when found by searching upward. Name it with --project if you trust it.`);
+  if (f.uid !== uid || d.uid !== uid) throw new ProjectError(`${file} (or the folder it is in) is owned by another user, so it is not used. Name it with --project if you trust it.`);
 };
 
 /**
@@ -238,6 +251,9 @@ export const checkKeyFile = (keyPath: string, git: Git, opts: { allowUnignored?:
     }
   }
   try {
+    const link = fs.lstatSync(keyPath);
+    if (link.isSymbolicLink()) problems.push(`${name} is a symbolic link; keys are only read from a real file.`);
+    if (typeof process.getuid === "function" && link.uid !== process.getuid()) problems.push(`${name} is owned by another user.`);
     const mode = fs.statSync(keyPath).mode & 0o777;
     if (mode & 0o077) problems.push(`${name} can be read by other users (mode ${mode.toString(8)}). Run \`chmod 600 ${name}\`.`);
   } catch {
