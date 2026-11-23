@@ -183,15 +183,18 @@ function dumpLogs(nodes: NetworkNode[], pattern = /error|fail|position|busy|spi|
   }
 }
 
-/** Wait until no node has written to its log for `still` ms (a forked stream keeps the nodes busy repairing it for a minute or more) */
-async function quiet(nodes: NetworkNode[], still = 6000, max = 120000): Promise<number> {
-  const fs = require("fs");
+/** Log lines that say a node is still working at something, not its steady heartbeat (interagent polling, peer links) */
+const busyLines = (n: NetworkNode): number =>
+  String(require("fs").readFileSync(n.logPath)).split("\n").filter((l: string) => l.trim() && !/Interagent|Connected to peer|TCP connection accepted|neighbour update|Setting Document Processed|Document (Removed|Archived)/.test(l)).length;
+
+/** Wait until no node has logged any real work for `still` ms (a forked stream keeps the nodes repairing it for about a minute) */
+async function quiet(nodes: NetworkNode[], still = 8000, max = 120000): Promise<number> {
   const began = Date.now();
-  let last = nodes.map((n) => fs.statSync(n.logPath).size).join(",");
+  let last = nodes.map(busyLines).join(",");
   let since = Date.now();
   while (Date.now() - began < max) {
     await sleep(1000);
-    const now = nodes.map((n) => fs.statSync(n.logPath).size).join(",");
+    const now = nodes.map(busyLines).join(",");
     if (now !== last) (last = now), (since = Date.now());
     else if (Date.now() - since >= still) break;
   }
@@ -214,6 +217,7 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   const refs: string[] = [];
   for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
   const start = revNumber(await storageGet(nodes[0].storageUrl, id.streamId));
+  const offsets = nodes.map((n) => require("fs").statSync(n.logPath).size);
   let told = 0, tried = 0;
   for (let r = 0; r < rounds; r++) {
     const results = await Promise.all(
@@ -244,6 +248,13 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   const disagree = new Set(revs).size > 1 || new Set(msgs).size > 1;
   if (disagree && (mode === "leader" || mode === "mixed")) {
     dumpLogs(nodes);
+    // Everything each node logged since the burst began, for reading afterwards
+    const fs = require("fs");
+    nodes.forEach((n, k) => {
+      const file = `/tmp/claude-1000/soak/fail-${Date.now()}-node${n.index}.log`;
+      fs.writeFileSync(file, String(fs.readFileSync(n.logPath).subarray(offsets[k])).replace(/\x1b\[[0-9;]*m/g, ""));
+      console.log(`  node ${n.index}: log since the burst saved to ${file}`);
+    });
     // What each node's log says about this very stream
     console.log(`stream ${id.streamId}`);
     dumpLogs(nodes, new RegExp(id.streamId.slice(0, 16)), 12);
@@ -395,6 +406,32 @@ async function main(): Promise<number> {
     const w = await setupWorkload(nodes, "returner-leader", clients);
     if (process.env.EDGE_ONLY === "leader-contention") {
       for (let i = 0; i < Number(process.env.EDGE_REPEAT || 5); i++) await contention(w, nodes, Math.max(4, rounds), "leader", i % clients);
+      return;
+    }
+    if (process.env.EDGE_ONLY === "terr-observe") {
+      // After a forked territorial stream: what are the nodes still doing, and for how long?
+      await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
+      const fs = require("fs");
+      const seen = nodes.map((n) => String(fs.readFileSync(n.logPath)).split("\n").length);
+      const began = Date.now();
+      for (let t = 0; t < Number(process.env.OBSERVE_S || 120); t += 15) {
+        await sleep(15000);
+        nodes.forEach((n, k) => {
+          const lines = String(fs.readFileSync(n.logPath)).split("\n").map((l: string) => l.replace(/\x1b\[[0-9;]*m/g, ""));
+          const fresh = lines.slice(seen[k]);
+          seen[k] = lines.length;
+          const tally: Record<string, number> = {};
+          for (const l of fresh) {
+            const m = /\) (.*)$/.exec(l);
+            if (m && /^[A-Z]/.test(m[1])) {
+              const key = m[1].replace(/[0-9a-f]{32,}/g, "<id>").replace(/\d+/g, "#").slice(0, 70);
+              tally[key] = (tally[key] || 0) + 1;
+            }
+          }
+          const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k2, v]) => `${v}x ${k2}`).join(" | ");
+          console.log(`t+${Math.round((Date.now() - began) / 1000)}s node ${n.index}: ${fresh.length} new lines; ${top}`);
+        });
+      }
       return;
     }
     if (process.env.EDGE_ONLY === "terr-then-leader") {
