@@ -1,5 +1,92 @@
 # Activeledger Changelog
 
+## [5.11.0] - 2026-11-23
+
+Leader mode is finished and safe for concurrent writers, there are two new commands (`activeledger audit` and
+`activeledger project`), every command opens with a new banner and start-up is one live line, and the README and guide
+have a quickstart with screenshots. Nothing is build-gated and nothing
+needs changing on upgrade, with one thing to know for leader mode: see **Upgrading** below.
+
+### Upgrading
+- **Use `$tx.$leader` only once every node of the network runs 5.11.0.** The entry node now routes a leader transaction
+  to the node that owns the stream (see below), and a node on an older release neither forwards nor leads one. A
+  transaction that does not ask for leader mode is unaffected, so nothing else needs to move together.
+
+### Added
+- **Leader mode.** A transaction that sets `"$leader": true` inside `$tx` (so it is signed) and whose contract returns
+  `{ leader: true }` from `vote()` is committed by one node as soon as its own vote is yes, without waiting for the
+  other nodes' votes. That node holds its broadcast until its vote is yes, so a no is the answer and nothing is sent;
+  on a yes it commits and answers the client, and the other nodes verify and vote for themselves and each commits on its
+  own vote. The client's reply carries `"$leader": true`, which means one node's answer, not network confirmation.
+  - **The owner leads.** Each stream has one owner node, `sha256(stream id)` modulo the number of active nodes in the
+    sorted node list. The entry node works out the owner of everything the transaction writes. If it owns all of it, it
+    leads; if one other node owns all of it, it forwards the transaction as the client sent it and passes that node's
+    reply back untouched; if the owners differ, or anything is unusual, the transaction runs as a normal vote. A node
+    never forwards twice, and a peer checks the owner against its own node list and drops the claim unless the entry
+    node is the owner. This fixes #127, where concurrent writers to one stream through different entry nodes each
+    committed at the same revision and forked it: 24 simultaneous writers through four entry nodes now commit 24 times
+    on every node.
+  - **It needs a broadcast transaction.** It is ignored with `$unanimous` and `$wait`, and a transaction with both
+    `$leader` and `$territoriality` is refused with a reason, because they ask for different nodes to lead.
+  - **The owner also sends the transaction to a neighbour it has marked unreachable**, once and without waiting. A link
+    that stalled under load and recovered would otherwise skip a leader transaction for good, and nothing later asks
+    whether a node received it.
+  - **Where it fits.** A stream written by one client at a time through any node: a counter, a log, a client's own
+    state. A transaction that moves value between two accounts writes streams that are usually on different nodes, so it
+    runs as a normal vote and gets no speed up. Loopback benchmarks hide the cost of the extra hop on a real network.
+  - **What it does not do.** It does not order a leader write against a normal write to the same stream (do not mix
+    them on one stream), and if the owner is down a leader transaction for its streams fails rather than moving to
+    another node. See [Nodes, consensus and upgrades](docs/guide/operate/nodes.md#leader-mode).
+- **`activeledger audit <file|folder>`.** Reads contract source (TypeScript, which is what a node transpiles) and prints
+  a table per file of security, contract, best practice, duplicate code and dependency findings, and a 0 to 100 risk
+  score (the worst file blended with the average). It includes the patterns the storage guard red-team passes found,
+  looks up the packages a contract imports in the npm advisory database (`--offline` skips it), and has `--json` and
+  `--fail-on <severity>` for CI. It changes nothing and needs no running node.
+- **`activeledger project`.** Sets up and deploys from a committed `.activeledger` project file, with identities kept in
+  an `.activeledger-key` file the command checks is git-ignored, untracked, mode 600 and a real file before it reads it.
+  `init`, `identity new|import|onboard|list`, `namespace register`, `contract upload|update|status`, `tx run|list`,
+  `deploy` (safe to repeat, made for CI) and `status`; several project files per folder with `--project`; protected
+  networks that need a typed confirmation; `--dry-run`; the audit runs before an upload; example transactions may use
+  labelled inputs. Run `activeledger project` alone for the list, with the logo and the name in letters at a terminal.
+  A contract source must be a TypeScript file inside the project's folder.
+- **One banner on every command.** The logo's A joined to the rest of the name in letters, then the program and its
+  version and a tagline, replaces the basic text banner on `--help`, on start-up and on every other command of
+  `activeledger`, `activehybrid` and `activerestore` (`version` excepted). It is drawn only for a person at a terminal:
+  never with `--json`, `--quiet` or `NO_COLOR`, and never when the output is piped, so scripts do not see it.
+- **Documentation.** A Quickstart on the docs site and in the README (a three-node testnet, a contract, `project`
+  deploy, the explorer, the audit) with real screenshots; guide pages for `project`, `audit` and the database explorer
+  (`/_explorer` on a node's storage port); developer material moves from the README to `DEVELOPING.md`. Node.js 24 is
+  stated as the version that is built and tested.
+
+### Changed
+- **The start-up display is one live line, not a growing list.** On a terminal the chain (`[###]==[###]==[...]   consensus`)
+  is redrawn in place under the banner: one block fills per step, the running block cycles `[   ]` `[.  ]` `[.. ]`
+  `[...]`, a slow step shows its seconds, and the finished line stays with how long the start took (`ready  (3.4s)`).
+  Log lines raised while starting print above it and the line is drawn again beneath them. Not a terminal, `NO_COLOR`,
+  `--json`, `--quiet` and process managers (systemd, pm2) still get one plain line per step. Something other than the
+  node's own logger that writes to the terminal while it starts (a worker process) can leave one stale line above the
+  next redraw; nothing is lost.
+- **A transaction with both `$tx.$leader` and `$territoriality` is refused** with a reason, where before the leader flag
+  was silently ignored.
+
+### Fixed
+- **A territorial transaction was dropped by the node it was forwarded to.** The forward carried the entry node's
+  stamps, and the receiving node refused a transaction with `$datetime` already set (`$datetime cannot be preset`), so a
+  territorial transaction entered at a node other than the one it names silently never ran. It is now forwarded as the
+  client sent it.
+- **A forwarded transaction's reply reached the client with a zero summary.** The entry node rebuilt it from `$nodes`,
+  which the forwarded reply does not have, zeroing `$summary` and dropping `$responses` and `$leader`. The forwarding
+  node now passes the other node's client reply through untouched.
+- **A leader transaction on a node that was waiting for votes waited ten seconds before reporting its failure.** The
+  failure path skips that wait while the broadcast is held.
+
+### Tests
+- Live checks on a real four-node network: leader and normal contention on one stream (24 writers through four entry
+  nodes), owner routing from every entry node, a commit that fails on one node, a unanimous transaction that asks for
+  leader, territorial mode from every entry and named node, the named node committing first, and `activeledger project`
+  deploying and running a contract in a git repository. The unit suite is about 5,050 tests.
+- The audit and project code are at 99.7% line coverage.
+
 ## [5.10.3] - 2026-11-22
 
 A patch for a node restart race. Nothing needs changing on upgrade, and nothing is build-gated.
