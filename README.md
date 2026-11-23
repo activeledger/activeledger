@@ -9,7 +9,7 @@
 
 Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus, each node reaching its own conclusion by watching the same traffic rather than waiting on a single leader. Application logic lives in smart contracts written in TypeScript, executed in a per-transaction worker process and checked by a security scan at deploy time. Consensus is tracked per stream rather than globally, so unrelated transactions are voted on and committed at the same time.
 
-![A stream in the Activeledger database explorer](docs/assets/readme/explorer-stream.png)
+![A stream in the Activeledger database explorer](docs/guide/assets/screens/explorer-stream.png)
 
 *A contract's output, read back from a node's own database in the built-in explorer. It is the "hello" contract below, run on a local three-node network.*
 
@@ -33,7 +33,7 @@ activeledger --testnet      # creates instance-0, instance-1 and instance-2
 node testnet                # starts all three; leave this running
 ```
 
-![Creating and checking a local testnet](docs/assets/readme/terminal-testnet.png)
+![Creating and checking a local testnet](docs/guide/assets/screens/terminal-testnet.png)
 
 The nodes answer on ports 5260, 5270 and 5280. Open a second terminal for the rest.
 
@@ -53,8 +53,8 @@ export default class Hello extends Standard {
   }
 
   public vote(): Promise<boolean> {
-    const signer = Object.keys(this.transactions.$i)[0];
-    this.message = this.transactions.$i[signer].message as string;
+    // "sender" is the label the transaction gives the signing stream
+    this.message = this.transactions.$i.sender.message as string;
     return this.message ? Promise.resolve(true) : Promise.reject("A message is needed");
   }
 
@@ -67,13 +67,13 @@ export default class Hello extends Standard {
 }
 ```
 
-It checks that a message was sent, then writes it to a new stream and hands the stream's id back. [Writing a contract](docs/guide/contracts/write.md) explains each part, and builds a bigger one.
+The transaction gives the signing stream the label `sender`, and the contract reads it by that label (`this.transactions.$i.sender`) rather than by its position in the list of inputs. It checks that a message was sent, then writes it to a new stream and hands the stream's id back. [Writing a contract](docs/guide/contracts/write.md) explains each part, and builds a bigger one.
 
 ### 4. Deploy it and run it
 
 `activeledger project` does the setup for you. Run it on its own to see every command:
 
-![The activeledger project command](docs/assets/readme/terminal-project.png)
+![The activeledger project command](docs/guide/assets/screens/terminal-project.png)
 
 In your folder (a git repository is best, so the key file can be kept out of it):
 
@@ -93,7 +93,7 @@ Pick a namespace of your own in place of `helloorg`: names are unique on a netwo
   "say-hello": {
     "contract": "hello",
     "entry": "create",
-    "input": { "@alice": { "message": "Hello, Activeledger" } }
+    "input": { "sender": { "$stream": "@alice", "message": "Hello, Activeledger" } }
   }
 }
 ```
@@ -103,17 +103,17 @@ activeledger project deploy            # registers the namespace, audits and upl
 activeledger project tx run say-hello  # signs and sends the example, and checks the reply
 ```
 
-![Deploying a contract and running a transaction](docs/assets/readme/terminal-deploy.png)
+![Deploying a contract and running a transaction](docs/guide/assets/screens/terminal-deploy.png)
 
 Change a value for one run with `--set`, ask the network what it holds, or deploy again (it sees nothing changed and sends nothing):
 
 ```bash
-activeledger project tx run say-hello --set "input.@alice.message=Hello again"
+activeledger project tx run say-hello --set "input.sender.message=Hello again"
 activeledger project status
 activeledger project deploy
 ```
 
-![Running it again, status, and a second deploy that does nothing](docs/assets/readme/terminal-run.png)
+![Running it again, status, and a second deploy that does nothing](docs/guide/assets/screens/terminal-run.png)
 
 Everything `project` sends is an ordinary signed transaction. [Project commands](docs/guide/cli/project.md) has the file formats, how keys are kept safe, protected networks, CI use and a troubleshooting table.
 
@@ -125,11 +125,11 @@ Every node serves a read-only view of its own database. Open the first node's:
 http://127.0.0.1:5259/_explorer
 ```
 
-![The streams on a node](docs/assets/readme/explorer-streams.png)
+![The streams on a node](docs/guide/assets/screens/explorer-streams.png)
 
 Each stream is shown with its state, meta, volatile data and history. Click the `greeting` stream your transaction made to see the message (the picture at the top). Every transaction the node has committed is listed too, and the page can export, compact and back up the database:
 
-![The transactions a node has committed](docs/assets/readme/explorer-transactions.png)
+![The transactions a node has committed](docs/guide/assets/screens/explorer-transactions.png)
 
 The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See [The database explorer](docs/guide/operate/explorer.md).
 
@@ -140,7 +140,7 @@ activeledger audit src/                      # a table per file, then a 0-100 ri
 activeledger audit src/ --fail-on high       # exit 1 on a high or critical finding, for CI
 ```
 
-![Auditing a deliberately bad contract](docs/assets/readme/terminal-audit.png)
+![Auditing a deliberately bad contract](docs/guide/assets/screens/terminal-audit.png)
 
 *A contract written to be wrong: it runs `eval`, holds a key, reads the clock in `vote`, reaches for the storage port and hides an error.*
 

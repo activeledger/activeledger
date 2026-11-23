@@ -31,6 +31,8 @@ Commands
   status     The project's view of a network ...
 ```
 
+![The activeledger project command](../assets/screens/terminal-project.png)
+
 The banner is drawn only for a person at a terminal. It is left out with `--json`, `--quiet`, in CI (`CI` is set) and with `NO_BANNER`. `activeledger project help <command>` shows one command with an example.
 
 ## Your contract is TypeScript
@@ -108,6 +110,8 @@ activeledger project tx run create-notebook
 ```
 
 The example was built from your project (`@alice` became your stream id, the contract name became its stream id), signed with your key and sent. `expect` was left out, so it passed because at least one node committed it and nothing errored.
+
+![Deploying a contract and running a transaction](../assets/screens/terminal-deploy.png)
 
 **6. Use what it made.** Adding a note needs the notebook's stream id, which you now have. Add a second example, and give the id when you run it with `--set` (a path of keys, then `=` and a JSON value):
 

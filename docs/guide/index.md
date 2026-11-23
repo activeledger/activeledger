@@ -12,6 +12,8 @@ in contracts you write in TypeScript. If you have never seen it before, read
 
 Pick the task you have. Each list is in the order to do it.
 
+**In a hurry?** The [Quickstart](quickstart.md) takes you from nothing to a contract running on a local network in five minutes.
+
 **Run a node**
 
 1. [Install and build](install.md)
