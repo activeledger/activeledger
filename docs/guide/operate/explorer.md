@@ -6,7 +6,7 @@ Each node's embedded store serves a page for looking at its own data. Open it in
 http://127.0.0.1:5259/_explorer
 ```
 
-The port is `db.selfhost.port` (5259 unless you changed it; a node made with `--port` uses `port - 1`). The old `/_utils` address redirects here. It is one static page that reads the store's own API, so nothing is installed and nothing runs on the node for it.
+The port is `db.selfhost.port` (5259 unless you changed it; a node made with `--port` uses `port - 1`). It is one static page that reads the store's own API, so nothing is installed and nothing runs on the node for it.
 
 **There is no login.** The store has no access control, which is why it binds to loopback by default (`db.selfhost.host`). Reach it from another machine with an SSH tunnel (`ssh -L 5259:127.0.0.1:5259 node`), do not bind it to a public address, and see [Keeping it safe](security.md).
 
