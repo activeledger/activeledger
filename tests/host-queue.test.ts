@@ -220,6 +220,82 @@ describe("Host lock queue, release and broadcast (Activeledger)", () => {
       expect(host.busyLocksQueue.external).to.have.length(0);
     });
 
+    describe("order on a stream", () => {
+      const onStream = (umid: string, stream: string, over: any = {}) => entry(umid, { $tx: { $i: { [stream]: {} }, $o: {} }, ...over });
+
+      it("a transaction that arrives while the lock happens to be free still waits behind one already queued for that stream", () => {
+        const host = makeHost();
+        const stream = S("ordered-1");
+        Locker.hold([stream], "holder");
+        claimed.push("holder");
+        const first = onStream("o1", stream);
+        const second = onStream("o2", stream);
+        addPending(host, first);
+        addPending(host, second);
+        expect(host.hold(first)).to.equal(false); // queued behind the holder
+        // The holder lets go, and before the queue's next scan another transaction for the stream arrives
+        Locker.release(stream, "holder");
+        expect(host.hold(second)).to.equal(false);
+        expect(Object.keys(Locker.getLocks())).to.not.include(stream);
+        expect(host.busyLocksQueue.external.map((q: any) => q.entry.$umid)).to.deep.equal(["o1", "o2"]);
+        // The scan then serves them in the order they came
+        host.processQueue();
+        expect(Locker.getLocks()[stream]).to.not.equal(undefined);
+        expect(host.processPending["o1"].pid).to.equal(4242); // dispatched
+        expect(host.busyLocksQueue.external.map((q: any) => q.entry.$umid)).to.deep.equal(["o2"]);
+      });
+
+      it("a transaction for a different stream is not held up by a queued one", () => {
+        const host = makeHost();
+        const busy = S("ordered-busy");
+        const other = S("ordered-other");
+        Locker.hold([busy], "holder");
+        claimed.push("holder");
+        const queued = onStream("q1", busy);
+        const free = onStream("q2", other);
+        addPending(host, queued);
+        addPending(host, free);
+        host.hold(queued);
+        claimed.push("q2");
+        expect(host.hold(free)).to.equal(true);
+        expect(host.busyLocksQueue.external.map((q: any) => q.entry.$umid)).to.deep.equal(["q1"]);
+      });
+
+      it("once the queue has been served the stream is free to a new arrival again", () => {
+        const host = makeHost();
+        const stream = S("ordered-3");
+        Locker.hold([stream], "holder");
+        claimed.push("holder");
+        const first = onStream("p1", stream);
+        addPending(host, first);
+        host.hold(first);
+        Locker.release(stream, "holder");
+        claimed.push("p1");
+        host.processQueue();
+        expect(host.busyLocksQueue.external).to.have.length(0);
+        Locker.release(stream, "p1");
+        const later = onStream("p2", stream);
+        addPending(host, later);
+        claimed.push("p2");
+        expect(host.hold(later)).to.equal(true);
+      });
+
+      it("a read that will not wait ($nolock) is not forced behind the queue", () => {
+        const host = makeHost();
+        const stream = S("ordered-4");
+        Locker.hold([stream], "holder");
+        claimed.push("holder");
+        const queued = onStream("n1", stream);
+        addPending(host, queued);
+        host.hold(queued);
+        Locker.release(stream, "holder");
+        const reader = onStream("n2", stream, { $nolock: true });
+        addPending(host, reader);
+        claimed.push("n2");
+        expect(host.hold(reader)).to.equal(true);
+      });
+    });
+
     it("rejects with Busy Locks straight away when the tx says $nolock", () => {
       const host = makeHost();
       Locker.hold([S("in-nl")], "owner");

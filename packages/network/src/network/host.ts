@@ -649,6 +649,28 @@ export class Host extends Home {
     external: BusyLockQueue[];
   } = { internal: [], external: [] };
 
+  /**
+   * How many queued transactions are waiting for each stream. A transaction that arrives for a stream someone
+   * is already waiting for must wait behind them, not take the lock the moment it happens to be free (see hold()).
+   */
+  private queuedStreamCounts?: Map<string, number>;
+
+  private get queuedStreams(): Map<string, number> {
+    return (this.queuedStreamCounts ||= new Map<string, number>());
+  }
+
+  private queuedAdd(streams: string[] | undefined): void {
+    for (const s of streams || []) this.queuedStreams.set(s, (this.queuedStreams.get(s) || 0) + 1);
+  }
+
+  private queuedRemove(streams: string[] | undefined): void {
+    for (const s of streams || []) {
+      const left = (this.queuedStreams.get(s) || 0) - 1;
+      if (left > 0) this.queuedStreams.set(s, left);
+      else this.queuedStreams.delete(s);
+    }
+  }
+
   // A second request to shut down is the same shut down
   private shuttingDown = false;
 
@@ -2377,9 +2399,16 @@ export class Host extends Home {
       }
     }
 
+    // A transaction that has only just arrived waits behind the ones already queued for the same streams. Without
+    // that it could take a lock in the instant between one holder letting go and the queue's next scan, and run
+    // before an earlier transaction on the stream that is still waiting. A node where that happens runs a later
+    // revision of the stream before an earlier one: it votes "position incorrect" on it, falls a revision behind
+    // the nodes that kept the order, and has to be repaired by SPI, which under load never catches up.
+    const behindQueued = retries === 0 && !v.$nolock && (v.$$labelOrKey || []).some((s) => this.queuedStreams.has(s));
     if (
       // Selfsigning and can lock on output if any
       // don't need to use set for unique
+      !behindQueued &&
       Locker.hold(v.$$labelOrKey, v.$umid)
     ) {
       // Get next process from the array
@@ -2437,6 +2466,7 @@ export class Host extends Home {
       } else {
         if (retries === 0) {
           // Push to the end of the queue
+          this.queuedAdd(v.$$labelOrKey);
           (v.$revs
             ? this.busyLocksQueue.internal
             : this.busyLocksQueue.external
@@ -3040,6 +3070,8 @@ export class Host extends Home {
           if (!this.hold(this.busyLocksQueue.internal[i].entry, this.busyLocksQueue.internal[i].retry++, this.busyLocksQueue.internal[i].queuedAt)) {
             // If hold fails, add it to the list of items to keep for the next run.
             stillPending.push(this.busyLocksQueue.internal[i]);
+          } else {
+            this.queuedRemove(this.busyLocksQueue.internal[i].entry.$$labelOrKey);
           }
         }
         this.busyLocksQueue.internal = stillPending;
@@ -3055,6 +3087,8 @@ export class Host extends Home {
         for (let i = 0; i < this.busyLocksQueue.external.length; i++) {
           if (!this.hold(this.busyLocksQueue.external[i].entry, this.busyLocksQueue.external[i].retry++, this.busyLocksQueue.external[i].queuedAt)) {
             stillPending.push(this.busyLocksQueue.external[i]);
+          } else {
+            this.queuedRemove(this.busyLocksQueue.external[i].entry.$$labelOrKey);
           }
         }
         this.busyLocksQueue.external = stillPending;
