@@ -26,6 +26,10 @@ Summary
   Overall risk 39/100 (medium)   worst file 39, average 39
 ```
 
+![The audit of a deliberately bad contract](../assets/screens/terminal-audit.png)
+
+*A contract written to be wrong: it runs `eval`, holds a key, reads the clock in `vote`, reaches for the storage port and hides an error.*
+
 `--json` prints the same data for tooling. `--rules` lists every rule and exits.
 
 ## What it checks

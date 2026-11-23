@@ -2,69 +2,179 @@
 [![npm](https://img.shields.io/npm/dt/@activeledger/activeledger.svg)](https://www.npmjs.com/package/@activeledger/activeledger) 
 [![MIT license](https://img.shields.io/badge/License-MIT-blue.svg)](https://lbesson.mit-license.org/)
 
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/Asset-23-dark.png">
   <img src="docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 </picture>
 
-Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus — each node reaching its own conclusion by watching the same traffic, rather than waiting on a single leader. Application logic lives in smart contracts (TypeScript, executed in a per-transaction worker process and checked by a security scan at deploy time), and consensus is tracked per-stream rather than globally, so unrelated transactions can be voted on and committed concurrently.
+Activeledger is a distributed ledger technology. A network of permissioned nodes gossips transactions to each other, votes on them, and commits the ones that reach consensus, each node reaching its own conclusion by watching the same traffic rather than waiting on a single leader. Application logic lives in smart contracts written in TypeScript, executed in a per-transaction worker process and checked by a security scan at deploy time. Consensus is tracked per stream rather than globally, so unrelated transactions are voted on and committed at the same time.
 
-## Requirements
+![A stream in the Activeledger database explorer](docs/guide/assets/screens/explorer-stream.png)
 
-**Node.js 24.x** (the current LTS line) is the recommended and actively-tested version — every workflow in `.github/workflows/` builds, tests and publishes on 24. The native HTTP/consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors at any given time; the pinned v20.67.0 carries ABI 127, 137 and 147, which is Node 22, 24 and 26, so 22.x also works today. If you hit an error like `This version of uWS.js (...) supports only Node.js versions ...` on a Node version you'd expect to work, check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming the version genuinely isn't supported.
+*A contract's output, read back from a node's own database in the built-in explorer. It is the "hello" contract below, run on a local three-node network.*
 
-## Installation
+## Try it in five minutes
 
-Please see the hosted documentation for detailed instructions.
+You need **Node.js 24**, the version Activeledger is built and tested on. Everything below was run exactly as written on a clean local network.
 
-## Documentation
-
-- [Activeledger guide](https://activeledger.github.io/activeledger/) - running, operating and using Activeledger
-- [SDKs](https://activeledger.github.io/activeledger/sdks/) - one page per language: [JavaScript](https://activeledger.github.io/activeledger/sdks/js/), [Python](https://activeledger.github.io/activeledger/sdks/python/), [Go](https://activeledger.github.io/activeledger/sdks/go/), [JVM](https://activeledger.github.io/activeledger/sdks/jvm/), [C#](https://activeledger.github.io/activeledger/sdks/csharp/), [Rust](https://activeledger.github.io/activeledger/sdks/rust/), [PHP](https://activeledger.github.io/activeledger/sdks/php/), [Dart](https://activeledger.github.io/activeledger/sdks/dart/), [Swift](https://activeledger.github.io/activeledger/sdks/swift/)
-
-
-## Quickstart Guide
-
-Use NPM to install Activeledger. `@activeledger/activerestore` is recommended alongside it (heals a node that falls behind or comes up empty). ActiveCore (`@activeledger/activecore`) was removed in 5.0.0; contract events are served by the node's own storage at `/activeledgerevents/events`, reachable from the node's host only.
+### 1. Install
 
 ```bash
 npm i -g --allow-scripts=classic-level,msgpackr-extract @activeledger/activeledger @activeledger/activerestore
 ```
 
-> **The `--allow-scripts` flag is load-bearing on npm 11.19 and later**, which
-> no longer runs install scripts by default. Activeledger's datastore pulls
-> `classic-level` (node-gyp-build) and `msgpackr-extract`, both of which build a
-> native binding during install. Without the flag the install **succeeds** and
-> the native LevelDB binding is silently never built — the failure appears only
-> later, at runtime. If your npm predates that change the flag is harmless, so
-> it is safe to use either way. `npm config set allow-scripts ...` works too if
-> you would rather set it once.
+> **The `--allow-scripts` flag matters on npm 11.19 and later**, which no longer runs install scripts by default. Activeledger's datastore builds a native LevelDB binding during install; without the flag the install succeeds and the failure only shows later, at runtime. On an older npm the flag is harmless.
 
-##### Creating a local Activeledger testnet
-
-Run the following command to create a 3 node local testnet.
+### 2. Start a three-node network on your machine
 
 ```bash
-activeledger --testnet
+mkdir testnet && cd testnet
+activeledger --testnet      # creates instance-0, instance-1 and instance-2
+node testnet                # starts all three; leave this running
 ```
 
-![Activeledger Create Testnet](docs/assets/testnet-create.png)
+![Creating and checking a local testnet](docs/guide/assets/screens/terminal-testnet.png)
 
-When the testnet has been created you can run all of them at once but running
+The nodes answer on ports 5260, 5270 and 5280. Open a second terminal for the rest.
+
+### 3. Write a contract
+
+A contract is one TypeScript file: a class that extends `Standard`. Save this as `src/hello.ts` in a new folder:
+
+```ts
+import { Standard, Activity } from "@activeledger/activecontracts";
+
+export default class Hello extends Standard {
+  private message: string;
+  private greeting: Activity;
+
+  public verify(selfsigned: boolean): Promise<boolean> {
+    return selfsigned ? Promise.reject("No self sign") : Promise.resolve(true);
+  }
+
+  public vote(): Promise<boolean> {
+    // "sender" is the label the transaction gives the signing stream
+    this.message = this.transactions.$i.sender.message as string;
+    return this.message ? Promise.resolve(true) : Promise.reject("A message is needed");
+  }
+
+  public commit(): Promise<any> {
+    this.greeting = this.newActivityStream("greeting");
+    this.greeting.setState({ message: this.message });
+    this.returnToRemote({ greeting: this.greeting.getId() });
+    return Promise.resolve(true);
+  }
+}
+```
+
+The transaction gives the signing stream the label `sender`, and the contract reads it by that label (`this.transactions.$i.sender`) rather than by its position in the list of inputs. It checks that a message was sent, then writes it to a new stream and hands the stream's id back. [Writing a contract](docs/guide/contracts/write.md) explains each part, and builds a bigger one.
+
+### 4. Deploy it and run it
+
+`activeledger project` does the setup for you. Run it on its own to see every command:
+
+![The activeledger project command](docs/guide/assets/screens/terminal-project.png)
+
+In your folder (a git repository is best, so the key file can be kept out of it):
 
 ```bash
-node testnet
+git init
+activeledger project init --name helloorg --net testnet=http://127.0.0.1:5260,http://127.0.0.1:5270,http://127.0.0.1:5280
+activeledger project identity new alice
 ```
 
-Alternatively you can run each instance of Activeledger independantly by navigating into the instance-x folders which have been created and running
+Pick a namespace of your own in place of `helloorg`: names are unique on a network. This made `.activeledger` (the project, which you commit) and `.activeledger-key` (your keys, which the command makes sure git ignores). Now tell the project about the contract and an example transaction, by adding these to `.activeledger`:
+
+```json
+"contracts": {
+  "hello": { "source": "src/hello.ts", "version": "0.0.1" }
+},
+"transactions": {
+  "say-hello": {
+    "contract": "hello",
+    "entry": "create",
+    "input": { "sender": { "$stream": "@alice", "message": "Hello, Activeledger" } }
+  }
+}
+```
 
 ```bash
-activeledger
+activeledger project deploy            # registers the namespace, audits and uploads the contract
+activeledger project tx run say-hello  # signs and sends the example, and checks the reply
 ```
-![Activeledger Launch Testnet](docs/assets/testnet-run.png)
 
-## Protocol level (`build`)
+![Deploying a contract and running a transaction](docs/guide/assets/screens/terminal-deploy.png)
+
+Change a value for one run with `--set`, ask the network what it holds, or deploy again (it sees nothing changed and sends nothing):
+
+```bash
+activeledger project tx run say-hello --set "input.sender.message=Hello again"
+activeledger project status
+activeledger project deploy
+```
+
+![Running it again, status, and a second deploy that does nothing](docs/guide/assets/screens/terminal-run.png)
+
+Everything `project` sends is an ordinary signed transaction. [Project commands](docs/guide/cli/project.md) has the file formats, how keys are kept safe, protected networks, CI use and a troubleshooting table.
+
+### 5. Look at what you made
+
+Every node serves a read-only view of its own database. Open the first node's:
+
+```
+http://127.0.0.1:5259/_explorer
+```
+
+![The streams on a node](docs/guide/assets/screens/explorer-streams.png)
+
+Each stream is shown with its state, meta, volatile data and history. Click the `greeting` stream your transaction made to see the message (the picture at the top). Every transaction the node has committed is listed too, and the page can export, compact and back up the database:
+
+![The transactions a node has committed](docs/guide/assets/screens/explorer-transactions.png)
+
+The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See [The database explorer](docs/guide/operate/explorer.md).
+
+### 6. Check a contract before you deploy it
+
+```bash
+activeledger audit src/                      # a table per file, then a 0-100 risk score
+activeledger audit src/ --fail-on high       # exit 1 on a high or critical finding, for CI
+```
+
+![Auditing a deliberately bad contract](docs/guide/assets/screens/terminal-audit.png)
+
+*A contract written to be wrong: it runs `eval`, holds a key, reads the clock in `vote`, reaches for the storage port and hides an error.*
+
+The audit finds `eval`, hard-coded secrets, time and randomness inside a vote (where each node would disagree), reaches for the storage port and local services, empty `catch` blocks, duplicate code and known advisories in the packages a contract imports. `deploy` runs it for you. See [Auditing a contract](docs/guide/contracts/audit.md).
+
+## What is in the box
+
+| | |
+|---|---|
+| `activeledger` | The node. Consensus per stream, TypeScript contracts with a deploy-time security scan, and contract events. |
+| `activeledger project` | Namespaces, contracts and example transactions from a committed `.activeledger` file, with keys kept out of git. [Guide](docs/guide/cli/project.md) |
+| `activeledger audit` | Contract security, best practice, duplicate code and dependency advisories, with a risk score. [Guide](docs/guide/contracts/audit.md) |
+| The explorer | A read-only browser view of a node's own database, at `/_explorer` on its storage port. [Guide](docs/guide/operate/explorer.md) |
+| Leader mode | A stream written by one client at a time can commit as soon as the node that owns it votes yes. [Guide](docs/guide/operate/nodes.md#leader-mode) |
+| `activehybrid` | Light followers of the ledger that do not vote. [Guide](docs/guide/hybrid/index.md) |
+| `activerestore` | Heals a node that fell behind or came up empty. |
+| SDKs | [JavaScript](https://activeledger.github.io/activeledger/sdks/js/), [Python](https://activeledger.github.io/activeledger/sdks/python/), [Go](https://activeledger.github.io/activeledger/sdks/go/), [JVM](https://activeledger.github.io/activeledger/sdks/jvm/), [C#](https://activeledger.github.io/activeledger/sdks/csharp/), [Rust](https://activeledger.github.io/activeledger/sdks/rust/), [PHP](https://activeledger.github.io/activeledger/sdks/php/), [Dart](https://activeledger.github.io/activeledger/sdks/dart/), [Swift](https://activeledger.github.io/activeledger/sdks/swift/) |
+
+## Documentation
+
+- [The Activeledger guide](https://activeledger.github.io/activeledger/) for running, operating and using Activeledger. The same pages are in [`docs/guide`](docs/guide/index.md).
+- [Your first network](docs/guide/first-network.md), [Keys, identities and namespaces](docs/guide/identities.md), [Writing a contract](docs/guide/contracts/write.md), [Deploy, update, lock and unlock](docs/guide/contracts/deploy.md), [Sending a transaction](docs/guide/transactions.md).
+- [Developing Activeledger](DEVELOPING.md): building from source, the tests, the stress tests, profiling and releases.
+
+<details>
+<summary>Node.js versions</summary>
+
+**Node.js 24.x** (the current LTS line) is the version Activeledger is built and tested on: every workflow in `.github/workflows/` builds, tests and publishes on 24, and the packages declare `"node": ">=24.0.0"`. Other versions are not tested. You can try one, but the native HTTP and consensus transport ([uWebSockets.js](https://github.com/uNetworking/uWebSockets.js)) ships prebuilt bindings for a specific set of Node majors, and an unsupported version fails with an error like `This version of uWS.js (...) supports only Node.js versions ...`. Check that `node_modules/uWebSockets.js` itself is up to date (`npm i` again) before assuming a version genuinely is not supported.
+
+</details>
+
+## Operating a network
+
+### Protocol level (`build`)
 
 `build` in a node's `config.json` switches on protocol features that change
 what nodes write to the ledger. Every node on a network must run at the same
@@ -91,7 +201,7 @@ node's `config.json` and restart it, or call `/a/admin-reload` on nodes with
 **Adding a node to an existing network.** Its generated config says 50600. Set
 `build` to whatever the rest of the network runs before it joins.
 
-### Hybrid nodes
+#### Hybrid nodes
 
 Build 40300 adds [hybrid nodes](docs/guide/hybrid/index.md), light followers of the ledger. It costs a
 network nothing until hybrids are turned on: until then the supernodes sign no votes and keep no
@@ -107,7 +217,7 @@ On a network of more than one node the change needs more than half of the nodes 
 (`--out <file>`, then `hybrid sign <file>` on the others and `hybrid submit <file>`). See
 [Set up and run a hybrid](docs/guide/hybrid/run.md).
 
-## Pruning old data
+### Pruning old data
 
 A node's error records and events only grow. `activeledger prune` removes what is older than a number of
 days (it keeps the last 30 unless you say), from the node's own working stores and never from the ledger:
@@ -120,43 +230,7 @@ activeledger prune 30 --include-umids --include-events   # also the umid index a
 
 Each choice has a cost, written up in [Pruning old data](docs/guide/operate/prune.md).
 
-## Setting up a project from the command line
-
-`activeledger project` registers a namespace, uploads and updates contracts and runs example transactions, all
-from a `.activeledger` file you commit, with the keys kept in a `.activeledger-key` file the CLI makes sure git
-ignores. Run it on its own for the list of commands:
-
-```bash
-activeledger project init --name myorg --net testnet=http://127.0.0.1:5260
-activeledger project identity new alice
-activeledger project deploy            # registers the namespace, uploads or updates each contract
-activeledger project tx run add-note   # runs an example transaction and checks the reply
-```
-
-See [Project commands](docs/guide/cli/project.md).
-
-## Auditing a contract
-
-`activeledger audit` reads contract source before you deploy it and prints a table per file of security,
-contract, best-practice, duplicate-code and dependency findings (known npm advisories for the packages it
-imports), then a 0-100 risk score. It changes nothing and needs no running node:
-
-```bash
-activeledger audit ./contracts                       # a table per file, then the summary and the risk score
-activeledger audit ./contracts --fail-on high        # exit 1 on any high or critical finding, for CI
-activeledger audit contract.ts --offline --json      # no registry lookup, machine-readable
-```
-
-See [Auditing a contract](docs/guide/contracts/audit.md).
-
-## Looking at a node's data
-
-Each node's embedded store serves a browser page for its own databases at `http://127.0.0.1:5259/_explorer`:
-browse and look up documents, see a stream's state, meta, volatile data and history, export, compact, back up and prune.
-It has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See
-[The database explorer](docs/guide/operate/explorer.md).
-
-## Installing from GitHub Packages
+### Installing from GitHub Packages
 
 Releases go to npmjs.com and are mirrored to the [GitHub Packages npm registry](https://github.com/orgs/activeledger/packages), so the quickstart above installs without any authentication. The one gap is the start of the 4.x line: v4.0.0 through v4.3.2 were published to GitHub Packages only, and every release from v4.3.3 onward is on both.
 
@@ -175,202 +249,6 @@ npm i -g --allow-scripts=classic-level,msgpackr-extract @activeledger/activeledg
 ```
 
 For a Docker build, pass the token in as a build secret (e.g. `--secret id=npmrc,src=.npmrc` with a `RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm i -g ...` step) rather than baking it into an image layer.
-
-## Developer Tools
-
-We have created an IDE for developers to create and manage Activeledger smart contracts across multiple networks. This IDE helps manage the private keys for developers to sign their contracts with and the namespaces their contracts will be stored under in each specific network. This tool is currently in beta but is available for Linux, Windows and OSX.
-
-![Activeledger IDE](docs/assets/developer-tools-demo.gif)
-
-### IDE Download
-
-Visit [Release section](https://github.com/activeledger/ide/releases)
-
-## Building from source
-
-### Prerequisites
-
-npm 7 or newer, which is where workspace support arrived. Nothing to
-install globally - `npm i` at the root links every package in `packages/`
-into the root `node_modules` for you.
-
-### Building
-
-```bash
-npm i
-npm run build
-```
-
-`npm run setup` (install + build) is also available if your `node_modules` are in a bad state — slower, and rarely needed for everyday work.
-
-To run the programs by name (`activeledger`, `activehybrid`, `activerestore`) from anywhere, link them globally once after building:
-
-```bash
-npm link ./packages/activeledger ./packages/hybrid ./packages/restore
-```
-
-The links point at the source folders, so `npm run build` updates what they run. Each Node version managed by nvm has its own global folder, so link again after switching versions. From inside the repo, `npx activeledger` works without linking.
-
-The packages import each other by their published `@activeledger/*` names, so the build has to run once before type resolution works — `npm run build` builds them in dependency order for exactly that reason.
-
-### Releases
-
-A release is cut by dispatching the `Release` workflow with a version number. It bumps the root, every package, and every dependency range pointing at a sibling; commits; tags `vX.Y.Z`; and publishes in the same run, so the source tree at a tag, the tag itself and the published packages all report the same version. Tags cut before this existed do not — the manifests inside a v4.0.1 through v4.5.7 checkout report an older number than the tag (v4.5.7 reads 4.2.0), so do not identify one of those builds by its package version.
-
-## Testing
-
-Two separate test suites, deliberately decoupled so the fast one stays fast:
-
-```bash
-npm test              # fast unit tests (tests/*.ts, Mocha) - in-process, no real nodes
-npm run test:network  # live 4-node network integration test - boots real nodes on the local machine
-```
-
-`npm test` takes a handful of seconds (324 tests today, most of the time being ts-node's transpile pass) and is safe to run constantly during development. It also runs in CI on every push and pull request, on Node 24; the network suite does not, because it boots real nodes.
-
-`npm run test:network` (`tests/network/`) boots a real 4-node bare-host network, runs 100+ real transactions spread across every node as origin, deploys custom contracts and verifies `returnToRemote()`, verifies live event delivery over SSE, and verifies the network's Stream-Position-Incorrect self-healing by directly desyncing one node's local copy of a stream and confirming a transaction still succeeds whether that node is the transaction's origin or not. It prints live progress and a pass/fail summary, and takes well under a minute. Deliberately bare-host rather than Docker, so it doesn't add any requirements beyond what building the repo already needs.
-
-## Stress tests
-
-A third, different kind of test: tools that measure and report rather than pass or fail. They are noisy by nature, want a quiet machine, and never run in `npm test` or CI.
-
-```bash
-npm run stress:throughput  # tx/s and latency on 1, 4 or 8 nodes
-npm run stress:realistic   # what rate a network confirms: stepped open-loop load from many users, with a one page PDF
-npm run stress:peak        # the peak load test: reads, locked reads, then writes, and a one page PDF (about 20 minutes)
-npm run stress:cold-start  # how often a fresh, staggered start leaves a node behind
-npm run stress:memory      # memory and CPU per role, and growth per 10k transactions
-npm run stress:compare     # two result files, and whether the candidate is worse beyond the spread
-```
-
-The default quick profile takes about five to nine minutes per tool and is a smoke check for big regressions; `--profile standard` and `--profile full` resolve smaller differences. See [Stress tests](docs/guide/stress/index.md) in the guide.
-
-## Profiling
-
-Two profilers, answering different questions. Both drive the same live harness
-the network tests use, so they measure real nodes rather than a model.
-
-```bash
-npm run profile:tx      # what a transaction costs
-npm run profile:stages  # where that cost sits
-```
-
-### `profile:tx` — what it costs
-
-Varies one thing at a time and prints the effect: network size, key type,
-concurrency, and how a transaction responds to contract work getting heavier.
-
-```
-npm run profile:tx                  # full sweep, a few minutes
-npm run profile:tx -- --quick       # shorter, for a fast before/after
-npm run profile:tx -- --only=1,3    # just sections 1 and 3
-```
-
-The four sections are independent and each boots its own networks:
-
-| | question it answers |
-|---|---|
-| 1 | how much of a transaction is consensus (1 vs 2 vs 4 nodes) |
-| 2 | how much is signature verification (rsa vs secp256k1) |
-| 3 | latency against actual capacity (1 to 128 in flight) |
-| 4 | does the consensus gap grow with contract work, or is it fixed overhead |
-| 5 | what a contended stream costs (N writers against ONE stream) |
-
-Sections 1-4 use independent streams, which is the flattering case: nothing
-ever waits on a lock. Section 5 is the opposite, because most real workloads
-have at least one hot stream — a shared pool, a counter, a registry — and
-writers to it must serialise. Add `--contend-nodes=1` to run it on a single
-node, where nothing else drives the lock queue.
-
-### Measuring a network that isn't on loopback
-
-`AL_SIMULATED_RTT_MS` delays every node-to-node knock, so a four-node harness
-on one machine can be made to behave like four nodes in different regions.
-Half the value is applied per knock, so a request and its reply together cost
-the round trip you ask for.
-
-```bash
-AL_SIMULATED_RTT_MS=60 npm run profile:tx -- --only=1
-```
-
-It matters because every other number here is taken on loopback, where a peer
-is ~0.3ms away and consensus looks nearly free. Measured across 0/20/60/150ms,
-a transaction costs **a fixed ~21ms plus exactly one round trip**, whatever the
-node count:
-
-| RTT | 1 node | 2 nodes | 4 nodes |
-|---|---|---|---|
-| 0ms | 5ms | 19ms | 23ms |
-| 20ms | 6ms | 35ms | 41ms |
-| 60ms | 6ms | 80ms | 81ms |
-| 150ms | 5ms | 171ms | 171ms |
-
-So consensus is one round trip rather than several, extra nodes are close to
-free, and any saving in local work is **absolute, not proportional** — 10ms off
-a transaction is 30% of a same-datacentre one and 6% of an antipodal one. Set
-it only for profiling.
-
-Section 4 uses `tests/network/contracts/burn-contract.ts`, which burns a
-caller-specified amount of CPU inside `commit()`. If the gap over a 1-node
-network grows ~1:1 with the burn, the other nodes are repeating the work after
-the origin finishes; if it stays flat, their execution already overlaps and the
-gap is fixed overhead. It is flat.
-
-Reference numbers on a developer machine, p50, so a change can be recognised as
-a change rather than noise — expect ±1-2ms run to run:
-
-```
-1 node 6ms    2 nodes 21ms    4 nodes 22ms    peak ~220 tx/s at 128 in flight
-```
-
-`--quick` is directly comparable to a full run, not a rougher reading of the
-same thing: every network is warmed with eight discarded transactions before
-anything is measured, so contract compilation, the JIT and the connection pools
-have settled. Skipping that put `--quick` at 15/36ms against the full run's
-5/23ms for an identical build, because with a short sample count the stragglers
-land on the p50 instead of the tail.
-
-### `profile:stages` — where it sits
-
-Marks each stage of a transaction and stitches every process that touched it
-into one timeline. A transaction crosses processes — the host parses it, a
-forked worker runs the contract, and on a multi-node network other hosts do the
-same again — so the marks carry an absolute wall-clock timestamp. `hrtime`'s
-epoch is per-process and means nothing across a fork.
-
-```
-npm run profile:stages                        # 4 nodes
-npm run profile:stages -- --nodes=1           # 1 node: the clearest local picture
-npm run profile:stages -- --nodes=4 --runs=20
-```
-
-It prints one full timeline, then the mean cost of every stage transition on the
-origin node, sorted worst-first. Start with `--nodes=1`: on a multi-node run the
-origin also answers knocks about the same transaction from its peers, and the
-waiting-on-peers window dominates everything local.
-
-The marks come from `ActiveTiming` in `@activeledger/activelogger`, which is
-inert unless `ACTIVELEDGER_PROFILE` is set — the profiler sets it for the nodes
-it starts. You can set it yourself against a node you run by hand, but never in
-production: it is one unbounded line of stdout per stage per transaction.
-
-To time something not yet marked, add `ActiveTiming.mark(umid, "your.stage")`
-where you want it and add the name to `ORDER` in `tests/network/profile-stages.ts`
-so it sorts into the right place.
-
-### Two ways to profile the wrong thing
-
-Both of these have produced confident, wrong numbers here:
-
-- **A stale build.** The nodes run `lib/`, not `src/`, so a source change that
-  hasn't been compiled is silently absent from any live measurement — including
-  anything after a `git stash` / build / `git stash pop`. Rebuild, then check the
-  change is actually in the output (`grep` the built file) rather than trusting
-  the build's exit code.
-- **Leftover nodes.** A crashed run can leave nodes holding ports 5510-5540, and
-  the next run measures those instead. `profile:tx` tears its own networks down
-  on failure; if something else dies badly, check with
-  `ss -lntp | grep :55` before believing a surprising result.
 
 ## License
 

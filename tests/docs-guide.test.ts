@@ -50,6 +50,11 @@ describe("The guide (docs/guide)", () => {
         if (/^(https?:|mailto:|#)/.test(target)) continue;
         const [file, anchor] = target.split("#");
         const resolved = path.normalize(path.join(path.dirname(page), file));
+        // An image or other file the site serves: it only has to exist, inside the guide
+        if (!file.endsWith(".md")) {
+          if (resolved.startsWith("..") || !fs.existsSync(path.join(guide, resolved))) broken.push(`${page} -> ${target}`);
+          continue;
+        }
         if (!disk.includes(resolved)) {
           broken.push(`${page} -> ${target}`);
           continue;
@@ -63,6 +68,11 @@ describe("The guide (docs/guide)", () => {
       }
     }
     expect(broken).to.deep.equal([]);
+  });
+
+  it("an image link to a file that is not there is caught", () => {
+    expect(fs.existsSync(path.join(guide, "assets", "screens", "does-not-exist.png"))).to.equal(false);
+    expect(fs.existsSync(path.join(guide, "assets", "screens", "terminal-project.png"))).to.equal(true);
   });
 
   it("every page starts with a title", () => {

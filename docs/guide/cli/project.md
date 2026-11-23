@@ -31,6 +31,8 @@ Commands
   status     The project's view of a network ...
 ```
 
+![The activeledger project command](../assets/screens/terminal-project.png)
+
 The banner is drawn only for a person at a terminal. It is left out with `--json`, `--quiet`, in CI (`CI` is set) and with `NO_BANNER`. `activeledger project help <command>` shows one command with an example.
 
 ## Your contract is TypeScript
@@ -109,6 +111,8 @@ activeledger project tx run create-notebook
 
 The example was built from your project (`@alice` became your stream id, the contract name became its stream id), signed with your key and sent. `expect` was left out, so it passed because at least one node committed it and nothing errored.
 
+![Deploying a contract and running a transaction](../assets/screens/terminal-deploy.png)
+
 **6. Use what it made.** Adding a note needs the notebook's stream id, which you now have. Add a second example, and give the id when you run it with `--set` (a path of keys, then `=` and a JSON value):
 
 ```json
@@ -159,7 +163,8 @@ activeledger project tx run add-note --set "output.3b1c0d2e...={}"
 - `contracts` is what the project has: the source file and the version you are working on. The CLI also writes what each network has (the contract's stream id, the version and a hash of the source last sent) under `networks.<name>.contracts`, so a second `deploy` knows there is nothing to do.
 - Nodes must be `https`, except `http` to this machine. Set `"insecure": true` on a network to allow plain `http` elsewhere.
 - `"protected": true` asks for a typed confirmation before anything is sent to that network. `--yes` does not skip it; in CI set `ACTIVELEDGER_CONFIRM=<network name>`.
-- In an example transaction, `@alice` means that identity's stream id on the chosen network, `@namespace` the project's namespace and `@contract:notebook` a deployed contract's stream id. `@alice` works as a key too. Nothing else is substituted.
+- In an example transaction, `@alice` means that identity's stream id on the chosen network, `@namespace` the project's namespace and `@contract:notebook` a deployed contract's stream id. `@alice` works as a key too, and as the `$stream` of a labelled input (see below). Nothing else is substituted.
+- An input may be a label instead of a stream id, as long as it carries `$stream`: `"input": { "sender": { "$stream": "@alice", "message": "hi" } }`. The contract then reads it by the label (`this.transactions.$i.sender`) instead of by its position in the list of inputs, which is steadier and easier to read. The example is still signed by the stream in `$stream`. See [Sending a transaction](../transactions.md).
 - `expect`: `{ "commit": 1 }` (the default) means at least one node committed and nothing errored. `{ "commit": 3 }` wants three, `{ "commit": "all" }` every node. `{ "error": "Namespace Reserved" }` means the run must fail with an error containing that text, so a refusal can be an example.
 
 Treat `.activeledger` like a script: it chooses which nodes your signed transactions go to and which files are uploaded. Read one you did not write before you run it. A contract source must be a TypeScript (`.ts`) file inside the project's folder, and never the key file.

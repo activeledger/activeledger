@@ -10,6 +10,8 @@ The port is `db.selfhost.port` (5259 unless you changed it; a node made with `--
 
 **There is no login.** The store has no access control, which is why it binds to loopback by default (`db.selfhost.host`). Reach it from another machine with an SSH tunnel (`ssh -L 5259:127.0.0.1:5259 node`), do not bind it to a public address, and see [Keeping it safe](security.md).
 
+![The streams on a node](../assets/screens/explorer-streams.png)
+
 ## What it does
 
 - **Browse** the node's databases (the ledger, events and errors, and any custom ones), page through their documents, and open one to see its state, meta, volatile data and history. A contract's source is shown on its own tab.
@@ -18,6 +20,14 @@ The port is `db.selfhost.port` (5259 unless you changed it; a node made with `--
 - **Maintain** the store the page is talking to: compact, back up and prune. Compact and backup are safe on a live node. Prune counts first and asks before it removes anything, and only touches the events and errors databases (see [Pruning old data](prune.md)).
 - **Edit and delete** documents, one at a time or several selected together. Before a change is saved the page shows a diff of what will change, and you confirm it.
 - Light and dark themes.
+
+Open a stream to see its state, meta, volatile data and history:
+
+![A stream in the explorer](../assets/screens/explorer-stream.png)
+
+Every transaction the node has committed is listed too:
+
+![The transactions a node has committed](../assets/screens/explorer-transactions.png)
 
 ## Consensus data is read only
 
