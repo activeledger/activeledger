@@ -447,6 +447,90 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         });
       });
 
+      it("hands the client the owner's own reply untouched: summary, responses and $leader included", async () => {
+        const owners = {
+          $umid: "fwd",
+          $summary: { total: 1, vote: 1, commit: 1 },
+          $streams: { new: [], updated: [{ id: "s", prev: "p" }] },
+          $responses: [{ echoed: "m" }],
+          $leader: true,
+        };
+        const { host } = forwardingHost({ status: 200, data: owners }, []);
+        const reply = await Endpoints.ExternalInitalise(host, tx({ $territoriality: "t" }), "1.2.3.4", db());
+        expect(reply).to.deep.equal({ statusCode: 200, content: owners });
+      });
+
+      it("is forwarded as the client sent it: the stamps this node added would make the owner refuse it", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "t" }), "1.2.3.4", db());
+        const sent = knocks[0][2];
+        for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$chain", "$relay"]) {
+          expect(sent, stamp).to.not.have.property(stamp);
+        }
+        expect(sent.$territoriality).to.equal("t");
+        expect(sent.$tx).to.be.an("object");
+        expect(sent.$sigs).to.be.an("object");
+      });
+
+      it("leaves the signed $tx and $sigs exactly as the client sent them, $expire included", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        const body = tx({
+          $territoriality: "t",
+          $unanimous: true,
+          $selfsign: true,
+          $tx: { $namespace: "default", $contract: "c", $i: { s: {} }, $o: { s: { a: 1 } }, $expire: new Date(Date.now() + 60000).toISOString() },
+        });
+        const original = JSON.parse(JSON.stringify(body));
+        await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
+        const sent = knocks[0][2];
+        expect(sent.$tx).to.deep.equal(original.$tx);
+        expect(sent.$sigs).to.deep.equal(original.$sigs);
+        expect(sent.$unanimous).to.equal(true);
+        expect(sent.$selfsign).to.equal(true);
+        expect(sent).to.not.have.property("$umid");
+        expect(sent).to.not.have.property("$datetime");
+      });
+
+      it("does not strip the stamps from this node's own copy when it forwards", async () => {
+        const knocks: any[] = [];
+        const { host } = forwardingHost({ status: 200, data: { $umid: "fwd", $nodes: {} } }, knocks);
+        const body = tx({ $territoriality: "t" });
+        await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
+        // The object the client handed in was stamped by this node; the forward is a copy
+        expect(body.$umid).to.be.a("string");
+        expect(body.$origin).to.equal("me");
+        expect(knocks[0][2]).to.not.equal(body);
+      });
+
+      it("is forwarded once, to the node terriMap names, as an external (client-style) request", async () => {
+        const knocks: any[] = [];
+        const asked: string[] = [];
+        const { host } = makeHost(
+          { replies: [] },
+          {
+            terriMap: (t: string) => (asked.push(t), "other"),
+            neighbourhood: { get: (ref: string) => ({ knock: async (...a: any[]) => (knocks.push([ref, ...a]), { status: 200, data: { $umid: "x", $nodes: {} } }) }) },
+          }
+        );
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "named" }), "1.2.3.4", db());
+        expect(asked).to.deep.equal(["named"]);
+        expect(knocks).to.have.length(1);
+        // (reference, endpoint, tx, external, resend, bundle)
+        expect([knocks[0][0], knocks[0][1], knocks[0][3], knocks[0][4], knocks[0][5]]).to.deep.equal(["other", "", true, 0, false]);
+      });
+
+      it("fails the client when the forward cannot be delivered", async () => {
+        const { host } = makeHost(
+          { replies: [] },
+          { terriMap: () => "other", neighbourhood: { get: () => ({ knock: async () => { throw "Network Communication Error"; } }) } }
+        );
+        let caught: any;
+        await Endpoints.ExternalInitalise(host, tx({ $territoriality: "t" }), "1.2.3.4", db()).catch((e: any) => (caught = e));
+        expect(caught).to.exist;
+      });
+
       it("passes the owning node's refusal back as a 200 rather than an HTTP error", async () => {
         const { host } = forwardingHost({ status: 403, data: { no: 1 } }, []);
         const reply = await Endpoints.ExternalInitalise(
@@ -471,6 +555,137 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           statusCode: 500,
           content: "Unknown territory",
         });
+      });
+    });
+
+    describe("leader mode routing ($tx.$leader)", () => {
+      const S1 = "a".repeat(64), S2 = "b".repeat(64), O1 = "c".repeat(64), REAL = "d".repeat(64);
+      const leaderTx = (over: any = {}, io: any = {}): any =>
+        tx({ $tx: { $namespace: "default", $contract: "c", $i: { [S1]: {} }, $o: {}, $leader: true, ...io }, ...over });
+      const answer = { status: 200, data: { $umid: "fwd", $nodes: {} } };
+
+      const hostWith = (owner: string | undefined, knocks: any[] = [], asked: string[][] = []) =>
+        makeHost(
+          { replies: [voted({ me: { vote: true, commit: true } })] },
+          {
+            leaderOwner: (ids: string[]) => (asked.push(ids), owner),
+            neighbourhood: { get: (ref: string) => ({ knock: async (...a: any[]) => (knocks.push([ref, ...a]), answer) }) },
+          }
+        );
+
+      it("marks the transaction when this node owns the stream, and runs it here", async () => {
+        const asked: string[][] = [];
+        const { host, pendingCalls } = hostWith("me", [], asked);
+        await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db());
+        expect(pendingCalls).to.have.length(1);
+        expect(pendingCalls[0].entry.$leaderOk).to.equal(true);
+        expect(asked).to.deep.equal([[S1]]);
+      });
+
+      it("sends it to the node that owns the stream, as the client sent it, and answers with that node's reply", async () => {
+        const knocks: any[] = [];
+        const { host, pendingCalls } = hostWith("other", knocks);
+        const reply = await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db());
+        expect(pendingCalls).to.have.length(0);
+        expect(knocks).to.have.length(1);
+        const sent = knocks[0][2];
+        expect(knocks[0][0]).to.equal("other");
+        expect(sent.$leaderFwd).to.equal(true);
+        for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$leaderOk"]) expect(sent, stamp).to.not.have.property(stamp);
+        expect(sent.$tx.$leader).to.equal(true);
+        expect(reply.statusCode).to.equal(200);
+        expect(reply.content.$umid).to.equal("fwd");
+      });
+
+      it("does not forward a transaction that was already forwarded here, it is a normal transaction", async () => {
+        const knocks: any[] = [];
+        const { host, pendingCalls } = hostWith("someone-else", knocks);
+        await Endpoints.ExternalInitalise(host, leaderTx({ $leaderFwd: true }), "1.2.3.4", db());
+        expect(knocks).to.have.length(0);
+        expect(pendingCalls).to.have.length(1);
+        expect(pendingCalls[0].entry).to.not.have.property("$leaderOk");
+        expect(pendingCalls[0].entry).to.not.have.property("$leaderFwd");
+      });
+
+      it("runs as a normal transaction when the streams have different owners", async () => {
+        const knocks: any[] = [];
+        const { host, pendingCalls } = hostWith(undefined, knocks);
+        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { [S1]: {}, [S2]: {} } }), "1.2.3.4", db());
+        expect(knocks).to.have.length(0);
+        expect(pendingCalls[0].entry).to.not.have.property("$leaderOk");
+      });
+
+      it("asks about every stream written, inputs and outputs, a label meaning the stream it names", async () => {
+        const asked: string[][] = [];
+        const { host } = hostWith("me", [], asked);
+        await Endpoints.ExternalInitalise(host, leaderTx({}, { $i: { first: { $stream: S1 }, second: { $stream: REAL } }, $o: { [O1]: {} } }), "1.2.3.4", db());
+        expect(asked).to.have.length(1);
+        expect(asked[0].sort()).to.deep.equal([S1, REAL, O1].sort());
+      });
+
+      it("does not lead a transaction whose streams cannot be read the same way everywhere", async () => {
+        const odd: any[] = [
+          { $i: { plain: {} } },                           // not a 64 character stream id
+          { $i: { [S1]: { $stream: 7 } } },                // a $stream that is not a string
+          { $i: { [S1]: null } },                          // an entry that is not an object
+          { $i: { [S1]: {}, nolabel: { $stream: "short" } } }, // a label naming no stream
+          { $i: { [S1]: {}, mixed: { $stream: REAL } } },     // first entry plain, a later one labelled: read two ways
+        ];
+        for (const io of odd) {
+          const asked: string[][] = [];
+          const { host, pendingCalls } = hostWith("me", [], asked);
+          await Endpoints.ExternalInitalise(host, leaderTx({}, io), "1.2.3.4", db()).catch(() => undefined);
+          expect(asked, JSON.stringify(io)).to.have.length(0);
+          if (pendingCalls[0]) expect(pendingCalls[0].entry, JSON.stringify(io)).to.not.have.property("$leaderOk");
+        }
+      });
+
+      it("refuses $tx.$leader together with $territoriality, and says why, without forwarding or running it", async () => {
+        const knocks: any[] = [];
+        const asked: string[][] = [];
+        const { host, pendingCalls } = hostWith("other", knocks, asked);
+        const reply: any = await Endpoints.ExternalInitalise(host, leaderTx({ $territoriality: "t" }), "1.2.3.4", db());
+        expect(reply.content.$summary.errors[0]).to.include("$tx.$leader cannot be combined with $territoriality");
+        expect(reply.content.$summary.commit).to.equal(0);
+        expect(pendingCalls).to.have.length(0);
+        expect(asked).to.have.length(0);
+        expect(knocks).to.have.length(0);
+        // Leader alone is still accepted
+        await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db());
+        expect(asked).to.have.length(1);
+      });
+
+      it("takes no part for a transaction that did not ask, or one that needs the votes", async () => {
+        for (const over of [{ $unanimous: true }, { $wait: true }]) {
+          const asked: string[][] = [];
+          const { host, pendingCalls } = hostWith("me", [], asked);
+          await Endpoints.ExternalInitalise(host, leaderTx(over), "1.2.3.4", db()).catch(() => undefined);
+          expect(asked, JSON.stringify(over)).to.have.length(0);
+          if (pendingCalls[0]) expect(pendingCalls[0].entry, JSON.stringify(over)).to.not.have.property("$leaderOk");
+        }
+        const asked: string[][] = [];
+        const { host } = hostWith("me", [], asked);
+        await Endpoints.ExternalInitalise(host, tx(), "1.2.3.4", db());
+        expect(asked).to.have.length(0);
+      });
+
+      it("never takes $leaderOk from the client", async () => {
+        const { host, pendingCalls } = hostWith(undefined);
+        await Endpoints.ExternalInitalise(host, leaderTx({ $leaderOk: true }, { $i: { [S1]: {}, [S2]: {} } }), "1.2.3.4", db());
+        expect(pendingCalls[0].entry).to.not.have.property("$leaderOk");
+        const second = hostWith("me");
+        await Endpoints.ExternalInitalise(second.host, tx({ $leaderOk: true }), "1.2.3.4", db());
+        expect(second.pendingCalls[0].entry).to.not.have.property("$leaderOk");
+      });
+
+      it("fails the client when the owner cannot be reached", async () => {
+        const { host } = makeHost(
+          { replies: [] },
+          { leaderOwner: () => "other", neighbourhood: { get: () => ({ knock: async () => { throw "Network Communication Error"; } }) } }
+        );
+        let caught: any;
+        await Endpoints.ExternalInitalise(host, leaderTx(), "1.2.3.4", db()).catch((e: any) => (caught = e));
+        expect(caught).to.exist;
       });
     });
 

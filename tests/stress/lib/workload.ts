@@ -15,6 +15,7 @@ import { GateResult, readLoad, waitForQuiet } from "./loadgate";
 
 export const CONTRACT_FILES: Record<string, string> = {
   returner: "returner-contract.ts",
+  "returner-leader": "returner-leader-contract.ts",
   "no-write": "no-write-contract.ts",
   "read-only": "read-only-contract.ts",
   "cpu-work": "cpu-work-contract.ts",
@@ -120,9 +121,9 @@ export async function setupWorkload(nodes: NetworkNode[], contract: string, clie
 }
 
 /** A signed contract transaction on the client's own stream (the "hot stream" case). */
-export function hotTransaction(w: Workload, client: number, message: string): unknown {
+export function hotTransaction(w: Workload, client: number, message: string, leader = false): unknown {
   const id = w.identities[client];
-  const body = { $namespace: w.namespace, $contract: w.contractId, $i: { [id.streamId]: {} }, $o: { [id.streamId]: { message } } };
+  const body = { $namespace: w.namespace, $contract: w.contractId, $i: { [id.streamId]: {} }, $o: { [id.streamId]: { message } }, ...(leader ? { $leader: true } : {}) };
   return { $tx: body, $sigs: { [id.streamId]: id.keyPair.sign(body) } };
 }
 

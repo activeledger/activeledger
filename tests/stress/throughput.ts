@@ -24,6 +24,7 @@ const SPECS: FlagSpec[] = [
   { name: "target-pct", type: "number", default: 5, description: "for --stop-early: the resolving power, in percent, that is good enough" },
   { name: "contract", type: "string", default: "returner", choices: Object.keys(CONTRACT_FILES), description: "contract the transactions run (hot mode only)" },
   { name: "mode", type: "string", default: "hot", choices: ["hot", "unique"], description: "hot: each client keeps writing its own stream; unique: every transaction creates a new stream (an onboard, whatever --contract is)" },
+  { name: "leader", type: "boolean", default: false, description: "hot mode: ask for leader mode ($tx.$leader); the contract must accept it (returner-leader does)" },
   { name: "entry", type: "string", default: "spread", choices: ["spread", "first"], description: "spread: clients enter at nodes in turn; first: all enter at node 0" },
   { name: "fail-on-uncommitted", type: "boolean", default: false, description: "exit 1 if any transaction did not commit (always reported either way)" },
   { name: "min-tps", type: "number", description: "fail (exit 1) if the median tx/s of any size is below this" },
@@ -75,7 +76,7 @@ runTool(
         const record: any = await withNetwork({ nodeCount, basePort: f.basePort, readyTimeoutMs: 60000 }, async (_h, nodes) => {
           const workload = await setupWorkload(nodes, f.contract, f.clients);
           const entryOf = (client: number) => (f.entry === "first" ? nodes[0] : nodes[client % nodes.length]).baseUrl;
-          const build = (client: number, i: number) => (f.mode === "unique" ? uniqueTransaction() : hotTransaction(workload, client, `g${round}c${client}i${i}`));
+          const build = (client: number, i: number) => (f.mode === "unique" ? uniqueTransaction() : hotTransaction(workload, client, `g${round}c${client}i${i}`, f.leader));
           const latencies: number[] = [];
           const reasons = new Map<string, number>();
           let okMeasured = 0;

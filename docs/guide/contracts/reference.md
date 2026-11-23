@@ -20,7 +20,7 @@ All return a promise. Resolve to continue, reject to refuse. A rejected string, 
 | Method | Required | Called when |
 | --- | --- | --- |
 | `verify(signatureless: boolean): Promise<boolean>` | No | First, on every node. `signatureless` is `true` for a self-signed transaction. Without a `verify`, the transaction passes this step. |
-| `vote(): Promise<boolean>` | Yes | After verify, when the transaction has `$i` inputs. Rejecting makes this node vote no. |
+| `vote(): Promise<boolean \| { leader: true }>` | Yes | After verify, when the transaction has `$i` inputs. Rejecting makes this node vote no. Resolving `{ leader: true }` is a yes that also accepts leader mode, but only for a transaction that asked with `$tx.$leader` and that leader mode applies to (it writes one stream, or streams owned by one node); on any other transaction it is a plain yes. See [Leader mode](../operate/nodes.md#leader-mode). |
 | `commit(possibleTerritoriality?: boolean): Promise<any>` | Yes | When enough nodes voted yes. `possibleTerritoriality` is `true` on the node named by the transaction's `$territoriality`, when it set one. |
 | `reconcile(): Promise<any>` | No | When this node voted no but the network reached consensus without it. Resolve `true` once you have brought the streams into line. |
 | `postProcess(territoriality: boolean, who: string): Promise<any>` | With `PostProcess` | After commit. `territoriality` is `true` on the node named by the transaction's `$territoriality`; `who` is that node's reference. |

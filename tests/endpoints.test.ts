@@ -523,6 +523,19 @@ describe("Endpoints.buildClientResponse (Activenetwork)", () => {
     expect(out.$responses).to.deep.equal([{ a: 1 }]);
   });
 
+  it("says $leader when the entry node committed it as a leader transaction", () => {
+    const led: any = { ...tx, $tx: { $leader: true }, $nodes: { a: { vote: true }, b: { vote: true, leader: true } } };
+    expect(Endpoints.buildClientResponse(led, summary, []).$leader).to.equal(true);
+  });
+
+  it("does not say $leader for a normal transaction, or a leader flag nobody accepted", () => {
+    expect(Endpoints.buildClientResponse(tx, summary, [])).to.not.have.property("$leader");
+    const asked: any = { ...tx, $tx: { $leader: true }, $nodes: { a: { vote: true } } };
+    expect(Endpoints.buildClientResponse(asked, summary, [])).to.not.have.property("$leader");
+    const claimed: any = { ...tx, $tx: {}, $nodes: { a: { vote: true, leader: true } } };
+    expect(Endpoints.buildClientResponse(claimed, summary, [])).to.not.have.property("$leader");
+  });
+
   it("does not leak the whole transaction unless debugToClient is on", () => {
     // $debug is the entire network $tx, node responses included
     const out = Endpoints.buildClientResponse(tx, summary, []);

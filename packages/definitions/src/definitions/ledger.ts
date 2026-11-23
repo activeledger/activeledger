@@ -50,6 +50,10 @@ export interface LedgerEntry {
   $relay?: IRelay;
   $broadcast?: boolean;
   $territoriality?: string;
+  /** Set only by the entry node: this node owns every stream the transaction writes, so leader mode ($tx.$leader) is allowed. Never taken from the client */
+  $leaderOk?: boolean;
+  /** Set on a transaction forwarded to the node that owns its stream, so that node does not forward it again. Never kept */
+  $leaderFwd?: boolean;
   $unanimous?: boolean;
   $encrypt?: boolean;
   $nolock?:boolean;
@@ -64,6 +68,8 @@ export interface LedgerResponse {
   $streams: IStreams;
   $responses?: unknown[];
   $territoriality?: string;
+  /** The entry node committed this as a leader transaction on its own vote; the other nodes follow, it is not network confirmation */
+  $leader?: boolean;
   $debug?: LedgerEntry;
 }
 
@@ -127,6 +133,8 @@ export interface LedgerTransaction {
   $i: LedgerInputs;
   $o: LedgerIORputs;
   $r?: LedgerIORputs;
+  /** Ask for leader mode: the entry node decides, the others are told once it has voted yes. The contract must also accept it (vote() returns { leader: true }), otherwise it is a normal transaction */
+  $leader?: boolean;
 }
 
 /**
