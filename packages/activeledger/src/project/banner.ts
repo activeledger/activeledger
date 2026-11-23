@@ -1,13 +1,14 @@
 /** The logo and the name in letters, for the interactive `project` commands. Plain ASCII so any terminal draws it. */
 
+/** The A of the logo, five rows tall like the letters beside it: it is the first letter of the name */
 export const LOGO = [
-  "        /\\",
-  "       /  \\",
-  "      / /\\ \\",
-  "     / /  \\ \\",
-  "    / /____\\ \\",
-  "   /_/      \\_\\",
+  "    /\\",
+  "   /  \\",
+  "  / /\\ \\",
+  " / /__\\ \\",
+  "/_/    \\_\\",
 ];
+const LOGO_WIDTH = 10;
 
 // 5 rows per letter; only the letters the name needs
 const FONT: { [letter: string]: string[] } = {
@@ -34,13 +35,13 @@ export const letters = (text: string): string[] => {
   return rows;
 };
 
+/** The name in letters: the logo is its first A, so the letters are the rest of the name, side by side with it */
 export const NAME = letters("ACTIVELEDGER");
+export const NAME_AFTER_LOGO = letters("CTIVELEDGER");
 
-/** Logo and name together, as lines (the logo beside the first rows of the name is too wide, so one above the other) */
+/** The logo's A joined to the rest of the name, as one line of letters, then the tagline */
 export const banner = (tagline = "Contracts, namespaces and transactions from the command line"): string[] => [
-  ...LOGO,
-  "",
-  ...NAME,
+  ...LOGO.map((row, r) => row.padEnd(LOGO_WIDTH) + " " + NAME_AFTER_LOGO[r]),
   "",
   `  ${tagline}`,
   "",
