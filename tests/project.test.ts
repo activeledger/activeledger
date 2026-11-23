@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { banner, letters, LOGO, NAME, wantBanner } from "../packages/activeledger/src/project/banner";
+import { banner, letters, LOGO, NAME, NAME_AFTER_LOGO, wantBanner } from "../packages/activeledger/src/project/banner";
 import { COMMANDS, commandHelp, overview } from "../packages/activeledger/src/project/help";
 import {
   addToGitignore, checkKeyFile, Git, keyPathOf, ProjectError, projectsIn, readKeys, resolveProject, safeSource, validateProject, writeAtomic, writeKeys,
@@ -37,6 +37,15 @@ describe("project: banner and help", () => {
     expect(banner().join("\n")).to.include("#").and.to.include("/");
     expect(() => letters("Q")).to.throw("no glyph");
     expect(letters("ti")).to.have.length(5);
+  });
+  it("joins the logo's A to the rest of the name in one set of rows", () => {
+    const rows = banner();
+    expect(rows.slice(0, 5)).to.have.length(5);
+    for (const r of rows.slice(0, 5)) expect(r).to.match(/[/\\_]/).and.to.match(/#/);
+    expect(rows[4]).to.include("/_/    \\_\\");
+    expect(rows.slice(0, 5).map((r) => r.length)).to.satisfy((l: number[]) => Math.max(...l) < 80);
+    expect(rows.join("\n")).to.include("Contracts, namespaces");
+    expect(NAME_AFTER_LOGO).to.have.length(5);
   });
   it("is drawn only for a person at a terminal", () => {
     expect(wantBanner(true, {}, {})).to.equal(true);
@@ -243,6 +252,16 @@ describe("project: transactions", () => {
     expect(new ActiveCrypto.KeyPair("rsa", rsa.pub.pkcs8pem).verify(tx.$tx, tx.$sigs[SID])).to.equal(true);
     expect(() => exampleTx({ contract: "nb", input: { [CID]: {} } }, ctx, signer, project)).to.throw(ProjectError, /not streams of the identity/);
     expect(() => exampleTx({ contract: "nb" }, ctx, signer, { ...project, namespace: undefined })).to.throw(ProjectError, /no namespace/);
+  });
+  it("an input may be a label with the stream in $stream, and is still signed for by that stream", () => {
+    const project: any = { version: 1, namespace: "myorg", networks: {}, contracts: {}, transactions: {} };
+    const ctx = { identities: { alice: SID }, namespace: "myorg", contracts: {} };
+    const signer = { name: "alice", identity: IDENTITY, streamId: SID };
+    const tx = exampleTx({ contract: "c", input: { sender: { $stream: "@alice", message: "hi" } } }, ctx, signer, project);
+    expect(tx.$tx.$i).to.deep.equal({ sender: { $stream: SID, message: "hi" } });
+    expect(Object.keys(tx.$sigs)).to.deep.equal([SID]);
+    expect(new ActiveCrypto.KeyPair("rsa", rsa.pub.pkcs8pem).verify(tx.$tx, tx.$sigs[SID])).to.equal(true);
+    expect(() => exampleTx({ contract: "c", input: { sender: { $stream: CID } } }, ctx, signer, project)).to.throw(ProjectError, /sender.*not streams of the identity/);
   });
   it("checks a reply against expect", () => {
     const committed = interpret({ $summary: { total: 4, vote: 4, commit: 1 } });

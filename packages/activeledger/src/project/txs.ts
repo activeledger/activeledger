@@ -149,8 +149,9 @@ export const exampleTx = (
   };
   if (!$tx.$namespace) throw new ProjectError("the project has no namespace to run the transaction in");
   if (copy.entry) $tx.$entry = copy.entry;
-  const inputs = Object.keys($tx.$i);
-  const foreign = inputs.filter((k) => k !== signer.streamId);
+  // An input is a stream id, or a label with the stream id in `$stream` (the contract then reads it by the label)
+  const streamOf = (key: string, value: any): string => (value && typeof value === "object" && typeof value.$stream === "string" ? value.$stream : key);
+  const foreign = Object.entries<any>($tx.$i).filter(([k, v]) => streamOf(k, v) !== signer.streamId).map(([k]) => k);
   if (foreign.length) throw new ProjectError(`the example's inputs (${foreign.join(", ")}) are not streams of the identity "${signer.name}" that signs it; use @${signer.name}`);
   return { $tx, $sigs: { [signer.streamId]: sign(signer.identity, $tx) } };
 };
