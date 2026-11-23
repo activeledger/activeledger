@@ -67,6 +67,25 @@ describe("Process - the vote threshold and the commit it starts (Activeprotocol)
     });
   });
 
+  describe("canCommit with another node's leader claim", () => {
+    // n0 is this node; n1 is the origin. A leader claim in a peer's vote must
+    // not stand in for the count: only this node's own contract decides to
+    // skip it (and then it commits without asking canCommit).
+    beforeEach(() => ActiveOptions.set("consensus", { reached: 60 }));
+
+    it("does not commit on the origin's leader vote, even when this node voted yes", () => {
+      const f = make("yynnn", {}, { $origin: "n1" });
+      f.entry.$nodes.n1.leader = true;
+      expect(canCommit(f)).to.equal(false);
+    });
+
+    it("still counts the votes as usual when the origin's vote carries a leader flag", () => {
+      const f = make("yyynn", {}, { $origin: "n1" });
+      f.entry.$nodes.n1.leader = true;
+      expect(canCommit(f)).to.equal(true);
+    });
+  });
+
   describe("commit, once consensus is there", () => {
     const vm = (seen: any[], proc: () => Process) =>
       ({
