@@ -119,7 +119,7 @@ Everything `project` sends is an ordinary signed transaction. [Project commands]
 
 ### 5. Look at what you made
 
-Every node serves a read-only view of its own database. Open the first node's:
+Every node serves a browser view of its own database, the explorer. Open the first node's:
 
 ```
 http://127.0.0.1:5259/_explorer
@@ -131,7 +131,7 @@ Each stream is shown with its state, meta, volatile data and history. Click the 
 
 ![The transactions a node has committed](docs/guide/assets/screens/explorer-transactions.png)
 
-The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See [The database explorer](docs/guide/operate/explorer.md).
+The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. How it works, and everything it can do: [The database explorer](docs/guide/operate/explorer.md).
 
 ### 6. Check a contract before you deploy it
 
@@ -153,7 +153,7 @@ The audit finds `eval`, hard-coded secrets, time and randomness inside a vote (w
 | `activeledger` | The node. Consensus per stream, TypeScript contracts with a deploy-time security scan, and contract events. |
 | `activeledger project` | Namespaces, contracts and example transactions from a committed `.activeledger` file, with keys kept out of git. [Guide](docs/guide/cli/project.md) |
 | `activeledger audit` | Contract security, best practice, duplicate code and dependency advisories, with a risk score. [Guide](docs/guide/contracts/audit.md) |
-| The explorer | A read-only browser view of a node's own database, at `/_explorer` on its storage port. [Guide](docs/guide/operate/explorer.md) |
+| The explorer | A browser view of a node's own database (ledger data read only by default), at `/_explorer` on its storage port. [Guide](docs/guide/operate/explorer.md) |
 | Leader mode | A stream written by one client at a time can commit as soon as the node that owns it votes yes. [Guide](docs/guide/operate/nodes.md#leader-mode) |
 | `activehybrid` | Light followers of the ledger that do not vote. [Guide](docs/guide/hybrid/index.md) |
 | `activerestore` | Heals a node that fell behind or came up empty. |

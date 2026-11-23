@@ -119,7 +119,7 @@ Everything `project` sends is an ordinary signed transaction. [Project commands]
 
 ### 5. Look at what you made
 
-Every node serves a read-only view of its own database. Open the first node's:
+Every node serves a browser view of its own database, the explorer. Open the first node's:
 
 ```
 http://127.0.0.1:5259/_explorer
@@ -131,7 +131,7 @@ Each stream is shown with its state, meta, volatile data and history. Click the 
 
 ![The transactions a node has committed](https://raw.githubusercontent.com/activeledger/activeledger/master/docs/guide/assets/screens/explorer-transactions.png)
 
-The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. See [The database explorer](https://activeledger.github.io/activeledger/operate/explorer/).
+The explorer has no login, so keep the store on loopback. Ledger data is read only unless you turn on Danger mode. How it works, and everything it can do: [The database explorer](https://activeledger.github.io/activeledger/operate/explorer/).
 
 ### 6. Check a contract before you deploy it
 
@@ -153,7 +153,7 @@ The audit finds `eval`, hard-coded secrets, time and randomness inside a vote (w
 | `activeledger` | The node. Consensus per stream, TypeScript contracts with a deploy-time security scan, and contract events. |
 | `activeledger project` | Namespaces, contracts and example transactions from a committed `.activeledger` file, with keys kept out of git. [Guide](https://activeledger.github.io/activeledger/cli/project/) |
 | `activeledger audit` | Contract security, best practice, duplicate code and dependency advisories, with a risk score. [Guide](https://activeledger.github.io/activeledger/contracts/audit/) |
-| The explorer | A read-only browser view of a node's own database, at `/_explorer` on its storage port. [Guide](https://activeledger.github.io/activeledger/operate/explorer/) |
+| The explorer | A browser view of a node's own database (ledger data read only by default), at `/_explorer` on its storage port. [Guide](https://activeledger.github.io/activeledger/operate/explorer/) |
 | Leader mode | A stream written by one client at a time can commit as soon as the node that owns it votes yes. [Guide](https://activeledger.github.io/activeledger/operate/nodes/#leader-mode) |
 | `activehybrid` | Light followers of the ledger that do not vote. [Guide](https://activeledger.github.io/activeledger/hybrid/) |
 | `activerestore` | Heals a node that fell behind or came up empty. |
