@@ -2981,12 +2981,62 @@ export class Host extends Home {
       // 0 means next tick; anything else waits. Overridable without a
       // redeploy, so a deployment that dislikes either end can move.
       this.scheduleQueueRecheck(QUEUE_RECHECK_MS);
+
+      // And do not wait for that scan to serve the one queued for these
+      // streams: hand them over now (see handOff()).
+      const freed = entry.$$labelOrKey;
+      if (freed?.some((s) => this.queuedStreams.has(s))) {
+        setImmediate(() => this.handOff(freed));
+      }
     } else {
       ActiveLogger.warn(umid, "Trying to release unknown umid");
     }
   }
   private processingBLQ = false;
   private lastQueueScan = 0;
+
+  /**
+   * Gives streams that have just been released to the first transaction
+   * queued for them, without waiting for the next scan.
+   *
+   * The scan serves one transaction per stream and runs at most every
+   * QUEUE_SCAN_MIN_MS, which caps a contended stream at about 50 a second.
+   * Clients on a busy stream send faster than that, so once a node queued,
+   * its queue only grew, until entries waited out QUEUE_MAX_WAIT_MS and the
+   * node fell behind the others. Here the pace is how fast transactions
+   * commit. Order is kept: an entry is passed over if one ahead of it
+   * is waiting for any of the same streams. The scan stays as the backstop,
+   * for everything this does not reach.
+   *
+   * @private
+   * @param {string[]} freed streams that were released
+   */
+  private handOff(freed: string[]) {
+    if (this.processingBLQ) return;
+    this.processingBLQ = true;
+    try {
+      const wanted = new Set(freed);
+      for (const kind of ["internal", "external"] as const) {
+        const queue = this.busyLocksQueue[kind];
+        const ahead: Set<string> = new Set();
+        for (let i = 0; i < queue.length; i++) {
+          const streams = queue[i].entry.$$labelOrKey || [];
+          const blocked = streams.some((s) => ahead.has(s));
+          streams.forEach((s) => ahead.add(s));
+          if (blocked || !streams.some((s) => wanted.has(s))) continue;
+          if (this.hold(queue[i].entry, queue[i].retry++, queue[i].queuedAt)) {
+            this.queuedRemove(streams);
+            queue.splice(i--, 1);
+            // These streams are handled for this release
+            streams.forEach((s) => wanted.delete(s));
+            if (!wanted.size) return;
+          }
+        }
+      }
+    } finally {
+      this.processingBLQ = false;
+    }
+  }
   private queueRecheckPending = false;
 
   /**
