@@ -17,6 +17,7 @@
 import { hotTransaction, setupWorkload, timedSubmit, uniqueTransaction, withNetwork, sleep, Workload } from "../stress/lib/workload";
 import { requestJson, storageGet, storagePut, submit } from "./http";
 import { NetworkNode } from "./harness";
+import { ownerOf } from "../../packages/network/src/network/home";
 
 let failures = 0;
 const fail = (m: string) => {
@@ -122,7 +123,7 @@ async function territorialShapes(w: Workload, nodes: NetworkNode[]) {
     const tx: any = hotTransaction(w, 0, `answer${i}`, false);
     tx.$territoriality = refs[(i + 2) % 4];
     const r: any = await submit(nodes[i].baseUrl, tx);
-    const says = !!(r && r.$umid && r.$streams && r.$streams.updated && r.$streams.updated.length);
+    const says = !!(r && r.$umid && r.$streams && r.$streams.updated && r.$streams.updated.length && r.$summary && r.$summary.commit > 0 && r.$responses && r.$responses.length);
     if (!says) fail(`territorial answer ${i} was not a committed response: ${JSON.stringify(r).slice(0, 160)}`);
     if (!(await landed(w.identities[0].streamId, `answer${i}`))) fail(`territorial answer ${i} did not land on every node`);
   }
@@ -220,6 +221,52 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   if (!after.committed) bad(`contention ${mode}: the stream would not take a normal write afterwards`);
 }
 
+/**
+ * Leader mode is routed to the node that owns the stream: wherever the client
+ * sends it the answer is a leader answer, a transaction writing streams of
+ * different owners is a normal one, and one writing streams of the same owner
+ * is still a leader one.
+ */
+async function leaderRouting(w: Workload, nodes: NetworkNode[]) {
+  const refs: string[] = [];
+  for (const n of nodes) refs.push((await requestJson(`${n.baseUrl}/a/status`, "GET")).reference);
+  const sorted = [...refs].sort();
+  const ownerOfStream = (c: number) => refs.indexOf(ownerOf(w.identities[c].streamId, sorted) as string);
+  const saysLeader = (r: any) => !!(r && r.$leader);
+  const wrote = (r: any) => !!(r && r.$streams && r.$streams.updated && r.$streams.updated.length);
+
+  // From every entry node, one stream
+  const c = 0;
+  const seen: string[] = [];
+  for (let k = 0; k < nodes.length; k++) {
+    const r: any = await submit(nodes[k].baseUrl, hotTransaction(w, c, `routed${k}`, true));
+    seen.push(`${k === ownerOfStream(c) ? "owner" : "forwarded"}:${wrote(r) && saysLeader(r) ? "leader" : "NOT leader"}`);
+    if (!wrote(r)) fail(`leader transaction through node ${k} did not commit: ${JSON.stringify(r).slice(0, 140)}`);
+    else if (!saysLeader(r)) fail(`leader transaction through node ${k} was not answered as a leader transaction`);
+  }
+  console.log(`leader routing, stream owned by node ${ownerOfStream(c)}, entered at each node: ${seen.join(", ")}`);
+
+  // Two streams written, owned by different nodes, then by the same node
+  const pairs: { same: number[] | undefined; diff: number[] | undefined } = { same: undefined, diff: undefined };
+  for (let a = 0; a < w.identities.length; a++) {
+    for (let b = a + 1; b < w.identities.length; b++) {
+      if (ownerOfStream(a) === ownerOfStream(b)) pairs.same = pairs.same || [a, b];
+      else pairs.diff = pairs.diff || [a, b];
+    }
+  }
+  for (const [kind, pair] of [["different owners", pairs.diff], ["the same owner", pairs.same]] as const) {
+    if (!pair) { console.log(`leader routing, ${kind}: no such pair among the test streams`); continue; }
+    const [a, b] = pair;
+    const body = { $namespace: w.namespace, $contract: w.contractId, $i: { [w.identities[a].streamId]: {} }, $o: { [w.identities[b].streamId]: { message: `pair-${kind}` } }, $leader: true };
+    const tx = { $tx: body, $sigs: { [w.identities[a].streamId]: w.identities[a].keyPair.sign(body) } };
+    const r: any = await submit(nodes[1].baseUrl, tx);
+    const want = kind === "the same owner";
+    console.log(`leader routing, two streams with ${kind}: committed ${wrote(r)}, answered as leader ${saysLeader(r)} (expected ${want})`);
+    if (!wrote(r)) fail(`two streams with ${kind} did not commit: ${JSON.stringify(r).slice(0, 140)}`);
+    else if (saysLeader(r) !== want) fail(`two streams with ${kind}: answered as leader ${saysLeader(r)}, expected ${want}`);
+  }
+}
+
 /** A leader transaction whose commit fails: the client is told, and no node moved. */
 async function failedCommit(w: Workload, nodes: NetworkNode[]) {
   const id = w.identities[4];
@@ -297,9 +344,11 @@ async function main(): Promise<number> {
     await territorialShapes(w, nodes);
     await commitConflict(w, nodes, rounds);
     await contention(w, nodes, Math.max(4, rounds), "normal", 3);
+    // Reported, not failed: concurrent writers to one stream through different nodes fork it in territorial mode (see the docs)
     await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
-    // Both of these are reported rather than failed: concurrent writers to one stream fork it in these modes (see the PR)
-    await contention(w, nodes, Math.max(4, rounds), "leader", 7, true);
+    // Leader transactions are all routed to the node that owns the stream, so they cannot race each other
+    await contention(w, nodes, Math.max(4, rounds), "leader", 7);
+    await leaderRouting(w, nodes);
     await failedCommit(w, nodes);
     await unanimousLeader(w, nodes);
   });

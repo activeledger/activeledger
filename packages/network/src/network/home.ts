@@ -30,6 +30,26 @@ import { Neighbour } from "./neighbour";
 import { Neighbourhood, NeighbourStatus } from "./neighbourhood";
 import { ActiveInterfaces } from "./utils";
 /**
+ * Which of `refs` (the sorted references of the active nodes) owns a stream:
+ * the hash of the stream id picks one, so every node with the same list
+ * picks the same node.
+ */
+export function ownerOf(streamId: string, refs: string[]): string | undefined {
+  if (!refs || !refs.length) return undefined;
+  return refs[parseInt(ActiveCrypto.Hash.getHash(streamId).slice(0, 8), 16) % refs.length];
+}
+
+/** The one node that owns all of the streams, or undefined if there is none */
+export function leaderOwnerOf(streamIds: string[], refs: string[]): string | undefined {
+  if (!streamIds || !streamIds.length) return undefined;
+  const owner = ownerOf(streamIds[0], refs);
+  for (let i = 1; i < streamIds.length; i++) {
+    if (ownerOf(streamIds[i], refs) !== owner) return undefined;
+  }
+  return owner;
+}
+
+/**
  * Represents this Activeledger node's home within the network neighbourhood
  *
  * @export
@@ -265,6 +285,20 @@ export class Home extends Neighbour {
         if (a < b) return -1;
         return 0;
       });
+  }
+
+  /**
+   * The node that owns every one of these streams for leader mode, or
+   * undefined when there is no single owner (no streams, or they belong to
+   * different nodes). Leader mode skips the vote, so only one node may lead
+   * writes to a stream or two leaders could commit different transactions at
+   * the same revision.
+   *
+   * @param {string[]} streamIds
+   * @returns {(string | undefined)}
+   */
+  public leaderOwner(streamIds: string[]): string | undefined {
+    return leaderOwnerOf(streamIds, this.tMap);
   }
 
   /**

@@ -18,12 +18,24 @@ Every node runs each transaction and votes yes or no. The transaction is committ
 
 ### Leader mode
 
-A transaction can skip the voting round by setting `"$leader": true` inside `$tx` (the signed body). The contract must also accept it, by returning `{ leader: true }` from `vote()`. Without both, it is a normal transaction.
+Leader mode answers the client without waiting for the other nodes to vote. It is fast and it is narrow: it only works for a transaction that writes **one stream**, or several streams that happen to live on the same node. Everything else runs as a normal transaction, with no error.
 
-The node the client calls runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The client's response says `"$leader": true` when it was committed this way: it is that one node's answer, not network confirmation. `$leader` is ignored (the transaction runs as a normal one) with `$unanimous`, with `$territoriality` and with `$wait`, because only a broadcast transaction tells the other nodes about it.
+**To use it,** set `"$leader": true` inside `$tx` (the signed body), and the contract must accept it by resolving `{ leader: true }` from `vote()`. Without both it is a normal transaction.
 
-!!! warning
-    Leader mode has no agreement on order. If two clients write the **same stream** at the same moment through different nodes, each node can commit its own transaction at the same revision and the stream forks: the nodes hold different data at one revision number, and every later write to that stream fails with `Input Stream Position Incorrect`. Both clients were told they committed. Use leader mode only where one writer at a time owns a stream (for example a client's own stream, sent through one node), or send writes to shared streams without `$leader`. Normal voting handles concurrent writers correctly.
+**Who leads.** Every stream has one owner node, picked from the stream id and the list of active nodes, so every node works out the same owner. Leader mode is only ever run by that node, so two leaders can never commit different transactions at the same revision of a stream:
+
+1. The node the client calls works out the owner of every stream the transaction writes (everything in `$i` and `$o`).
+2. If it owns them all, it leads. If another single node owns them all, the transaction is passed to that node as the client sent it, and the client gets that node's reply. This costs one extra request.
+3. If the streams belong to different nodes, the transaction is a normal one and the nodes vote.
+
+**How a leader transaction runs.** The owner runs the transaction alone first and tells the other nodes only once its own vote is yes. A no is the answer in the client's response, and nothing is broadcast. On a yes it commits and answers the client; the other nodes then verify and vote for themselves, and each commits on its own vote. The reply says `"$leader": true`, and that is one node's answer, not network confirmation.
+
+**Where it fits.** A stream written by one client at a time through any node, a counter, a log, a client's own state. A transaction that moves value between two accounts writes two streams, which are usually on different nodes (with 4 nodes about three in four are), so it is almost always a normal vote and gets no speed up. If your transactions mostly write more than one stream, leader mode will not help you.
+
+**What it does not do**
+- It is ignored (the transaction runs as a normal one) with `$unanimous`, `$territoriality` and `$wait`, because only a broadcast transaction tells the other nodes about it.
+- It does not order a leader write against a normal write to the same stream. If a normal write to a stream races a leader write, the owner can commit its leader transaction while the other nodes commit the normal one, and the client that was told `$leader` may lose its write. Do not mix the two on one stream.
+- If the owner node is down, a leader transaction for its streams fails. It does not move to another node.
 
 ### Territorial mode
 

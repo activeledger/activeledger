@@ -154,6 +154,13 @@ export class Endpoints {
             const relay = tx.$relay;
             delete tx.$relay;
 
+            // Leader mode markers belong to the nodes, never the client. A
+            // transaction forwarded to its stream's owner says so ($leaderFwd)
+            // so the owner does not forward it on again
+            const leaderForwarded = tx.$leaderFwd === true;
+            delete tx.$leaderFwd;
+            delete tx.$leaderOk;
+
             // The entry node stamps $datetime. Preset, it was overwritten
             // below - but only after the $expire branch hashed it into
             // $umid, making it a free nonce past the Transaction Exists
@@ -260,6 +267,26 @@ export class Endpoints {
               tx.$broadcast = true;
             }
 
+            // Leader mode needs one node to lead each stream. If this node owns
+            // every stream the transaction writes it may lead; if one other node
+            // does, the transaction goes to it; otherwise (several owners, or
+            // anything that needs the votes) it runs as a normal transaction
+            let leaderOwner: string | undefined;
+            if (
+              tx.$tx.$leader === true &&
+              tx.$broadcast &&
+              !tx.$unanimous &&
+              !tx.$territoriality &&
+              !(tx as any).$wait
+            ) {
+              const owner = host.leaderOwner(Endpoints.writtenStreams(tx));
+              if (owner === host.reference) {
+                tx.$leaderOk = true;
+              } else if (owner && !leaderForwarded) {
+                leaderOwner = owner;
+              }
+            }
+
             // Default all to broadcast
             // $territoriality temporarily disabled until firewall check added
             //tx.$broadcast = true;
@@ -280,8 +307,21 @@ export class Endpoints {
               initTx: ActiveDefinitions.LedgerEntry,
               counter = 0
             ) => {
-              Endpoints.DirectInternalInitalise(host, initTx)
+              Endpoints.DirectInternalInitalise(host, initTx, leaderOwner)
                 .then(async (response: any) => {
+                  // A transaction forwarded to another node (territorial, or the
+                  // owner of a leader stream) comes back as that node's reply to
+                  // the client: the summary, responses and $leader it built.
+                  // Rebuilding it here from $nodes it does not have would zero it.
+                  if (
+                    response.rebroadcasted &&
+                    response.status == "200" &&
+                    response.data?.$summary &&
+                    !response.data.$nodes &&
+                    !response.data.error
+                  ) {
+                    return resolve({ statusCode: 200, content: response.data });
+                  }
                   if (response.status == "200" && !response.data?.error) {
                     // Do something with the success response before returning
                     let tx: ActiveDefinitions.LedgerEntry = response.data;
@@ -1681,6 +1721,36 @@ export class Endpoints {
   }
 
   /**
+   * The streams a transaction writes (its inputs and outputs, a label
+   * standing in for the stream named by its $stream)
+   */
+  public static writtenStreams(tx: ActiveDefinitions.LedgerEntry): string[] {
+    const ids: string[] = [];
+    for (const io of [tx.$tx?.$i, tx.$tx?.$o]) {
+      if (!io || typeof io !== "object") continue;
+      for (const key of Object.keys(io)) {
+        const value: any = (io as any)[key];
+        ids.push(value && typeof value === "object" && typeof value.$stream === "string" ? value.$stream : key);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * What a transaction looks like when passed to another node to run as the
+   * entry node: as the client sent it. The owner stamps its own $umid,
+   * $datetime, $origin and the rest, and refuses a transaction that arrives
+   * already stamped.
+   */
+  public static forwardBody(tx: ActiveDefinitions.LedgerEntry, extra: any = {}): any {
+    const forwarded: any = { ...tx, ...extra };
+    for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$chain", "$relay", "$leaderOk"]) {
+      delete forwarded[stamp];
+    }
+    return forwarded;
+  }
+
+  /**
    * Instead of HTTP to internal initalise Activeledger now uses a direct
    * call with a promise wrapper. Other notes still use InternalInitalise
    *
@@ -1692,9 +1762,27 @@ export class Endpoints {
    */
   private static DirectInternalInitalise(
     host: Host,
-    tx: ActiveDefinitions.LedgerEntry
+    tx: ActiveDefinitions.LedgerEntry,
+    leaderOwner?: string
   ): Promise<any> {
     return new Promise<any>((resolve, reject) => {
+      // Leader mode: another node owns the stream, so it is the one to lead
+      if (leaderOwner && leaderOwner !== host.reference) {
+        const owner = host.neighbourhood.get(leaderOwner);
+        if (owner) {
+          ActiveLogger.debug(`Leader transaction forwarded to ${leaderOwner}`);
+          owner
+            .knock("", Endpoints.forwardBody(tx, { $leaderFwd: true }), true, 0, false)
+            .then((ledger) => {
+              ledger.rebroadcasted = true;
+              resolve(ledger);
+            })
+            .catch((error) => reject(error));
+          return;
+        }
+        // Not a node this one knows: no leader, the votes decide
+      }
+
       // Is the network stable?
       // if (host.getStatus() != NeighbourStatus.Stable)
       //   return reject({
@@ -1722,16 +1810,9 @@ export class Endpoints {
             ActiveLogger.info("Rebroadcasting to : " + sending);
             // We need to rebroadcast to sending node
             let rebroadcast = host.neighbourhood.get(sending);
-            // The owner is the entry node for this transaction: it stamps its
-            // own $umid, $datetime, $origin and the rest, and refuses a
-            // transaction that arrives already stamped. Send what the client sent.
-            const forwarded: any = { ...tx };
-            for (const stamp of ["$umid", "$datetime", "$origin", "$remoteAddr", "$chain", "$relay"]) {
-              delete forwarded[stamp];
-            }
             // Send and wait on their response
             rebroadcast
-              .knock("", forwarded, true, 0, false)
+              .knock("", Endpoints.forwardBody(tx), true, 0, false)
               .then((ledger) => {
                 // Add rebroadcast flag
                 ledger.rebroadcasted = true;

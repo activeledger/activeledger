@@ -10,7 +10,7 @@ describe("Process - leader mode (Activeprotocol)", () => {
   let fixture: ProcessFixture;
   const make = (entry: any = {}, tx: any = {}, options?: any) => {
     fixture = buildProcess({
-      entry: { $broadcast: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, ...tx }, ...entry },
+      entry: { $broadcast: true, $leaderOk: true, $tx: { $namespace: "ns", $contract: "abc", $i: { a: {} }, $o: {}, ...tx }, ...entry },
       processOptions: options,
     });
     fixture.proc.nodeResponse = fixture.entry.$nodes.self;
@@ -28,6 +28,11 @@ describe("Process - leader mode (Activeprotocol)", () => {
       expect(asks(make())).to.equal(false);
       expect(asks(make({}, { $leader: "true" }))).to.equal(false);
       expect(asks(make({ $leader: true }))).to.equal(false);
+    });
+    it("is false unless the entry node marked it ($leaderOk): another node owns the stream, or several do", () => {
+      expect(asks(make({ $leaderOk: undefined }, { $leader: true }))).to.equal(false);
+      expect(asks(make({ $leaderOk: false }, { $leader: true }))).to.equal(false);
+      expect(asks(make({ $leaderOk: "true" }, { $leader: true }))).to.equal(false);
     });
     it("is false for a unanimous transaction, which needs every vote", () => {
       expect(asks(make({ $unanimous: true }, { $leader: true }))).to.equal(false);

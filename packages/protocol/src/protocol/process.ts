@@ -1718,6 +1718,8 @@ export class Process extends EventEmitter {
   private asksForLeader(): boolean {
     return (
       this.entry?.$tx?.$leader === true &&
+      // The entry node only sets this when it owns every stream written
+      this.entry.$leaderOk === true &&
       !!this.entry.$broadcast &&
       !(this.entry as any).$wait &&
       !this.entry.$unanimous &&

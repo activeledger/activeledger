@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { ActiveOptions } from "@activeledger/activeoptions";
 import { ActiveCrypto } from "@activeledger/activecrypto";
-import { Home } from "../packages/network/src/network/home";
+import { Home, ownerOf, leaderOwnerOf } from "../packages/network/src/network/home";
 import { Neighbour } from "../packages/network/src/network/neighbour";
 import {
   Neighbourhood,
@@ -242,6 +242,62 @@ describe("Home (this node within the neighbourhood)", () => {
       const home = withStandby(makeHome());
       home.setNeighbours(refOf(...OTHERS[1]), refOf(...OTHERS[0]));
       expect(home.getStatus()).to.equal(NeighbourStatus.Stable);
+    });
+  });
+
+  describe("leader owner", () => {
+    const refs = ["a", "b", "c", "d"];
+    const ids = Array.from({ length: 400 }, (_, i) => `stream-${i}`);
+
+    it("is the same node for the same stream and node list, and always one of the nodes", () => {
+      ids.forEach((id) => {
+        expect(ownerOf(id, refs)).to.equal(ownerOf(id, [...refs]));
+        expect(refs).to.include(ownerOf(id, refs));
+      });
+    });
+
+    it("spreads streams over every node, none starved and none carrying most", () => {
+      const count: Record<string, number> = { a: 0, b: 0, c: 0, d: 0 };
+      ids.forEach((id) => count[ownerOf(id, refs) as string]++);
+      Object.values(count).forEach((n) => {
+        expect(n).to.be.greaterThan(60);
+        expect(n).to.be.lessThan(140);
+      });
+    });
+
+    it("is the only node on a one node network", () => {
+      ids.forEach((id) => expect(ownerOf(id, ["only"])).to.equal("only"));
+    });
+
+    it("has no owner without nodes", () => {
+      expect(ownerOf("x", [])).to.equal(undefined);
+      expect(ownerOf("x", undefined as any)).to.equal(undefined);
+    });
+
+    it("owns a set of streams only when one node owns them all", () => {
+      const byOwner: Record<string, string[]> = {};
+      ids.forEach((id) => (byOwner[ownerOf(id, refs) as string] ||= []).push(id));
+      const same = byOwner["a"].slice(0, 3);
+      expect(leaderOwnerOf(same, refs)).to.equal("a");
+      expect(leaderOwnerOf([byOwner["a"][0], byOwner["b"][0]], refs)).to.equal(undefined);
+      expect(leaderOwnerOf([byOwner["c"][0]], refs)).to.equal("c");
+    });
+
+    it("has no owner for no streams", () => {
+      expect(leaderOwnerOf([], refs)).to.equal(undefined);
+      expect(leaderOwnerOf(undefined as any, refs)).to.equal(undefined);
+    });
+
+    it("is decided on the sorted list of active nodes, so a stopping node moves its streams", () => {
+      const home = makeHome();
+      const all = [refOf(HOST, PORT), ...OTHERS.map((o) => refOf(o[0], o[1]))].sort();
+      ids.forEach((id) => expect(home.leaderOwner([id])).to.equal(ownerOf(id, all)));
+      const stopping = refOf(...OTHERS[1]);
+      home.neighbourhood.get(stopping).graceStop = true;
+      home.terriBuildMap();
+      const left = all.filter((r) => r !== stopping);
+      ids.forEach((id) => expect(home.leaderOwner([id])).to.equal(ownerOf(id, left)));
+      ids.forEach((id) => expect(home.leaderOwner([id])).to.not.equal(stopping));
     });
   });
 

@@ -50,6 +50,10 @@ export interface LedgerEntry {
   $relay?: IRelay;
   $broadcast?: boolean;
   $territoriality?: string;
+  /** Set only by the entry node: this node owns every stream the transaction writes, so leader mode ($tx.$leader) is allowed. Never taken from the client */
+  $leaderOk?: boolean;
+  /** Set on a transaction forwarded to the node that owns its stream, so that node does not forward it again. Never kept */
+  $leaderFwd?: boolean;
   $unanimous?: boolean;
   $encrypt?: boolean;
   $nolock?:boolean;
