@@ -186,7 +186,13 @@ export class EmbeddedDSConnect implements IDSConnect {
     return this.answer(async () => {
       const body = requestBody({ docs, options });
       if (!Array.isArray(body) && body.docs) {
-        const written = await this.level.bulkDocsRevs(body.docs, body.options);
+        let written: { ok: boolean; revs: { [id: string]: string } };
+        try {
+          written = await this.level.bulkDocsRevs(body.docs, body.options);
+        } catch (e: any) {
+          // The same answer the HTTP route gives (selfhost.ts): a fault, with the reason
+          throw { status: 500, ok: false, error: e && e.message ? e.message : String(e) };
+        }
         return written.ok ? { ok: true, revs: written.revs } : { ok: false };
       }
     });

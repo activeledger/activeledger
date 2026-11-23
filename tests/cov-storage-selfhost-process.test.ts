@@ -298,6 +298,12 @@ describe("Storage process lifecycle (selfhost)", function () {
         await s.req("POST", "/activeledger/_bulk_docs", { docs: [{ _id: "c1", v: 3 }] });
         expect((await s.req("GET", "/activeledger/c1")).json.v).to.equal(3);
         expect((await s.req("GET", "/activeledger/_raw/c1")).json.v).to.equal(3);
+        // A write against a revision the store no longer holds is refused, and the answer says why
+        const refused = await s.req("POST", "/activeledger/_bulk_docs", { docs: [{ _id: "c1", _rev: "1-not-the-current-one", v: 4 }], options: { new_edits: false } });
+        expect(refused.status).to.equal(500);
+        expect(refused.json.ok).to.equal(false);
+        expect(String(refused.json.error)).to.match(/Revision Mismatch: c1/);
+        expect((await s.req("GET", "/activeledger/c1")).json.v).to.equal(3);
       } finally {
         await s.stop();
         s.cleanup();

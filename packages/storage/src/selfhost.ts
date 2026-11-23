@@ -740,10 +740,21 @@ import { IActiveHttpResponse } from "@activeledger/httpd/lib/httpd";
         // }
 
         // Bulk Insert
-        const written = await db.bulkDocsRevs(
-          incoming.body.docs,
-          incoming.body.options
-        );
+        let written: { ok: boolean; revs: { [id: string]: string } };
+        try {
+          written = await db.bulkDocsRevs(
+            incoming.body.docs,
+            incoming.body.options
+          );
+        } catch (e: any) {
+          // An exception inside the store (a revision that no longer matches, say) used to reach the caller as {},
+          // which says nothing, and was not logged here either. The writer reads it as a failed save either way;
+          // now it, and this node's log, say why.
+          const why = e && e.message ? e.message : String(e);
+          ActiveLogger.error(`Bulk write failed: ${why}`);
+          // Still a 500 (it is a fault), with the reason in the body
+          throw { status: 500, ok: false, error: why };
+        }
         if (written.ok) {
           // The revisions the store assigned, so the caller need not read
           // them back
