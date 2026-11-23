@@ -61,6 +61,7 @@ nav:
       - Write a contract: contracts/write.md
       - The contract API: contracts/reference.md
       - Deploy, update and lock: contracts/deploy.md
+      - Auditing a contract: contracts/audit.md
       - Run a contract: contracts/run.md
       - Contracts on hybrids: contracts/hybrid.md
   - Hybrid nodes:
