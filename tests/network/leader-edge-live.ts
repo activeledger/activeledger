@@ -186,7 +186,7 @@ const revNumber = (d: any): number => (d && typeof d._rev === "string" ? parseIn
  * number of commits reported, identically on all four nodes, and the stream
  * still takes a normal write afterwards.
  */
-async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mode: "normal" | "leader" | "territorial", client: number, known = false) {
+async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mode: "normal" | "leader" | "territorial" | "mixed", client: number, known = false) {
   // `known`: a limit of the mode that is reported, not failed (see the summary line)
   const bad = (m: string) => (known ? console.log(`KNOWN LIMIT ${m}`) : fail(m));
   const id = w.identities[client];
@@ -197,7 +197,7 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   for (let r = 0; r < rounds; r++) {
     const results = await Promise.all(
       nodes.map((n, k) => {
-        const tx: any = hotTransaction(w, client, `${mode}-${r}-${k}`, mode === "leader");
+        const tx: any = hotTransaction(w, client, `${mode}-${r}-${k}`, mode === "leader" || (mode === "mixed" && k % 2 === 0));
         if (mode === "territorial") tx.$territoriality = refs[(k + r) % 4];
         tried++;
         return submit(n.baseUrl, tx).then(
@@ -221,7 +221,7 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   }
   const moved = revs[0] - start;
   const disagree = new Set(revs).size > 1 || new Set(msgs).size > 1;
-  if (disagree && mode === "leader") dumpLogs(nodes);
+  if (disagree && (mode === "leader" || mode === "mixed")) dumpLogs(nodes);
   console.log(`contention ${mode.padEnd(11)}: ${tried} writers at once on one stream, clients told ${told} committed; revision moved ${moved} on nodes [${revs.join(",")}]`);
   if (new Set(revs).size > 1 || new Set(msgs).size > 1) bad(`contention ${mode}: nodes disagree: ${JSON.stringify(msgs)} ${JSON.stringify(revs)}`);
   // Territorial answers are the owner's, which may be an error for a busy stream, so only count exactly for the others
@@ -367,6 +367,10 @@ async function main(): Promise<number> {
     await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
     // Leader transactions are all routed to the node that owns the stream, so they cannot race each other
     await contention(w, nodes, Math.max(4, rounds), "leader", 7);
+    // Soak: the same leader contention again on other streams, to catch a node that stops applying (seen once in about 12 runs)
+    for (const c of [0, 1, 2, 4, 5]) await contention(w, nodes, Math.max(4, rounds), "leader", c);
+    // Leader and normal writers on one stream together: documented as unsafe, so reported rather than failed
+    await contention(w, nodes, Math.max(4, rounds), "mixed", 5, true);
     await leaderRouting(w, nodes);
     await failedCommit(w, nodes);
     await unanimousLeader(w, nodes);
