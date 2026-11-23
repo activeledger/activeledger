@@ -177,6 +177,21 @@ function dumpLogs(nodes: NetworkNode[], pattern = /error|fail|position|busy|spi|
   }
 }
 
+/** Wait until no node has written to its log for `still` ms (a forked stream keeps the nodes busy repairing it for a minute or more) */
+async function quiet(nodes: NetworkNode[], still = 6000, max = 120000): Promise<number> {
+  const fs = require("fs");
+  const began = Date.now();
+  let last = nodes.map((n) => fs.statSync(n.logPath).size).join(",");
+  let since = Date.now();
+  while (Date.now() - began < max) {
+    await sleep(1000);
+    const now = nodes.map((n) => fs.statSync(n.logPath).size).join(",");
+    if (now !== last) (last = now), (since = Date.now());
+    else if (Date.now() - since >= still) break;
+  }
+  return Date.now() - began;
+}
+
 const revNumber = (d: any): number => (d && typeof d._rev === "string" ? parseInt(d._rev.split("-")[0], 10) : NaN);
 
 /**
@@ -221,8 +236,25 @@ async function contention(w: Workload, nodes: NetworkNode[], rounds: number, mod
   }
   const moved = revs[0] - start;
   const disagree = new Set(revs).size > 1 || new Set(msgs).size > 1;
-  if (disagree && (mode === "leader" || mode === "mixed")) dumpLogs(nodes);
+  if (disagree && (mode === "leader" || mode === "mixed")) {
+    dumpLogs(nodes);
+    // What each node's log says about this very stream
+    console.log(`stream ${id.streamId}`);
+    dumpLogs(nodes, new RegExp(id.streamId.slice(0, 16)), 12);
+  }
   console.log(`contention ${mode.padEnd(11)}: ${tried} writers at once on one stream, clients told ${told} committed; revision moved ${moved} on nodes [${revs.join(",")}]`);
+  if (disagree && mode === "leader") {
+    // Does a node that missed the burst get back, if given a normal write and time?
+    const heal = await timedSubmit(nodes[1].baseUrl, hotTransaction(w, client, "heal", false));
+    const t0 = Date.now();
+    let same = false;
+    while (Date.now() - t0 < 45000 && !same) {
+      await sleep(1000);
+      const c = await Promise.all(nodes.map((n) => storageGet(n.storageUrl, id.streamId).catch(() => null)));
+      same = new Set(c.map(revNumber)).size === 1;
+    }
+    console.log(`  after a normal write (${heal.committed ? "committed" : "failed"}), the nodes ${same ? "agree again after " + Math.round((Date.now() - t0) / 1000) + " s" : "STILL disagree after 45 s"}`);
+  }
   if (new Set(revs).size > 1 || new Set(msgs).size > 1) bad(`contention ${mode}: nodes disagree: ${JSON.stringify(msgs)} ${JSON.stringify(revs)}`);
   // Territorial answers are the owner's, which may be an error for a busy stream, so only count exactly for the others
   if (mode !== "territorial" && moved !== told) bad(`contention ${mode}: clients were told ${told} committed but the stream moved ${moved}`);
@@ -359,12 +391,21 @@ async function main(): Promise<number> {
       for (let i = 0; i < Number(process.env.EDGE_REPEAT || 5); i++) await contention(w, nodes, Math.max(4, rounds), "leader", i % clients);
       return;
     }
+    if (process.env.EDGE_ONLY === "terr-then-leader") {
+      // A forked territorial stream, then leader contention on another: does the first leave a node unable to apply the second?
+      await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
+      if (process.env.EDGE_QUIET !== "0") console.log(`  network quiet after ${Math.round((await quiet(nodes)) / 1000)} s`);
+      await contention(w, nodes, Math.max(4, rounds), "leader", 7);
+      return;
+    }
     await territorial(w, nodes, rounds);
     await territorialShapes(w, nodes);
     await commitConflict(w, nodes, rounds);
     await contention(w, nodes, Math.max(4, rounds), "normal", 3);
     // Reported, not failed: concurrent writers to one stream through different nodes fork it in territorial mode (see the docs)
     await contention(w, nodes, Math.max(4, rounds), "territorial", 6, true);
+    // The forked territorial stream keeps the nodes repairing it for a minute or more; leader work starts once they are quiet
+    console.log(`  network quiet after ${Math.round((await quiet(nodes)) / 1000)} s`);
     // Leader transactions are all routed to the node that owns the stream, so they cannot race each other
     await contention(w, nodes, Math.max(4, rounds), "leader", 7);
     // Soak: the same leader contention again on other streams, to catch a node that stops applying (seen once in about 12 runs)
