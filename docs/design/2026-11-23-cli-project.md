@@ -76,7 +76,7 @@ Mode 0600. Never printed, never put in output, `--json` or error text.
 
 Before any command reads or writes a key file the CLI runs these checks, and stops with a message if one fails:
 
-1. If the folder is in a git repository, `git check-ignore -q <key file>` must say it is ignored. If not: refuse, and say `activeledger init --fix-ignore` (or the command to run) will append it to `.gitignore`.
+1. If the folder is in a git repository, `git check-ignore -q <key file>` must say it is ignored. If not: refuse, and say `activeledger project init --fix-ignore` (or the command to run) will append it to `.gitignore`.
 2. `git ls-files --error-unmatch <key file>` must fail (the file is not tracked). Ignoring a file that is already tracked does nothing, so a tracked key file is refused, with the `git rm --cached` command to run.
 3. The file mode must not be readable by group or other; the CLI fixes it to 0600 on creation and refuses a looser one.
 4. Outside a git repository it warns once and carries on.
@@ -92,7 +92,7 @@ A folder can hold several, for example one per environment or per team:
 staging.activeledger          staging.activeledger-key
 ```
 
-The key file is always the project file's name plus `-key`. Choosing one:
+The key file is always the project file's name plus `-key`. Choosing one (flags go after `project`, for example `activeledger project --project staging deploy`):
 
 1. `--project <name|path>` (`--project staging` means `staging.activeledger`).
 2. `ACTIVELEDGER_PROJECT` in the environment.
@@ -102,18 +102,22 @@ The key file is always the project file's name plus `-key`. Choosing one:
 
 ## Commands
 
+Everything lives under one new command, `project`, so none of it can collide with the node's own commands (`start`, `stop`, `status`, `prune`, `hybrid` and the rest) and `activeledger --help` shows it as one line.
+
 ```
-activeledger init [--name <ns>] [--network <name>=<url>[,<url>...]] [--fix-ignore]
-activeledger identity new <name> | import <name> <keyfile> | list
-activeledger namespace register [<ns>]
-activeledger contract upload <name>|--all
-activeledger contract update <name>|--all
-activeledger contract status [<name>]
-activeledger tx run <name>|--all [--set key=value]...
-activeledger tx list
-activeledger deploy [--all|<name>...]
-activeledger status
+activeledger project init [--name <ns>] [--network <name>=<url>[,<url>...]] [--fix-ignore]
+activeledger project identity new <name> | import <name> <keyfile> | list
+activeledger project namespace register [<ns>]
+activeledger project contract upload <name>|--all
+activeledger project contract update <name>|--all
+activeledger project contract status [<name>]
+activeledger project tx run <name>|--all [--set key=value]...
+activeledger project tx list
+activeledger project deploy [--all|<name>...]
+activeledger project status
 ```
+
+`activeledger project` on its own, and `activeledger help project`, list the subcommands with an example each. `project status` is the project's view of a network and is separate from the node's own `activeledger status`.
 
 Common flags: `--project`, `--network`, `--dry-run` (build and sign, print the transaction, send nothing), `--json`, `--yes`.
 
@@ -162,7 +166,7 @@ A one-line result per step (`ok`, `skipped (already current)`, `failed: <reason 
 
 ## Open questions
 
-- **Names:** `deploy` as the CI verb is clear, but `identity`, `namespace`, `contract` and `tx` need checking against the existing command list (`init` in particular) so nothing collides.
+- **The word `project`:** chosen because it is neutral and does not collide. `deploy` is the alternative, but it would read oddly for `project init` and `project tx run`.
 - **Key at rest:** plain with mode 0600 (this spec), or optionally passphrase-encrypted? Encrypting is a clean follow-up; it changes how CI supplies the key.
 - **One identity per network, or several?** The spec allows several in the key file but the project names one per network. Is that enough?
 - **Lock and unlock** contract versions are left out of the first cut. Add as `contract lock|unlock`?
