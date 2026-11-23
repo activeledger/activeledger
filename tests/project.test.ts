@@ -7,7 +7,7 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { banner, letters, LOGO, NAME, wantBanner } from "../packages/activeledger/src/project/banner";
 import { COMMANDS, commandHelp, overview } from "../packages/activeledger/src/project/help";
 import {
-  addToGitignore, checkKeyFile, Git, keyPathOf, ProjectError, projectsIn, readKeys, resolveProject, validateProject, writeKeys,
+  addToGitignore, checkKeyFile, Git, keyPathOf, ProjectError, projectsIn, readKeys, resolveProject, safeSource, validateProject, writeAtomic, writeKeys,
 } from "../packages/activeledger/src/project/files";
 import { applySet, checkExpect, exampleTx, interpret, resolveRefs, sendToNetwork } from "../packages/activeledger/src/project/txs";
 import { projectCommand, ProjectDeps, ProjectFlags } from "../packages/activeledger/src/project/commands";
@@ -73,6 +73,53 @@ describe("project: files", () => {
     expect(resolveProject(dir, undefined, { ACTIVELEDGER_PROJECT: "staging.activeledger" })).to.equal(path.join(dir, "staging.activeledger"));
     expect(() => resolveProject(dir, "nope")).to.throw(ProjectError, /no project file "nope"/);
     expect(projectsIn(dir).map((p) => path.basename(p))).to.deep.equal([".activeledger", "staging.activeledger"]);
+  });
+  it("stops looking upward at the repository root, so a project file above it is not picked up", () => {
+    touch(".activeledger");
+    touch("repo/.git/HEAD", "x");
+    touch("repo/work/a.txt");
+    expect(() => resolveProject(path.join(dir, "repo", "work"))).to.throw(ProjectError, /no project file found/);
+    touch("repo/.activeledger");
+    expect(resolveProject(path.join(dir, "repo", "work"))).to.equal(path.join(dir, "repo", ".activeledger"));
+  });
+  it("only uses a project file it finds upward when the user owns it", function () {
+    if (typeof process.getuid !== "function") this.skip();
+    touch(".activeledger");
+    expect(() => resolveProject(dir, undefined, {}, () => process.getuid!() + 1)).to.throw(ProjectError, /owned by another user/);
+    expect(resolveProject(dir, undefined, {}, () => process.getuid!())).to.equal(path.join(dir, ".activeledger"));
+    // A file named on purpose is the user's own choice
+    expect(resolveProject(dir, ".activeledger", {}, () => process.getuid!() + 1)).to.equal(path.join(dir, ".activeledger"));
+  });
+  it("reads a contract's source only from inside the project folder, as .ts or .js, never the key file", () => {
+    touch("project/.activeledger", "{}");
+    touch("project/src/notebook.ts", "x");
+    touch("project/src/notebook.js", "x");
+    touch("project/.activeledger-key", "k");
+    touch("project/secrets.txt", "s");
+    touch("outside.ts", "o");
+    const file = path.join(dir, "project", ".activeledger");
+    expect(safeSource(file, "src/notebook.ts")).to.equal(fs.realpathSync(path.join(dir, "project", "src", "notebook.ts")));
+    expect(safeSource(file, "src/notebook.js")).to.include("notebook.js");
+    expect(() => safeSource(file, "../outside.ts")).to.throw(ProjectError, /outside the project folder/);
+    expect(() => safeSource(file, path.join(dir, "outside.ts"))).to.throw(ProjectError, /outside the project folder/);
+    expect(() => safeSource(file, "secrets.txt")).to.throw(ProjectError, /not a .ts or .js/);
+    expect(() => safeSource(file, ".activeledger-key")).to.throw(ProjectError, /not a .ts or .js/);
+    expect(() => safeSource(file, "missing.ts")).to.throw(ProjectError, /cannot read/);
+    fs.symlinkSync(path.join(dir, "outside.ts"), path.join(dir, "project", "link.ts"));
+    expect(() => safeSource(file, "link.ts")).to.throw(ProjectError, /outside the project folder/);
+    fs.symlinkSync(path.join(dir, "project", ".activeledger-key"), path.join(dir, "project", "keylink.ts"));
+    expect(() => safeSource(file, "keylink.ts")).to.throw(ProjectError, /not a .ts or .js/);
+  });
+  it("writes through a random temp name with the final mode, never through a planted link", () => {
+    const target = path.join(dir, "k-key");
+    const victim = path.join(dir, "victim.txt");
+    fs.writeFileSync(victim, "keep");
+    fs.symlinkSync(victim, `${target}.${process.pid}.tmp`);
+    writeAtomic(target, "secret", 0o600);
+    expect(fs.readFileSync(victim, "utf8")).to.equal("keep");
+    expect(fs.readFileSync(target, "utf8")).to.equal("secret");
+    expect(fs.statSync(target).mode & 0o777).to.equal(0o600);
+    expect(fs.readdirSync(dir).filter((n) => n.endsWith(".tmp") && !fs.lstatSync(path.join(dir, n)).isSymbolicLink())).to.deep.equal([]);
   });
   it("says to run init when there is none", () => {
     expect(() => resolveProject(dir)).to.throw(ProjectError, /project init/);
@@ -347,6 +394,15 @@ describe("project: commands", () => {
     expect(project().networks.local.namespaceRegistered).to.equal(undefined);
   });
 
+  it("a project file that points a contract at a file outside the folder, or at the key file, sends nothing", async () => {
+    setup({ contracts: { evil: { source: "../../../../etc/hostname", version: "0.0.1" }, key: { source: ".activeledger-key", version: "0.0.1" } } });
+    expect(await run(["contract", "upload", "evil"])).to.equal(2);
+    expect(errs.join("\n")).to.include("outside the project folder");
+    errs.length = 0;
+    expect(await run(["contract", "upload", "key"])).to.equal(2);
+    expect(errs.join("\n")).to.include("not a .ts or .js");
+    expect(sent).to.have.length(0);
+  });
   it("contract upload records the id, version and hash; a second upload is refused; deploy then skips it", async () => {
     setup();
     answer = () => reply({ newStreams: [{ id: CID, name: "contract.myorg.notebook@0.0.1" }] });

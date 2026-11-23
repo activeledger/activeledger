@@ -8,7 +8,7 @@ import { Severity, SEVERITIES } from "../audit/types";
 import { banner, wantBanner } from "./banner";
 import {
   addToGitignore, checkKeyFile, Git, KeyFile, keyPathOf, Network, PROJECT_FILE, ProjectError, ProjectFile, readKeys, readProject,
-  resolveProject, writeKeys, writeProject,
+  resolveProject, safeSource, writeKeys, writeProject,
 } from "./files";
 import { commandHelp, overview } from "./help";
 import {
@@ -154,7 +154,7 @@ const submit = async (l: Loaded, deps: ProjectDeps, body: any): Promise<Outcome>
 };
 
 const hashFile = (l: Loaded, source: string): { text: string; hash: string; abs: string } => {
-  const abs = path.resolve(path.dirname(l.file), source);
+  const abs = safeSource(l.file, source);
   let text: string;
   try {
     text = fs.readFileSync(abs, "utf8");

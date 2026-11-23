@@ -1,4 +1,6 @@
+import * as crypto from "crypto";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 export interface DeployedContract {
@@ -75,7 +77,7 @@ export const projectsIn = (dir: string): string[] => {
  * Which project file: --project (a name or a path), then ACTIVELEDGER_PROJECT, then the only one in this folder or the nearest parent
  * that has any. Several and none named is an error that lists them.
  */
-export const resolveProject = (cwd: string, project?: string, env: { [k: string]: string | undefined } = {}): string => {
+export const resolveProject = (cwd: string, project?: string, env: { [k: string]: string | undefined } = {}, ownerOf?: (file: string) => number): string => {
   const wanted = project || env.ACTIVELEDGER_PROJECT;
   if (wanted) {
     const candidates = [path.resolve(cwd, wanted), path.resolve(cwd, wanted + SUFFIX), path.resolve(cwd, wanted === "default" ? PROJECT_FILE : "\0")];
@@ -83,13 +85,44 @@ export const resolveProject = (cwd: string, project?: string, env: { [k: string]
     if (!found) throw new ProjectError(`no project file "${wanted}" (looked for ${candidates.filter((c) => !c.includes("\0")).join(" and ")})`);
     return found;
   }
+  // Looks upward, but only as far as the repository this folder is in (or the home folder): a project file in some
+  // folder above is not something this folder's work should pick up, and it must be one this user owns
+  const home = os.homedir();
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
     const here = projectsIn(dir);
-    if (here.length === 1) return here[0];
+    if (here.length === 1) {
+      ownedByUser(here[0], ownerOf);
+      return here[0];
+    }
     if (here.length > 1) throw new ProjectError(`more than one project file in ${dir}: ${here.map((p) => path.basename(p)).join(", ")}. Choose one with --project <name>.`);
-    if (path.dirname(dir) === dir) break;
+    if (fs.existsSync(path.join(dir, ".git")) || dir === home || path.dirname(dir) === dir) break;
   }
   throw new ProjectError("no project file found. Run `activeledger project init` first.");
+};
+
+/** A project file found by looking upward must belong to the user running the command */
+const ownedByUser = (file: string, ownerOf: (f: string) => number = (f) => fs.statSync(f).uid): void => {
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (uid === undefined) return;
+  if (ownerOf(file) !== uid) throw new ProjectError(`${file} is owned by another user, so it is not used. Name it with --project if you trust it.`);
+};
+
+/**
+ * Where a contract's source may be read from: a .ts or .js file inside the project's folder, and never the key file.
+ * The project file can come from anyone (a clone, a pull request), so its paths are not trusted.
+ */
+export const safeSource = (projectFile: string, source: string): string => {
+  const base = fs.realpathSync(path.dirname(projectFile));
+  let abs: string;
+  try {
+    abs = fs.realpathSync(path.resolve(base, source));
+  } catch (e: any) {
+    throw new ProjectError(`cannot read the contract source ${source}: ${e.message}`);
+  }
+  const rel = path.relative(base, abs);
+  if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) throw new ProjectError(`the contract source ${source} is outside the project folder, so it is not sent`);
+  if (!/\.(ts|js)$/.test(abs) || /-key$/.test(abs) || path.basename(abs).startsWith(".activeledger")) throw new ProjectError(`the contract source ${source} is not a .ts or .js contract file, so it is not sent`);
+  return abs;
 };
 
 const isObject = (v: any): boolean => !!v && typeof v === "object" && !Array.isArray(v);
@@ -143,8 +176,15 @@ export const readProject = (file: string): ProjectFile => {
 
 /** Through a temp file and a rename, so a crash never leaves half a file */
 export const writeAtomic = (file: string, content: string, mode?: number): void => {
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, mode === undefined ? undefined : { mode });
+  // A name nobody can guess, made exclusively with the final mode from the first byte, so a planted file or link at a
+  // predictable name is never written through and a key is never readable by others, even briefly
+  const tmp = `${file}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+  const fd = fs.openSync(tmp, "wx", mode === undefined ? 0o666 : mode);
+  try {
+    fs.writeFileSync(fd, content);
+  } finally {
+    fs.closeSync(fd);
+  }
   if (mode !== undefined) fs.chmodSync(tmp, mode);
   fs.renameSync(tmp, file);
 };
