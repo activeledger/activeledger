@@ -19,4 +19,10 @@ The supernodes need build `40300`. See the documentation for the network setting
 
 `activehybrid --help` lists every command and flag.
 
-[Documentation](https://activeledger.github.io/activeledger/)
+## Documentation
+
+- [Hybrid nodes](https://activeledger.github.io/activeledger/hybrid/) and [Set up and run a hybrid](https://activeledger.github.io/activeledger/hybrid/run/)
+- [The activehybrid command](https://activeledger.github.io/activeledger/cli/activehybrid/)
+- [The Activeledger guide](https://activeledger.github.io/activeledger/)
+
+Needs Node.js 24 or later. MIT licensed.
