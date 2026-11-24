@@ -43,6 +43,15 @@ describe("stress:realistic report (the one page summary)", () => {
     expect(html).to.contain("32 ms");
   });
 
+  it("shows a leader write series as its own headline, after the normal writes", () => {
+    const leader = file("leader.jsonl", [meta("returner-leader"), run(300, 306.4, 10, true), run(1000, 996, 90, true)]);
+    const html = buildHtml([leader, writes(), reads()]);
+    expect(html).to.contain("Writes (leader)");
+    expect(html.indexOf("Writes (leader)")).to.be.greaterThan(html.indexOf(">Writes<"));
+    expect(html).to.match(/996 <small>per second/);
+    expect(html).to.contain("#bf8700");
+  });
+
   it("shows only steps the network held", () => {
     const html = buildHtml([reads(), writes()]);
     // the collapsed steps (1300 reads, 900 writes) appear nowhere, not even their latency
