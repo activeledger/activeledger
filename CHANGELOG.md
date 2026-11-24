@@ -1,5 +1,17 @@
 # Activeledger Changelog
 
+## [5.11.2] - 2026-11-24
+
+A fix for a contract crash. Nothing is build-gated and nothing needs changing on upgrade.
+
+### Fixed
+- **A bad `$tx.$r` no longer crashes the contract run.** `$r` names the streams a contract reads, as
+  `{ "name": "<stream id>" }`. A value that was not a stream id string (for example `{ "<stream id>": {} }`) failed deep
+  inside the run as `(Unhandled Contract Error) {}`, with no reason, on every node. The entry node now refuses it at
+  once with `$tx.$r must map a name to a stream id, like { "name": "<stream id>" }` and the name of the offending key,
+  and nothing is run or forwarded. A correct `$r`, or none, behaves as before. The guide's "Running a contract" page
+  says what `$r` takes.
+
 ## [5.11.1] - 2026-11-23
 
 Fixes for a node that falls behind when many transactions write the same stream at once, a clearer message when the
