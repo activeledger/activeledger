@@ -79,6 +79,8 @@ A transaction with no `$i` is read-only: the node runs the contract's `read` met
 }
 ```
 
+`$r` maps a name your contract reads the stream by to the stream's id, a string. Anything else (an object as the value, say) is refused at once with `$tx.$r must map a name to a stream id`.
+
 Only the node you sent to runs it, so `$summary` counts one node. With the notebook updated to `0.0.2` the reply is:
 
 ```json

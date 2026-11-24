@@ -655,6 +655,25 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         expect(asked).to.have.length(1);
       });
 
+      it("refuses a $tx.$r that is not a name mapped to a stream id, and says what to send, without running it", async () => {
+        const bad: any[] = [{ [S1]: {} }, { a: 5 }, { a: "" }, { a: null }, ["x"], "x"];
+        for (const $r of bad) {
+          const { host, pendingCalls } = hostWith("me");
+          const reply: any = await Endpoints.ExternalInitalise(host, leaderTx({}, { $r }), "1.2.3.4", db());
+          expect(reply.content.$summary.errors[0], JSON.stringify($r)).to.include('$tx.$r must map a name to a stream id, like { "name": "<stream id>" }');
+          expect(reply.content.$summary.commit).to.equal(0);
+          expect(pendingCalls, JSON.stringify($r)).to.have.length(0);
+        }
+        const named: any = await Endpoints.ExternalInitalise(hostWith("me").host, leaderTx({}, { $r: { [S1]: {} } }), "1.2.3.4", db());
+        expect(named.content.$summary.errors[0]).to.include(`"${S1}" is not a stream id (a string)`);
+        // A name mapped to an id is accepted, and so is no $r at all
+        for (const io of [{ $r: { a: S1 } }, {}]) {
+          const { host, pendingCalls } = hostWith("me");
+          await Endpoints.ExternalInitalise(host, leaderTx({}, io), "1.2.3.4", db());
+          expect(pendingCalls, JSON.stringify(io)).to.have.length(1);
+        }
+      });
+
       it("takes no part for a transaction that did not ask, or one that needs the votes", async () => {
         for (const over of [{ $unanimous: true }, { $wait: true }]) {
           const asked: string[][] = [];
