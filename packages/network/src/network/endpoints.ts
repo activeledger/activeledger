@@ -124,6 +124,28 @@ export class Endpoints {
   }
 
   /**
+   * Why a transaction's `$r` cannot be used, or undefined when it can.
+   * `$r` is { name: "<stream id>" }: a name the contract reads it by, and the
+   * id of the stream. An object as the value, such as { "<stream id>": {} },
+   * is not a stream id.
+   *
+   * @param {unknown} read
+   * @returns {string | undefined}
+   */
+  public static badReadStream(read: unknown): string | undefined {
+    if (read === undefined || read === null) return undefined;
+    if (typeof read !== "object" || Array.isArray(read)) {
+      return `$tx.$r must map a name to a stream id, like { "name": "<stream id>" }`;
+    }
+    for (const [name, id] of Object.entries(read as Record<string, unknown>)) {
+      if (typeof id !== "string" || !id) {
+        return `$tx.$r must map a name to a stream id, like { "name": "<stream id>" }: "${name.slice(0, 80)}" is not a stream id (a string)`;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Handles all external requests being submitted into the network
    * This means we can validate & verify and rate limit on only 1 exposed endpoint
    * This endpoint accepts url and body requests. Url is recommended for just http logging
@@ -243,6 +265,15 @@ export class Endpoints {
                   "$tx.$leader cannot be combined with $territoriality: leader mode is led by the node that owns the stream, territorial mode by the node it names"
                 )
               );
+            }
+
+            // $r names the streams a contract reads: { name: "<stream id>" }.
+            // Anything else used to fail deep in the contract run as an
+            // "Unhandled Contract Error" with no reason, so say what is wrong
+            // at the door instead.
+            const badRead = Endpoints.badReadStream(tx.$tx?.$r);
+            if (badRead) {
+              return resolve(this.successfulFailure(badRead));
             }
 
             // Set Origin
