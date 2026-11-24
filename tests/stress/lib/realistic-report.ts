@@ -67,8 +67,8 @@ ${series.map((s, i) => `<text x="${L + 10}" y="${T + 11 + i * 12}" font-size="9"
 }
 
 /** The three kinds of transaction the peak test measures, in the order the page shows them. */
-const KINDS = ["Reads", "Locked reads", "Writes"];
-const COLOURS: Record<string, string> = { Reads: "#1f6feb", "Locked reads": "#8250df", Writes: "#1a7f37" };
+const KINDS = ["Reads", "Locked reads", "Writes", "Writes (leader)"];
+const COLOURS: Record<string, string> = { Reads: "#1f6feb", "Locked reads": "#8250df", Writes: "#1a7f37", "Writes (leader)": "#bf8700" };
 
 /**
  * What a results file measured, from the contract it ran. `read-only` reads on
@@ -78,6 +78,7 @@ const COLOURS: Record<string, string> = { Reads: "#1f6feb", "Locked reads": "#82
  */
 export function kindOf(contract: string, hasLockFreeReads: boolean): string {
   if (contract === "returner") return "Writes";
+  if (contract === "returner-leader") return "Writes (leader)";
   if (contract === "read-only") return "Reads";
   return hasLockFreeReads ? "Locked reads" : "Reads";
 }

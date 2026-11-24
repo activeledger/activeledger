@@ -29,6 +29,8 @@ export interface WorkerInit {
   readOnly?: boolean;
   /** give every transaction an $expire, as most real ones have: each then also costs the entry node the replay check */
   expire?: boolean;
+  /** ask for leader mode ($tx.$leader, signed): the contract (returner-leader) must accept it */
+  leader?: boolean;
 }
 
 export interface PrepareCommand {
@@ -103,14 +105,14 @@ const expireField = (): { $expire?: string } => (init.expire ? { $expire: new Da
 const hotTx = (u: User) => {
   if (init.readOnly) {
     // The signer is named by a signature-only input (never locked); the stream
-    // read goes in `$r`, which is loaded for the contract and is not locked or
+    // read goes in `$r` (a name, then the stream id), which is loaded for the contract and is not locked or
     // written either. A different user's stream, so nothing here is "our own".
     const other = users[(users.indexOf(u) + 1) % users.length];
     const read = {
       $namespace: init.namespace,
       $contract: init.contractId,
       $i: { [u.streamId]: { $sigOnly: true } },
-      $r: { [other.streamId]: {} },
+      $r: { other: other.streamId },
       $o: {},
       ...expireField(),
     };
@@ -121,6 +123,7 @@ const hotTx = (u: User) => {
     $contract: init.contractId,
     $i: { [u.streamId]: {} },
     $o: { [u.streamId]: { message: `w${init.index}s${seq++}` } },
+    ...(init.leader ? { $leader: true } : {}),
     ...expireField(),
   };
   return { $tx: body, $sigs: { [u.streamId]: u.keyPair.sign(body) } };
