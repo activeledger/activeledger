@@ -255,6 +255,27 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           }
         });
 
+        it("asks again whether it was committed once it has waited, and says so if it was", async () => {
+          const waiting: any = { ...entryWith("another valid form"), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          let committed = false;
+          setTimeout(() => ((waiting.$nodes.me = { vote: true, commit: true }), (committed = true)), 40);
+          const database: any = { exists: async () => committed };
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", database);
+          expect(reply.content.$summary.errors[0]).to.match(/^Transaction Exists : [0-9a-f]{64}$/);
+          expect(pendingCalls).to.have.length(0);
+        });
+
+        it("says to try again when it cannot tell, after waiting", async () => {
+          const waiting: any = { ...entryWith("another valid form"), $nodes: { me: { vote: true, commit: false } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          let calls = 0;
+          const database: any = { exists: async () => { if (++calls > 1) throw new Error("down"); return false; } };
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", database);
+          expect(reply.content.$summary.errors[0]).to.match(/try again shortly$/);
+          expect(pendingCalls).to.have.length(0);
+        });
+
         it("compares signatures whatever order they are in", () => {
           expect(Endpoints.sameSignatures({ a: "1", b: "2" }, { b: "2", a: "1" })).to.equal(true);
           expect(Endpoints.sameSignatures({ a: "1" }, { a: "2" })).to.equal(false);

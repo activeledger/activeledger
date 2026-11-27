@@ -136,6 +136,28 @@ export class Endpoints {
     return flat(one) === flat(two);
   }
 
+  /**
+   * Has this transaction been committed, or resent under another id? The message
+   * for the client if so. Never throws: not knowing is told as try again.
+   *
+   * @param {Host} host
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDefinitions.LedgerEntry} tx
+   * @returns {Promise<string | undefined>}
+   */
+  public static async alreadyDone(host: Host, db: ActiveDSConnect, tx: ActiveDefinitions.LedgerEntry): Promise<string | undefined> {
+    try {
+      const resentAs = await host.resentAs(tx.$umid);
+      if (resentAs) return `Transaction Exists : ${tx.$umid} (resent as ${resentAs})`;
+      if (host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire).getTime()) && (await db.exists(`${tx.$umid}:umid`))) {
+        return `Transaction Exists : ${tx.$umid}`;
+      }
+    } catch {
+      return `Could not check whether ${tx.$umid} was already accepted, try again shortly`;
+    }
+    return undefined;
+  }
+
   /** Longest a copy waits for the one in its place to be answered, and how often it looks */
   public static answerWaitMs = 3000;
   public static answerPollMs = 20;
@@ -360,6 +382,11 @@ export class Endpoints {
                   // Only a copy that is not the same request gets here, which a client
                   // retrying does not send, so it can wait for the other's answer
                   waiting = await Endpoints.answered(host, tx.$umid);
+                  // It may have been committed while this waited: ask again, as above
+                  const exists = await Endpoints.alreadyDone(host, db, tx);
+                  if (exists) {
+                    return resolve(this.successfulFailure(exists));
+                  }
                   if (waiting && Endpoints.refusedForSignature(waiting, host.reference)) {
                     tx.$replaces = tx.$umid;
                     tx.$umid = ActiveCrypto.Hash.getHash(`${tx.$umid}:${JSON.stringify(tx.$sigs)}`);
