@@ -42,9 +42,9 @@ In `$i` and `$o` you can use a label instead of a stream id as the key, as long 
 Only the streams in `$i` and `$o` are locked while the transaction runs. Two transactions touching the same stream are run one after the other.
 
 !!! warning
-    Sending the same signed transaction twice runs it twice. The node stamps each arrival with its own time and that time is part of `$umid`, so a repeat is a new transaction. If you set `$tx.$expire`, the time is left out of `$umid` and a repeat is refused with `Transaction Exists`. Set it on anything you might retry.
+    Sending the same signed transaction twice runs it twice. The node stamps each arrival with its own time and that time is part of `$umid`, so a repeat is a new transaction. If you set `$tx.$expire`, the time is left out of `$umid` and a repeat is refused with `Transaction Exists`. Set it on anything you might retry. From build `51103` the `$umid` of such a transaction is the hash of `$tx` alone, so it is the same however the request around it is written; before that level it is the hash of the whole request as received, less the fields only a node sets.
 
-    A node that has to repair its own streams while it processes a transaction can resend it under a new umid. That umid is not one you can work out from what you sent, but the node remembers the one you can, until `$expire`, and refuses a repost of the same bytes to that node with `Transaction Exists : <umid> (resent as <new umid>)`. Each node keeps its own record, and only consensus links the nodes, so a repost sent to a different node is not recognised by this record. To retry safely, send it to the same node, or look up the umid (and the `resent as` umid) first.
+    A node that has to repair its own streams while it processes a transaction can resend it under a new umid. That umid is not one you can work out from what you sent, but the node remembers the one you can, until `$expire`, and refuses a repost of the same bytes to that node with `Transaction Exists : <umid> (resent as <new umid>)`. Every node that commits the transaction notes the umid it was first given, so a repost sent to any node is recognised once it has committed. Until then only the node that resent it knows, so to retry safely, send it to the same node, or look up the umid (and the `resent as` umid) first.
 
 ## Signing
 
@@ -104,7 +104,7 @@ The node you sent to replies as soon as consensus is reached, so the counts in `
 
 | Field | Meaning |
 |---|---|
-| `$umid` | The transaction's id: a SHA-256 of the transaction as received. Use it to look the transaction up later. |
+| `$umid` | The transaction's id: a SHA-256 of the transaction (of `$tx` alone from build `51103`, when `$expire` is set). Use it to look the transaction up later. |
 | `$summary.total` | How many nodes' answers the node you sent to had when it replied. On 3 nodes expect `2`; on a single node, `1`. |
 | `$summary.vote` | How many of those voted yes. |
 | `$summary.commit` | How many of those it knows have written the result. Normally `1` (itself). If this is `0`, nothing changed. |

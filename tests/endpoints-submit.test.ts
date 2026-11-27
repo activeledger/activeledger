@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import "mocha";
 import { ActiveOptions } from "@activeledger/activeoptions";
+import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Endpoints } from "../packages/network/src/network/endpoints";
 import { Home } from "../packages/network/src/network/home";
 import { Maintain } from "../packages/network/src/network/maintain";
@@ -137,6 +138,65 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         /^Transaction Exists : [0-9a-f]{64}$/
       );
       expect(pendingCalls).to.have.length(0);
+    });
+
+    describe("the id of a transaction with an $expire", () => {
+      const withExpire = (over: any = {}): any => tx({ $tx: { ...tx().$tx, $expire: "2999-01-01T00:00:00.000Z" }, ...over });
+      const idOf = async (body: any): Promise<string> => {
+        const { host, pendingCalls } = makeHost({ replies: [voted({ me: { vote: true, commit: true } })] });
+        await Endpoints.ExternalInitalise(host, body, "1.2.3.4", db());
+        return pendingCalls[0].entry.$umid;
+      };
+      const wrapped = (): any[] => [
+        { $sigs: withExpire().$sigs, $tx: withExpire().$tx },
+        withExpire({ extra: 1 }),
+        withExpire({ $umid: "f".repeat(64) }),
+        withExpire({ $spiRetry: true, $replaces: "e".repeat(64), $streams: { new: [], updated: [] } }),
+        withExpire({ $sigs: { signer: "sig", other: "a signature for no input" } }),
+      ];
+      afterEach(() => ActiveOptions.set("build", undefined));
+
+      it("is the same however the signed transaction is wrapped, once the network is on the build for it", async () => {
+        ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+        const ids = new Set<string>();
+        for (const w of [withExpire(), ...wrapped()]) ids.add(await idOf(w));
+        expect(ids.size).to.equal(1);
+        expect([...ids][0]).to.equal(ActiveCrypto.Hash.getHash(JSON.stringify(withExpire().$tx)));
+      });
+
+      it("asks for that one id, so a copy of a committed transaction is refused as it was", async () => {
+        ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+        const committed = new Set<string>();
+        const first = makeHost({ replies: [voted({ me: { vote: true, commit: true } })] });
+        const asked: string[] = [];
+        const database: any = { exists: async (id: string) => (asked.push(id), committed.has(id)) };
+        await Endpoints.ExternalInitalise(first.host, withExpire(), "1.2.3.4", database);
+        committed.add(first.pendingCalls[0].entry.$umid + ":umid");
+        for (const w of wrapped()) {
+          const again = makeHost({ replies: [] });
+          const reply: any = await Endpoints.ExternalInitalise(again.host, w, "1.2.3.4", database);
+          expect(reply.content.$summary.errors[0], JSON.stringify(w).slice(0, 50)).to.match(/^Transaction Exists : [0-9a-f]{64}$/);
+          expect(again.pendingCalls).to.have.length(0);
+        }
+      });
+
+      it("keeps the id it had before, below that build, except that fields only a node sets do not count", async () => {
+        ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD - 1);
+        const plain = await idOf(withExpire());
+        expect(plain).to.equal(ActiveCrypto.Hash.getHash(JSON.stringify(withExpire())));
+        expect(await idOf(withExpire({ $umid: "f".repeat(64), $spiRetry: true, $replaces: "e".repeat(64) }))).to.equal(plain);
+      });
+
+      it("takes the fields only a node sets off a transaction a client sends, so nothing rides along", async () => {
+        const { host, pendingCalls } = makeHost({ replies: [voted({ me: { vote: true, commit: true } })] });
+        await Endpoints.ExternalInitalise(host, withExpire({ $replaces: "e".repeat(64), $revs: { a: "1" }, $streams: { new: [], updated: [] }, $remoteAddr: "9.9.9.9", $origin: "elsewhere" }), "1.2.3.4", db());
+        const entry = pendingCalls[0].entry;
+        expect(entry.$replaces).to.equal(undefined);
+        expect(entry.$revs).to.equal(undefined);
+        expect(entry.$streams).to.equal(undefined);
+        expect(entry.$remoteAddr).to.equal("1.2.3.4");
+        expect(entry.$origin).to.equal(host.reference);
+      });
     });
 
     it("needs signatures", async () => {

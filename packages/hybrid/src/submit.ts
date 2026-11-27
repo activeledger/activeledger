@@ -23,7 +23,7 @@
 
 import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveDefinitions } from "@activeledger/activedefinitions";
-import type { ActiveDSConnect } from "@activeledger/activeoptions";
+import { ActiveOptions, type ActiveDSConnect } from "@activeledger/activeoptions";
 import type { ActiveProtocol } from "@activeledger/activeprotocol";
 import type { Upstream } from "./upstream";
 import type { HybridOutcome, NodeState, Sources, StreamLookup } from "./types";
@@ -90,13 +90,13 @@ export function refusal(
 
 /**
  * The `$umid` the entry supernode gives this transaction
- * (`Endpoints.ExternalInitalise`): `$relay` removed, then the hash of the
- * JSON body before `$datetime` is stamped. That order holds only when
- * `$expire` is set, which is why relaying needs it.
+ * (`Endpoints.ExternalInitalise`) with `$relay` removed: the same id, from
+ * the same rule at the same build level (ActiveCrypto.TransactionId). It holds
+ * only when `$expire` is set, which is why relaying needs it.
  */
 export function computeUmid(tx: any): string {
   const { $relay, ...rest } = tx;
-  return ActiveCrypto.Hash.getHash(JSON.stringify(rest));
+  return ActiveCrypto.TransactionId.of(rest, ActiveOptions.get<number>("build", 0));
 }
 
 /** Connect-phase failures: the request never reached the upstream */
