@@ -237,8 +237,28 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           expect(pendingCalls).to.have.length(0);
         });
 
-        it("gives a right copy an id of its own, noting the first, when the one on its way has a wrong signature", async () => {
+        const answeredWrong = (): any => ({ ...entryWith("00" + good.slice(2)), $nodes: { me: { vote: false, commit: false, error: "Input Signature Incorrect - Error x:1" } } });
+
+        it("knows when this node has already voted against an entry for its signatures, and for nothing else", () => {
+          const voted = (own: any): any => ({ $nodes: { me: own } });
+          expect(Endpoints.refusedForSignature(answeredWrong(), "me")).to.equal(true);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, error: "Output Signature Expired" }), "me")).to.equal(true);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, error: "Input Stream Position Incorrect" }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(voted({ vote: true, commit: true }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, early: true }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(entryWith("x"), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(answeredWrong(), "other")).to.equal(false);
+        });
+
+        it("leaves a copy that has not been answered yet to the one on its way, even if its signature looks wrong", async () => {
           const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls[0].entry.$umid).to.equal(umid);
+          expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+        });
+
+        it("gives a right copy an id of its own, noting the first, once the full check has refused the one on its way", async () => {
+          const { host, pendingCalls } = withWaiting(answeredWrong());
           await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
           expect(pendingCalls).to.have.length(1);
           const entry = pendingCalls[0].entry;
@@ -261,7 +281,7 @@ describe("Endpoints transaction submission (Activeledger)", () => {
 
         it("does nothing about it below the build where the id is the hash of $tx", async () => {
           ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD - 1);
-          const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+          const { host, pendingCalls } = withWaiting(answeredWrong());
           await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
           expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
         });

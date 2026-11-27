@@ -137,6 +137,20 @@ export class Endpoints {
   }
 
   /**
+   * Has this node already voted against this entry because of its signatures,
+   * by the full check? Only that: a no for another reason (a stream out of
+   * position, say) says nothing about whether its signatures were right.
+   *
+   * @param {ActiveDefinitions.LedgerEntry} entry
+   * @param {string} reference This node
+   * @returns {boolean}
+   */
+  public static refusedForSignature(entry: ActiveDefinitions.LedgerEntry, reference: string): boolean {
+    const own: any = entry?.$nodes?.[reference];
+    return !!own && own.vote === false && !own.early && /Signature (Incorrect|Expired)/.test(String(own.error ?? ""));
+  }
+
+  /**
    * Is a signature on this transaction certainly wrong? Only a plain stream id
    * with a single public key is looked at, and only to say yes: anything this
    * does not understand (labels, a signature for several authorities, a self signed entry, a stream
@@ -305,11 +319,12 @@ export class Endpoints {
                 }
 
                 // The same transaction may already be on its way with other signatures
-                // (the id no longer says which request it came in). Only when one of
-                // the two is certainly wrong does that change anything: a wrong one
-                // is refused, and a transaction that finds a wrong one in its place is
-                // given an id of its own, noting the first, as a resent one is. Two
-                // that may both be right stay as they were: one is processed.
+                // (the id no longer says which request it came in). A copy whose
+                // signatures are certainly wrong is refused, and does not take the
+                // other's place. A right one that finds the copy on its way already
+                // answered "signature wrong" by the full check is given an id of its
+                // own, noting the first, as a resent one is. Anything else stays as it
+                // was: one is processed, and the other is told how it went.
                 const waiting = host.inFlight?.(tx.$umid);
                 if (
                   waiting?.$sigs &&
@@ -317,14 +332,10 @@ export class Endpoints {
                   ActiveOptions.get<number>("build", 0) >= ActiveCrypto.TransactionId.BUILD &&
                   !Endpoints.sameSignatures(waiting.$sigs, tx.$sigs)
                 ) {
-                  const [mine, theirs] = await Promise.all([
-                    Endpoints.signaturesFail(db, tx),
-                    Endpoints.signaturesFail(db, waiting),
-                  ]);
-                  if (mine) {
+                  if (await Endpoints.signaturesFail(db, tx)) {
                     return resolve(this.successfulFailure(`Input Signature Incorrect`));
                   }
-                  if (theirs) {
+                  if (Endpoints.refusedForSignature(waiting, host.reference)) {
                     tx.$replaces = tx.$umid;
                     tx.$umid = ActiveCrypto.Hash.getHash(`${tx.$umid}:${JSON.stringify(tx.$sigs)}`);
                   }
