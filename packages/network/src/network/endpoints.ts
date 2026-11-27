@@ -149,7 +149,7 @@ export class Endpoints {
     try {
       const resentAs = await host.resentAs(tx.$umid);
       if (resentAs) return `Transaction Exists : ${tx.$umid} (resent as ${resentAs})`;
-      if (host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire).getTime()) && (await db.exists(`${tx.$umid}:umid`))) {
+      if (host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire as Date).getTime()) && (await db.exists(`${tx.$umid}:umid`))) {
         return `Transaction Exists : ${tx.$umid}`;
       }
     } catch {
