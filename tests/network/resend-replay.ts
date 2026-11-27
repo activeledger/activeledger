@@ -14,7 +14,12 @@
  *  - after the node has forgotten, a repost is refused, naming where it went,
  *    and the stream does not move;
  *  - the same after the node is restarted.
- * Not a Mocha suite - run via `npm run test:network:resend-replay`.
+ *  - the same through every other node, which noted the first umid when it
+ *    committed the transaction (the node that resent it is not the only one that knows).
+ * With --canonical the network is at the build level where the umid is the hash of
+ * $tx alone, and the same repost wrapped differently is refused too.
+ * Not a Mocha suite - run via `npm run test:network:resend-replay` or
+ * `npm run test:network:resend-replay-canonical`.
  */
 
 import * as fs from "fs";
@@ -24,7 +29,9 @@ import { NetworkHarness } from "./harness";
 import { requestJson, storageGet, storagePut, submit } from "./http";
 import { Report } from "./report";
 import { deployContract, onboard, registerNamespace } from "./actions";
+import { ActiveCrypto } from "../../packages/crypto/src";
 
+const canonical = process.argv.includes("--canonical");
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -44,7 +51,7 @@ async function main(): Promise<boolean> {
     nodeCount: 4,
     basePort: 5740,
     // The node forgets a finished transaction after about two seconds
-    config: { releaseHoldSeconds: 2, releaseStubSeconds: 1, releaseTailSeconds: 1 },
+    config: { releaseHoldSeconds: 2, releaseStubSeconds: 1, releaseTailSeconds: 1, ...(canonical ? { build: ActiveCrypto.TransactionId.BUILD } : {}) },
     readyTimeoutMs: 40000,
   });
   let passed = true;
@@ -77,7 +84,7 @@ async function main(): Promise<boolean> {
     };
     const tx = { $tx: body, $sigs: { [identity.streamId]: identity.keyPair.sign(body) } };
     // What the node hashes, and so what a client can work out before it posts
-    const original = sha256(JSON.stringify(tx));
+    const original = sha256(JSON.stringify(canonical ? body : tx));
     const first = await submit(entry.baseUrl, tx);
     const committed = !first.$summary?.errors && first.$summary?.commit >= 1;
     check(committed, `the transaction committed (${JSON.stringify(first.$summary)})`);
@@ -103,6 +110,19 @@ async function main(): Promise<boolean> {
     const message = again.$summary?.errors?.[0] ?? "";
     check(message === `Transaction Exists : ${original} (resent as ${resentAs})`, `refused: ${message || JSON.stringify(again.$summary)}`);
     check(again.$summary?.commit === 0, "and nothing committed");
+    await sleep(1500);
+    check((await storageGet(nodes[1].storageUrl, identity.streamId))._rev === revBefore, "the stream did not move");
+
+    report.phase("Reposting through every other node");
+    const wraps: [string, any][] = [["the same bytes", tx]];
+    if (canonical) wraps.push(["the keys in another order", { $sigs: tx.$sigs, $tx: tx.$tx }], ["an extra field", { ...tx, note: "x" }]);
+    for (const n of nodes.slice(1)) {
+      for (const [what, copy] of wraps) {
+        const r = await submit(n.baseUrl, copy);
+        const m = r.$summary?.errors?.[0] ?? "";
+        check(m === `Transaction Exists : ${original} (resent as ${resentAs})` && r.$summary?.commit === 0, `node ${n.index} refuses ${what}: ${m || JSON.stringify(r.$summary)}`);
+      }
+    }
     await sleep(1500);
     check((await storageGet(nodes[1].storageUrl, identity.streamId))._rev === revBefore, "the stream did not move");
 

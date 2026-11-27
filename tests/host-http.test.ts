@@ -892,6 +892,25 @@ describe("Host HTTP listener (Activeledger)", () => {
       expect(repaired).to.deep.equal(["m-commit"]);
     });
 
+    it("notes a transaction's first id when it commits one the entry node gave a new id, unless this is the entry node", () => {
+      const noted: any[] = [];
+      const real = host.rememberResent;
+      host.rememberResent = (...a: any[]) => noted.push(a);
+      const commit = (umid: string) =>
+        message(children[0], { type: "commited", data: { umid, nodes: { me: { vote: true, commit: true } }, entry: { $summary: { commit: 1 } } } });
+      try {
+        addPending("m-r1", { $replaces: "first-id", $origin: "elsewhere", $tx: { $expire: "2999-01-01T00:00:00.000Z" } });
+        commit("m-r1");
+        addPending("m-r2", { $replaces: "first-id-2", $origin: host.reference });
+        commit("m-r2");
+        addPending("m-r3", { $origin: "elsewhere" });
+        commit("m-r3");
+      } finally {
+        host.rememberResent = real;
+      }
+      expect(noted).to.deep.equal([["first-id", "m-r1", "2999-01-01T00:00:00.000Z"]]);
+    });
+
     it("broadcasts the commit before it answers, when the worker sent the two as one", () => {
       const order: string[] = [];
       const entry = addPending("m-merged");

@@ -183,6 +183,13 @@ export class Endpoints {
             delete tx.$leaderFwd;
             delete tx.$leaderOk;
 
+            // The other fields only a node sets mean nothing from a client:
+            // leave them out, so what the client sent is the transaction and
+            // nothing else rides along on it.
+            for (const field of ActiveCrypto.TransactionId.NODE_FIELDS) {
+              if (field !== "$relay") delete (tx as any)[field];
+            }
+
             // The entry node stamps $datetime. Preset, it was overwritten
             // below - but only after the $expire branch hashed it into
             // $umid, making it a free nonce past the Transaction Exists
@@ -204,7 +211,7 @@ export class Endpoints {
                 );
               } else {
                 // Check and return transaction exists in a consensus friendly way
-                tx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(tx));
+                tx.$umid = ActiveCrypto.TransactionId.of(tx, ActiveOptions.get<number>("build", 0));
 
                 // The same bytes as a transaction this node resent under a new
                 // umid: its own umid was never stored, so only this knows
@@ -3264,7 +3271,11 @@ export class Endpoints {
     counter: number
   ): void {
     const replaced = initTx.$umid;
-    initTx.$umid = ActiveCrypto.Hash.getHash(JSON.stringify(initTx) + counter);
+    // The first id it had is the one the same transaction would be given again.
+    // Carried with it, so every node that commits it can note that id too.
+    const next = ActiveCrypto.Hash.getHash(JSON.stringify(initTx) + counter);
+    initTx.$replaces ??= replaced;
+    initTx.$umid = next;
     host.rememberResent(replaced, initTx.$umid, initTx.$tx?.$expire);
   }
 

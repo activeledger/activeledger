@@ -377,6 +377,17 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(remembered).to.deep.equal([[UMID, expected, expire]]);
     });
 
+    it("carries the first id the transaction had, through any number of resends", () => {
+      const host: any = { rememberResent: () => undefined };
+      const initTx: any = { $umid: UMID, $tx: {} };
+      E.resendUmid(host, initTx, 1);
+      expect(initTx.$replaces).to.equal(UMID);
+      const second = initTx.$umid;
+      E.resendUmid(host, initTx, 2);
+      expect(initTx.$replaces).to.equal(UMID);
+      expect(initTx.$umid).to.not.equal(second);
+    });
+
     it("gives a different umid to each resend", () => {
       const host: any = { rememberResent: () => undefined };
       const initTx: any = { $umid: UMID, $tx: {} };

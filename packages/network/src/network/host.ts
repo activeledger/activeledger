@@ -1784,6 +1784,11 @@ export class Host extends Home {
           }
           if (!pending) return; // Fail safe, May happen when process being closed
           this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
+          // Under its first id too, on every node that commits it (the entry
+          // node noted it when it gave the new id)
+          if (pending.entry.$replaces && pending.entry.$origin !== this.reference) {
+            this.rememberResent(pending.entry.$replaces, pending.entry.$umid, pending.entry.$tx?.$expire);
+          }
           // A node that voted no on a position error still reports "commited"
           // here (Process.failed), with its error on its own entry
           this.spiFromOwnFailure(pending.entry);

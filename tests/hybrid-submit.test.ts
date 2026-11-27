@@ -455,6 +455,20 @@ describe("Hybrid POST /: $umid equals the entry supernode's", () => {
     expect(direct.$umid).to.equal(umid);
   });
 
+  it("at the build where the id is the hash of $tx alone, however the body is wrapped", async () => {
+    ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+    const raw = JSON.stringify({ $sigs: { s1: "sig" }, $tx: { $expire: future(), $contract: "c", $namespace: "test", $i: { s1: {} } } });
+    const wire = await viaHybrid(raw);
+    const umid = computeUmid(JSON.parse(raw));
+    expect(umid).to.equal(computeUmid({ ...JSON.parse(raw), extra: true }));
+    const got = await entry(JSON.parse(wire));
+    expect(got.$umid).to.equal(umid);
+    expect(got.$relay.key).to.equal(pem);
+    captured = undefined;
+    const direct = await entry({ ...JSON.parse(raw), extra: true });
+    expect(direct.$umid).to.equal(umid);
+  });
+
   it("when the client put its own $relay in the body", async () => {
     const body: any = tx();
     body.$relay = { key: "x", sig: "y" };

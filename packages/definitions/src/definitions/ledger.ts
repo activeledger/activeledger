@@ -58,6 +58,8 @@ export interface LedgerEntry {
   $encrypt?: boolean;
   $nolock?:boolean;
   $spiRetry?:boolean
+  /** The first id this transaction had, when its node gave it a new one while repairing its own streams. Set only by the entry node */
+  $replaces?: string;
   $$noreply?: boolean;
   $$labelOrKey?: string[]; // Need to move elsewhere as this will be sent with rightKnocks (or reduce right)
 }
