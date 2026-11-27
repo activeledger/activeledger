@@ -70,13 +70,35 @@ async function main(): Promise<number> {
     await sleep(1200);
     check(refused(again) && (await count(2)) === 2, "and a repeat of it through another node is refused as already done");
 
+    // The same at once: the wrong copy and the right one sent together to one node. (Sent together to two
+    // different nodes the copies meet on the nodes in between and the right one has to be sent again once the
+    // first has cleared; that case is not asserted here.)
+    for (const [n, label] of [[0, "one node"]] as [number, string][]) {
+      const body3 = tx(`together-${n}`, new Date(Date.now() + 3600_000).toISOString());
+      const good3 = { [user.streamId]: user.keyPair.sign(body3) };
+      const bad3 = { [user.streamId]: "00" + good3[user.streamId].slice(2) };
+      const before = await count();
+      const results = await Promise.all([send(0, { $tx: body3, $sigs: bad3 }), send(n, { $tx: body3, $sigs: good3 })]);
+      await sleep(1500);
+      let after = await count();
+      if (after === before) {
+        // The right one was told how the wrong one went; its retry goes through at once
+        const retry = await send(n, { $tx: body3, $sigs: good3 });
+        await sleep(1500);
+        after = await count();
+        check(retry.$summary?.commit === 1 && after === before + 1, `sent together through ${label}: the right one went through on its retry (${JSON.stringify(retry.$summary?.errors ?? [])})`);
+      } else {
+        check(after === before + 1 && results[0].$summary?.commit === 0, `sent together through ${label}: the right one was applied once, the wrong one not`);
+      }
+    }
+
     // Without an $expire each send is a new transaction (the time is part of its id)
     const open = tx("open");
     const openSigs = { [user.streamId]: user.keyPair.sign(open) };
     await send(0, { $tx: open, $sigs: openSigs });
     await send(1, { $tx: open, $sigs: openSigs });
     await sleep(1500);
-    check((await count()) === 4, "without an $expire it is still a new transaction each time it is sent");
+    check((await count()) === 5, "without an $expire it is still a new transaction each time it is sent");
   });
   console.log(failures ? `${failures} FAILED` : "all ok");
   return failures ? 1 : 0;

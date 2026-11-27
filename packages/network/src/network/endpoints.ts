@@ -136,6 +136,28 @@ export class Endpoints {
     return flat(one) === flat(two);
   }
 
+  /** Longest a copy waits for the one in its place to be answered, and how often it looks */
+  public static answerWaitMs = 3000;
+  public static answerPollMs = 20;
+
+  /**
+   * The entry this node holds for a umid once this node has voted on it, or as
+   * it stands after answerWaitMs; undefined if it has gone.
+   *
+   * @param {Host} host
+   * @param {string} umid
+   * @returns {Promise<ActiveDefinitions.LedgerEntry | undefined>}
+   */
+  public static async answered(host: Host, umid: string): Promise<ActiveDefinitions.LedgerEntry | undefined> {
+    const end = Date.now() + Endpoints.answerWaitMs;
+    for (;;) {
+      const entry = host.inFlight?.(umid);
+      const own: any = entry?.$nodes?.[host.reference];
+      if (!entry || (own && !own.early) || Date.now() >= end) return entry;
+      await new Promise((resolve) => setTimeout(resolve, Endpoints.answerPollMs));
+    }
+  }
+
   /**
    * Has this node already voted against this entry because of its signatures,
    * by the full check? Only that: a no for another reason (a stream out of
@@ -325,7 +347,7 @@ export class Endpoints {
                 // answered "signature wrong" by the full check is given an id of its
                 // own, noting the first, as a resent one is. Anything else stays as it
                 // was: one is processed, and the other is told how it went.
-                const waiting = host.inFlight?.(tx.$umid);
+                let waiting = host.inFlight?.(tx.$umid);
                 if (
                   waiting?.$sigs &&
                   tx.$sigs &&
@@ -335,7 +357,10 @@ export class Endpoints {
                   if (await Endpoints.signaturesFail(db, tx)) {
                     return resolve(this.successfulFailure(`Input Signature Incorrect`));
                   }
-                  if (Endpoints.refusedForSignature(waiting, host.reference)) {
+                  // Only a copy that is not the same request gets here, which a client
+                  // retrying does not send, so it can wait for the other's answer
+                  waiting = await Endpoints.answered(host, tx.$umid);
+                  if (waiting && Endpoints.refusedForSignature(waiting, host.reference)) {
                     tx.$replaces = tx.$umid;
                     tx.$umid = ActiveCrypto.Hash.getHash(`${tx.$umid}:${JSON.stringify(tx.$sigs)}`);
                   }

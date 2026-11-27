@@ -204,7 +204,14 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         });
         const umid = ActiveCrypto.Hash.getHash(JSON.stringify($tx));
         const withWaiting = (waiting: any) => makeHost({ replies: [voted({ me: { vote: true, commit: true } })] }, { inFlight: (id: string) => (id === umid ? waiting : undefined) });
-        beforeEach(() => ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD));
+        const realWaitMs = Endpoints.answerWaitMs;
+        beforeEach(() => {
+          ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+          Endpoints.answerWaitMs = 300;
+        });
+        afterEach(() => {
+          Endpoints.answerWaitMs = realWaitMs;
+        });
 
         it("knows a wrong signature from a right one, and says nothing about what it cannot read", async () => {
           expect(await Endpoints.signaturesFail(store(), entryWith(good))).to.equal(false);
@@ -222,6 +229,30 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           expect(await Endpoints.signaturesFail(store(), { ...entryWith("junk"), $selfsign: true } as any)).to.equal(false);
           expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: {} } as any)).to.equal(false);
           expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: { label: "junk" } } as any)).to.equal(false);
+        });
+
+        it("waits for an answer only as long as it is told to, and not at all for one that is already answered or gone", async () => {
+          const realPoll = Endpoints.answerPollMs;
+          Endpoints.answerPollMs = 5;
+          try {
+            const answered: any = { $nodes: { me: { vote: true, commit: false } } };
+            let started = Date.now();
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => answered } as any, "u")).to.equal(answered);
+            expect(Date.now() - started).to.be.lessThan(30);
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => undefined } as any, "u")).to.equal(undefined);
+            const never: any = { $nodes: { me: { vote: false, early: true } } };
+            Endpoints.answerWaitMs = 50;
+            started = Date.now();
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => never } as any, "u")).to.equal(never);
+            expect(Date.now() - started).to.be.within(45, 250);
+            // It goes while it is waited for: nothing to go by
+            let gone = false;
+            setTimeout(() => (gone = true), 20);
+            Endpoints.answerWaitMs = 300;
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => (gone ? undefined : never) } as any, "u")).to.equal(undefined);
+          } finally {
+            Endpoints.answerPollMs = realPoll;
+          }
         });
 
         it("compares signatures whatever order they are in", () => {
@@ -250,11 +281,32 @@ describe("Endpoints transaction submission (Activeledger)", () => {
           expect(Endpoints.refusedForSignature(answeredWrong(), "other")).to.equal(false);
         });
 
-        it("leaves a copy that has not been answered yet to the one on its way, even if its signature looks wrong", async () => {
-          const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+        it("leaves a copy that is never answered to the one on its way, even if its signature looks wrong", async () => {
+          const realWait = Endpoints.answerWaitMs;
+          Endpoints.answerWaitMs = 60;
+          try {
+            const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+            await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+            expect(pendingCalls[0].entry.$umid).to.equal(umid);
+            expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+          } finally {
+            Endpoints.answerWaitMs = realWait;
+          }
+        });
+
+        it("waits for the one on its way to be answered, and goes by what the full check said", async () => {
+          const waiting: any = { ...entryWith("00" + good.slice(2)), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          setTimeout(() => (waiting.$nodes.me = { vote: false, commit: false, error: "Input Signature Incorrect - Error x:1" }), 60);
           await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
-          expect(pendingCalls[0].entry.$umid).to.equal(umid);
-          expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+          expect(pendingCalls[0].entry.$replaces).to.equal(umid);
+          // ... and when it was answered with a yes, the right copy joins it as before
+          const accepted: any = { ...entryWith("another valid form"), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const second = withWaiting(accepted);
+          setTimeout(() => (accepted.$nodes.me = { vote: true, commit: false }), 40);
+          await Endpoints.ExternalInitalise(second.host, entryWith(good), "1.2.3.4", store(null));
+          expect(second.pendingCalls[0].entry.$umid).to.equal(umid);
+          expect(second.pendingCalls[0].entry.$replaces).to.equal(undefined);
         });
 
         it("gives a right copy an id of its own, noting the first, once the full check has refused the one on its way", async () => {
