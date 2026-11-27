@@ -1,5 +1,25 @@
 # Activeledger Changelog
 
+## [5.11.3] - 2026-11-27
+
+Duplicate detection for transactions with an `$expire` is tighter. Nothing needs changing on upgrade, but one new build
+level makes the main change take effect: see **Upgrading**.
+
+### Upgrading
+- **Raise `build` to `51103` on every node once all are upgraded** (see [Nodes](docs/guide/operate/nodes.md)). From that
+  level the id of a transaction with an `$expire` is the hash of `$tx` alone. Until then the id is made as before.
+
+### Changed
+- **One id for one signed transaction.** A transaction with an `$expire` is given its `$umid` by the entry node, and
+  `Transaction Exists` looks that id up. The id covered the whole request, while the signatures cover only `$tx`, so the
+  same signed transaction written another way got another id. At build `51103` the id is the hash of `$tx`, so it is
+  the same however the request around it is written, through any node. The hybrid works the id out by the same rule.
+- **Fields only a node sets** (`$umid`, `$origin`, `$remoteAddr`, `$nodes`, `$revs`, `$streams`, `$spiRetry`) are taken
+  off a request a client sends, as `$relay` already was. This applies at every build level.
+- **A transaction a node resent under a new id after repairing its own streams is now recognised on every node.** It
+  carries the first id it had, and each node that commits it notes that id, so a repeat of the original bytes through any
+  node is refused with `Transaction Exists : <id> (resent as <new id>)`. Before, only the node that resent it knew.
+
 ## [5.11.2] - 2026-11-24
 
 A fix for a contract crash. Nothing is build-gated and nothing needs changing on upgrade.
