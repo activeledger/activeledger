@@ -124,6 +124,121 @@ export class Endpoints {
   }
 
   /**
+   * Are these two sets of signatures the same, whatever order they are in?
+   *
+   * @param {unknown} one
+   * @param {unknown} two
+   * @returns {boolean}
+   */
+  public static sameSignatures(one: unknown, two: unknown): boolean {
+    const flat = (sigs: unknown) =>
+      JSON.stringify(Object.entries((sigs && typeof sigs === "object" ? sigs : {}) as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    return flat(one) === flat(two);
+  }
+
+  /**
+   * Has this transaction been committed, or resent under another id? The message
+   * for the client if so. Never throws: not knowing is told as try again.
+   *
+   * @param {Host} host
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDefinitions.LedgerEntry} tx
+   * @returns {Promise<string | undefined>}
+   */
+  public static async alreadyDone(host: Host, db: ActiveDSConnect, tx: ActiveDefinitions.LedgerEntry): Promise<string | undefined> {
+    try {
+      const resentAs = await host.resentAs(tx.$umid);
+      if (resentAs) return `Transaction Exists : ${tx.$umid} (resent as ${resentAs})`;
+      if (host.mayBeStored(tx.$umid, new Date(tx.$tx.$expire as Date).getTime()) && (await db.exists(`${tx.$umid}:umid`))) {
+        return `Transaction Exists : ${tx.$umid}`;
+      }
+    } catch {
+      return `Could not check whether ${tx.$umid} was already accepted, try again shortly`;
+    }
+    return undefined;
+  }
+
+  /** Longest a copy waits for the one in its place to be answered, and how often it looks */
+  public static answerWaitMs = 3000;
+  public static answerPollMs = 20;
+
+  /**
+   * The entry this node holds for a umid once this node has voted on it, or as
+   * it stands after answerWaitMs; undefined if it has gone.
+   *
+   * @param {Host} host
+   * @param {string} umid
+   * @returns {Promise<ActiveDefinitions.LedgerEntry | undefined>}
+   */
+  public static async answered(host: Host, umid: string): Promise<ActiveDefinitions.LedgerEntry | undefined> {
+    const end = Date.now() + Endpoints.answerWaitMs;
+    for (;;) {
+      const entry = host.inFlight?.(umid);
+      const own: any = entry?.$nodes?.[host.reference];
+      if (!entry || (own && !own.early) || Date.now() >= end) return entry;
+      await new Promise((resolve) => setTimeout(resolve, Endpoints.answerPollMs));
+    }
+  }
+
+  /**
+   * Has this node already voted against this entry because of its signatures,
+   * by the full check? Only that: a no for another reason (a stream out of
+   * position, say) says nothing about whether its signatures were right.
+   *
+   * @param {ActiveDefinitions.LedgerEntry} entry
+   * @param {string} reference This node
+   * @returns {boolean}
+   */
+  public static refusedForSignature(entry: ActiveDefinitions.LedgerEntry, reference: string): boolean {
+    const own: any = entry?.$nodes?.[reference];
+    return !!own && own.vote === false && !own.early && /Signature (Incorrect|Expired)/.test(String(own.error ?? ""));
+  }
+
+  /**
+   * Is a signature on this transaction certainly wrong? Only a plain stream id
+   * with a single public key is looked at, and only to say yes: anything this
+   * does not understand (labels, a signature for several authorities, a self signed entry, a stream
+   * that is not there) is left to the full check after the locks, as always.
+   *
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDefinitions.LedgerEntry} tx
+   * @returns {Promise<boolean>}
+   */
+  public static async signaturesFail(db: ActiveDSConnect, tx: ActiveDefinitions.LedgerEntry): Promise<boolean> {
+    try {
+      if (tx.$selfsign || !tx.$sigs || typeof tx.$sigs !== "object") return false;
+      const json = JSON.stringify(tx.$tx);
+      for (const id of Object.keys(tx.$tx?.$i || {})) {
+        const signature = (tx.$sigs as Record<string, unknown>)[id];
+        if (typeof signature !== "string" || !/^[0-9a-f]{64}$/.test(id)) continue;
+        let meta: any;
+        try {
+          meta = await db.get(`${id}:stream`);
+        } catch {
+          continue;
+        }
+        // The keys that could have signed: a list of authorities, or the one key of an older stream
+        const keys: { public?: unknown; type?: string }[] = Array.isArray(meta?.authorities) && meta.authorities.length
+          ? meta.authorities
+          : typeof meta?.public === "string" ? [{ public: meta.public, type: meta.type }] : [];
+        if (!keys.length) continue;
+        // Wrong when no key it could be signed by matches (one that has lapsed does not make it right)
+        const matches = keys.some((key) => {
+          try {
+            return typeof key.public === "string" && new ActiveCrypto.KeyPair(key.type || "rsa", key.public).verify(json, signature);
+          } catch {
+            return false;
+          }
+        });
+        if (!matches) return true;
+      }
+    } catch {
+      // Could not tell: not a reason to refuse
+    }
+    return false;
+  }
+
+  /**
    * Why a transaction's `$r` cannot be used, or undefined when it can.
    * `$r` is { name: "<stream id>" }: a name the contract reads it by, and the
    * id of the stream. An object as the value, such as { "<stream id>": {} },
@@ -245,6 +360,37 @@ export class Endpoints {
                   return resolve(
                     this.successfulFailure(`Transaction Exists : ${tx.$umid}`)
                   );
+                }
+
+                // The same transaction may already be on its way with other signatures
+                // (the id no longer says which request it came in). A copy whose
+                // signatures are certainly wrong is refused, and does not take the
+                // other's place. A right one that finds the copy on its way already
+                // answered "signature wrong" by the full check is given an id of its
+                // own, noting the first, as a resent one is. Anything else stays as it
+                // was: one is processed, and the other is told how it went.
+                let waiting = host.inFlight?.(tx.$umid);
+                if (
+                  waiting?.$sigs &&
+                  tx.$sigs &&
+                  ActiveOptions.get<number>("build", 0) >= ActiveCrypto.TransactionId.BUILD &&
+                  !Endpoints.sameSignatures(waiting.$sigs, tx.$sigs)
+                ) {
+                  if (await Endpoints.signaturesFail(db, tx)) {
+                    return resolve(this.successfulFailure(`Input Signature Incorrect`));
+                  }
+                  // Only a copy that is not the same request gets here, which a client
+                  // retrying does not send, so it can wait for the other's answer
+                  waiting = await Endpoints.answered(host, tx.$umid);
+                  // It may have been committed while this waited: ask again, as above
+                  const exists = await Endpoints.alreadyDone(host, db, tx);
+                  if (exists) {
+                    return resolve(this.successfulFailure(exists));
+                  }
+                  if (waiting && Endpoints.refusedForSignature(waiting, host.reference)) {
+                    tx.$replaces = tx.$umid;
+                    tx.$umid = ActiveCrypto.Hash.getHash(`${tx.$umid}:${JSON.stringify(tx.$sigs)}`);
+                  }
                 }
 
                 // Now safe to set datetime

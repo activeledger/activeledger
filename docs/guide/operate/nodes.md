@@ -72,7 +72,7 @@ A stream is one record on the ledger, with a position that moves on each time it
 | `50600` | A contract is run only for the namespace it lives in: the loaded-contract cache is keyed by namespace and contract, so a contract that has run under its own namespace cannot be reached by naming another. |
 | `51103` | A transaction with an `$expire` gets the same `$umid` however it is wrapped when it is sent: the id is the hash of `$tx`, the part the signatures cover, so `Transaction Exists` recognises it whatever else came with it, through any node. |
 
-A new node's generated `config.json` has `50600`, so a new network has the stream fixes, the hybrid protocol and the namespace check on. Hybrids themselves cost nothing until you turn them on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300` and `activeledger hybrid enable` (see [Hybrid nodes](../hybrid/run.md)).
+A new node's generated `config.json` has `51103`, so a new network has the stream fixes, the hybrid protocol, the namespace check and the one id for a signed transaction on. Hybrids themselves cost nothing until you turn them on. A network that was started earlier keeps its level until you raise it. A node joining an existing network must have its `build` set to that network's level before it starts. Running hybrids needs `40300` and `activeledger hybrid enable` (see [Hybrid nodes](../hybrid/run.md)).
 
 ### Faster signing once hybrids are on
 

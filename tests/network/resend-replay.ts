@@ -51,7 +51,7 @@ async function main(): Promise<boolean> {
     nodeCount: 4,
     basePort: 5740,
     // The node forgets a finished transaction after about two seconds
-    config: { releaseHoldSeconds: 2, releaseStubSeconds: 1, releaseTailSeconds: 1, ...(canonical ? { build: ActiveCrypto.TransactionId.BUILD } : {}) },
+    config: { releaseHoldSeconds: 2, releaseStubSeconds: 1, releaseTailSeconds: 1, build: canonical ? ActiveCrypto.TransactionId.BUILD : ActiveCrypto.TransactionId.BUILD - 1 },
     readyTimeoutMs: 40000,
   });
   let passed = true;

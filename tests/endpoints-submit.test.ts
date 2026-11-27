@@ -187,6 +187,179 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         expect(await idOf(withExpire({ $umid: "f".repeat(64), $spiRetry: true, $replaces: "e".repeat(64) }))).to.equal(plain);
       });
 
+      describe("a second copy with other signatures while one is on its way", () => {
+        const kp = new ActiveCrypto.KeyPair("secp256k1");
+        const handler: any = kp.generate();
+        const pub = handler.pub?.pkcs8pem ?? handler.pub ?? handler.public;
+        const streamId = "a".repeat(64);
+        const $tx = { $namespace: "default", $contract: "c", $i: { [streamId]: {} }, $o: {}, $expire: "2999-01-01T00:00:00.000Z" };
+        const good = kp.sign(JSON.stringify($tx));
+        const entryWith = (signature: string): any => ({ $tx, $sigs: { [streamId]: signature } });
+        const store = (meta: any = { public: pub, type: "secp256k1" }): any => ({
+          exists: async () => false,
+          get: async (id: string) => {
+            if (id === `${streamId}:stream` && meta) return meta;
+            throw new Error("missing");
+          },
+        });
+        const umid = ActiveCrypto.Hash.getHash(JSON.stringify($tx));
+        const withWaiting = (waiting: any) => makeHost({ replies: [voted({ me: { vote: true, commit: true } })] }, { inFlight: (id: string) => (id === umid ? waiting : undefined) });
+        const realWaitMs = Endpoints.answerWaitMs;
+        beforeEach(() => {
+          ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+          Endpoints.answerWaitMs = 300;
+        });
+        afterEach(() => {
+          Endpoints.answerWaitMs = realWaitMs;
+        });
+
+        it("knows a wrong signature from a right one, and says nothing about what it cannot read", async () => {
+          expect(await Endpoints.signaturesFail(store(), entryWith(good))).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), entryWith("00" + good.slice(2)))).to.equal(true);
+          expect(await Endpoints.signaturesFail(store(), entryWith("not a signature"))).to.equal(true);
+          expect(await Endpoints.signaturesFail(store(null), entryWith("junk"))).to.equal(false);
+          // A stream with authorities: right when any of them matches, wrong when none does
+          const other: any = new ActiveCrypto.KeyPair("secp256k1").generate();
+          const otherPub = other.pub?.pkcs8pem ?? other.pub ?? other.public;
+          const authorities = store({ authorities: [{ public: otherPub, type: "secp256k1" }, { public: pub, type: "secp256k1" }] });
+          expect(await Endpoints.signaturesFail(authorities, entryWith(good))).to.equal(false);
+          expect(await Endpoints.signaturesFail(authorities, entryWith("00" + good.slice(2)))).to.equal(true);
+          // Several signatures for one stream are left to the full check
+          expect(await Endpoints.signaturesFail(authorities, { $tx, $sigs: { [streamId]: { x: "junk" } } } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { ...entryWith("junk"), $selfsign: true } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: {} } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: { label: "junk" } } as any)).to.equal(false);
+        });
+
+        it("waits for an answer only as long as it is told to, and not at all for one that is already answered or gone", async () => {
+          const realPoll = Endpoints.answerPollMs;
+          Endpoints.answerPollMs = 5;
+          try {
+            const answered: any = { $nodes: { me: { vote: true, commit: false } } };
+            let started = Date.now();
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => answered } as any, "u")).to.equal(answered);
+            expect(Date.now() - started).to.be.lessThan(30);
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => undefined } as any, "u")).to.equal(undefined);
+            const never: any = { $nodes: { me: { vote: false, early: true } } };
+            Endpoints.answerWaitMs = 50;
+            started = Date.now();
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => never } as any, "u")).to.equal(never);
+            expect(Date.now() - started).to.be.within(45, 250);
+            // It goes while it is waited for: nothing to go by
+            let gone = false;
+            setTimeout(() => (gone = true), 20);
+            Endpoints.answerWaitMs = 300;
+            expect(await Endpoints.answered({ reference: "me", inFlight: () => (gone ? undefined : never) } as any, "u")).to.equal(undefined);
+          } finally {
+            Endpoints.answerPollMs = realPoll;
+          }
+        });
+
+        it("asks again whether it was committed once it has waited, and says so if it was", async () => {
+          const waiting: any = { ...entryWith("another valid form"), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          let committed = false;
+          setTimeout(() => ((waiting.$nodes.me = { vote: true, commit: true }), (committed = true)), 40);
+          const database: any = { exists: async () => committed };
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", database);
+          expect(reply.content.$summary.errors[0]).to.match(/^Transaction Exists : [0-9a-f]{64}$/);
+          expect(pendingCalls).to.have.length(0);
+        });
+
+        it("says to try again when it cannot tell, after waiting", async () => {
+          const waiting: any = { ...entryWith("another valid form"), $nodes: { me: { vote: true, commit: false } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          let calls = 0;
+          const database: any = { exists: async () => { if (++calls > 1) throw new Error("down"); return false; } };
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", database);
+          expect(reply.content.$summary.errors[0]).to.match(/try again shortly$/);
+          expect(pendingCalls).to.have.length(0);
+        });
+
+        it("compares signatures whatever order they are in", () => {
+          expect(Endpoints.sameSignatures({ a: "1", b: "2" }, { b: "2", a: "1" })).to.equal(true);
+          expect(Endpoints.sameSignatures({ a: "1" }, { a: "2" })).to.equal(false);
+          expect(Endpoints.sameSignatures({ a: "1" }, undefined)).to.equal(false);
+        });
+
+        it("refuses a copy whose signature is wrong, and does not let it take the place of the one on its way", async () => {
+          const { host, pendingCalls } = withWaiting(entryWith(good));
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith("00" + good.slice(2)), "1.2.3.4", store());
+          expect(reply.content.$summary.errors[0]).to.equal("Input Signature Incorrect");
+          expect(pendingCalls).to.have.length(0);
+        });
+
+        const answeredWrong = (): any => ({ ...entryWith("00" + good.slice(2)), $nodes: { me: { vote: false, commit: false, error: "Input Signature Incorrect - Error x:1" } } });
+
+        it("knows when this node has already voted against an entry for its signatures, and for nothing else", () => {
+          const voted = (own: any): any => ({ $nodes: { me: own } });
+          expect(Endpoints.refusedForSignature(answeredWrong(), "me")).to.equal(true);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, error: "Output Signature Expired" }), "me")).to.equal(true);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, error: "Input Stream Position Incorrect" }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(voted({ vote: true, commit: true }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(voted({ vote: false, early: true }), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(entryWith("x"), "me")).to.equal(false);
+          expect(Endpoints.refusedForSignature(answeredWrong(), "other")).to.equal(false);
+        });
+
+        it("leaves a copy that is never answered to the one on its way, even if its signature looks wrong", async () => {
+          const realWait = Endpoints.answerWaitMs;
+          Endpoints.answerWaitMs = 60;
+          try {
+            const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+            await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+            expect(pendingCalls[0].entry.$umid).to.equal(umid);
+            expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+          } finally {
+            Endpoints.answerWaitMs = realWait;
+          }
+        });
+
+        it("waits for the one on its way to be answered, and goes by what the full check said", async () => {
+          const waiting: any = { ...entryWith("00" + good.slice(2)), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const { host, pendingCalls } = withWaiting(waiting);
+          setTimeout(() => (waiting.$nodes.me = { vote: false, commit: false, error: "Input Signature Incorrect - Error x:1" }), 60);
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls[0].entry.$replaces).to.equal(umid);
+          // ... and when it was answered with a yes, the right copy joins it as before
+          const accepted: any = { ...entryWith("another valid form"), $nodes: { me: { vote: false, commit: false, early: true } } };
+          const second = withWaiting(accepted);
+          setTimeout(() => (accepted.$nodes.me = { vote: true, commit: false }), 40);
+          await Endpoints.ExternalInitalise(second.host, entryWith(good), "1.2.3.4", store(null));
+          expect(second.pendingCalls[0].entry.$umid).to.equal(umid);
+          expect(second.pendingCalls[0].entry.$replaces).to.equal(undefined);
+        });
+
+        it("gives a right copy an id of its own, noting the first, once the full check has refused the one on its way", async () => {
+          const { host, pendingCalls } = withWaiting(answeredWrong());
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls).to.have.length(1);
+          const entry = pendingCalls[0].entry;
+          expect(entry.$replaces).to.equal(umid);
+          expect(entry.$umid).to.equal(ActiveCrypto.Hash.getHash(`${umid}:${JSON.stringify(entry.$sigs)}`));
+          expect(entry.$umid).to.not.equal(umid);
+        });
+
+        it("leaves it to the one on its way when both may be right, or when it is the same request", async () => {
+          for (const [waiting, copy] of [
+            [entryWith("another valid form"), entryWith(good)],
+            [entryWith(good), entryWith(good)],
+          ] as any[]) {
+            const { host, pendingCalls } = withWaiting(waiting);
+            await Endpoints.ExternalInitalise(host, copy, "1.2.3.4", store(null));
+            expect(pendingCalls[0].entry.$umid).to.equal(umid);
+            expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+          }
+        });
+
+        it("does nothing about it below the build where the id is the hash of $tx", async () => {
+          ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD - 1);
+          const { host, pendingCalls } = withWaiting(answeredWrong());
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+        });
+      });
+
       it("takes the fields only a node sets off a transaction a client sends, so nothing rides along", async () => {
         const { host, pendingCalls } = makeHost({ replies: [voted({ me: { vote: true, commit: true } })] });
         await Endpoints.ExternalInitalise(host, withExpire({ $replaces: "e".repeat(64), $revs: { a: "1" }, $streams: { new: [], updated: [] }, $remoteAddr: "9.9.9.9", $origin: "elsewhere" }), "1.2.3.4", db());

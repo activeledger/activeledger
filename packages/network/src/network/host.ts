@@ -1783,9 +1783,8 @@ export class Host extends Home {
           }
           if (!pending) return; // Fail safe, May happen when process being closed
           this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
-          // Under its first id too, on every node that commits it (the entry
-          // node noted it when it gave the new id)
-          if (pending.entry.$replaces && pending.entry.$origin !== this.reference && this.firstIdHolds(pending.entry)) {
+          // Under its first id too, on every node that commits it
+          if (pending.entry.$replaces && this.firstIdHolds(pending.entry)) {
             this.rememberResent(pending.entry.$replaces, pending.entry.$umid, pending.entry.$tx?.$expire);
           }
           // A node that voted no on a position error still reports "commited"
@@ -2769,6 +2768,11 @@ export class Host extends Home {
   private resentGuardUntil = 0;
   /** Rows being written right now, so a repost in the same instant is still caught. Empty within milliseconds. */
   private resentInFlight = new Map<string, string>();
+  /** Ids noted as resent, until when, so each is written once */
+  private resentRecordedMap?: Map<string, number>;
+  private get resentRecorded(): Map<string, number> {
+    return (this.resentRecordedMap ||= new Map<string, number>());
+  }
   private resentTimer?: NodeJS.Timeout;
   /** Has the `resent:` list been read since this node started? Until it has, a lookup waits for it. */
   private resentLoaded = false;
@@ -2798,6 +2802,12 @@ export class Host extends Home {
   public rememberResent(replaced: string, replacement: string, expire: unknown): void {
     const until = expire ? new Date(expire as string).getTime() : NaN;
     if (!Number.isFinite(until) || until <= Date.now()) return;
+    // Noted once: the entry node notes it when it resends and again when it commits
+    if ((this.resentRecorded.get(replaced) ?? 0) > Date.now()) return;
+    this.resentRecorded.set(replaced, until);
+    if (this.resentRecorded.size > 1000) {
+      for (const [id, end] of this.resentRecorded) if (end <= Date.now()) this.resentRecorded.delete(id);
+    }
     this.resentGuardUntil = Math.max(this.resentGuardUntil, until);
     this.resentInFlight.set(replaced, replacement);
     this.dbEventConnection
@@ -2805,6 +2815,11 @@ export class Host extends Home {
       .then(
         () => void this.resentInFlight.delete(replaced),
         (error: unknown) => {
+          // Already there (the entry node notes it when it resends, and again when it commits)
+          if ((error as any)?.status === 409 || (error as any)?.error === "conflict") {
+            this.resentInFlight.delete(replaced);
+            return;
+          }
           // The row did not get written, so memory is all there is: keep it until the transaction expires
           ActiveLogger.error({ replaced, error }, "Could not record a resent transaction; refusing a repost from memory only");
           setTimeout(() => this.resentInFlight.delete(replaced), Math.max(0, until - Date.now())).unref();
@@ -2996,6 +3011,16 @@ export class Host extends Home {
       ActiveLogger.warn(umid, "Trying to release unknown umid");
     }
   }
+  /**
+   * The entry this node holds for a umid that is still being processed, if any.
+   *
+   * @param {string} umid
+   * @returns {ActiveDefinitions.LedgerEntry | undefined}
+   */
+  public inFlight(umid: string): ActiveDefinitions.LedgerEntry | undefined {
+    return this.processPending[umid]?.entry;
+  }
+
   /**
    * May the first id a neighbour sent with a committed transaction ($replaces)
    * be noted? Only an id in the right form, and only for a transaction this

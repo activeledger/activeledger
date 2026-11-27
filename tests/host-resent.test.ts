@@ -70,6 +70,16 @@ describe("Host - a transaction resent under a new umid (Activenetwork)", () => {
       expect(posted).to.deep.equal([{ _id: `resent:${UMID}`, to: NEW, until: new Date(expire).getTime() }]);
     });
 
+    it("writes the row once when it is noted twice, as the entry node does when it resends and again when it commits", async () => {
+      const { host, posted } = makeHost();
+      const expire = inAnHour();
+      host.rememberResent(UMID, NEW, expire);
+      await settle();
+      host.rememberResent(UMID, NEW, expire);
+      await settle();
+      expect(posted).to.have.length(1);
+    });
+
     it("records nothing for a transaction with no $expire, whose bytes can never make the same umid again", () => {
       const { host, posted } = makeHost();
       host.rememberResent(UMID, NEW, undefined);

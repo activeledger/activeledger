@@ -1,5 +1,7 @@
 import { expect } from "chai";
 import "mocha";
+import * as fs from "fs";
+import * as path from "path";
 import { ActiveCrypto } from "@activeledger/activecrypto";
 
 const { TransactionId } = ActiveCrypto;
@@ -62,5 +64,10 @@ describe("Transaction id (Activecrypto)", () => {
     for (const field of ["$tx", "$sigs", "$selfsign", "$territoriality", "$unanimous", "$broadcast"]) {
       expect((TransactionId.NODE_FIELDS as readonly string[]).includes(field), field).to.equal(false);
     }
+  });
+
+  it("is the build level a new node starts at", () => {
+    const config = JSON.parse(fs.readFileSync(path.join(__dirname, "../packages/activeledger/src/default.config.json"), "utf8"));
+    expect(config.build).to.equal(TransactionId.BUILD);
   });
 });
