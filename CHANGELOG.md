@@ -14,7 +14,7 @@ network that is already running.
 - **New nodes start at build `51103`**, so a new network has the one id for a signed transaction on from the start.
 - **A second copy of a transaction that is already being processed, with other signatures,** is checked when it
   arrives. If its signatures are certainly wrong it is refused with `Input Signature Incorrect` and does not take the
-  first copy's place. If the copy already being processed is the one that is wrong, the right one is given an id of its
+  first copy's place. If the copy already being processed has been refused for its signatures, the right one is given an id of its
   own, noting the first, as a resent transaction is, and carries on. Where both may be right, one is processed as
   before. Nothing is checked on the normal path.
 - **The entry node also notes the first id of a resent transaction when it commits it,** written once.
