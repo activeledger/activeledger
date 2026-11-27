@@ -39,6 +39,8 @@ Every transaction is one JSON object posted to a node. The top level has three f
 
 In `$i` and `$o` you can use a label instead of a stream id as the key, as long as the value has a `$stream` field holding the real id, for example `"sender": { "$stream": "…id…", "amount": 5 }`. `$sigs` still uses the stream id. If you mix the two, put the labelled entries first.
 
+A stream id can also carry a prefix of your own in front of the 64 character id, such as `AL<id>`. Only the last 64 characters count, so the node uses the real stream and stores it without the prefix. Sign under the same spelling you used in `$i`, as the prefix is part of the signed transaction. A signature sent under the bare id for a prefixed input is refused.
+
 Only the streams in `$i` and `$o` are locked while the transaction runs. Two transactions touching the same stream are run one after the other.
 
 !!! warning
