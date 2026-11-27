@@ -65,7 +65,8 @@ if (cli.command === "hybrid") {
     cli.positionals[2],
     !!cli.flags.json,
     console,
-    cli.flags.out as string | undefined
+    cli.flags.out as string | undefined,
+    cli.positionals[3]
   ).then((code) => process.exit(code));
 }
 if (cli.command === "reload") {

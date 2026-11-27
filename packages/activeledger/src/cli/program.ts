@@ -68,7 +68,7 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     { name: "prune", usage: "[days]", description: "Remove old errors (and, if asked, old events and umids) from this node's stores, keeping the last [days] days (default 30). Never touches the ledger" },
     { name: "project", ownBanner: true, usage: "init|identity|namespace|contract|tx|deploy|status|help", description: "Set up a project from the command line: register a namespace, upload and update contracts, run example transactions, all kept in a .activeledger file. Run `activeledger project` for the list" },
     { name: "audit", usage: "<file|folder>", description: "Check contract source for security problems, bad practice, duplicate code and risky dependencies, and print a risk score. Changes nothing" },
-    { name: "hybrid", usage: "status|enable [open|allowlist]|list|feeds|ban <keyhash>|unban <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
+    { name: "hybrid", usage: "status|enable [open|allowlist]|list|feeds|ban <keyhash>|unban <keyhash>|tier <keyhash> [n]|untier <keyhash>|allow <key>|deny <key>|admission <open|allowlist>|min-version <semver>|sign <file>|submit <file>", description: "Manage the hybrids that follow this node" },
   ],
   flags: [
     ...Cli.COMMON_FLAGS.map((f) =>
@@ -120,6 +120,8 @@ export const supernodeProgram = (version: string): Cli.CliProgram => ({
     { name: "out", arg: "<file>", description: "hybrid allow|deny|admission|min-version: write the signed change to a file instead of sending it", group: "Hybrid" },
     { name: "hybrid-listen", arg: "<port>", description: "Port for the hybrid P2P listener", group: "Hybrid" },
     { name: "hybrid-max-feeds", arg: "<n>", description: "Most hybrid feeds served at once (default 32)", group: "Hybrid" },
+    { name: "hybridPremiumSlots", hidden: true, description: "Config key: feed slots kept for premium hybrids (default 12)" },
+    { name: "hybridPremiumPollMs", hidden: true, description: "Config key: how often a premium hybrid's feed polls (default 500)" },
     { name: "hybridMaxFeeds", hidden: true, description: "Config key for hybrid-max-feeds" },
     { name: "backup", arg: "[file]", description: "Back up the ledger", group: "Backup" },
     { name: "restore", arg: "<file>", description: "Restore the ledger from a backup", group: "Backup" },

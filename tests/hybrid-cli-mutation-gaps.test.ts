@@ -73,10 +73,10 @@ describe("activeledger hybrid and reload commands - edges the tests did not pin 
     }
   });
 
-  const run = async (sub: string | undefined, arg?: string, json = false, outFile?: string) => {
+  const run = async (sub: string | undefined, arg?: string, json = false, outFile?: string, arg2?: string) => {
     const logs: string[] = [];
     const errors: string[] = [];
-    const code = await hybridCommand(sub, arg, json, { log: (t) => logs.push(t), error: (t) => errors.push(t) }, outFile);
+    const code = await hybridCommand(sub, arg, json, { log: (t) => logs.push(t), error: (t) => errors.push(t) }, outFile, arg2);
     return { code, logs, errors };
   };
   const posted = () => calls.filter((c) => c.method === "POST" && c.url === "/");
@@ -234,6 +234,31 @@ describe("activeledger hybrid and reload commands - edges the tests did not pin 
       answers["/a/hybrid/ban"] = { body: null };
       const r = await run("ban", hash("a"));
       expect([r.code, r.errors]).to.deep.equal([1, ["ban failed"]]);
+    });
+  });
+
+  describe("tier and untier", () => {
+    it("send the key, and the tier when given, and say what they did", async () => {
+      expect((await run("tier", hash("a"))).logs).to.deep.equal([`${hash("a")} is premium`]);
+      expect(calls[0]).to.deep.include({ method: "POST", url: "/a/hybrid/tier" });
+      expect(calls[0].body).to.deep.equal({ keyHash: hash("a") });
+      expect((await run("tier", hash("a"), false, undefined, "2")).logs).to.deep.equal([`${hash("a")} is premium, tier 2`]);
+      expect(calls[1].body).to.deep.equal({ keyHash: hash("a"), tier: 2 });
+      expect((await run("untier", hash("a"))).logs).to.deep.equal([`${hash("a")} is free`]);
+      expect(calls[2].url).to.equal("/a/hybrid/untier");
+    });
+    it("need a key hash, and exit 1 with the node's reason when it refuses", async () => {
+      expect((await run("tier")).errors).to.deep.equal(["hybrid tier needs a key hash"]);
+      answers["/a/hybrid/untier"] = { status: 400, body: { error: "unknown or invalid key hash or tier" } };
+      const r = await run("untier", "zzz");
+      expect([r.code, r.errors]).to.deep.equal([1, ["unknown or invalid key hash or tier"]]);
+    });
+    it("show the tier in the list and in the feeds", async () => {
+      answers["/a/hybrid/list"] = { body: [{ keyHash: hash("a"), label: "A", endpoints: [], tier: 1, feedConnected: true }] };
+      expect((await run("list")).logs[0]).to.contain("tier 1").and.contain("feed");
+      answers["/a/hybrid/feeds"] = { body: { count: 1, max: 32, premiumSlots: 12, feeds: [{ keyHash: hash("a"), cursor: "", connectedSeconds: 3, tier: 0 }] } };
+      const r = await run("feeds");
+      expect(r.logs[0]).to.contain("1 of 32 feeds (12 kept for premium)").and.contain("tier 0");
     });
   });
 

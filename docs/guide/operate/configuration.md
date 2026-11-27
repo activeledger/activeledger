@@ -119,7 +119,7 @@ The rules every supernode applies to hybrid nodes. Unknown keys are refused, so 
 
 Once the network is asserted the rules live on the ledger and are changed with `activeledger hybrid ...`: see [Operating hybrids](../hybrid/operate.md).
 
-`hybridMaxFeeds` (default `32`) is separate and local: the most hybrid feeds this one supernode serves at once.
+`hybridMaxFeeds` (default `32`) is separate and local: the most hybrid feeds this one supernode serves at once. `hybridPremiumSlots` (default `12`) keeps some of those slots for premium hybrids, and `hybridPremiumPollMs` (default `500`) sets how often their feeds poll; see [Operating hybrids](../hybrid/operate.md#premium-hybrids).
 
 ## Restore
 

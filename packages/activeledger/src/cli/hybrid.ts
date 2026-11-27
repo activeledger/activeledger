@@ -65,7 +65,8 @@ export const hybridCommand = async (
   arg: string | undefined,
   json: boolean,
   out: { log(t: string): void; error(t: string): void } = console,
-  outFile?: string
+  outFile?: string,
+  arg2?: string
 ): Promise<number> => {
   const show = (data: unknown, text: string) => out.log(json ? JSON.stringify(data) : text);
   try {
@@ -136,7 +137,7 @@ export const hybridCommand = async (
                 .map(
                   (h) =>
                     `${h.keyHash}  ${h.label ?? ""}  ${(h.endpoints ?? []).map((e: any) => `${e.transport}://${e.host}:${e.port}`).join(" ")}` +
-                    `${h.retired ? "  retired" : ""}${h.banned ? "  banned" : ""}${h.feedConnected ? "  feed" : ""}`
+                    `${h.retired ? "  retired" : ""}${h.banned ? "  banned" : ""}${h.tier >= 0 ? `  tier ${h.tier}` : ""}${h.feedConnected ? "  feed" : ""}`
                 )
                 .join("\n")
             : "no hybrids registered"
@@ -148,8 +149,8 @@ export const hybridCommand = async (
         const s = data as any;
         show(
           s,
-          `${s.count} of ${s.max} feeds\n` +
-            s.feeds.map((f: any) => `${f.keyHash}  at ${f.cursor || "start"}  ${f.connectedSeconds}s`).join("\n")
+          `${s.count} of ${s.max} feeds${s.premiumSlots ? ` (${s.premiumSlots} kept for premium)` : ""}\n` +
+            s.feeds.map((f: any) => `${f.keyHash}  at ${f.cursor || "start"}  ${f.connectedSeconds}s${f.tier >= 0 ? `  tier ${f.tier}` : ""}`).join("\n")
         );
         return Cli.ExitCode.OK;
       }
@@ -167,6 +168,22 @@ export const hybridCommand = async (
           return Cli.ExitCode.FAIL;
         }
         show({ ok: true }, `${sub === "ban" ? "banned" : "unbanned"} ${arg}`);
+        return Cli.ExitCode.OK;
+      }
+      case "tier":
+      case "untier": {
+        if (!arg) {
+          out.error(`hybrid ${sub} needs a key hash`);
+          return Cli.ExitCode.FAIL;
+        }
+        const body: any = { keyHash: arg };
+        if (sub === "tier" && arg2 !== undefined) body.tier = Number(arg2);
+        const r = await ActiveRequest.send(`${base()}/a/hybrid/${sub}`, "POST", [], body);
+        if (!r.data || (r.data as any).error) {
+          out.error((r.data as any)?.error ?? `${sub} failed`);
+          return Cli.ExitCode.FAIL;
+        }
+        show({ ok: true }, sub === "tier" ? `${arg} is premium${body.tier ? `, tier ${body.tier}` : ""}` : `${arg} is free`);
         return Cli.ExitCode.OK;
       }
       case "allow":
@@ -208,7 +225,7 @@ export const hybridCommand = async (
         return await sendChange(JSON.parse(fs.readFileSync(arg, "utf8")), show, out);
       }
       default:
-        out.error(`hybrid needs a subcommand: status, enable [open|allowlist], list, feeds, ban <keyhash>, unban <keyhash>, allow <key>, deny <key>, admission <open|allowlist>, min-version <semver>, sign <file>, submit <file>`);
+        out.error(`hybrid needs a subcommand: status, enable [open|allowlist], list, feeds, ban <keyhash>, unban <keyhash>, tier <keyhash> [n], untier <keyhash>, allow <key>, deny <key>, admission <open|allowlist>, min-version <semver>, sign <file>, submit <file>`);
         return Cli.ExitCode.FAIL;
     }
   } catch (e: any) {

@@ -25,6 +25,7 @@ import * as fs from "fs";
 import { ActiveLogger } from "@activeledger/activelogger";
 import type { FeedClient } from "./hybridRoutes";
 import type { HybridRegistry } from "./hybridApi";
+import type { HybridTiers } from "./hybridTiers";
 
 /**
  * Local administration of hybrid access, for `activeledger hybrid ...`.
@@ -87,7 +88,8 @@ export const isLoopback = (remoteAddress: string | undefined): boolean =>
 export const listHybrids = async (
   registry: HybridRegistry,
   feeds: Set<FeedClient>,
-  bans: Set<string>
+  bans: Set<string>,
+  tiers?: Pick<HybridTiers, "tierOf">
 ) => {
   const connected = new Set([...feeds].map((f) => f.keyHash));
   return (await registry.list()).map((h) => ({
@@ -96,6 +98,7 @@ export const listHybrids = async (
     endpoints: h.endpoints,
     retired: !!h.retired,
     banned: bans.has(h.keyHash),
+    ...(tiers ? { tier: tiers.tierOf(h.keyHash) } : {}),
     feedConnected: connected.has(h.keyHash),
   }));
 };
@@ -104,12 +107,19 @@ export const listHybrids = async (
 export const feedsStatus = (
   feeds: Set<FeedClient>,
   max: number,
-  now: number = Date.now()
+  now: number = Date.now(),
+  tiers?: Pick<HybridTiers, "tierOf" | "rank">,
+  premiumSlots: number = 0
 ) => ({
   count: feeds.size,
   max,
-  feeds: [...feeds].map((f) => ({
+  ...(tiers ? { premiumSlots } : {}),
+  // Best first, as the node would keep them
+  feeds: [...feeds]
+    .sort((a, b) => (tiers ? tiers.rank(a.keyHash) - tiers.rank(b.keyHash) || 0 : 0))
+    .map((f) => ({
     keyHash: f.keyHash,
+    ...(tiers ? { tier: tiers.tierOf(f.keyHash) } : {}),
     cursor: f.cursor ?? f.since,
     connectedSeconds: Math.round((now - f.connectedAt) / 1000),
   })),

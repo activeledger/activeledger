@@ -114,6 +114,35 @@ and retries, doubling from 1 second up to 30.
 One feed per key per supernode: a reconnect replaces the old one, so a
 half-dead connection cannot hold a slot against its owner.
 
+### Premium hybrids
+
+A supernode can serve some hybrids first. This is local to the supernode, like
+a ban, and is not on the ledger.
+
+```bash
+activeledger hybrid tier <keyhash>        # premium, best tier
+activeledger hybrid tier <keyhash> 1      # a lower tier (0 is the best)
+activeledger hybrid untier <keyhash>      # free again
+```
+
+The list is kept in `hybrid-tiers.json` next to the supernode's config: a list
+of tiers, best first, each a list of key hashes in priority order. A key that
+is not listed is free.
+
+- `hybridPremiumSlots` (default `12`) is how many of the `hybridMaxFeeds` slots
+  only premium keys may use. With the defaults, free hybrids share 20 feeds
+  and premium hybrids can use all 32.
+- When the supernode is full, a premium hybrid takes the place of the lowest
+  ranked feed, a free one first and the newest first. A premium feed is never
+  closed for one of the same or a lower rank.
+- A hybrid that loses its feed, or is refused one, is sent the other
+  supernodes this one knows to be up (`try`, a list of `host` and `port`). The
+  hybrid moves on to its next upstream as it does for any refusal.
+- `hybridPremiumPollMs` sets how often a premium hybrid's feed polls (default
+  `500`, the same as every feed).
+
+`hybrid list` and `hybrid feeds` show each key's tier.
+
 ```bash
 activeledger hybrid feeds
 ```

@@ -24,6 +24,7 @@
 import { HttpRequest, HttpResponse, TemplatedApp } from "uWebSockets.js";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { HybridApi } from "./hybridApi";
+import { admit, HybridTiers } from "./hybridTiers";
 
 /** How often a feed polls for new items, and how often it sends a heartbeat */
 export const FEED_POLL_MS = 500;
@@ -33,7 +34,13 @@ export const FEED_HEARTBEAT_MS = 10_000;
 export type FeedEvent =
   | { type: "item"; cursor: string; item: any }
   | { type: "heartbeat"; head: string; time: number; minVersion?: string }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string; try?: FeedAddress[] };
+
+/** Where else a supernode can be reached, sent to a hybrid it could not keep */
+export interface FeedAddress {
+  host: string;
+  port: number;
+}
 
 /** Server-Sent Events text for one feed event */
 export const toSse = (e: FeedEvent): string =>
@@ -41,7 +48,7 @@ export const toSse = (e: FeedEvent): string =>
     ? `id: ${e.cursor}\ndata: ${JSON.stringify(e.item)}\n\n`
     : e.type === "heartbeat"
     ? `event: heartbeat\ndata: ${JSON.stringify({ head: e.head, time: e.time, minVersion: e.minVersion })}\n\n`
-    : `event: error\ndata: ${JSON.stringify({ error: e.error })}\n\n`;
+    : `event: error\ndata: ${JSON.stringify(e.try ? { error: e.error, try: e.try } : { error: e.error })}\n\n`;
 
 export interface FeedClient {
   keyHash: string;
@@ -49,6 +56,8 @@ export interface FeedClient {
   /** The last cursor sent, kept current by the session */
   cursor?: string;
   connectedAt: number;
+  /** Closes this feed to make room, telling the hybrid where else to go */
+  end?: (alternatives: FeedAddress[]) => void;
 }
 
 /**
@@ -145,7 +154,45 @@ export interface HybridRouteOptions {
   maxBodyBytes?: number;
   /** Called as feeds open and close, for `hybrid feeds` */
   onFeeds?: (feeds: Set<FeedClient>) => void;
+  /** Who is premium. Without it every key is the same. */
+  tiers?: Pick<HybridTiers, "rank" | "isPremium">;
+  /** Slots only premium keys may fill, out of `maxFeeds` */
+  premiumSlots?: () => number;
+  /** Other supernodes a hybrid can try when this one cannot keep its feed */
+  alternatives?: () => FeedAddress[];
+  /** How often a key's feed polls. The default is `FEED_POLL_MS`. */
+  pollMs?: (keyHash: string) => number;
 }
+
+const NO_TIERS = { rank: () => Infinity, isPremium: () => false };
+
+/**
+ * Decide whether a feed may open, closing a lower one to make room for a
+ * premium key. Shared by the HTTP and P2P feeds, so both count against the
+ * same slots.
+ */
+export const claimSlot = (
+  feeds: Set<FeedClient>,
+  keyHash: string,
+  options: Pick<HybridRouteOptions, "maxFeeds" | "tiers" | "premiumSlots" | "alternatives">
+): { ok: boolean; alternatives: FeedAddress[] } => {
+  const alternatives = options.alternatives?.() ?? [];
+  const verdict = admit(
+    feeds,
+    keyHash,
+    options.maxFeeds(),
+    options.premiumSlots?.() ?? 0,
+    options.tiers ?? NO_TIERS
+  );
+  if (verdict.ok && verdict.evict) {
+    const victim = [...feeds].find((f) => f.keyHash === verdict.evict!.keyHash);
+    if (victim) {
+      feeds.delete(victim);
+      victim.end?.(alternatives);
+    }
+  }
+  return { ok: verdict.ok, alternatives };
+};
 
 /**
  * Register `/h/*` on the supernode's uWebSockets app. Every route
@@ -278,8 +325,9 @@ export const registerHybridRoutes = (
       if (old.keyHash === c.keyHash) end();
     }
     // Checked after the replacement, which may have freed the slot
-    if (feeds.size >= options.maxFeeds()) {
-      return send(res, 503, { error: "feed limit reached" });
+    const slot = claimSlot(feeds, c.keyHash, options);
+    if (!slot.ok) {
+      return send(res, 503, slot.alternatives.length ? { error: "feed limit reached", try: slot.alternatives } : { error: "feed limit reached" });
     }
 
     feeds.add(client);
@@ -301,15 +349,16 @@ export const registerHybridRoutes = (
         res.cork(() => res.end());
       }
     };
+    const write = (event: FeedEvent) => {
+      if (!(res as any).writable) return false;
+      res.cork(() => res.write(toSse(event)));
+      return true;
+    };
     const session: FeedSession = new FeedSession(
       api,
-      (event) => {
-        if (!(res as any).writable) return false;
-        res.cork(() => res.write(toSse(event)));
-        return true;
-      },
+      write,
       from,
-      FEED_POLL_MS,
+      options.pollMs?.(c.keyHash) ?? FEED_POLL_MS,
       FEED_HEARTBEAT_MS,
       Date.now,
       () => api.stillAllowed(c.keyHash),
@@ -319,6 +368,10 @@ export const registerHybridRoutes = (
       }
     );
     closers.set(client, () => session.stop());
+    client.end = (alternatives) => {
+      write({ type: "error", error: "moved", ...(alternatives.length ? { try: alternatives } : {}) });
+      session.stop();
+    };
     res.onAborted(() => {
       (res as any).writable = false;
       session.stop();

@@ -70,6 +70,8 @@ describe("Hybrid routes (/h/*)", () => {
   let events: MemDb;
   let state: { retired: boolean; banned: boolean; lookupDelayMs: number };
   let maxFeeds: number;
+  let premium: Set<string>;
+  let premiumSlots: number;
   let feeds: Set<FeedClient>;
   let feedChanges: number[];
   let open: http.ClientRequest[];
@@ -124,6 +126,8 @@ describe("Hybrid routes (/h/*)", () => {
     events = new MemDb();
     state = { retired: false, banned: false, lookupDelayMs: 0 };
     maxFeeds = 5;
+    premium = new Set();
+    premiumSlots = 0;
     feedChanges = [];
     open = [];
     const api = new HybridApi({
@@ -147,6 +151,9 @@ describe("Hybrid routes (/h/*)", () => {
     app = App();
     feeds = registerHybridRoutes(app, api, {
       maxFeeds: () => maxFeeds,
+      tiers: { isPremium: (h) => premium.has(h), rank: (h) => (premium.has(h) ? 0 : Infinity) },
+      premiumSlots: () => premiumSlots,
+      alternatives: () => [{ host: "10.0.0.9", port: 5260 }],
       maxBodyBytes: 64,
       onFeeds: (f) => feedChanges.push(f.size),
     });
@@ -425,6 +432,53 @@ describe("Hybrid routes (/h/*)", () => {
       expect(second.json().error).to.equal("feed limit reached");
       expect(feeds.size).to.equal(1);
       expect(first.ended()).to.equal(false);
+    });
+
+    it("tells a refused feed where else to go", async () => {
+      maxFeeds = 1;
+      const first = openFeed(sign());
+      await first.until(() => first.text().includes("heartbeat"));
+      const second = await request("GET", "/h/feed", sign(otherKp, otherHash));
+      expect(second.status).to.equal(503);
+      expect(second.json().try).to.deep.equal([{ host: "10.0.0.9", port: 5260 }]);
+    });
+
+    it("lets a premium key take the place of a free feed, which is told where else to go", async () => {
+      maxFeeds = 1;
+      const free = openFeed(sign(otherKp, otherHash));
+      await free.until(() => free.text().includes("heartbeat"));
+      premium.add(keyHash);
+      const vip = openFeed(sign());
+      await vip.until(() => vip.text().includes("heartbeat"));
+      await free.until(() => free.ended());
+      expect(free.text()).to.contain("event: error");
+      expect(free.text()).to.contain('"error":"moved"');
+      expect(free.text()).to.contain('"try":[{"host":"10.0.0.9","port":5260}]');
+      expect(vip.status()).to.equal(200);
+      expect(feeds.size).to.equal(1);
+      expect([...feeds][0].keyHash).to.equal(keyHash);
+    });
+
+    it("does not let a premium key evict another premium key of the same rank", async () => {
+      maxFeeds = 1;
+      premium.add(keyHash);
+      premium.add(otherHash);
+      const first = openFeed(sign());
+      await first.until(() => first.text().includes("heartbeat"));
+      const second = await request("GET", "/h/feed", sign(otherKp, otherHash));
+      expect(second.status).to.equal(503);
+      expect(first.ended()).to.equal(false);
+    });
+
+    it("keeps slots for premium keys, so a free key is refused while they are empty", async () => {
+      maxFeeds = 1;
+      premiumSlots = 1;
+      const free = await request("GET", "/h/feed", sign(otherKp, otherHash));
+      expect(free.status).to.equal(503);
+      premium.add(keyHash);
+      const vip = openFeed(sign());
+      await vip.until(() => vip.text().includes("heartbeat"));
+      expect(vip.status()).to.equal(200);
     });
 
     it("lets a reconnect replace the same key's old feed, even at the limit", async () => {
