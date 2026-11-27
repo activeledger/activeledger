@@ -1,5 +1,24 @@
 # Activeledger Changelog
 
+## [5.11.4] - 2026-11-27
+
+Follows 5.11.3. A new node now starts with the one id for a signed transaction on, and a copy of a transaction with the
+wrong signatures no longer takes the place of the right one. Nothing needs changing on upgrade; see **Upgrading** for a
+network that is already running.
+
+### Upgrading
+- **A network that is already running keeps its `build`.** Raise it to `51103` on every node once all are upgraded, if
+  you have not already (see [Nodes](docs/guide/operate/nodes.md)). New nodes start at `51103`.
+
+### Changed
+- **New nodes start at build `51103`**, so a new network has the one id for a signed transaction on from the start.
+- **A second copy of a transaction that is already being processed, with other signatures,** is checked when it
+  arrives. If its signatures are certainly wrong it is refused with `Input Signature Incorrect` and does not take the
+  first copy's place. If the copy already being processed has been refused for its signatures, the right one is given an id of its
+  own, noting the first, as a resent transaction is, and carries on. Where both may be right, one is processed as
+  before. Nothing is checked on the normal path.
+- **The entry node also notes the first id of a resent transaction when it commits it,** written once.
+
 ## [5.11.3] - 2026-11-27
 
 Duplicate detection for transactions with an `$expire` is tighter. Nothing needs changing on upgrade, but one new build
