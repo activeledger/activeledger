@@ -39,6 +39,7 @@ import { Home, leaderMarkHolds } from "./home";
 import { HybridApi, LedgerHybridRegistry, recordFailed } from "./hybridApi";
 import { FeedClient, registerHybridRoutes } from "./hybridRoutes";
 import { startHybridP2P } from "./hybridP2P";
+import { HybridTiers } from "./hybridTiers";
 import { HybridBans, feedsStatus, hybridStatus, isLoopback, listHybrids } from "./hybridAdmin";
 import { Neighbour } from "./neighbour";
 import { ActiveInterfaces } from "./utils";
@@ -282,6 +283,28 @@ function replyRecipientsOf(
 export class Host extends Home {
   /** Hybrid key hashes refused on this supernode only (`hybrid ban`) */
   public static hybridBans = new HybridBans();
+
+  /** Which hybrids are served first (`hybrid-tiers.json`). Local to this supernode. */
+  public static hybridTiers = new HybridTiers();
+
+  /** `hybridPremiumSlots` in config.json: slots out of `hybridMaxFeeds` kept for premium hybrids (default 12) */
+  public static hybridPremiumSlots(): number {
+    const n = Number(ActiveOptions.get<any>("hybridPremiumSlots", 12));
+    return Number.isFinite(n) && n >= 0 ? Math.min(Math.floor(n), Host.hybridMaxFeeds()) : 12;
+  }
+
+  /** `hybridPremiumPollMs`: how often a premium hybrid's feed polls (default 500, the same as every feed) */
+  public static hybridPollMs(keyHash: string): number {
+    const n = Number(ActiveOptions.get<any>("hybridPremiumPollMs", 0));
+    return n >= 50 && Host.hybridTiers.isPremium(keyHash) ? n : 500;
+  }
+
+  /** The other supernodes this one knows to be up, for a hybrid whose feed it could not keep */
+  public hybridAlternatives(): { host: string; port: number }[] {
+    return Object.values(this.neighbourhood.get() as { [ref: string]: Neighbour })
+      .filter((n) => n.isHome && n.reference !== this.reference)
+      .map((n) => n.getAddress());
+  }
 
   /** The start-up check that the databases answer is not awaited, so a failure is logged here and not left unhandled */
   public static dbUnreachable(error: unknown): void {
@@ -1120,8 +1143,15 @@ export class Host extends Home {
     ActiveProtocol.Attestation.useIdentityFile(
       ActiveOptions.get("identity", "./.identity")
     );
+    const tierOptions = {
+      tiers: Host.hybridTiers,
+      premiumSlots: () => Host.hybridPremiumSlots(),
+      alternatives: () => this.hybridAlternatives(),
+      pollMs: (keyHash: string) => Host.hybridPollMs(keyHash),
+    };
     this.hybridFeeds = registerHybridRoutes(this.api, hybridApi, {
       maxFeeds: () => Host.hybridMaxFeeds(),
+      ...tierOptions,
     });
 
     // The same messages over P2P, when the operator opens a port for them
@@ -1139,6 +1169,7 @@ export class Host extends Home {
           privateKey: file.prv.pkcs8pem,
         },
         maxFeeds: () => Host.hybridMaxFeeds(),
+        ...tierOptions,
         forward: async (tx, relayer) => {
           const r = await Endpoints.ExternalInitalise(
             this,
@@ -3324,11 +3355,18 @@ export class Host extends Home {
                 ? listHybrids(
                     this.hybridRegistry,
                     this.hybridFeeds,
-                    Host.hybridBans.set()
+                    Host.hybridBans.set(),
+                    Host.hybridTiers
                   ).then((content) => ({ statusCode: 200, content }))
                 : Promise.resolve({
                     statusCode: 200,
-                    content: feedsStatus(this.hybridFeeds, Host.hybridMaxFeeds()),
+                    content: feedsStatus(
+                      this.hybridFeeds,
+                      Host.hybridMaxFeeds(),
+                      Date.now(),
+                      Host.hybridTiers,
+                      Host.hybridPremiumSlots()
+                    ),
                   });
             break;
           case "/a/all": // All Stream Management
@@ -3483,6 +3521,21 @@ export class Host extends Home {
             response = Promise.resolve({
               statusCode: changed ? 200 : 400,
               content: changed ? { ok: true } : { error: "unknown or invalid key hash" },
+            });
+            break;
+          }
+          case "/a/hybrid/tier": // activeledger hybrid tier <keyhash> [tier]
+          case "/a/hybrid/untier": { // activeledger hybrid untier <keyhash>
+            if (!isLoopback(req.connection.remoteAddress)) {
+              return this.writeResponse(res, 403, "Forbidden", gzipAccepted);
+            }
+            const changed =
+              req.url === "/a/hybrid/tier"
+                ? Host.hybridTiers.set(body?.keyHash, body?.tier === undefined ? 0 : Number(body.tier))
+                : Host.hybridTiers.remove(body?.keyHash);
+            response = Promise.resolve({
+              statusCode: changed ? 200 : 400,
+              content: changed ? { ok: true } : { error: "unknown or invalid key hash or tier" },
             });
             break;
           }

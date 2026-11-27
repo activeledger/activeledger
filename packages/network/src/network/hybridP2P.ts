@@ -25,7 +25,8 @@ import { ActiveCrypto } from "@activeledger/activecrypto";
 import { ActiveLogger } from "@activeledger/activelogger";
 import { P2PConnection, P2PIdentity, P2PServer } from "@activeledger/activep2p";
 import { HybridApi } from "./hybridApi";
-import { FeedClient, FeedSession, FEED_HEARTBEAT_MS, FEED_POLL_MS } from "./hybridRoutes";
+import { claimSlot, FeedAddress, FeedClient, FeedSession, FEED_HEARTBEAT_MS, FEED_POLL_MS } from "./hybridRoutes";
+import type { HybridTiers } from "./hybridTiers";
 
 export interface HybridP2POptions {
   port: number;
@@ -33,6 +34,11 @@ export interface HybridP2POptions {
   /** This supernode's identity key, which hybrids pin or check against the setup stream */
   identity: P2PIdentity;
   maxFeeds: () => number;
+  /** Who is premium, the slots kept for them, and where else to send a hybrid that loses its feed (see `claimSlot`) */
+  tiers?: Pick<HybridTiers, "rank" | "isPremium">;
+  premiumSlots?: () => number;
+  alternatives?: () => FeedAddress[];
+  pollMs?: (keyHash: string) => number;
   /** Hand a transaction a hybrid forwarded to the normal external entry point */
   forward?: (tx: any, relayer: string) => Promise<any>;
 }
@@ -110,12 +116,16 @@ export const startHybridP2P = async (
           replace.get(other)?.();
         }
       }
-      if (feeds.size >= options.maxFeeds()) throw new Error("feed limit reached");
+      if (!claimSlot(feeds, keyHash, options).ok) throw new Error("feed limit reached");
       const from = typeof p?.from === "string" ? p.from : "";
       const me: FeedClient = { keyHash, since: from, connectedAt: Date.now() };
       feeds.add(me);
       client = me;
       replace.set(me, () => session?.stop());
+      me.end = (alternatives) => {
+        conn.push("feed", { type: "error", error: "moved", ...(alternatives.length ? { try: alternatives } : {}) }).catch(() => undefined);
+        session?.stop();
+      };
       session = new FeedSession(
         api,
         (event) => {
@@ -124,7 +134,7 @@ export const startHybridP2P = async (
           return true;
         },
         from,
-        FEED_POLL_MS,
+        options.pollMs?.(keyHash) ?? FEED_POLL_MS,
         FEED_HEARTBEAT_MS,
         Date.now,
         () => api.stillAllowed(keyHash),

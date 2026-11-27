@@ -57,6 +57,7 @@
     "test:network:project": "tsx tests/network/project-live.ts",
     "test:network:transaction-id": "tsx tests/network/transaction-id-live.ts",
     "test:network:prefix": "tsx tests/network/prefix-live.ts",
+    "test:network:hybrid-tiers": "tsx tests/network/hybrid-tiers-live.ts",
     "test:network:prune": "tsx tests/network/prune.ts",
     "test:network:resend-replay": "tsx tests/network/resend-replay.ts",
     "test:network:resend-replay-canonical": "tsx tests/network/resend-replay.ts --canonical",
