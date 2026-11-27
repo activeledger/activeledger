@@ -124,6 +124,63 @@ export class Endpoints {
   }
 
   /**
+   * Are these two sets of signatures the same, whatever order they are in?
+   *
+   * @param {unknown} one
+   * @param {unknown} two
+   * @returns {boolean}
+   */
+  public static sameSignatures(one: unknown, two: unknown): boolean {
+    const flat = (sigs: unknown) =>
+      JSON.stringify(Object.entries((sigs && typeof sigs === "object" ? sigs : {}) as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    return flat(one) === flat(two);
+  }
+
+  /**
+   * Is a signature on this transaction certainly wrong? Only a plain stream id
+   * with a single public key is looked at, and only to say yes: anything this
+   * does not understand (labels, a signature for several authorities, a self signed entry, a stream
+   * that is not there) is left to the full check after the locks, as always.
+   *
+   * @param {ActiveDSConnect} db
+   * @param {ActiveDefinitions.LedgerEntry} tx
+   * @returns {Promise<boolean>}
+   */
+  public static async signaturesFail(db: ActiveDSConnect, tx: ActiveDefinitions.LedgerEntry): Promise<boolean> {
+    try {
+      if (tx.$selfsign || !tx.$sigs || typeof tx.$sigs !== "object") return false;
+      const json = JSON.stringify(tx.$tx);
+      for (const id of Object.keys(tx.$tx?.$i || {})) {
+        const signature = (tx.$sigs as Record<string, unknown>)[id];
+        if (typeof signature !== "string" || !/^[0-9a-f]{64}$/.test(id)) continue;
+        let meta: any;
+        try {
+          meta = await db.get(`${id}:stream`);
+        } catch {
+          continue;
+        }
+        // The keys that could have signed: a list of authorities, or the one key of an older stream
+        const keys: { public?: unknown; type?: string }[] = Array.isArray(meta?.authorities) && meta.authorities.length
+          ? meta.authorities
+          : typeof meta?.public === "string" ? [{ public: meta.public, type: meta.type }] : [];
+        if (!keys.length) continue;
+        // Wrong when no key it could be signed by matches (one that has lapsed does not make it right)
+        const matches = keys.some((key) => {
+          try {
+            return typeof key.public === "string" && new ActiveCrypto.KeyPair(key.type || "rsa", key.public).verify(json, signature);
+          } catch {
+            return false;
+          }
+        });
+        if (!matches) return true;
+      }
+    } catch {
+      // Could not tell: not a reason to refuse
+    }
+    return false;
+  }
+
+  /**
    * Why a transaction's `$r` cannot be used, or undefined when it can.
    * `$r` is { name: "<stream id>" }: a name the contract reads it by, and the
    * id of the stream. An object as the value, such as { "<stream id>": {} },
@@ -245,6 +302,32 @@ export class Endpoints {
                   return resolve(
                     this.successfulFailure(`Transaction Exists : ${tx.$umid}`)
                   );
+                }
+
+                // The same transaction may already be on its way with other signatures
+                // (the id no longer says which request it came in). Only when one of
+                // the two is certainly wrong does that change anything: a wrong one
+                // is refused, and a transaction that finds a wrong one in its place is
+                // given an id of its own, noting the first, as a resent one is. Two
+                // that may both be right stay as they were: one is processed.
+                const waiting = host.inFlight?.(tx.$umid);
+                if (
+                  waiting?.$sigs &&
+                  tx.$sigs &&
+                  ActiveOptions.get<number>("build", 0) >= ActiveCrypto.TransactionId.BUILD &&
+                  !Endpoints.sameSignatures(waiting.$sigs, tx.$sigs)
+                ) {
+                  const [mine, theirs] = await Promise.all([
+                    Endpoints.signaturesFail(db, tx),
+                    Endpoints.signaturesFail(db, waiting),
+                  ]);
+                  if (mine) {
+                    return resolve(this.successfulFailure(`Input Signature Incorrect`));
+                  }
+                  if (theirs) {
+                    tx.$replaces = tx.$umid;
+                    tx.$umid = ActiveCrypto.Hash.getHash(`${tx.$umid}:${JSON.stringify(tx.$sigs)}`);
+                  }
                 }
 
                 // Now safe to set datetime

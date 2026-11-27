@@ -58,13 +58,25 @@ async function main(): Promise<number> {
       check(refused(r) && (await count(node)) === 1, `${what}, through node ${node}, is refused as already done`);
     }
 
+    // A copy with the right $tx and wrong signatures, sent first, does not stand in the way of the right one
+    const body2 = tx("second", new Date(Date.now() + 3600_000).toISOString());
+    const sigs2 = { [user.streamId]: user.keyPair.sign(body2) };
+    const wrong = await send(0, { $tx: body2, $sigs: { [user.streamId]: "00" + sigs2[user.streamId].slice(2) } });
+    check(wrong.$summary?.commit === 0, "a copy with wrong signatures is not applied");
+    const right = await send(0, { $tx: body2, $sigs: sigs2 });
+    await sleep(1500);
+    check(right.$summary?.commit === 1 && (await count()) === 2, `the right one, sent after it, is applied once (${JSON.stringify(right.$summary?.errors ?? [])})`);
+    const again = await send(2, { $tx: body2, $sigs: sigs2 });
+    await sleep(1200);
+    check(refused(again) && (await count(2)) === 2, "and a repeat of it through another node is refused as already done");
+
     // Without an $expire each send is a new transaction (the time is part of its id)
     const open = tx("open");
     const openSigs = { [user.streamId]: user.keyPair.sign(open) };
     await send(0, { $tx: open, $sigs: openSigs });
     await send(1, { $tx: open, $sigs: openSigs });
     await sleep(1500);
-    check((await count()) === 3, "without an $expire it is still a new transaction each time it is sent");
+    check((await count()) === 4, "without an $expire it is still a new transaction each time it is sent");
   });
   console.log(failures ? `${failures} FAILED` : "all ok");
   return failures ? 1 : 0;

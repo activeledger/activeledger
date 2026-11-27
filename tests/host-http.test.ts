@@ -893,7 +893,7 @@ describe("Host HTTP listener (Activeledger)", () => {
       expect(repaired).to.deep.equal(["m-commit"]);
     });
 
-    it("notes a transaction's first id when it commits one the entry node gave a new id, unless this is the entry node", () => {
+    it("notes a transaction's first id when it commits one that was given a new id, on the entry node too", () => {
       const noted: any[] = [];
       const real = host.rememberResent;
       const realReference = host.reference;
@@ -912,7 +912,8 @@ describe("Host HTTP listener (Activeledger)", () => {
         host.rememberResent = real;
         host.reference = realReference;
       }
-      expect(noted).to.deep.equal([["c".repeat(64), "m-r1", "2999-01-01T00:00:00.000Z"]]);
+      expect(noted.map((n) => n[1])).to.deep.equal(["m-r1", "m-r2"]);
+      expect(noted[0]).to.deep.equal(["c".repeat(64), "m-r1", "2999-01-01T00:00:00.000Z"]);
     });
 
     it("notes a first id only when it is in the right form, this node committed the transaction, and (at the build that makes it the hash of $tx) it is that hash", () => {

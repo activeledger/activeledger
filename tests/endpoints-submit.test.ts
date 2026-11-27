@@ -187,6 +187,86 @@ describe("Endpoints transaction submission (Activeledger)", () => {
         expect(await idOf(withExpire({ $umid: "f".repeat(64), $spiRetry: true, $replaces: "e".repeat(64) }))).to.equal(plain);
       });
 
+      describe("a second copy with other signatures while one is on its way", () => {
+        const kp = new ActiveCrypto.KeyPair("secp256k1");
+        const handler: any = kp.generate();
+        const pub = handler.pub?.pkcs8pem ?? handler.pub ?? handler.public;
+        const streamId = "a".repeat(64);
+        const $tx = { $namespace: "default", $contract: "c", $i: { [streamId]: {} }, $o: {}, $expire: "2999-01-01T00:00:00.000Z" };
+        const good = kp.sign(JSON.stringify($tx));
+        const entryWith = (signature: string): any => ({ $tx, $sigs: { [streamId]: signature } });
+        const store = (meta: any = { public: pub, type: "secp256k1" }): any => ({
+          exists: async () => false,
+          get: async (id: string) => {
+            if (id === `${streamId}:stream` && meta) return meta;
+            throw new Error("missing");
+          },
+        });
+        const umid = ActiveCrypto.Hash.getHash(JSON.stringify($tx));
+        const withWaiting = (waiting: any) => makeHost({ replies: [voted({ me: { vote: true, commit: true } })] }, { inFlight: (id: string) => (id === umid ? waiting : undefined) });
+        beforeEach(() => ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD));
+
+        it("knows a wrong signature from a right one, and says nothing about what it cannot read", async () => {
+          expect(await Endpoints.signaturesFail(store(), entryWith(good))).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), entryWith("00" + good.slice(2)))).to.equal(true);
+          expect(await Endpoints.signaturesFail(store(), entryWith("not a signature"))).to.equal(true);
+          expect(await Endpoints.signaturesFail(store(null), entryWith("junk"))).to.equal(false);
+          // A stream with authorities: right when any of them matches, wrong when none does
+          const other: any = new ActiveCrypto.KeyPair("secp256k1").generate();
+          const otherPub = other.pub?.pkcs8pem ?? other.pub ?? other.public;
+          const authorities = store({ authorities: [{ public: otherPub, type: "secp256k1" }, { public: pub, type: "secp256k1" }] });
+          expect(await Endpoints.signaturesFail(authorities, entryWith(good))).to.equal(false);
+          expect(await Endpoints.signaturesFail(authorities, entryWith("00" + good.slice(2)))).to.equal(true);
+          // Several signatures for one stream are left to the full check
+          expect(await Endpoints.signaturesFail(authorities, { $tx, $sigs: { [streamId]: { x: "junk" } } } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { ...entryWith("junk"), $selfsign: true } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: {} } as any)).to.equal(false);
+          expect(await Endpoints.signaturesFail(store(), { $tx, $sigs: { label: "junk" } } as any)).to.equal(false);
+        });
+
+        it("compares signatures whatever order they are in", () => {
+          expect(Endpoints.sameSignatures({ a: "1", b: "2" }, { b: "2", a: "1" })).to.equal(true);
+          expect(Endpoints.sameSignatures({ a: "1" }, { a: "2" })).to.equal(false);
+          expect(Endpoints.sameSignatures({ a: "1" }, undefined)).to.equal(false);
+        });
+
+        it("refuses a copy whose signature is wrong, and does not let it take the place of the one on its way", async () => {
+          const { host, pendingCalls } = withWaiting(entryWith(good));
+          const reply: any = await Endpoints.ExternalInitalise(host, entryWith("00" + good.slice(2)), "1.2.3.4", store());
+          expect(reply.content.$summary.errors[0]).to.equal("Input Signature Incorrect");
+          expect(pendingCalls).to.have.length(0);
+        });
+
+        it("gives a right copy an id of its own, noting the first, when the one on its way has a wrong signature", async () => {
+          const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls).to.have.length(1);
+          const entry = pendingCalls[0].entry;
+          expect(entry.$replaces).to.equal(umid);
+          expect(entry.$umid).to.equal(ActiveCrypto.Hash.getHash(`${umid}:${JSON.stringify(entry.$sigs)}`));
+          expect(entry.$umid).to.not.equal(umid);
+        });
+
+        it("leaves it to the one on its way when both may be right, or when it is the same request", async () => {
+          for (const [waiting, copy] of [
+            [entryWith("another valid form"), entryWith(good)],
+            [entryWith(good), entryWith(good)],
+          ] as any[]) {
+            const { host, pendingCalls } = withWaiting(waiting);
+            await Endpoints.ExternalInitalise(host, copy, "1.2.3.4", store(null));
+            expect(pendingCalls[0].entry.$umid).to.equal(umid);
+            expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+          }
+        });
+
+        it("does nothing about it below the build where the id is the hash of $tx", async () => {
+          ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD - 1);
+          const { host, pendingCalls } = withWaiting(entryWith("00" + good.slice(2)));
+          await Endpoints.ExternalInitalise(host, entryWith(good), "1.2.3.4", store());
+          expect(pendingCalls[0].entry.$replaces).to.equal(undefined);
+        });
+      });
+
       it("takes the fields only a node sets off a transaction a client sends, so nothing rides along", async () => {
         const { host, pendingCalls } = makeHost({ replies: [voted({ me: { vote: true, commit: true } })] });
         await Endpoints.ExternalInitalise(host, withExpire({ $replaces: "e".repeat(64), $revs: { a: "1" }, $streams: { new: [], updated: [] }, $remoteAddr: "9.9.9.9", $origin: "elsewhere" }), "1.2.3.4", db());
