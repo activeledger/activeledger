@@ -746,11 +746,10 @@ export class Host extends Home {
         //
         // $nodes is what tells a peer broadcast from a client entry below: the
         // endpoint sets $broadcast on client entries too, but only peers send
-        // $nodes. A client putting $nodes in its body gains nothing: its umid
-        // is hashed over the body so it can't land on another tx's pending
-        // entry, and it arrives with remoteAddr = Home.host ("host:port"),
-        // which the firewall (bare host <-> reference) never ties to a node,
-        // so this check rejects it.
+        // $nodes. A client putting $nodes in its body gains nothing: the
+        // endpoint takes it off, and it arrives with remoteAddr = Home.host
+        // ("host:port"), which the firewall (bare host <-> reference) never
+        // ties to a node, so this check rejects it.
         if (entry.$broadcast && entry.$nodes) {
           // Even though IP is checked, Nothing prevents them sending multiple payloads
           const nodeSpoofCheck = Object.keys(entry.$nodes);
@@ -1786,7 +1785,7 @@ export class Host extends Home {
           this.noteStored(pending.entry.$umid, pending.entry.$tx?.$expire);
           // Under its first id too, on every node that commits it (the entry
           // node noted it when it gave the new id)
-          if (pending.entry.$replaces && pending.entry.$origin !== this.reference) {
+          if (pending.entry.$replaces && pending.entry.$origin !== this.reference && this.firstIdHolds(pending.entry)) {
             this.rememberResent(pending.entry.$replaces, pending.entry.$umid, pending.entry.$tx?.$expire);
           }
           // A node that voted no on a position error still reports "commited"
@@ -2997,6 +2996,26 @@ export class Host extends Home {
       ActiveLogger.warn(umid, "Trying to release unknown umid");
     }
   }
+  /**
+   * May the first id a neighbour sent with a committed transaction ($replaces)
+   * be noted? Only an id in the right form, and only for a transaction this
+   * node committed itself. Where the id is the hash of $tx alone it must also
+   * be the hash of this transaction's $tx, so a neighbour cannot name another
+   * transaction's id.
+   *
+   * @private
+   * @param {ActiveDefinitions.LedgerEntry} entry
+   * @returns {boolean}
+   */
+  private firstIdHolds(entry: ActiveDefinitions.LedgerEntry): boolean {
+    const first = entry.$replaces;
+    if (typeof first !== "string" || !/^[0-9a-f]{64}$/.test(first)) return false;
+    const own = entry.$nodes?.[this.reference];
+    if (!own || own.commit !== true || own.error) return false;
+    const build = ActiveOptions.get<number>("build", 0);
+    return build < ActiveCrypto.TransactionId.BUILD || first === ActiveCrypto.TransactionId.of(entry, build);
+  }
+
   private processingBLQ = false;
   private lastQueueScan = 0;
 

@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { ActiveCrypto } from "@activeledger/activecrypto";
 import "mocha";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const childProcess = require("child_process");
@@ -895,20 +896,55 @@ describe("Host HTTP listener (Activeledger)", () => {
     it("notes a transaction's first id when it commits one the entry node gave a new id, unless this is the entry node", () => {
       const noted: any[] = [];
       const real = host.rememberResent;
+      const realReference = host.reference;
+      host.reference = "me";
       host.rememberResent = (...a: any[]) => noted.push(a);
       const commit = (umid: string) =>
         message(children[0], { type: "commited", data: { umid, nodes: { me: { vote: true, commit: true } }, entry: { $summary: { commit: 1 } } } });
       try {
-        addPending("m-r1", { $replaces: "first-id", $origin: "elsewhere", $tx: { $expire: "2999-01-01T00:00:00.000Z" } });
+        addPending("m-r1", { $replaces: "c".repeat(64), $origin: "elsewhere", $tx: { $expire: "2999-01-01T00:00:00.000Z" } });
         commit("m-r1");
-        addPending("m-r2", { $replaces: "first-id-2", $origin: host.reference });
+        addPending("m-r2", { $replaces: "d".repeat(64), $origin: host.reference });
         commit("m-r2");
         addPending("m-r3", { $origin: "elsewhere" });
         commit("m-r3");
       } finally {
         host.rememberResent = real;
+        host.reference = realReference;
       }
-      expect(noted).to.deep.equal([["first-id", "m-r1", "2999-01-01T00:00:00.000Z"]]);
+      expect(noted).to.deep.equal([["c".repeat(64), "m-r1", "2999-01-01T00:00:00.000Z"]]);
+    });
+
+    it("notes a first id only when it is in the right form, this node committed the transaction, and (at the build that makes it the hash of $tx) it is that hash", () => {
+      const noted: any[] = [];
+      const real = host.rememberResent;
+      const realBuild = ActiveOptions.get<number>("build", 0);
+      const realReference = host.reference;
+      host.reference = "me";
+      host.rememberResent = (...a: any[]) => noted.push(a[1]);
+      const $tx = { $namespace: "ns", $contract: "c", $expire: "2999-01-01T00:00:00.000Z" };
+      const hashOfTx = ActiveCrypto.Hash.getHash(JSON.stringify($tx));
+      const commit = (umid: string, vote: any = { vote: true, commit: true }) =>
+        message(children[0], { type: "commited", data: { umid, nodes: { me: vote }, entry: { $summary: { commit: 1 } } } });
+      try {
+        ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD);
+        addPending("m-f1", { $replaces: "not an id", $origin: "elsewhere", $tx });
+        commit("m-f1");
+        addPending("m-f2", { $replaces: "a".repeat(64), $origin: "elsewhere", $tx });
+        commit("m-f2");
+        addPending("m-f3", { $replaces: hashOfTx, $origin: "elsewhere", $tx });
+        commit("m-f3", { vote: false, commit: true, error: "position" });
+        addPending("m-f4", { $replaces: hashOfTx, $origin: "elsewhere", $tx });
+        commit("m-f4");
+        ActiveOptions.set("build", ActiveCrypto.TransactionId.BUILD - 1);
+        addPending("m-f5", { $replaces: "b".repeat(64), $origin: "elsewhere", $tx });
+        commit("m-f5");
+      } finally {
+        host.rememberResent = real;
+        host.reference = realReference;
+        ActiveOptions.set("build", realBuild);
+      }
+      expect(noted).to.deep.equal(["m-f4", "m-f5"]);
     });
 
     it("broadcasts the commit before it answers, when the worker sent the two as one", () => {
